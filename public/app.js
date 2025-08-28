@@ -1,0 +1,442 @@
+/* public/app.js — usernames everywhere (no public emails) + multi-images + unread logic already in place */
+
+(() => {
+  const { useEffect, useMemo, useRef, useState } = React;
+
+  // --- API helpers ---
+  const api = {
+    async me() { const r = await fetch('/api/me', { credentials: 'include' }); return r.json(); },
+    async register({ username, email, password }) {
+      const r = await fetch('/api/register', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, email, password }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Register failed');
+      return r.json();
+    },
+    async login(email, password) {
+      const r = await fetch('/api/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Login failed');
+      return r.json();
+    },
+    async logout() { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); },
+
+    async listAll() { const r = await fetch('/api/listings'); return r.json(); },
+    async listMine() { const r = await fetch('/api/listings?mine=1', { credentials: 'include' }); if (!r.ok) return []; return r.json(); },
+    async createListing(payload) {
+      const r = await fetch('/api/listings', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Create failed');
+      return r.json();
+    },
+    async updateListing(id, payload) {
+      const r = await fetch(`/api/listings/${id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Update failed');
+      return r.json();
+    },
+    async deleteListing(id) {
+      const r = await fetch(`/api/listings/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
+      return r.json();
+    },
+
+    async ensureConversation({ with_user_id, listing_id }) {
+      const r = await fetch('/api/conversations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ with_user_id, listing_id }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Conversation failed');
+      return r.json();
+    },
+    async listConversations() { const r = await fetch('/api/conversations', { credentials: 'include' }); if (!r.ok) throw new Error('Not logged in'); return r.json(); },
+    async getMessages(id) { const r = await fetch(`/api/conversations/${id}/messages`, { credentials: 'include' }); if (!r.ok) throw new Error('Cannot load messages'); return r.json(); },
+    async sendMessage(id, body) {
+      const r = await fetch(`/api/conversations/${id}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Send failed');
+      return r.json();
+    },
+
+    async getListingImages(id) { const r = await fetch(`/api/listings/${id}/images`); return r.json(); },
+  };
+
+  // --- Helpers ---
+  function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
+  function price(n) { return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
+
+  // Seen-state helpers (persisted per user)
+  function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
+  function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
+  function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+
+  // --- Header with unread badge (shows @username) ---
+  function Header({ user, setUser, onNav, active, unreadCount }) {
+    const authArea = user
+      ? H('div', { className: 'row' },
+          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
+          H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
+        )
+      : H(AuthButtons, { setUser });
+
+    const messagesBtn = H('button', {
+      className: `btn ${active==='messages'?'primary':''}`,
+      style: { position: 'relative' },
+      onClick: () => onNav('messages')
+    }, 'Messages',
+      (unreadCount > 0) &&
+        H('span', {
+          style: {
+            position: 'absolute', top: -2, right: -2,
+            width: 10, height: 10, borderRadius: 10,
+            background: '#ef4444'
+          }
+        })
+    );
+
+    return H('header', null,
+      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 12 } },
+          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
+          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
+        ),
+        H('nav', { className: 'row' },
+          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+          messagesBtn
+        ),
+        authArea
+      )
+    );
+  }
+
+  // --- Auth (username added on Register) ---
+  function AuthButtons({ setUser }) {
+    const [mode, setMode] = useState('login');
+    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [err, setErr] = useState('');
+
+    async function go() {
+      setErr('');
+      try {
+        if (mode === 'login') {
+          const u = await api.login(email, password);
+          setUser(u); setEmail(''); setPassword('');
+        } else {
+          const u = await api.register({ username, email, password });
+          setUser(u); setUsername(''); setEmail(''); setPassword('');
+        }
+      } catch(e){ setErr(e.message); }
+    }
+
+    return H('div', { className: 'row', style: { gap: 8 } },
+      H('div', { className: 'row', style: { gap: 6 } },
+        H('button', { className: `btn ${mode==='login'?'primary':''}`, onClick: () => setMode('login') }, 'Log in'),
+        H('button', { className: `btn ${mode==='register'?'primary':''}`, onClick: () => setMode('register') }, 'Register')
+      ),
+      err && H('span', { className: 'muted', style: { color: '#be123c' } }, err),
+      mode==='register' && H('input', { placeholder: 'Username', value: username, onChange: e => setUsername(e.target.value) }),
+      H('input', { placeholder: 'Email', value: email, onChange: e => setEmail(e.target.value) }),
+      H('input', { placeholder: 'Password', type: 'password', value: password, onChange: e => setPassword(e.target.value) }),
+      H('button', { className: 'btn primary', onClick: go }, mode==='login' ? 'Log in' : 'Create account')
+    );
+  }
+
+  // --- Multi Image Picker ---
+  function MultiImagePicker({ values, onChange }) {
+    const ref = useRef();
+    const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+
+    async function pick(e) {
+      const files = Array.from(e.target.files || []);
+      const newImgs = [];
+      for (const f of files) {
+        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+        newImgs.push(await toB64(f));
+      }
+      onChange([...(values||[]), ...newImgs]);
+      ref.current.value = '';
+    }
+    function removeAt(i) {
+      const next = [...values]; next.splice(i,1); onChange(next);
+    }
+
+    return H('div', null,
+      H('div', { className:'row' },
+        H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
+        H('span', { className:'muted' }, `${(values||[]).length} image(s)`)
+      ),
+      H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
+        ...(values||[]).map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
+          H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
+        ))
+      )
+    );
+  }
+
+  // --- Listing Form ---
+  function ListingForm({ draft, onCancel, onSaved }) {
+    const [images, setImages] = useState([]);
+    const [description, setDescription] = useState(draft?.description || '');
+    const [location, setLocation] = useState(draft?.location || '');
+    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+
+    useEffect(() => {
+      (async () => {
+        if (draft?.id) {
+          try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
+          catch { setImages([draft.image_data].filter(Boolean)); }
+        } else { setImages([]); }
+      })();
+    }, [draft?.id]);
+
+    async function submit(e){
+      e.preventDefault();
+      const payload = { images, description: description.trim(), location: location.trim(), price: Number(priceVal) };
+      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) { alert('Fill all fields and add at least one image.'); return; }
+      if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
+      onSaved?.();
+    }
+
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
+      H(MultiImagePicker, { values:images, onChange:setImages }),
+      H('label', null, 'Description'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+      H('label', null, 'Location'),
+      H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value) }),
+      H('label', null, 'Price'),
+      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+      H('div', { className:'row' },
+        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
+      )
+    );
+  }
+
+  // --- Lightbox Modal ---
+  function Lightbox({ open, images, index, onClose, onIndex }) {
+    const esc = (e)=> { if(e.key==='Escape') onClose(); };
+    React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
+    if(!open) return null;
+    function prev(){ onIndex((index-1+images.length)%images.length); }
+    function next(){ onIndex((index+1)%images.length); }
+    return H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
+      H('div', { className:'modal-inner' },
+        H('button', { className:'close', onClick:onClose }, '✕'),
+        H('button', { className:'arrow left', onClick:prev }, '◀'),
+        H('img', { src: images[index] }),
+        H('button', { className:'arrow right', onClick:next }, '▶'),
+        H('div', { className:'thumbs' },
+          ...images.map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
+        )
+      )
+    );
+  }
+
+  // --- Listing card (shows @owner_username) ---
+  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage }) {
+    const [open, setOpen] = useState(false);
+    const [images, setImages] = useState(null);
+    const [idx, setIdx] = useState(0);
+
+    async function openModal(start=0){
+      if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
+      setIdx(start); setOpen(true);
+    }
+
+    const controls = [];
+    if (!user || user.id !== item.user_id) {
+      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
+    }
+    if (canEdit) {
+      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
+      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
+    }
+
+    return H('div', { className:'card' },
+      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
+      H('div', { style:{ padding:16 } },
+        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
+          H('div', { style:{ fontWeight:600 } }, item.description),
+          H('div', { style:{ fontWeight:800 } }, price(item.price))
+        ),
+        H('div', { className:'muted' }, item.location),
+        H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
+        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
+      ),
+      H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
+    );
+  }
+
+  // --- Messages (shows other_user_username) ---
+  function MessagesPanel({ user, initialActiveId, onSeenChange }) {
+    const [convos, setConvos] = useState([]);
+    const [activeId, setActiveId] = useState(initialActiveId || null);
+    const [msgs, setMsgs] = useState([]);
+    const [input, setInput] = useState('');
+    const pollRef = useRef(null);
+
+    useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
+
+    async function fetchConvos(){ try{ setConvos(await api.listConversations()); } catch(_){} }
+    async function fetchMsgs(){
+      if(!activeId) return;
+      try{
+        const arr = await api.getMessages(activeId);
+        setMsgs(arr);
+        if (arr.length) onSeenChange?.(activeId, arr[arr.length-1].id);
+      } catch{}
+    }
+
+    useEffect(()=>{ fetchConvos(); }, []);
+    useEffect(()=>{
+      fetchMsgs();
+      if(pollRef.current) clearInterval(pollRef.current);
+      if(activeId){ pollRef.current = setInterval(fetchMsgs, 2500); }
+      return ()=> pollRef.current && clearInterval(pollRef.current);
+    }, [activeId]);
+
+    async function send(){
+      if(!input.trim()) return;
+      await api.sendMessage(activeId, input.trim());
+      setInput('');
+      await fetchMsgs();
+      await fetchConvos();
+    }
+
+    const seenMap = loadSeen(user?.id);
+    const convosDecorated = (convos||[]).map(c => {
+      const unread = !!(c.last_message_id && c.last_message_sender_id && c.last_message_sender_id !== user.id && (!seenMap[c.id] || seenMap[c.id] < c.last_message_id));
+      return { ...c, _unread: unread };
+    }).sort((a,b) => {
+      const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
+      if (ub - ua) return ub - ua; // unread first
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    return H('div', { className:'split' },
+      H('aside', { className:'card sidebar', style:{ padding:12 } },
+        H('div', { style:{ fontWeight:700, marginBottom:8 } }, 'Conversations'),
+        ...(convosDecorated.length ? convosDecorated.map(c => H('div', {
+            key:c.id,
+            className:'row',
+            style:{ padding:'8px 6px', borderRadius:12, cursor:'pointer', background: c.id===activeId?'#f3f4f6':'transparent', position:'relative' },
+            onClick:()=>setActiveId(c.id)
+          },
+          H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
+          c.listing_description ? H('div', { className:'muted' }, ` • ${c.listing_description?.slice?.(0,24)}`) : null,
+          c._unread && H('span', { style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' } })
+        )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
+      ),
+      H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },
+        !activeId && H('div', { className:'muted' }, 'Select a conversation'),
+        activeId && H('div', { style:{ flex:1, overflow:'auto', padding:4 } },
+          msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` }, m.body))
+        ),
+        activeId && H('div', { className:'row' },
+          H('input', { placeholder:'Type a message…', value:input, onChange:e=>setInput(e.target.value), onKeyDown:e=>{ if(e.key==='Enter') send(); } }),
+          H('button', { className:'btn primary', onClick:send }, 'Send')
+        )
+      )
+    );
+  }
+
+  // --- App ---
+  function App(){
+    const { user, setUser } = useAuth();
+    const [tab, setTab] = useState('browse');
+    const [all, setAll] = useState([]);
+    const [mine, setMine] = useState([]);
+    const [query, setQuery] = useState('');
+    const [sort, setSort] = useState('new');
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState(null);
+
+    const [activeConvoId, setActiveConvoId] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    async function reload(){ const [a, m] = await Promise.all([ api.listAll(), user ? api.listMine() : Promise.resolve([]) ]); setAll(a); setMine(m||[]); }
+    useEffect(()=>{ reload(); }, [user?.id]);
+
+    async function recomputeUnread() {
+      try {
+        if (!user) { setUnreadCount(0); return; }
+        const convos = await api.listConversations();
+        const seen = loadSeen(user.id);
+        const n = (convos || []).filter(c =>
+          c.last_message_id &&
+          c.last_message_sender_id &&
+          c.last_message_sender_id !== user.id &&
+          (!seen[c.id] || seen[c.id] < c.last_message_id)
+        ).length;
+        setUnreadCount(n);
+      } catch {}
+    }
+    useEffect(() => {
+      let t;
+      recomputeUnread();
+      t = setInterval(recomputeUnread, 3000);
+      return () => clearInterval(t);
+    }, [user?.id]);
+
+    const feed = useMemo(()=>{
+      const q = query.trim().toLowerCase();
+      const list = (all || []).filter(it => q ? it.description.toLowerCase().includes(q) || it.location.toLowerCase().includes(q) : true);
+      if (sort === 'price_asc') list.sort((a,b)=>a.price-b.price);
+      else if (sort === 'price_desc') list.sort((a,b)=>b.price-a.price);
+      else list.sort((a,b)=>b.id-a.id);
+      return list;
+    }, [all, query, sort]);
+
+    async function startMessage(item){
+      if(!user){ alert('Log in to message a seller.'); return; }
+      if(user.id === item.user_id){ alert('This is your listing.'); return; }
+      const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
+      setActiveConvoId(convo.id);
+      setTab('messages');
+    }
+
+    function handleSeen(convoId, lastMsgId){
+      if (!user || !convoId || !lastMsgId) return;
+      const map = loadSeen(user.id);
+      if (!map[convoId] || map[convoId] < lastMsgId) {
+        map[convoId] = lastMsgId;
+        saveSeen(user.id, map);
+        // trigger unread recompute quickly
+        setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
+      }
+    }
+
+    return H(React.Fragment, null,
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount }),
+      H('main', { className:'container' },
+        tab==='browse' && H(React.Fragment, null,
+          H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
+            H('div', { className:'row', style:{ gap:10 } },
+              H('input', { placeholder:'Search description or location…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
+              H('select', { value:sort, onChange:e=>setSort(e.target.value) },
+                H('option', { value:'new' }, 'Newest'),
+                H('option', { value:'price_asc' }, 'Price: Low → High'),
+                H('option', { value:'price_desc' }, 'Price: High → Low')
+              )
+            ),
+            H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
+          ),
+
+          showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
+            H(ListingForm, { draft: editing, onCancel:()=>setShowForm(false), onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); } })
+          ),
+
+          H('section', { className:'grid' },
+            feed.map(item => H(ListingCard, { key:item.id, item, user, canEdit: !!mine.find(m=>m.id===item.id), onEdit:(it)=>{ setEditing(it); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); }, onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } }, onMessage: startMessage }))
+          ),
+          !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
+        ),
+        tab==='messages' && H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
+      )
+    );
+  }
+
+  function useAuth() {
+    const [user, setUser] = useState(null);
+    useEffect(() => { api.me().then(setUser); }, []);
+    return { user, setUser };
+  }
+
+  ReactDOM.render(H(App), document.getElementById('root'));
+})();
