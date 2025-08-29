@@ -17,7 +17,22 @@ const IS_TEST = process.env.NODE_ENV === 'test';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
-if (FRONTEND_ORIGIN && cors) app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
+/* ------------------------------------------------------------------ */
+/* CORS (with credentials)                                            */
+/* ------------------------------------------------------------------ */
+if (FRONTEND_ORIGIN && cors) {
+  const corsCfg = {
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
+    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
+  };
+  app.use(cors(corsCfg));
+  app.options('*', cors(corsCfg)); // handle preflight everywhere
+}
 
 /* ------------------------------------------------------------------ */
 /* SQLite path handling (Render Disk friendly)                         */
@@ -159,15 +174,31 @@ function setAuthCookie(res, payload){
     httpOnly: true,
     sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
     secure: IS_PROD,
+    domain: COOKIE_DOMAIN, // optional
     maxAge: 7*24*60*60*1000,
+    path: '/'
+  });
+}
+function clearAuthCookie(res){
+  res.clearCookie('token', {
+    httpOnly: true,
+    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
+    secure: IS_PROD,
+    domain: COOKIE_DOMAIN, // optional
     path: '/'
   });
 }
 function auth(req, res, next){
   const { token } = req.cookies || {};
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
-  catch { return res.status(401).json({ error: 'Invalid token' }); }
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    // If the token is bad/expired, clear it so the client cleanly resets to signed-out UI
+    clearAuthCookie(res);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 }
 function requireAdmin(req, res, next){
   if (!req.user?.is_admin) return res.status(403).json({ error: 'Admin only' });
@@ -235,9 +266,11 @@ app.post('/api/login', async (req, res) => {
   return res.json(user);
 });
 
+/* ✅ Idempotent logout that always returns { ok: true } */
 app.post('/api/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: FRONTEND_ORIGIN ? 'none' : 'lax', secure: IS_PROD, path: '/' });
-  res.json({ ok: true });
+  // Clear cookie even if it doesn't exist or token is invalid
+  clearAuthCookie(res);
+  return res.json({ ok: true });
 });
 
 app.get('/api/me', (req, res) => {
@@ -247,6 +280,8 @@ app.get('/api/me', (req, res) => {
     const data = jwt.verify(token, JWT_SECRET);
     return res.json({ id: data.id, email: data.email, username: data.username, is_admin: data.is_admin || 0 });
   } catch {
+    // If token is bad, proactively clear it so the client snaps to signed-out state cleanly
+    clearAuthCookie(res);
     return res.json(null);
   }
 });
@@ -279,7 +314,10 @@ app.get('/api/listings', (req, res) => {
   if (mine) {
     const { token } = req.cookies || {};
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
-    let me; try { me = jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    let me; try { me = jwt.verify(token, JWT_SECRET); } catch {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
 
     let rows;
     if (q) {
@@ -551,6 +589,16 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, (req, res) => {
 app.delete('/api/admin/listings', auth, requireAdmin, (req, res) => {
   db.exec('DELETE FROM listing_images; DELETE FROM listings;');
   res.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Healthcheck & error handler                                         */
+/* ------------------------------------------------------------------ */
+app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'server_error' });
 });
 
 /* ------------------------------------------------------------------ */
