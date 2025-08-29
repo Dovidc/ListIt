@@ -1,26 +1,58 @@
-/* server.js — usernames + no public emails */
+/* server.js — ListIt with usernames + admin + robust SQLite path */
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-const cors = require('cors');
-const path = require('path');
+let cors; try { cors = require('cors'); } catch { /* optional */ }
 
 const app = express();
+
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const IS_TEST = process.env.NODE_ENV === 'test';
 const IS_PROD = process.env.NODE_ENV === 'production';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null; // set if frontend is on another domain
-if (FRONTEND_ORIGIN) app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
+// If you front the API with another domain (e.g., GitHub Pages), set FRONTEND_ORIGIN.
+// Otherwise, leave unset and CORS is skipped.
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
+if (FRONTEND_ORIGIN && cors) app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 
-// --- DB Setup ---
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'listit.db');
-const db = new Database(IS_TEST ? ':memory:' : DB_PATH);
-try { db.pragma('journal_mode = WAL'); } catch (_) {}
+/* ------------------------------------------------------------------ */
+/* SQLite path handling (Render Disk friendly)                         */
+/* ------------------------------------------------------------------ */
+const DEFAULT_DB = path.join(__dirname, 'listit.db');           // ephemeral on Render
+const WANTED_DB = process.env.DB_PATH || DEFAULT_DB;
+
+function ensureDirFor(filePath) {
+  const dir = path.dirname(filePath);
+  try { fs.mkdirSync(dir, { recursive: true }); return true; }
+  catch (e) { console.warn('Could not create DB dir', dir, e.message); return false; }
+}
+
+let DB_PATH = WANTED_DB;
+if (!ensureDirFor(WANTED_DB)) {
+  console.warn('Falling back to local DB path:', DEFAULT_DB);
+  DB_PATH = DEFAULT_DB;
+}
+
+let db;
+try {
+  db = new Database(IS_TEST ? ':memory:' : DB_PATH);
+  console.log('SQLite DB opened at:', IS_TEST ? ':memory:' : DB_PATH);
+} catch (e) {
+  console.error('Failed to open DB at', DB_PATH, e);
+  db = new Database(':memory:');
+  console.warn('Using in-memory DB — data will not persist.');
+}
+
+/* ------------------------------------------------------------------ */
+/* Schema + migrations                                                 */
+/* ------------------------------------------------------------------ */
+try { db.pragma('journal_mode = WAL'); } catch {}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -31,14 +63,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 `);
 
-// Auto-migrate: add username column/index if missing
 try { db.prepare('SELECT username FROM users LIMIT 1').get(); }
 catch {
-  db.exec(`ALTER TABLE users ADD COLUMN username TEXT;`);
-  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);`);
+  db.exec('ALTER TABLE users ADD COLUMN username TEXT;');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);');
 }
 
-// Core tables (existing)
+try { db.prepare('SELECT is_admin FROM users LIMIT 1').get(); }
+catch {
+  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;');
+}
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS listings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,33 +115,65 @@ CREATE TABLE IF NOT EXISTS messages (
 `);
 
 function nowIso(){ return new Date().toISOString(); }
-function setAuthCookie(res, payload){
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('token', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: IS_PROD,
-    maxAge: 7*24*60*60*1000,
-    path: '/'
-  });
-}
-function auth(req, res, next){
-  const { token } = req.cookies || {};
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
-  catch { return res.status(401).json({ error: 'Invalid token' }); }
-}
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
   const b = Math.max(Number(u1), Number(u2));
   return { a, b };
 }
 
+/* ------------------------------------------------------------------ */
+/* Auth helpers                                                        */
+/* ------------------------------------------------------------------ */
+function setAuthCookie(res, payload){
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  res.cookie('token', token, {
+    httpOnly: true,
+    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax', // if cross-site, consider 'none'
+    secure: IS_PROD, // HTTPS in prod
+    maxAge: 7*24*60*60*1000,
+    path: '/'
+  });
+}
+
+function auth(req, res, next){
+  const { token } = req.cookies || {};
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: 'Invalid token' }); }
+}
+
+function requireAdmin(req, res, next){
+  if (!req.user?.is_admin) return res.status(403).json({ error: 'Admin only' });
+  next();
+}
+
+/* ------------------------------------------------------------------ */
+/* Middleware & static                                                 */
+/* ------------------------------------------------------------------ */
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Auth ---
+/* ------------------------------------------------------------------ */
+/* Optional admin bootstrap via env vars                               */
+/* Set ADMIN_EMAIL/ADMIN_USERNAME/ADMIN_PASSWORD to create on boot     */
+/* ------------------------------------------------------------------ */
+(function maybeCreateAdmin() {
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const username = (process.env.ADMIN_USERNAME || '').trim();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!email || !username || !password) return;
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (exists) { console.log('Admin exists:', email); return; }
+  const hash = bcrypt.hashSync(password, 10);
+  db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 1)')
+    .run(email, username, hash, nowIso());
+  console.log('Admin created:', email, 'username:', username);
+})();
+
+/* ------------------------------------------------------------------ */
+/* Auth routes                                                         */
+/* ------------------------------------------------------------------ */
 app.post('/api/register', async (req, res) => {
   const username = (req.body.username || req.body.name || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
@@ -117,13 +184,15 @@ app.post('/api/register', async (req, res) => {
 
   const hash = await bcrypt.hash(password, 10);
   try {
-    const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at) VALUES (?, ?, ?, ?)').run(email, username, hash, nowIso());
-    setAuthCookie(res, { id: info.lastInsertRowid, email, username });
-    return res.json({ id: info.lastInsertRowid, email, username });
+    const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
+      .run(email, username, hash, nowIso());
+    const user = { id: info.lastInsertRowid, email, username, is_admin: 0 };
+    setAuthCookie(res, user);
+    return res.json(user);
   } catch (e) {
     const msg = String(e);
-    if (msg.includes('users.email')) return res.status(409).json({ error: 'Email already registered' });
-    if (msg.includes('users.username')) return res.status(409).json({ error: 'Username already taken' });
+    if (msg.includes('users.email'))   return res.status(409).json({ error: 'Email already registered' });
+    if (msg.includes('users.username'))return res.status(409).json({ error: 'Username already taken' });
     console.error(e);
     return res.status(500).json({ error: 'Registration failed' });
   }
@@ -137,12 +206,13 @@ app.post('/api/login', async (req, res) => {
   if (!row) return res.status(401).json({ error: 'Invalid credentials' });
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  setAuthCookie(res, { id: row.id, email: row.email, username: row.username });
-  return res.json({ id: row.id, email: row.email, username: row.username });
+  const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
+  setAuthCookie(res, user);
+  return res.json(user);
 });
 
 app.post('/api/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: IS_PROD, path: '/' });
+  res.clearCookie('token', { httpOnly: true, sameSite: FRONTEND_ORIGIN ? 'none' : 'lax', secure: IS_PROD, path: '/' });
   res.json({ ok: true });
 });
 
@@ -151,14 +221,15 @@ app.get('/api/me', (req, res) => {
   if (!token) return res.json(null);
   try {
     const data = jwt.verify(token, JWT_SECRET);
-    // Return email only to the owner; never expose others' emails in public endpoints
-    return res.json({ id: data.id, email: data.email, username: data.username });
+    return res.json({ id: data.id, email: data.email, username: data.username, is_admin: data.is_admin || 0 });
   } catch {
     return res.json(null);
   }
 });
 
-// --- Listings ---
+/* ------------------------------------------------------------------ */
+/* Listings                                                            */
+/* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
   if (images.length > 10) return 'Too many images (max 10)';
@@ -215,7 +286,7 @@ app.put('/api/listings/:id', auth, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
+  if (!req.user.is_admin && existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
 
   const { images, image_data, description, location, price } = req.body || {};
   if (images || image_data) {
@@ -242,7 +313,7 @@ app.delete('/api/listings/:id', auth, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
+  if (!req.user.is_admin && existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
   db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
   db.prepare('DELETE FROM listings WHERE id = ?').run(id);
   res.json({ ok: true });
@@ -254,7 +325,9 @@ app.get('/api/listings/:id/images', (req, res) => {
   res.json(rows.map(r => r.image_data));
 });
 
-// --- Conversations & Messages ---
+/* ------------------------------------------------------------------ */
+/* Conversations & messages                                            */
+/* ------------------------------------------------------------------ */
 function isMember(convo, uid){ return convo && (convo.a_user_id === uid || convo.b_user_id === uid); }
 
 app.post('/api/conversations', auth, (req, res) => {
@@ -322,7 +395,26 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   res.json(row);
 });
 
-// test helper
+/* ------------------------------------------------------------------ */
+/* Admin endpoints                                                     */
+/* ------------------------------------------------------------------ */
+// Delete one listing (any user's) — admin only
+app.delete('/api/admin/listings/:id', auth, requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
+  const info = db.prepare('DELETE FROM listings WHERE id = ?').run(id);
+  res.json({ ok: true, deleted: info.changes });
+});
+
+// Delete ALL listings — admin only
+app.delete('/api/admin/listings', auth, requireAdmin, (req, res) => {
+  db.exec('DELETE FROM listing_images; DELETE FROM listings;');
+  res.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Test helper                                                         */
+/* ------------------------------------------------------------------ */
 if (IS_TEST) {
   app.post('/__test/reset', (req, res) => {
     db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM listing_images; DELETE FROM listings; DELETE FROM users;');
@@ -330,8 +422,8 @@ if (IS_TEST) {
   });
 }
 
+/* ------------------------------------------------------------------ */
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`ListIt server running at http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`ListIt running at http://localhost:${PORT}`));
 }
-
 module.exports = app;
