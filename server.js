@@ -1,6 +1,7 @@
 /* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price)
    + messaging (with image attachments) + admin + robust SQLite path + CORS + JWT auth
    + reverse geocoding proxy for "Use my location"
+   + semantic/fuzzy location filter that only matches existing listing locations
 */
 
 const express = require('express');
@@ -130,7 +131,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
-/* NEW: images attached to messages */
 db.exec(`
 CREATE TABLE IF NOT EXISTS message_images (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +178,52 @@ function fallbackTagsFromTitleDesc(title, desc) {
   const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
   const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
   return [...new Set([...base, ...generic])].slice(0, 20);
+}
+
+/* ---------- fuzzy helpers for location (city) ---------- */
+function normLetters(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+function cityOf(location){
+  // first chunk before comma, trimmed
+  return String(location||'').split(',')[0].trim();
+}
+function levenshtein(a,b){
+  a = String(a); b = String(b);
+  const m = a.length, n = b.length;
+  if (m===0) return n; if (n===0) return m;
+  const dp = new Array(n+1);
+  for (let j=0;j<=n;j++) dp[j]=j;
+  for (let i=1;i<=m;i++){
+    let prev = i-1, cur = i;
+    dp[0]=i;
+    for (let j=1;j<=n;j++){
+      const tmp = dp[j];
+      const cost = a[i-1]===b[j-1]?0:1;
+      dp[j] = Math.min(
+        dp[j]+1,     // deletion
+        dp[j-1]+1,   // insertion
+        prev+cost    // substitution
+      );
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+function pickMatchingCities(allCities, query){
+  // Only return city strings that exist in DB, but allow fuzzy matching
+  const out = new Set();
+  const q = (query||'').trim();
+  if (!q) return out;
+  const qn = normLetters(q);
+  for (const c of allCities){
+    const cn = normLetters(c);
+    if (!cn) continue;
+    // direct contains / prefix / exact (case-insensitive)
+    if (c.toLowerCase().includes(q.toLowerCase()) || cn.includes(qn) || cn.startsWith(qn)) { out.add(c); continue; }
+    // fuzzy on normalized city
+    const d = levenshtein(cn, qn);
+    if (d <= 2) { out.add(c); continue; } // allow small typos
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -280,7 +326,6 @@ app.post('/api/login', async (req, res) => {
   return res.json(user);
 });
 
-/* Idempotent logout that always returns { ok: true } */
 app.post('/api/logout', (req, res) => {
   clearAuthCookie(res);
   return res.json({ ok: true });
@@ -299,7 +344,7 @@ app.get('/api/me', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Listings                                                            */
+/* Listings + semantic location filter                                 */
 /* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
@@ -322,8 +367,9 @@ function validateMsgImages(images) {
 }
 
 app.get('/api/listings', (req, res) => {
-  const qRaw = (req.query.q || '').toString().trim().toLowerCase();
-  const q = qRaw ? `%${qRaw}%` : null;
+  const qRaw   = (req.query.q   || '').toString().trim().toLowerCase();
+  const locRaw = (req.query.loc || '').toString().trim(); // keep case for final compare
+  const q  = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
 
   const SELECT_PUBLIC = `
@@ -333,6 +379,31 @@ app.get('/api/listings', (req, res) => {
     JOIN users u ON u.id = l.user_id
   `;
 
+  // get base rows (apply text query if provided)
+  function baseRowsForUser(userId){
+    if (q) {
+      return db.prepare(`${SELECT_PUBLIC}
+        WHERE l.user_id = @uid
+          AND (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
+        ORDER BY l.id DESC
+      `).all({ uid: userId, q });
+    }
+    return db.prepare(`${SELECT_PUBLIC}
+      WHERE l.user_id = @uid
+      ORDER BY l.id DESC
+    `).all({ uid: userId });
+  }
+  function baseRowsPublic(){
+    if (q) {
+      return db.prepare(`${SELECT_PUBLIC}
+        WHERE (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
+        ORDER BY l.id DESC
+      `).all({ q });
+    }
+    return db.prepare(`${SELECT_PUBLIC} ORDER BY l.id DESC`).all();
+  }
+
+  let rows;
   if (mine) {
     const { token } = req.cookies || {};
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
@@ -340,36 +411,29 @@ app.get('/api/listings', (req, res) => {
       clearAuthCookie(res);
       return res.status(401).json({ error: 'Invalid token' });
     }
-
-    let rows;
-    if (q) {
-      rows = db.prepare(`${SELECT_PUBLIC}
-        WHERE l.user_id = ?
-          AND (LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
-        ORDER BY l.id DESC
-      `).all(me.id, q, q, q, q);
-    } else {
-      rows = db.prepare(`${SELECT_PUBLIC}
-        WHERE l.user_id = ?
-        ORDER BY l.id DESC
-      `).all(me.id);
-    }
-
+    rows = baseRowsForUser(me.id);
+    // include tags for owner
     const withTags = rows.map(r => {
       const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
       return { ...r, tags: t ? t.split(',') : [] };
     });
-    return res.json(withTags);
+    rows = withTags;
+  } else {
+    rows = baseRowsPublic();
   }
 
-  let rows;
-  if (q) {
-    rows = db.prepare(`${SELECT_PUBLIC}
-      WHERE (LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
-      ORDER BY l.id DESC
-    `).all(q, q, q, q);
-  } else {
-    rows = db.prepare(`${SELECT_PUBLIC} ORDER BY l.id DESC`).all();
+  // semantic location narrowing (only to existing listing locations)
+  if (locRaw) {
+    const distinct = db.prepare('SELECT DISTINCT location FROM listings').all().map(r => r.location).filter(Boolean);
+    const allCities = distinct.map(cityOf).filter(Boolean);
+    const matches = pickMatchingCities(allCities, locRaw);
+    if (matches.size > 0) {
+      const setNorm = new Set(Array.from(matches).map(c => normLetters(c)));
+      rows = rows.filter(r => setNorm.has(normLetters(cityOf(r.location))));
+    } else {
+      // If nothing fuzzy-matched, keep zero results (strict)
+      rows = [];
+    }
   }
 
   return res.json(rows);
@@ -450,7 +514,7 @@ app.get('/api/listings/:id/images', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* AI Analysis endpoint (title, tags, suggested_price)                */
+/* AI Analysis endpoint                                                */
 /* ------------------------------------------------------------------ */
 app.post('/api/ai/analyze', auth, async (req, res) => {
   try {
@@ -624,7 +688,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Reverse geocoding proxy (OpenStreetMap Nominatim)                   */
 /* ------------------------------------------------------------------ */
-const geoCache = new Map(); // tiny in-memory cache
+const geoCache = new Map();
 app.get('/api/geo/reverse', async (req, res) => {
   try {
     const lat = Number(req.query.lat);
@@ -636,9 +700,7 @@ app.get('/api/geo/reverse', async (req, res) => {
     if (geoCache.has(key)) return res.json(geoCache.get(key));
 
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }
-    });
+    const resp = await fetch(url, { headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }});
     if (!resp.ok) return res.status(502).json({ error: 'geocode_failed' });
     const data = await resp.json();
 
@@ -672,8 +734,6 @@ app.delete('/api/admin/listings', auth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-/* ------------------------------------------------------------------ */
-/* Healthcheck & error handler                                         */
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

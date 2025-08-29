@@ -1,7 +1,8 @@
 /* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
    + admin delete-all & per-card + private tags (visible only in edit/create)
    + global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
-   + NEW: "Use my location" button that autofills the Location field
+   + "Use my location" in listing form
+   + City autocomplete + semantic location search (fuzzy), still restricted to existing listing locations
 */
 
 (() => {
@@ -43,7 +44,14 @@
       try { await this._fetch('/api/logout', { method:'POST' }); } catch {}
     },
 
-    listAll(q)      { return this._fetch('/api/listings' + (q ? `?q=${encodeURIComponent(q)}` : ''), { method:'GET' }); },
+    async listAll(q, loc) {
+      const params = new URLSearchParams();
+      if (q)   params.set('q', q);
+      if (loc) params.set('loc', loc);
+      const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
+      const r = await fetch(url);
+      return r.json();
+    },
     listMine()      { return this._fetch('/api/listings?mine=1', { method:'GET' }); },
     createListing(payload) {
       return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
@@ -75,7 +83,6 @@
       return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
     },
 
-    // NEW: reverse geocode coordinates -> nice display ("City, State")
     reverseGeocode(lat, lon) {
       return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
     }
@@ -102,6 +109,70 @@
         H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
         H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
         H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      )
+    );
+  }
+
+  // --- City Autocomplete (client-side from existing listings) ---
+  function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
+    const [open, setOpen] = useState(false);
+    const [hover, setHover] = useState(0);
+    const boxRef = useRef(null);
+
+    const list = useMemo(() => {
+      const v = (value || '').trim().toLowerCase();
+      if (!v) return options.slice(0, 8);
+      return options.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
+    }, [value, options]);
+
+    function pick(s) {
+      onChange(s);
+      setOpen(false);
+      setHover(0);
+      setTimeout(() => boxRef.current && boxRef.current.querySelector('input')?.focus(), 0);
+    }
+
+    function onKeyDown(e) {
+      if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) {
+        setOpen(true);
+        return;
+      }
+      if (!open) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHover(h => Math.min(h + 1, list.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setHover(h => Math.max(h - 1, 0)); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (list[hover]) pick(list[hover]); }
+      else if (e.key === 'Escape') { setOpen(false); }
+    }
+
+    function onFocus() { if (list.length) setOpen(true); }
+    function onBlur() { setTimeout(() => setOpen(false), 100); }
+
+    return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
+      H('input', {
+        placeholder:'City…',
+        value: value,
+        onChange: e => { onChange(e.target.value); setOpen(true); },
+        onKeyDown, onFocus, onBlur,
+        style:{ maxWidth:220 }
+      }),
+      H('button', { type:'button', className:'btn', onClick:onUseMyLocation }, 'Use my location'),
+      open && list.length > 0 && H('div', {
+        style: {
+          position:'absolute', top:'100%', left:0, right:0, zIndex: 50,
+          background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, marginTop:6,
+          boxShadow:'0 6px 20px rgba(0,0,0,0.08)', overflow:'hidden'
+        }
+      },
+        ...list.map((s, i) => H('div', {
+          key:s,
+          onMouseEnter:()=>setHover(i),
+          onMouseDown:(e)=>{ e.preventDefault(); pick(s); },
+          style:{
+            padding:'10px 12px',
+            background: i===hover ? '#f3f4f6' : 'transparent',
+            cursor:'pointer'
+          }
+        }, s))
       )
     );
   }
@@ -224,14 +295,13 @@
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
-    const [description, setDescription] = useState(draft?.description || '');
+    the [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
     const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
-    // NEW (geolocation)
     const [geoBusy, setGeoBusy] = useState(false);
     const [geoErr, setGeoErr] = useState('');
 
@@ -338,7 +408,7 @@
     );
   }
 
-  // --- Lightbox (used by listing images and message images) ---
+  // --- Lightbox ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
@@ -510,14 +580,11 @@
           ))
         ),
         activeId && H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
-          // hidden input
           H('input', {
             type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
             style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
           }),
-          // icon button to trigger picker
           H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
-          // message text box
           H('input', {
             placeholder:'Type a message…',
             value:input,
@@ -525,7 +592,6 @@
             onKeyDown:e=>{ if(e.key==='Enter') send(); },
             style:{ flex:1 }
           }),
-          // send button
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
         imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
@@ -552,6 +618,7 @@
     const [all, setAll] = useState([]);
     const [mine, setMine] = useState([]);
     const [query, setQuery] = useState('');
+    const [locationQuery, setLocationQuery] = useState('');
     const [sort, setSort] = useState('new');
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -559,7 +626,6 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // expose setters for api interceptor
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
     const mineById = useMemo(() => {
@@ -569,17 +635,17 @@
     }, [mine]);
 
     async function reload(){
-      const [a, m] = await Promise.all([ api.listAll(''), user ? api.listMine() : Promise.resolve([]) ]);
+      const [a, m] = await Promise.all([ api.listAll('', locationQuery), user ? api.listMine() : Promise.resolve([]) ]);
       setAll(a); setMine(m||[]);
     }
-    useEffect(()=>{ reload(); }, [user?.id]);
+    useEffect(()=>{ reload(); }, [user?.id, locationQuery]);
 
     useEffect(() => {
       (async () => {
-        const a = await api.listAll(query.trim() || '');
+        const a = await api.listAll(query.trim() || '', locationQuery.trim() || '');
         setAll(a);
       })();
-    }, [query]);
+    }, [query, locationQuery]);
 
     async function recomputeUnread() {
       try {
@@ -602,18 +668,39 @@
       return () => clearInterval(t);
     }, [user?.id]);
 
-    // guard: if signed out while on messages, go back to listings
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
     }, [user, tab]);
 
     const feed = useMemo(()=>{
       const list = [...(all || [])];
-      if (sort === 'price_asc') list.sort((a,b)=>a.price-b.price);
-      else if (sort === 'price_desc') list.sort((a,b)=>b.price-a.price);
-      else list.sort((a,b)=>b.id-a.id);
+      if (sort === 'price_asc') {
+        list.sort((a,b)=>a.price-b.price);
+      } else if (sort === 'price_desc') {
+        list.sort((a,b)=>b.price-a.price);
+      } else if (sort === 'city') {
+        list.sort((a,b)=>{
+          const la = (a.location || '').toLowerCase();
+          const lb = (b.location || '').toLowerCase();
+          return la.localeCompare(lb);
+        });
+      } else {
+        list.sort((a,b)=>b.id-a.id); // newest
+      }
       return list;
     }, [all, sort]);
+
+    // derive distinct city options for autocomplete
+    const cityOptions = useMemo(() => {
+      const set = new Set();
+      (all || []).forEach(l => {
+        const raw = (l.location || '').trim();
+        if (!raw) return;
+        const city = raw.split(',')[0].trim();
+        if (city) set.add(city);
+      });
+      return Array.from(set).sort((a,b)=> a.localeCompare(b));
+    }, [all]);
 
     async function startMessage(item){
       if(!user){ alert('Log in to message a seller.'); return; }
@@ -647,12 +734,34 @@
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
-            H('div', { className:'row', style:{ gap:10 } },
-              H('input', { placeholder:'Search title, description, location, or tags…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
+            H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
+              H('input', {
+                placeholder:'Search title, description, tags…',
+                value:query,
+                onChange:e=>setQuery(e.target.value),
+                style:{ maxWidth:360 }
+              }),
+              H(CityAutocomplete, {
+                value: locationQuery,
+                onChange: setLocationQuery,
+                options: cityOptions,
+                onUseMyLocation: async () => {
+                  try {
+                    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+                    const { coords } = await new Promise((res, rej)=>
+                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                    );
+                    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+                    const city = r?.city || (r?.display || '').split(',')[0];
+                    if (city) setLocationQuery(city);
+                  } catch { alert('Could not determine your location'); }
+                }
+              }),
               H('select', { value:sort, onChange:e=>setSort(e.target.value) },
                 H('option', { value:'new' }, 'Newest'),
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
-                H('option', { value:'price_desc' }, 'Price: High → Low')
+                H('option', { value:'price_desc' }, 'Price: High → Low'),
+                H('option', { value:'city' }, 'City (A → Z)')
               )
             ),
             H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
