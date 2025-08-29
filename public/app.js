@@ -361,7 +361,7 @@
   // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
-    aconst [images, setImages] = useState(null);
+    const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
 
     async function openModal(start=0){
