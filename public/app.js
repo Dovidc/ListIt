@@ -64,11 +64,21 @@
   // --- Header with unread badge (shows @username) ---
   function Header({ user, setUser, onNav, active, unreadCount }) {
     const authArea = user
-      ? H('div', { className: 'row' },
-          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
-          H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
-        )
-      : H(AuthButtons, { setUser });
+  ? H('div', { className: 'row', style: { gap: 8 } },
+      H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
+      user.is_admin && H('button', {
+        className: 'btn danger',
+        onClick: async () => {
+          if (confirm('Delete ALL listings? This cannot be undone.')) {
+            await fetch('/api/admin/listings', { method: 'DELETE', credentials: 'include' });
+            alert('All listings removed.');
+            location.reload();
+          }
+        }
+      }, 'Admin: Delete ALL'),
+      H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
+    )
+  : H(AuthButtons, { setUser });
 
     const messagesBtn = H('button', {
       className: `btn ${active==='messages'?'primary':''}`,
