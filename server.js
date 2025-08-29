@@ -112,11 +112,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
-try { db.prepare('SELECT tags FROM listings LIMIT 1').get(); }
-catch { db.exec('ALTER TABLE listings ADD COLUMN tags TEXT DEFAULT "";'); }
-try { db.prepare('SELECT title FROM listings LIMIT 1').get(); }
-catch { db.exec('ALTER TABLE listings ADD COLUMN title TEXT DEFAULT "";'); }
-
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
@@ -144,6 +139,15 @@ function shortTitle(str) {
   if (!s) return '';
   const t = s.replace(/\s+/g, ' ').slice(0, 80);
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function fallbackTagsFromTitleDesc(title, desc) {
+  const s = `${title || ''} ${desc || ''}`.toLowerCase();
+  const words = (s.match(/[a-z0-9\-]{3,}/g) || []).slice(0, 80);
+  const freq = {};
+  for (const w of words) { freq[w] = (freq[w] || 0) + 1; }
+  const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
+  const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
+  return [...new Set([...base, ...generic])].slice(0, 20);
 }
 
 /* ------------------------------------------------------------------ */
@@ -455,16 +459,6 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
   }
 });
 
-function fallbackTagsFromTitleDesc(title, desc) {
-  const s = `${title || ''} ${desc || ''}`.toLowerCase();
-  const words = (s.match(/[a-z0-9\-]{3,}/g) || []).slice(0, 80);
-  const freq = {};
-  for (const w of words) { freq[w] = (freq[w] || 0) + 1; }
-  const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
-  const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
-  return [...new Set([...base, ...generic])].slice(0, 20);
-}
-
 /* ------------------------------------------------------------------ */
 /* Conversations & messages                                            */
 /* ------------------------------------------------------------------ */
@@ -491,21 +485,30 @@ app.post('/api/conversations', auth, (req, res) => {
   }
 });
 
+/* ✅ Robust conversation list using LEFT JOIN (provides listing_title) */
 app.get('/api/conversations', auth, (req, res) => {
   const me = req.user.id;
+
   const rows = db.prepare(`
-    SELECT c.id, c.listing_id,
-      CASE WHEN c.a_user_id = ? THEN c.b_user_id ELSE c.a_user_id END AS other_user_id,
-      (SELECT username FROM users WHERE id = CASE WHEN c.a_user_id = ? THEN c.b_user_id ELSE c.a_user_id END) AS other_user_username,
-      ((SELECT title FROM listings WHERE id = c.listing_id) AS listing_title,
+    SELECT
+      c.id,
+      c.listing_id,
+      CASE WHEN c.a_user_id = @me THEN c.b_user_id ELSE c.a_user_id END AS other_user_id,
+      u.username AS other_user_username,
+      COALESCE(l.title, '') AS listing_title,
       (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_at,
-      (SELECT body FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
-      (SELECT sender_id FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,
-      (SELECT id FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_id
+      (SELECT body       FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
+      (SELECT sender_id  FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,
+      (SELECT id         FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_id
     FROM conversations c
-    WHERE c.a_user_id = ? OR c.b_user_id = ?
+    JOIN users u
+      ON u.id = CASE WHEN c.a_user_id = @me THEN c.b_user_id ELSE c.a_user_id END
+    LEFT JOIN listings l
+      ON l.id = c.listing_id
+    WHERE c.a_user_id = @me OR c.b_user_id = @me
     ORDER BY c.id DESC
-  `).all(me, me, me, me);
+  `).all({ me });
+
   res.json(rows);
 });
 
