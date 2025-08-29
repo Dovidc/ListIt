@@ -1,4 +1,4 @@
-/* public/app.js — usernames everywhere (no public emails) + multi-images + unread logic already in place */
+/* public/app.js — usernames + unread dots + multi-images + admin deletes (all + per-card) */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -35,6 +35,16 @@
       if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
       return r.json();
     },
+    async adminDeleteListing(id) {
+      const r = await fetch(`/api/admin/listings/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error((await r.json()).error || 'Admin delete failed');
+      return r.json();
+    },
+    async adminDeleteAll() {
+      const r = await fetch('/api/admin/listings', { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error((await r.json()).error || 'Admin delete-all failed');
+      return r.json();
+    },
 
     async ensureConversation({ with_user_id, listing_id }) {
       const r = await fetch('/api/conversations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ with_user_id, listing_id }) });
@@ -61,24 +71,22 @@
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
 
-  // --- Header with unread badge (shows @username) ---
-  function Header({ user, setUser, onNav, active, unreadCount }) {
+  // --- Header (shows @username, Unread dot, and Admin Delete ALL) ---
+  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
     const authArea = user
-  ? H('div', { className: 'row', style: { gap: 8 } },
-      H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
-      user.is_admin && H('button', {
-        className: 'btn danger',
-        onClick: async () => {
-          if (confirm('Delete ALL listings? This cannot be undone.')) {
-            await fetch('/api/admin/listings', { method: 'DELETE', credentials: 'include' });
-            alert('All listings removed.');
-            location.reload();
-          }
-        }
-      }, 'Admin: Delete ALL'),
-      H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
-    )
-  : H(AuthButtons, { setUser });
+      ? H('div', { className: 'row', style: { gap: 8 } },
+          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
+          user.is_admin && H('button', {
+            className: 'btn danger',
+            onClick: async () => {
+              if (confirm('Delete ALL listings? This cannot be undone.')) {
+                await onAdminDeleteAll?.();
+              }
+            }
+          }, 'Admin: Delete ALL'),
+          H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
+        )
+      : H(AuthButtons, { setUser });
 
     const messagesBtn = H('button', {
       className: `btn ${active==='messages'?'primary':''}`,
@@ -110,7 +118,7 @@
     );
   }
 
-  // --- Auth (username added on Register) ---
+  // --- Auth (username on Register) ---
   function AuthButtons({ setUser }) {
     const [mode, setMode] = useState('login');
     const [username, setUsername] = useState('');
@@ -236,8 +244,8 @@
     );
   }
 
-  // --- Listing card (shows @owner_username) ---
-  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage }) {
+  // --- Listing card (per-card Admin Delete included) ---
+  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
@@ -255,6 +263,17 @@
       controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
       controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
     }
+    if (user?.is_admin) {
+      controls.push(H('button', {
+        key:'admin-del',
+        className:'btn danger',
+        onClick: async () => {
+          if (!confirm('Admin: Delete this listing?')) return;
+          await api.adminDeleteListing(item.id);
+          onAdminDelete?.(item.id); // remove from UI without reloading
+        }
+      }, 'Admin Delete'));
+    }
 
     return H('div', { className:'card' },
       H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
@@ -271,7 +290,7 @@
     );
   }
 
-  // --- Messages (shows other_user_username) ---
+  // --- Messages (unread dots + unread-first sorting) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [convos, setConvos] = useState([]);
     const [activeId, setActiveId] = useState(initialActiveId || null);
@@ -363,6 +382,7 @@
     async function reload(){ const [a, m] = await Promise.all([ api.listAll(), user ? api.listMine() : Promise.resolve([]) ]); setAll(a); setMine(m||[]); }
     useEffect(()=>{ reload(); }, [user?.id]);
 
+    // recompute unread using server data + local seen map
     async function recomputeUnread() {
       try {
         if (!user) { setUnreadCount(0); return; }
@@ -401,19 +421,31 @@
       setTab('messages');
     }
 
+    // mark thread seen from MessagesPanel
     function handleSeen(convoId, lastMsgId){
       if (!user || !convoId || !lastMsgId) return;
       const map = loadSeen(user.id);
       if (!map[convoId] || map[convoId] < lastMsgId) {
         map[convoId] = lastMsgId;
         saveSeen(user.id, map);
-        // trigger unread recompute quickly
         setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
       }
     }
 
+    // Admin: delete-all
+    async function handleAdminDeleteAll(){
+      await api.adminDeleteAll();
+      setAll([]); setMine([]);
+    }
+
+    // Admin: per-card delete (optimistic UI)
+    function handleAdminDelete(listingId) {
+      setAll(prev => prev.filter(x => x.id !== listingId));
+      setMine(prev => prev.filter(x => x.id !== listingId));
+    }
+
     return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount }),
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
@@ -433,7 +465,16 @@
           ),
 
           H('section', { className:'grid' },
-            feed.map(item => H(ListingCard, { key:item.id, item, user, canEdit: !!mine.find(m=>m.id===item.id), onEdit:(it)=>{ setEditing(it); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); }, onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } }, onMessage: startMessage }))
+            feed.map(item => H(ListingCard, {
+              key:item.id,
+              item,
+              user,
+              canEdit: !!mine.find(m=>m.id===item.id),
+              onEdit:(it)=>{ setEditing(it); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); },
+              onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+              onMessage: startMessage,
+              onAdminDelete: handleAdminDelete   // <-- per-card admin delete handler
+            }))
           ),
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
         ),
