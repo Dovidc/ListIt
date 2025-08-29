@@ -103,7 +103,11 @@
               }
             }
           }, 'Admin: Delete ALL'),
-          H('button', { className: 'btn', onClick: async () => { await api.logout(); setUser(null); } }, 'Log out')
+          H('button', { className: 'btn', onClick: async () => {
+            await api.logout();
+            setUser(null);
+            onNav('browse');   // ensure we leave Messages after logout
+          } }, 'Log out')
         )
       : H(AuthButtons, { setUser });
 
@@ -413,7 +417,7 @@
             onClick:()=>setActiveId(c.id)
           },
           H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
-          c.listing_description ? H('div', { className:'muted' }, ` • ${c.listing_description?.slice?.(0,24)}`) : null,
+          c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
           c._unread && H('span', { style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' } })
         )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
       ),
@@ -483,6 +487,11 @@
       t = setInterval(recomputeUnread, 3000);
       return () => clearInterval(t);
     }, [user?.id]);
+
+    // If signed out while on Messages, go back to Listings
+    useEffect(() => {
+      if (!user && tab === 'messages') setTab('browse');
+    }, [user, tab]);
 
     const feed = useMemo(()=>{
       const list = [...(all || [])];

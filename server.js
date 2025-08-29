@@ -497,7 +497,7 @@ app.get('/api/conversations', auth, (req, res) => {
     SELECT c.id, c.listing_id,
       CASE WHEN c.a_user_id = ? THEN c.b_user_id ELSE c.a_user_id END AS other_user_id,
       (SELECT username FROM users WHERE id = CASE WHEN c.a_user_id = ? THEN c.b_user_id ELSE c.a_user_id END) AS other_user_username,
-      (SELECT description FROM listings WHERE id = c.listing_id) AS listing_description,
+      ((SELECT title FROM listings WHERE id = c.listing_id) AS listing_title,
       (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_at,
       (SELECT body FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
       (SELECT sender_id FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,
