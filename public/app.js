@@ -1,4 +1,4 @@
-/* public/app.js — usernames + unread dots + multi-images + admin deletes (all + per-card) */
+/* public/app.js — usernames + unread dots + multi-images + admin delete-all & per-card + private tags (searchable, owner-only) */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -18,8 +18,16 @@
     },
     async logout() { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); },
 
-    async listAll() { const r = await fetch('/api/listings'); return r.json(); },
-    async listMine() { const r = await fetch('/api/listings?mine=1', { credentials: 'include' }); if (!r.ok) return []; return r.json(); },
+    async listAll(q) {
+      const url = '/api/listings' + (q ? `?q=${encodeURIComponent(q)}` : '');
+      const r = await fetch(url);
+      return r.json();
+    },
+    async listMine() {
+      const r = await fetch('/api/listings?mine=1', { credentials: 'include' });
+      if (!r.ok) return [];
+      return r.json(); // includes tags for owner
+    },
     async createListing(payload) {
       const r = await fetch('/api/listings', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!r.ok) throw new Error((await r.json()).error || 'Create failed');
@@ -185,12 +193,13 @@
     );
   }
 
-  // --- Listing Form ---
+  // --- Listing Form (adds private tags input) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
 
     useEffect(() => {
       (async () => {
@@ -203,8 +212,17 @@
 
     async function submit(e){
       e.preventDefault();
-      const payload = { images, description: description.trim(), location: location.trim(), price: Number(priceVal) };
-      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) { alert('Fill all fields and add at least one image.'); return; }
+      const payload = {
+        images,
+        description: description.trim(),
+        location: location.trim(),
+        price: Number(priceVal),
+        tags // comma-separated string; server normalizes/lowercases
+      };
+      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+        alert('Fill all fields and add at least one image.');
+        return;
+      }
       if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
       onSaved?.();
     }
@@ -217,6 +235,8 @@
       H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value) }),
       H('label', null, 'Price'),
       H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+      H('label', null, 'Search tags (invisible to others)'),
+      H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) }),
       H('div', { className:'row' },
         H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
         H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
@@ -244,7 +264,7 @@
     );
   }
 
-  // --- Listing card (per-card Admin Delete included) ---
+  // --- Listing card (per-card Admin Delete included; tags are NOT shown) ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
@@ -379,10 +399,22 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    async function reload(){ const [a, m] = await Promise.all([ api.listAll(), user ? api.listMine() : Promise.resolve([]) ]); setAll(a); setMine(m||[]); }
+    // initial load + when user changes
+    async function reload(){
+      const [a, m] = await Promise.all([ api.listAll(''), user ? api.listMine() : Promise.resolve([]) ]);
+      setAll(a); setMine(m||[]);
+    }
     useEffect(()=>{ reload(); }, [user?.id]);
 
-    // recompute unread using server data + local seen map
+    // server-side search (includes private tags)
+    useEffect(() => {
+      (async () => {
+        const a = await api.listAll(query.trim() || '');
+        setAll(a);
+      })();
+    }, [query]);
+
+    // unread recompute loop
     async function recomputeUnread() {
       try {
         if (!user) { setUnreadCount(0); return; }
@@ -405,13 +437,12 @@
     }, [user?.id]);
 
     const feed = useMemo(()=>{
-      const q = query.trim().toLowerCase();
-      const list = (all || []).filter(it => q ? it.description.toLowerCase().includes(q) || it.location.toLowerCase().includes(q) : true);
+      const list = [...(all || [])];
       if (sort === 'price_asc') list.sort((a,b)=>a.price-b.price);
       else if (sort === 'price_desc') list.sort((a,b)=>b.price-a.price);
-      else list.sort((a,b)=>b.id-a.id);
+      else list.sort((a,b)=>b.id-a.id); // newest
       return list;
-    }, [all, query, sort]);
+    }, [all, sort]);
 
     async function startMessage(item){
       if(!user){ alert('Log in to message a seller.'); return; }
@@ -421,7 +452,6 @@
       setTab('messages');
     }
 
-    // mark thread seen from MessagesPanel
     function handleSeen(convoId, lastMsgId){
       if (!user || !convoId || !lastMsgId) return;
       const map = loadSeen(user.id);
@@ -432,13 +462,11 @@
       }
     }
 
-    // Admin: delete-all
     async function handleAdminDeleteAll(){
       await api.adminDeleteAll();
       setAll([]); setMine([]);
     }
 
-    // Admin: per-card delete (optimistic UI)
     function handleAdminDelete(listingId) {
       setAll(prev => prev.filter(x => x.id !== listingId));
       setMine(prev => prev.filter(x => x.id !== listingId));
@@ -450,7 +478,7 @@
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
             H('div', { className:'row', style:{ gap:10 } },
-              H('input', { placeholder:'Search description or location…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
+              H('input', { placeholder:'Search description, location, or tags…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
               H('select', { value:sort, onChange:e=>setSort(e.target.value) },
                 H('option', { value:'new' }, 'Newest'),
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
@@ -473,7 +501,7 @@
               onEdit:(it)=>{ setEditing(it); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); },
               onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
               onMessage: startMessage,
-              onAdminDelete: handleAdminDelete   // <-- per-card admin delete handler
+              onAdminDelete: handleAdminDelete
             }))
           ),
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')

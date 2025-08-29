@@ -1,4 +1,4 @@
-/* server.js — ListIt with usernames + admin + robust SQLite path */
+/* server.js — ListIt with usernames + private searchable tags + admin + robust SQLite path */
 
 const express = require('express');
 const fs = require('fs');
@@ -16,8 +16,7 @@ const IS_TEST = process.env.NODE_ENV === 'test';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 
-// If you front the API with another domain (e.g., GitHub Pages), set FRONTEND_ORIGIN.
-// Otherwise, leave unset and CORS is skipped.
+// If frontend is on another domain, set FRONTEND_ORIGIN (e.g. GitHub Pages URL)
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 if (FRONTEND_ORIGIN && cors) app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 
@@ -83,6 +82,7 @@ CREATE TABLE IF NOT EXISTS listings (
   location TEXT NOT NULL,
   price REAL NOT NULL,
   created_at TEXT NOT NULL,
+  tags TEXT DEFAULT "",                 -- comma-separated, lowercase (private; used only for search)
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -114,11 +114,32 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
+try { db.prepare('SELECT tags FROM listings LIMIT 1').get(); }
+catch { db.exec('ALTER TABLE listings ADD COLUMN tags TEXT DEFAULT "";'); }
+
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
   const b = Math.max(Number(u1), Number(u2));
   return { a, b };
+}
+function normalizeTags(input) {
+  if (!input) return '';
+  let arr = Array.isArray(input) ? input : String(input).split(',');
+  arr = arr
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set();
+  const clean = [];
+  for (let t of arr) {
+    t = t.replace(/[^a-z0-9 \-]/g, '').trim();
+    if (!t || t.length > 32) continue;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    clean.push(t);
+    if (clean.length >= 20) break;
+  }
+  return clean.join(',');
 }
 
 /* ------------------------------------------------------------------ */
@@ -128,8 +149,8 @@ function setAuthCookie(res, payload){
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('token', token, {
     httpOnly: true,
-    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax', // if cross-site, consider 'none'
-    secure: IS_PROD, // HTTPS in prod
+    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
+    secure: IS_PROD,
     maxAge: 7*24*60*60*1000,
     path: '/'
   });
@@ -156,7 +177,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 /* ------------------------------------------------------------------ */
 /* Optional admin bootstrap via env vars                               */
-/* Set ADMIN_EMAIL/ADMIN_USERNAME/ADMIN_PASSWORD to create on boot     */
 /* ------------------------------------------------------------------ */
 (function maybeCreateAdmin() {
   const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
@@ -228,7 +248,7 @@ app.get('/api/me', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Listings                                                            */
+/* Listings (with private tags used for search)                        */
 /* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
@@ -240,32 +260,64 @@ function validateImages(images) {
   return null;
 }
 
+// Public + mine (supports ?q= for server-side search; tags are never returned publicly)
 app.get('/api/listings', (req, res) => {
+  const qRaw = (req.query.q || '').toString().trim().toLowerCase();
+  const q = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
+
+  const SELECT_PUBLIC = `
+    SELECT l.id, l.user_id, l.image_data, l.description, l.location, l.price, l.created_at,
+           u.username as owner_username
+    FROM listings l
+    JOIN users u ON u.id = l.user_id
+  `;
+
   if (mine) {
     const { token } = req.cookies || {};
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
     let me; try { me = jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
-    const rows = db.prepare(`
-      SELECT l.*, u.username as owner_username
-      FROM listings l
-      JOIN users u ON u.id = l.user_id
-      WHERE l.user_id = ?
-      ORDER BY l.id DESC
-    `).all(me.id);
-    return res.json(rows);
+
+    let rows;
+    if (q) {
+      rows = db.prepare(`${SELECT_PUBLIC}
+        WHERE l.user_id = ?
+          AND (LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
+        ORDER BY l.id DESC
+      `).all(me.id, q, q, q);
+    } else {
+      rows = db.prepare(`${SELECT_PUBLIC}
+        WHERE l.user_id = ?
+        ORDER BY l.id DESC
+      `).all(me.id);
+    }
+
+    // For "mine", include tags so owner can view/edit (as array)
+    const withTags = rows.map(r => {
+      const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
+      return { ...r, tags: t ? t.split(',') : [] };
+    });
+    return res.json(withTags);
   }
-  const rows = db.prepare(`
-    SELECT l.*, u.username as owner_username
-    FROM listings l
-    JOIN users u ON u.id = l.user_id
-    ORDER BY l.id DESC
-  `).all();
+
+  // Public feed: allow searching description/location/tags but DO NOT expose tags
+  let rows;
+  if (q) {
+    rows = db.prepare(`${SELECT_PUBLIC}
+      WHERE (LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
+      ORDER BY l.id DESC
+    `).all(q, q, q);
+  } else {
+    rows = db.prepare(`${SELECT_PUBLIC}
+      ORDER BY l.id DESC
+    `).all();
+  }
+
   return res.json(rows);
 });
 
 app.post('/api/listings', auth, (req, res) => {
-  const { images, image_data, description, location, price } = req.body || {};
+  const { images, image_data, description, location, price, tags } = req.body || {};
   const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
   const err = validateImages(imgs);
   if (err) return res.status(400).json({ error: err });
@@ -273,8 +325,13 @@ app.post('/api/listings', auth, (req, res) => {
     return res.status(400).json({ error: 'Missing fields' });
   }
   const cover = imgs[0];
-  const info = db.prepare(`INSERT INTO listings (user_id, image_data, description, location, price, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)`).run(req.user.id, cover, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso());
+  const tagStr = normalizeTags(tags);
+
+  const info = db.prepare(`
+    INSERT INTO listings (user_id, image_data, description, location, price, created_at, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, cover, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr);
+
   const listingId = info.lastInsertRowid;
   const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
   imgs.forEach((img, i) => stmt.run(listingId, img, i));
@@ -288,7 +345,7 @@ app.put('/api/listings/:id', auth, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
   if (!req.user.is_admin && existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
 
-  const { images, image_data, description, location, price } = req.body || {};
+  const { images, image_data, description, location, price, tags } = req.body || {};
   if (images || image_data) {
     const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
     const err = validateImages(imgs);
@@ -298,13 +355,19 @@ app.put('/api/listings/:id', auth, (req, res) => {
     imgs.forEach((img, i) => stmt.run(id, img, i));
     db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(imgs[0], id);
   }
+
+  const newDesc = description ? String(description).slice(0,400) : existing.description;
+  const newLoc  = location ? String(location).slice(0,80) : existing.location;
+  const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
+
   db.prepare('UPDATE listings SET description=?, location=?, price=? WHERE id=?')
-    .run(
-      description ? String(description).slice(0,400) : existing.description,
-      location ? String(location).slice(0,80) : existing.location,
-      typeof price === 'number' && !Number.isNaN(price) ? Number(price) : existing.price,
-      id
-    );
+    .run(newDesc, newLoc, newPrice, id);
+
+  if (typeof tags !== 'undefined') {
+    const tagStr = normalizeTags(tags);
+    db.prepare('UPDATE listings SET tags=? WHERE id=?').run(tagStr, id);
+  }
+
   const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
   res.json(row);
 });
