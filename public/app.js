@@ -1,4 +1,4 @@
-/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title & tags) + admin delete-all & per-card + private tags (visible only in edit/create form) */
+/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price) + admin delete-all & per-card + private tags (visible only in edit/create form) */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -77,7 +77,7 @@
         body: JSON.stringify({ images, hint })
       });
       if (!r.ok) throw new Error((await r.json()).error || 'AI analysis failed');
-      return r.json(); // { title, tags: [] }
+      return r.json(); // { title, tags: [], suggested_price }
     }
   };
 
@@ -224,6 +224,9 @@
         const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
         if (res.title) setTitle(res.title);
         if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+          setPriceVal(String(res.suggested_price));
+        }
       } catch (e) {
         setAiErr(e.message || 'AI failed');
       } finally {
@@ -255,7 +258,7 @@
       H('div', { className:'row', style:{ gap:8 } },
         H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
         aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-        H('span', { className:'muted' }, 'Generates a concise title and ~20 tags from your images')
+        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
       ),
 
       H('label', null, 'Title'),
@@ -303,7 +306,7 @@
     );
   }
 
-  // --- Listing card (shows Title now; tags never shown) ---
+  // --- Listing card (shows Title; tags never shown) ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
@@ -356,7 +359,7 @@
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [convos, setConvos] = useState([]);
     const [activeId, setActiveId] = useState(initialActiveId || null);
-    const [msgs, setMsgs] = useState([]);
+    aconst [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
 

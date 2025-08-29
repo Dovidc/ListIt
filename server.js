@@ -1,4 +1,4 @@
-/* server.js — ListIt with usernames + private searchable tags + Title + AI analysis endpoint + admin + robust SQLite path */
+/* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price) + messaging + admin + robust SQLite path */
 
 const express = require('express');
 const fs = require('fs');
@@ -75,12 +75,12 @@ CREATE TABLE IF NOT EXISTS listings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   image_data TEXT NOT NULL,
-  title TEXT DEFAULT "",               -- NEW: public title
+  title TEXT DEFAULT "",
   description TEXT NOT NULL,
   location TEXT NOT NULL,
   price REAL NOT NULL,
   created_at TEXT NOT NULL,
-  tags TEXT DEFAULT "",                -- private, comma-separated
+  tags TEXT DEFAULT "",
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -291,7 +291,6 @@ app.get('/api/listings', (req, res) => {
       `).all(me.id);
     }
 
-    // include private tags as array for owner
     const withTags = rows.map(r => {
       const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
       return { ...r, tags: t ? t.split(',') : [] };
@@ -299,7 +298,6 @@ app.get('/api/listings', (req, res) => {
     return res.json(withTags);
   }
 
-  // Public feed: search title/description/location/tags but do NOT expose tags
   let rows;
   if (q) {
     rows = db.prepare(`${SELECT_PUBLIC}
@@ -388,7 +386,7 @@ app.get('/api/listings/:id/images', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* AI Analysis endpoint                                                */
+/* AI Analysis endpoint (title, tags, suggested_price)                */
 /* ------------------------------------------------------------------ */
 app.post('/api/ai/analyze', auth, async (req, res) => {
   try {
@@ -396,17 +394,24 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
     const hint = String(req.body.hint || '').slice(0, 200);
     if (!images.length) return res.status(400).json({ error: 'No images provided' });
 
-    // If OpenAI available, use it; otherwise fallback heuristic
     if (process.env.OPENAI_API_KEY && OpenAI) {
       const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-      // Build messages with images as data URLs (truncated to stay safe)
       const content = [];
-      content.push({ type: 'text', text: `You are a listing assistant. Analyze the item images carefully and output STRICT JSON with two fields: "title" (<=80 chars, no emojis) and "tags" (an array of 12-24 short, lowercase tags). Anchor tags to common search terms (e.g., 'car' for 'jeep'). Avoid brand hype words. If uncertain, choose the most generic accurate terms.` });
+      content.push({
+        type: 'text',
+        text: [
+          'You are a listing assistant for a local marketplace.',
+          'Analyze the item images and output STRICT JSON with:',
+          '"title": concise <=80 chars, no emojis;',
+          '"tags": array of 12-24 short, lowercase search terms (generic words users type; include generic synonyms, e.g., "car" for a Jeep);',
+          '"price_usd": fair used-market price in USD as a number (no symbols), based on comparable items and visible condition; estimate conservatively if unsure.',
+          'Return ONLY JSON.'
+        ].join('\n')
+      });
       if (hint) content.push({ type: 'text', text: `User hint: ${hint}` });
       for (const img of images) content.push({ type: 'image_url', image_url: { url: img } });
 
-      // Use a small, cheap vision model name here; adjust if needed
       const resp = await client.chat.completions.create({
         model: 'gpt-4o-mini',
         temperature: 0.2,
@@ -419,23 +424,31 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
       try { parsed = JSON.parse(txt); } catch {}
       let title = shortTitle(parsed.title || '');
       let tags = Array.isArray(parsed.tags) ? parsed.tags : [];
-      // sanitize tags
+      let priceNum = Number(parsed.price_usd);
+
       const tagStr = normalizeTags(tags);
       const outTags = tagStr ? tagStr.split(',') : [];
       if (!title) title = 'Item for sale';
+
+      let suggested_price = undefined;
+      if (!Number.isNaN(priceNum)) {
+        priceNum = Math.min(Math.max(priceNum, 1), 100000);
+        suggested_price = Math.round(priceNum * 100) / 100;
+      }
+
       if (outTags.length < 8) {
-        // pad minimal tags from crude fallback if too few
         const extra = fallbackTagsFromTitleDesc(title, hint);
         const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0,20);
-        return res.json({ title, tags: merged });
+        return res.json({ title, tags: merged, suggested_price });
       }
-      return res.json({ title, tags: outTags.slice(0, 24) });
+
+      return res.json({ title, tags: outTags.slice(0, 24), suggested_price });
     }
 
-    // Fallback heuristic (no vision): extract from hint + simple keywords
+    // Fallback (no OpenAI)
     const title = shortTitle(hint || 'Item for sale');
     const tags = normalizeTags(fallbackTagsFromTitleDesc(title, hint)).split(',').filter(Boolean);
-    return res.json({ title, tags: tags.slice(0, 20) });
+    return res.json({ title, tags: tags.slice(0, 20), suggested_price: undefined });
   } catch (e) {
     console.error('AI analyze failed:', e);
     return res.status(500).json({ error: 'AI analysis failed' });
