@@ -1,4 +1,4 @@
-/* public/app.js — usernames + unread dots + multi-images + admin delete-all & per-card + private tags (visible only in edit form) */
+/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title & tags) + admin delete-all & per-card + private tags (visible only in edit/create form) */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -68,6 +68,17 @@
     },
 
     async getListingImages(id) { const r = await fetch(`/api/listings/${id}/images`); return r.json(); },
+
+    async aiAnalyze({ images, hint }) {
+      const r = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images, hint })
+      });
+      if (!r.ok) throw new Error((await r.json()).error || 'AI analysis failed');
+      return r.json(); // { title, tags: [] }
+    }
   };
 
   // --- Helpers ---
@@ -79,7 +90,7 @@
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
 
-  // --- Header (shows @username, Unread dot, and Admin Delete ALL) ---
+  // --- Header ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
     const authArea = user
       ? H('div', { className: 'row', style: { gap: 8 } },
@@ -102,13 +113,7 @@
       onClick: () => onNav('messages')
     }, 'Messages',
       (unreadCount > 0) &&
-        H('span', {
-          style: {
-            position: 'absolute', top: -2, right: -2,
-            width: 10, height: 10, borderRadius: 10,
-            background: '#ef4444'
-          }
-        })
+        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
     );
 
     return H('header', null,
@@ -126,7 +131,6 @@
     );
   }
 
-  // --- Auth (username on Register) ---
   function AuthButtons({ setUser }) {
     const [mode, setMode] = useState('login');
     const [username, setUsername] = useState('');
@@ -193,13 +197,16 @@
     );
   }
 
-  // --- Listing Form (private tags only visible here) ---
+  // --- Listing Form (Title + AI Assist; tags private & only here) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
+    const [title, setTitle] = useState(draft?.title || '');
     const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
     const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiErr, setAiErr] = useState('');
 
     useEffect(() => {
       (async () => {
@@ -210,14 +217,29 @@
       })();
     }, [draft?.id]);
 
+    async function runAI(){
+      setAiErr(''); setAiBusy(true);
+      try {
+        if (!images.length) { alert('Add at least one image first.'); return; }
+        const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
+        if (res.title) setTitle(res.title);
+        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+      } catch (e) {
+        setAiErr(e.message || 'AI failed');
+      } finally {
+        setAiBusy(false);
+      }
+    }
+
     async function submit(e){
       e.preventDefault();
       const payload = {
         images,
+        title: title.trim(),
         description: description.trim(),
         location: location.trim(),
         price: Number(priceVal),
-        tags // comma-separated string; server normalizes/lowercases
+        tags
       };
       if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
         alert('Fill all fields and add at least one image.');
@@ -229,18 +251,31 @@
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
       H(MultiImagePicker, { values:images, onChange:setImages }),
+
+      H('div', { className:'row', style:{ gap:8 } },
+        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        H('span', { className:'muted' }, 'Generates a concise title and ~20 tags from your images')
+      ),
+
+      H('label', null, 'Title'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
+
       H('label', null, 'Description'),
       H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+
       H('label', null, 'Location'),
       H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value) }),
+
       H('label', null, 'Price'),
       H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
-      // Tags are private and only shown here in the edit/create form:
+
       H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
         H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
-        H('div', { className:'muted', style:{ marginBottom:6 } }, 'These help others find your item, but are not shown publicly. Example: "car, suv, 4x4".'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
         H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
       ),
+
       H('div', { className:'row' },
         H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
         H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
@@ -248,7 +283,7 @@
     );
   }
 
-  // --- Lightbox Modal ---
+  // --- Lightbox ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
@@ -268,7 +303,7 @@
     );
   }
 
-  // --- Listing card (NO tags displayed anywhere) ---
+  // --- Listing card (shows Title now; tags never shown) ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
@@ -294,7 +329,7 @@
         onClick: async () => {
           if (!confirm('Admin: Delete this listing?')) return;
           await api.adminDeleteListing(item.id);
-          onAdminDelete?.(item.id); // remove from UI without reloading
+          onAdminDelete?.(item.id);
         }
       }, 'Admin Delete'));
     }
@@ -303,8 +338,11 @@
       H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
       H('div', { style:{ padding:16 } },
         H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
-          H('div', { style:{ fontWeight:600 } }, item.description),
-          H('div', { style:{ fontWeight:800 } }, price(item.price))
+          H('div', null,
+            H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
+            H('div', { className:'muted' }, item.description)
+          ),
+          H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
         ),
         H('div', { className:'muted' }, item.location),
         H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
@@ -314,7 +352,7 @@
     );
   }
 
-  // --- Messages (unread dots + unread-first sorting) ---
+  // --- Messages ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [convos, setConvos] = useState([]);
     const [activeId, setActiveId] = useState(initialActiveId || null);
@@ -403,21 +441,18 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // Build quick lookup for "mine" (includes tags for edit form)
     const mineById = useMemo(() => {
       const map = Object.create(null);
       (mine || []).forEach(m => { map[m.id] = m; });
       return map;
     }, [mine]);
 
-    // initial load + when user changes
     async function reload(){
       const [a, m] = await Promise.all([ api.listAll(''), user ? api.listMine() : Promise.resolve([]) ]);
       setAll(a); setMine(m||[]);
     }
     useEffect(()=>{ reload(); }, [user?.id]);
 
-    // server-side search (includes private tags)
     useEffect(() => {
       (async () => {
         const a = await api.listAll(query.trim() || '');
@@ -425,7 +460,6 @@
       })();
     }, [query]);
 
-    // unread recompute loop
     async function recomputeUnread() {
       try {
         if (!user) { setUnreadCount(0); return; }
@@ -451,7 +485,7 @@
       const list = [...(all || [])];
       if (sort === 'price_asc') list.sort((a,b)=>a.price-b.price);
       else if (sort === 'price_desc') list.sort((a,b)=>b.price-a.price);
-      else list.sort((a,b)=>b.id-a.id); // newest
+      else list.sort((a,b)=>b.id-a.id);
       return list;
     }, [all, sort]);
 
@@ -477,7 +511,6 @@
       await api.adminDeleteAll();
       setAll([]); setMine([]);
     }
-
     function handleAdminDelete(listingId) {
       setAll(prev => prev.filter(x => x.id !== listingId));
       setMine(prev => prev.filter(x => x.id !== listingId));
@@ -489,7 +522,7 @@
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
             H('div', { className:'row', style:{ gap:10 } },
-              H('input', { placeholder:'Search description, location, or tags…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
+              H('input', { placeholder:'Search title, description, location, or tags…', value:query, onChange:e=>setQuery(e.target.value), style:{ maxWidth:420 } }),
               H('select', { value:sort, onChange:e=>setSort(e.target.value) },
                 H('option', { value:'new' }, 'Newest'),
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
@@ -501,7 +534,7 @@
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
             H(ListingForm, {
-              draft: editing,                   // includes tags when editing your own item
+              draft: editing, // includes tags when editing own item
               onCancel:()=>setShowForm(false),
               onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); }
             })
@@ -509,14 +542,14 @@
 
           H('section', { className:'grid' },
             feed.map(item => {
-              const mineItem = mineById[item.id];  // undefined if not your listing
+              const mineItem = mineById[item.id];
               return H(ListingCard, {
                 key:item.id,
                 item,
                 user,
                 canEdit: !!mineItem,
                 onEdit:(it)=>{
-                  const rich = mineById[it.id] || it;     // ensure tags present when editing
+                  const rich = mineById[it.id] || it;
                   setEditing(rich);
                   setShowForm(true);
                   window.scrollTo({ top:0, behavior:'smooth' });

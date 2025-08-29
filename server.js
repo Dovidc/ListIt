@@ -1,4 +1,4 @@
-/* server.js — ListIt with usernames + private searchable tags + admin + robust SQLite path */
+/* server.js — ListIt with usernames + private searchable tags + Title + AI analysis endpoint + admin + robust SQLite path */
 
 const express = require('express');
 const fs = require('fs');
@@ -7,7 +7,8 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-let cors; try { cors = require('cors'); } catch { /* optional */ }
+let cors; try { cors = require('cors'); } catch {}
+let OpenAI; try { OpenAI = require('openai'); } catch {}
 
 const app = express();
 
@@ -15,15 +16,13 @@ const PORT = process.env.PORT || 3000;
 const IS_TEST = process.env.NODE_ENV === 'test';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
-
-// If frontend is on another domain, set FRONTEND_ORIGIN (e.g. GitHub Pages URL)
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 if (FRONTEND_ORIGIN && cors) app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 
 /* ------------------------------------------------------------------ */
 /* SQLite path handling (Render Disk friendly)                         */
 /* ------------------------------------------------------------------ */
-const DEFAULT_DB = path.join(__dirname, 'listit.db');           // ephemeral on Render
+const DEFAULT_DB = path.join(__dirname, 'listit.db');
 const WANTED_DB = process.env.DB_PATH || DEFAULT_DB;
 
 function ensureDirFor(filePath) {
@@ -69,20 +68,19 @@ catch {
 }
 
 try { db.prepare('SELECT is_admin FROM users LIMIT 1').get(); }
-catch {
-  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;');
-}
+catch { db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;'); }
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS listings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   image_data TEXT NOT NULL,
+  title TEXT DEFAULT "",               -- NEW: public title
   description TEXT NOT NULL,
   location TEXT NOT NULL,
   price REAL NOT NULL,
   created_at TEXT NOT NULL,
-  tags TEXT DEFAULT "",                 -- comma-separated, lowercase (private; used only for search)
+  tags TEXT DEFAULT "",                -- private, comma-separated
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -116,6 +114,8 @@ CREATE TABLE IF NOT EXISTS messages (
 
 try { db.prepare('SELECT tags FROM listings LIMIT 1').get(); }
 catch { db.exec('ALTER TABLE listings ADD COLUMN tags TEXT DEFAULT "";'); }
+try { db.prepare('SELECT title FROM listings LIMIT 1').get(); }
+catch { db.exec('ALTER TABLE listings ADD COLUMN title TEXT DEFAULT "";'); }
 
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
@@ -126,9 +126,7 @@ function normalizePair(u1, u2){
 function normalizeTags(input) {
   if (!input) return '';
   let arr = Array.isArray(input) ? input : String(input).split(',');
-  arr = arr
-    .map(s => String(s).trim().toLowerCase())
-    .filter(Boolean);
+  arr = arr.map(s => String(s).trim().toLowerCase()).filter(Boolean);
   const seen = new Set();
   const clean = [];
   for (let t of arr) {
@@ -140,6 +138,12 @@ function normalizeTags(input) {
     if (clean.length >= 20) break;
   }
   return clean.join(',');
+}
+function shortTitle(str) {
+  const s = String(str || '').trim();
+  if (!s) return '';
+  const t = s.replace(/\s+/g, ' ').slice(0, 80);
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,21 +159,17 @@ function setAuthCookie(res, payload){
     path: '/'
   });
 }
-
 function auth(req, res, next){
   const { token } = req.cookies || {};
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try { req.user = jwt.verify(token, JWT_SECRET); next(); }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
 }
-
 function requireAdmin(req, res, next){
   if (!req.user?.is_admin) return res.status(403).json({ error: 'Admin only' });
   next();
 }
 
-/* ------------------------------------------------------------------ */
-/* Middleware & static                                                 */
 /* ------------------------------------------------------------------ */
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
@@ -248,7 +248,7 @@ app.get('/api/me', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Listings (with private tags used for search)                        */
+/* Listings (Title + private tags in search)                           */
 /* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
@@ -260,14 +260,13 @@ function validateImages(images) {
   return null;
 }
 
-// Public + mine (supports ?q= for server-side search; tags are never returned publicly)
 app.get('/api/listings', (req, res) => {
   const qRaw = (req.query.q || '').toString().trim().toLowerCase();
   const q = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
 
   const SELECT_PUBLIC = `
-    SELECT l.id, l.user_id, l.image_data, l.description, l.location, l.price, l.created_at,
+    SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location, l.price, l.created_at,
            u.username as owner_username
     FROM listings l
     JOIN users u ON u.id = l.user_id
@@ -282,9 +281,9 @@ app.get('/api/listings', (req, res) => {
     if (q) {
       rows = db.prepare(`${SELECT_PUBLIC}
         WHERE l.user_id = ?
-          AND (LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
+          AND (LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
         ORDER BY l.id DESC
-      `).all(me.id, q, q, q);
+      `).all(me.id, q, q, q, q);
     } else {
       rows = db.prepare(`${SELECT_PUBLIC}
         WHERE l.user_id = ?
@@ -292,7 +291,7 @@ app.get('/api/listings', (req, res) => {
       `).all(me.id);
     }
 
-    // For "mine", include tags so owner can view/edit (as array)
+    // include private tags as array for owner
     const withTags = rows.map(r => {
       const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
       return { ...r, tags: t ? t.split(',') : [] };
@@ -300,24 +299,22 @@ app.get('/api/listings', (req, res) => {
     return res.json(withTags);
   }
 
-  // Public feed: allow searching description/location/tags but DO NOT expose tags
+  // Public feed: search title/description/location/tags but do NOT expose tags
   let rows;
   if (q) {
     rows = db.prepare(`${SELECT_PUBLIC}
-      WHERE (LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
+      WHERE (LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ? OR LOWER(IFNULL(l.tags,'')) LIKE ? OR LOWER(l.location) LIKE ?)
       ORDER BY l.id DESC
-    `).all(q, q, q);
+    `).all(q, q, q, q);
   } else {
-    rows = db.prepare(`${SELECT_PUBLIC}
-      ORDER BY l.id DESC
-    `).all();
+    rows = db.prepare(`${SELECT_PUBLIC} ORDER BY l.id DESC`).all();
   }
 
   return res.json(rows);
 });
 
 app.post('/api/listings', auth, (req, res) => {
-  const { images, image_data, description, location, price, tags } = req.body || {};
+  const { images, image_data, title, description, location, price, tags } = req.body || {};
   const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
   const err = validateImages(imgs);
   if (err) return res.status(400).json({ error: err });
@@ -326,11 +323,12 @@ app.post('/api/listings', auth, (req, res) => {
   }
   const cover = imgs[0];
   const tagStr = normalizeTags(tags);
+  const safeTitle = shortTitle(title) || shortTitle(description);
 
   const info = db.prepare(`
-    INSERT INTO listings (user_id, image_data, description, location, price, created_at, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, cover, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr);
+    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, cover, safeTitle, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr);
 
   const listingId = info.lastInsertRowid;
   const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
@@ -345,7 +343,7 @@ app.put('/api/listings/:id', auth, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
   if (!req.user.is_admin && existing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
 
-  const { images, image_data, description, location, price, tags } = req.body || {};
+  const { images, image_data, title, description, location, price, tags } = req.body || {};
   if (images || image_data) {
     const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
     const err = validateImages(imgs);
@@ -356,12 +354,13 @@ app.put('/api/listings/:id', auth, (req, res) => {
     db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(imgs[0], id);
   }
 
+  const newTitle = title !== undefined ? shortTitle(title) : existing.title;
   const newDesc = description ? String(description).slice(0,400) : existing.description;
   const newLoc  = location ? String(location).slice(0,80) : existing.location;
   const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
 
-  db.prepare('UPDATE listings SET description=?, location=?, price=? WHERE id=?')
-    .run(newDesc, newLoc, newPrice, id);
+  db.prepare('UPDATE listings SET title=?, description=?, location=?, price=? WHERE id=?')
+    .run(newTitle, newDesc, newLoc, newPrice, id);
 
   if (typeof tags !== 'undefined') {
     const tagStr = normalizeTags(tags);
@@ -387,6 +386,71 @@ app.get('/api/listings/:id/images', (req, res) => {
   const rows = db.prepare('SELECT image_data FROM listing_images WHERE listing_id = ? ORDER BY position ASC').all(id);
   res.json(rows.map(r => r.image_data));
 });
+
+/* ------------------------------------------------------------------ */
+/* AI Analysis endpoint                                                */
+/* ------------------------------------------------------------------ */
+app.post('/api/ai/analyze', auth, async (req, res) => {
+  try {
+    const images = Array.isArray(req.body.images) ? req.body.images.slice(0, 3) : [];
+    const hint = String(req.body.hint || '').slice(0, 200);
+    if (!images.length) return res.status(400).json({ error: 'No images provided' });
+
+    // If OpenAI available, use it; otherwise fallback heuristic
+    if (process.env.OPENAI_API_KEY && OpenAI) {
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      // Build messages with images as data URLs (truncated to stay safe)
+      const content = [];
+      content.push({ type: 'text', text: `You are a listing assistant. Analyze the item images carefully and output STRICT JSON with two fields: "title" (<=80 chars, no emojis) and "tags" (an array of 12-24 short, lowercase tags). Anchor tags to common search terms (e.g., 'car' for 'jeep'). Avoid brand hype words. If uncertain, choose the most generic accurate terms.` });
+      if (hint) content.push({ type: 'text', text: `User hint: ${hint}` });
+      for (const img of images) content.push({ type: 'image_url', image_url: { url: img } });
+
+      // Use a small, cheap vision model name here; adjust if needed
+      const resp = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [{ role: 'user', content }],
+        response_format: { type: 'json_object' }
+      });
+
+      const txt = resp.choices?.[0]?.message?.content || '{}';
+      let parsed = {};
+      try { parsed = JSON.parse(txt); } catch {}
+      let title = shortTitle(parsed.title || '');
+      let tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+      // sanitize tags
+      const tagStr = normalizeTags(tags);
+      const outTags = tagStr ? tagStr.split(',') : [];
+      if (!title) title = 'Item for sale';
+      if (outTags.length < 8) {
+        // pad minimal tags from crude fallback if too few
+        const extra = fallbackTagsFromTitleDesc(title, hint);
+        const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0,20);
+        return res.json({ title, tags: merged });
+      }
+      return res.json({ title, tags: outTags.slice(0, 24) });
+    }
+
+    // Fallback heuristic (no vision): extract from hint + simple keywords
+    const title = shortTitle(hint || 'Item for sale');
+    const tags = normalizeTags(fallbackTagsFromTitleDesc(title, hint)).split(',').filter(Boolean);
+    return res.json({ title, tags: tags.slice(0, 20) });
+  } catch (e) {
+    console.error('AI analyze failed:', e);
+    return res.status(500).json({ error: 'AI analysis failed' });
+  }
+});
+
+function fallbackTagsFromTitleDesc(title, desc) {
+  const s = `${title || ''} ${desc || ''}`.toLowerCase();
+  const words = (s.match(/[a-z0-9\-]{3,}/g) || []).slice(0, 80);
+  const freq = {};
+  for (const w of words) { freq[w] = (freq[w] || 0) + 1; }
+  const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
+  const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
+  return [...new Set([...base, ...generic])].slice(0, 20);
+}
 
 /* ------------------------------------------------------------------ */
 /* Conversations & messages                                            */
@@ -461,7 +525,6 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Admin endpoints                                                     */
 /* ------------------------------------------------------------------ */
-// Delete one listing (any user's) — admin only
 app.delete('/api/admin/listings/:id', auth, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
@@ -469,21 +532,10 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, (req, res) => {
   res.json({ ok: true, deleted: info.changes });
 });
 
-// Delete ALL listings — admin only
 app.delete('/api/admin/listings', auth, requireAdmin, (req, res) => {
   db.exec('DELETE FROM listing_images; DELETE FROM listings;');
   res.json({ ok: true });
 });
-
-/* ------------------------------------------------------------------ */
-/* Test helper                                                         */
-/* ------------------------------------------------------------------ */
-if (IS_TEST) {
-  app.post('/__test/reset', (req, res) => {
-    db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM listing_images; DELETE FROM listings; DELETE FROM users;');
-    res.json({ ok: true });
-  });
-}
 
 /* ------------------------------------------------------------------ */
 if (require.main === module) {
