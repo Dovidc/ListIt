@@ -295,7 +295,7 @@
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
-    the [description, setDescription] = useState(draft?.description || '');
+    const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
     const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
