@@ -1,6 +1,7 @@
 /* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
    + admin delete-all & per-card + private tags (visible only in edit/create)
-   Updated: global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
+   + global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
+   + NEW: "Use my location" button that autofills the Location field
 */
 
 (() => {
@@ -72,6 +73,11 @@
 
     aiAnalyze({ images, hint }) {
       return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
+    },
+
+    // NEW: reverse geocode coordinates -> nice display ("City, State")
+    reverseGeocode(lat, lon) {
+      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
     }
   };
 
@@ -214,7 +220,7 @@
     );
   }
 
-  // --- Listing Form ---
+  // --- Listing Form (adds "Use my location") ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -224,6 +230,10 @@
     const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
+
+    // NEW (geolocation)
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoErr, setGeoErr] = useState('');
 
     useEffect(() => {
       (async () => {
@@ -248,6 +258,27 @@
         setAiErr(e.message || 'AI failed');
       } finally {
         setAiBusy(false);
+      }
+    }
+
+    async function useMyLocation() {
+      setGeoErr('');
+      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+      setGeoBusy(true);
+      try {
+        const coords = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            err => rej(err),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          )
+        );
+        const r = await api.reverseGeocode(coords.lat, coords.lon);
+        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+      } catch (e) {
+        setGeoErr('Could not get your location');
+      } finally {
+        setGeoBusy(false);
       }
     }
 
@@ -285,7 +316,11 @@
       H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
 
       H('label', null, 'Location'),
-      H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value) }),
+      H('div', { className:'row', style:{ gap:8 } },
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
 
       H('label', null, 'Price'),
       H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
@@ -326,7 +361,7 @@
   // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
-    const [images, setImages] = useState(null);
+    aconst [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
 
     async function openModal(start=0){

@@ -1,5 +1,6 @@
 /* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price)
-   + messaging (now with image attachments) + admin + robust SQLite path + CORS + JWT auth
+   + messaging (with image attachments) + admin + robust SQLite path + CORS + JWT auth
+   + reverse geocoding proxy for "Use my location"
 */
 
 const express = require('express');
@@ -618,6 +619,42 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   const imgs = db.prepare('SELECT image_data FROM message_images WHERE message_id = ? ORDER BY position ASC').all(msgId).map(r => r.image_data);
   res.json({ ...row, images: imgs });
+});
+
+/* ------------------------------------------------------------------ */
+/* Reverse geocoding proxy (OpenStreetMap Nominatim)                   */
+/* ------------------------------------------------------------------ */
+const geoCache = new Map(); // tiny in-memory cache
+app.get('/api/geo/reverse', async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: 'lat/lon required' });
+    }
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (geoCache.has(key)) return res.json(geoCache.get(key));
+
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }
+    });
+    if (!resp.ok) return res.status(502).json({ error: 'geocode_failed' });
+    const data = await resp.json();
+
+    const a = data.address || {};
+    const city = a.city || a.town || a.village || a.hamlet || '';
+    const state = a.state || a.region || '';
+    const country = a.country || (a.country_code ? a.country_code.toUpperCase() : '');
+    const display = [city, state || country].filter(Boolean).join(', ') || data.display_name || key;
+
+    const out = { city, state, country, display, lat, lon };
+    geoCache.set(key, out);
+    res.json(out);
+  } catch (e) {
+    console.error('reverse geocode error', e);
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 /* ------------------------------------------------------------------ */
