@@ -1,4 +1,4 @@
-/* public/app.js — usernames + unread dots + multi-images + admin delete-all & per-card + private tags (searchable, owner-only) */
+/* public/app.js — usernames + unread dots + multi-images + admin delete-all & per-card + private tags (visible only in edit form) */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -193,7 +193,7 @@
     );
   }
 
-  // --- Listing Form (adds private tags input) ---
+  // --- Listing Form (private tags only visible here) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [description, setDescription] = useState(draft?.description || '');
@@ -235,8 +235,12 @@
       H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value) }),
       H('label', null, 'Price'),
       H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
-      H('label', null, 'Search tags (invisible to others)'),
-      H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) }),
+      // Tags are private and only shown here in the edit/create form:
+      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'These help others find your item, but are not shown publicly. Example: "car, suv, 4x4".'),
+        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+      ),
       H('div', { className:'row' },
         H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
         H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
@@ -264,7 +268,7 @@
     );
   }
 
-  // --- Listing card (per-card Admin Delete included; tags are NOT shown) ---
+  // --- Listing card (NO tags displayed anywhere) ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
@@ -399,6 +403,13 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // Build quick lookup for "mine" (includes tags for edit form)
+    const mineById = useMemo(() => {
+      const map = Object.create(null);
+      (mine || []).forEach(m => { map[m.id] = m; });
+      return map;
+    }, [mine]);
+
     // initial load + when user changes
     async function reload(){
       const [a, m] = await Promise.all([ api.listAll(''), user ? api.listMine() : Promise.resolve([]) ]);
@@ -489,20 +500,32 @@
           ),
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
-            H(ListingForm, { draft: editing, onCancel:()=>setShowForm(false), onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); } })
+            H(ListingForm, {
+              draft: editing,                   // includes tags when editing your own item
+              onCancel:()=>setShowForm(false),
+              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); }
+            })
           ),
 
           H('section', { className:'grid' },
-            feed.map(item => H(ListingCard, {
-              key:item.id,
-              item,
-              user,
-              canEdit: !!mine.find(m=>m.id===item.id),
-              onEdit:(it)=>{ setEditing(it); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); },
-              onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-              onMessage: startMessage,
-              onAdminDelete: handleAdminDelete
-            }))
+            feed.map(item => {
+              const mineItem = mineById[item.id];  // undefined if not your listing
+              return H(ListingCard, {
+                key:item.id,
+                item,
+                user,
+                canEdit: !!mineItem,
+                onEdit:(it)=>{
+                  const rich = mineById[it.id] || it;     // ensure tags present when editing
+                  setEditing(rich);
+                  setShowForm(true);
+                  window.scrollTo({ top:0, behavior:'smooth' });
+                },
+                onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+                onMessage: startMessage,
+                onAdminDelete: handleAdminDelete
+              });
+            })
           ),
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
         ),
