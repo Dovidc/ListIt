@@ -1,26 +1,26 @@
-/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price) + admin delete-all & per-card + private tags (visible only in edit/create form)
-   Updated: adds global 401 handling + messages render guards to prevent white screen after logout.
+/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
+   + admin delete-all & per-card + private tags (visible only in edit/create)
+   Updated: global 401 handling, logout-to-browse safety, Messages with image attachments (pick/preview/send/view)
 */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
-  // lightweight navigator hooks for api interceptor
+  // small bridge so api can redirect UI on 401s
   const AppNav = { setUser: () => {}, setTab: () => {} };
 
-  // --- DOM helper / utils ---
+  // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
   function price(n) { return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
 
-  // --- API helpers with centralized 401 handling ---
+  // --- API (centralized 401 handling) ---
   const api = {
     async _fetch(url, opts = {}) {
       const res = await fetch(url, { credentials: 'include', ...opts });
       if (res.status === 401) {
-        // session gone/expired → force signed-out UI and send user to Listings
         AppNav.setUser(null);
         AppNav.setTab('browse');
         throw new Error('auth');
@@ -39,9 +39,7 @@
       return this._fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) });
     },
     async logout() {
-      // logout is idempotent server-side; we still call it for cookie clearing
-      try { await this._fetch('/api/logout', { method:'POST' }); }
-      catch { /* ignore */ }
+      try { await this._fetch('/api/logout', { method:'POST' }); } catch {}
     },
 
     listAll(q)      { return this._fetch('/api/listings' + (q ? `?q=${encodeURIComponent(q)}` : ''), { method:'GET' }); },
@@ -62,8 +60,12 @@
     },
     listConversations() { return this._fetch('/api/conversations', { method:'GET' }); },
     getMessages(id)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }); },
-    sendMessage(id, body) {
-      return this._fetch(`/api/conversations/${id}/messages`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ body }) });
+    sendMessage(id, body, images){
+      return this._fetch(`/api/conversations/${id}/messages`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ body, images })
+      });
     },
 
     getListingImages(id){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }); },
@@ -89,7 +91,7 @@
           H('button', { className: 'btn', onClick: async () => {
             await api.logout();
             setUser(null);
-            onNav('browse');   // leave any protected view immediately
+            onNav('browse');   // immediate bounce
           } }, 'Log out')
         )
       : H(AuthButtons, { setUser });
@@ -154,7 +156,7 @@
     );
   }
 
-  // --- Multi Image Picker ---
+  // --- Multi Image Picker for listings ---
   function MultiImagePicker({ values, onChange }) {
     const ref = useRef();
     const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
@@ -187,7 +189,7 @@
     );
   }
 
-  // --- Listing Form (Title + AI Assist; tags private & only here) ---
+  // --- Listing Form ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -220,7 +222,6 @@
       } catch (e) {
         setAiErr(e.message || 'AI failed');
       } finally {
-        setAiErr(v => v); // keep any error visible
         setAiBusy(false);
       }
     }
@@ -277,7 +278,7 @@
     );
   }
 
-  // --- Lightbox ---
+  // --- Lightbox (used by listing images and message images) ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
@@ -346,9 +347,8 @@
     );
   }
 
-  // --- Messages ---
+  // --- Messages (now with image attachments) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
-    // guard: never render messages UI if no user (prevents white screen)
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
     const [convos, setConvos] = useState([]);
@@ -356,6 +356,28 @@
     const [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
+
+    // attachments state
+    const [imgFiles, setImgFiles] = useState([]); // data URLs
+    const fileRef = useRef();
+    const [lb, setLb] = useState({ open:false, images:[], index:0 });
+
+    const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    async function pickImgs(e){
+      const files = Array.from(e.target.files || []);
+      const next = [...imgFiles];
+      for (const f of files) {
+        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+        next.push(await toB64(f));
+        if (next.length >= 5) break;
+      }
+      setImgFiles(next);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+    function removeImg(i){
+      const n = [...imgFiles]; n.splice(i,1); setImgFiles(n);
+    }
+    function openLightbox(images, index=0){ setLb({ open:true, images, index }); }
 
     useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
 
@@ -378,9 +400,11 @@
     }, [activeId]);
 
     async function send(){
-      if(!input.trim()) return;
-      await api.sendMessage(activeId, input.trim());
+      const bodyTrim = (input || '').trim();
+      if(!bodyTrim && imgFiles.length === 0) return;
+      await api.sendMessage(activeId, bodyTrim, imgFiles);
       setInput('');
+      setImgFiles([]);
       await fetchMsgs();
       await fetchConvos();
     }
@@ -391,7 +415,7 @@
       return { ...c, _unread: unread };
     }).sort((a,b) => {
       const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
-      if (ub - ua) return ub - ua; // unread first
+      if (ub - ua) return ub - ua;
       const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
       return tb - ta;
@@ -414,12 +438,35 @@
       H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },
         !activeId && H('div', { className:'muted' }, 'Select a conversation'),
         activeId && H('div', { style:{ flex:1, overflow:'auto', padding:4 } },
-          msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` }, m.body))
+          msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
+            m.body && H('div', null, m.body),
+            Array.isArray(m.images) && m.images.length > 0 &&
+              H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
+                ...m.images.map((src, i) =>
+                  H('img', { key:i, src, style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
+                    onClick:()=>openLightbox(m.images, i) })
+                )
+              )
+          ))
         ),
-        activeId && H('div', { className:'row' },
+        activeId && H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+          H('input', { type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs, style:{ maxWidth:220 } }),
           H('input', { placeholder:'Type a message…', value:input, onChange:e=>setInput(e.target.value), onKeyDown:e=>{ if(e.key==='Enter') send(); } }),
           H('button', { className:'btn primary', onClick:send }, 'Send')
-        )
+        ),
+        imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
+          ...imgFiles.map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
+            H('img', { src, style:{ width:48, height:48, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
+            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:-6, right:-6, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
+          ))
+        ),
+        H(Lightbox, {
+          open: lb.open,
+          images: lb.images,
+          index: lb.index,
+          onClose: ()=> setLb({ open:false, images:[], index:0 }),
+          onIndex: (i)=> setLb(s=>({ ...s, index:i }))
+        })
       )
     );
   }
@@ -438,7 +485,7 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // expose setters to API interceptor
+    // expose setters for api interceptor
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
     const mineById = useMemo(() => {
@@ -481,7 +528,7 @@
       return () => clearInterval(t);
     }, [user?.id]);
 
-    // If signed out while on Messages, go back to Listings (guard)
+    // guard: if signed out while on messages, go back to listings
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
     }, [user, tab]);
@@ -539,7 +586,7 @@
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
             H(ListingForm, {
-              draft: editing, // includes tags when editing own item
+              draft: editing,
               onCancel:()=>setShowForm(false),
               onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); }
             })

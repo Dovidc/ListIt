@@ -1,4 +1,6 @@
-/* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price) + messaging + admin + robust SQLite path */
+/* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price)
+   + messaging (now with image attachments) + admin + robust SQLite path + CORS + JWT auth
+*/
 
 const express = require('express');
 const fs = require('fs');
@@ -31,7 +33,7 @@ if (FRONTEND_ORIGIN && cors) {
     optionsSuccessStatus: 204,
   };
   app.use(cors(corsCfg));
-  app.options('*', cors(corsCfg)); // handle preflight everywhere
+  app.options('*', cors(corsCfg));
 }
 
 /* ------------------------------------------------------------------ */
@@ -63,7 +65,7 @@ try {
 }
 
 /* ------------------------------------------------------------------ */
-/* Schema + migrations                                                 */
+/* Schema + migrations                                                */
 /* ------------------------------------------------------------------ */
 try { db.pragma('journal_mode = WAL'); } catch {}
 
@@ -127,6 +129,18 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
+/* NEW: images attached to messages */
+db.exec(`
+CREATE TABLE IF NOT EXISTS message_images (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  image_data TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  FOREIGN KEY (message_id) REFERENCES messages(id)
+);
+CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);
+`);
+
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
@@ -174,7 +188,7 @@ function setAuthCookie(res, payload){
     httpOnly: true,
     sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
     secure: IS_PROD,
-    domain: COOKIE_DOMAIN, // optional
+    domain: COOKIE_DOMAIN,
     maxAge: 7*24*60*60*1000,
     path: '/'
   });
@@ -184,7 +198,7 @@ function clearAuthCookie(res){
     httpOnly: true,
     sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
     secure: IS_PROD,
-    domain: COOKIE_DOMAIN, // optional
+    domain: COOKIE_DOMAIN,
     path: '/'
   });
 }
@@ -195,7 +209,6 @@ function auth(req, res, next){
     req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
-    // If the token is bad/expired, clear it so the client cleanly resets to signed-out UI
     clearAuthCookie(res);
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -266,9 +279,8 @@ app.post('/api/login', async (req, res) => {
   return res.json(user);
 });
 
-/* ✅ Idempotent logout that always returns { ok: true } */
+/* Idempotent logout that always returns { ok: true } */
 app.post('/api/logout', (req, res) => {
-  // Clear cookie even if it doesn't exist or token is invalid
   clearAuthCookie(res);
   return res.json({ ok: true });
 });
@@ -280,18 +292,27 @@ app.get('/api/me', (req, res) => {
     const data = jwt.verify(token, JWT_SECRET);
     return res.json({ id: data.id, email: data.email, username: data.username, is_admin: data.is_admin || 0 });
   } catch {
-    // If token is bad, proactively clear it so the client snaps to signed-out state cleanly
     clearAuthCookie(res);
     return res.json(null);
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* Listings (Title + private tags in search)                           */
+/* Listings                                                            */
 /* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
   if (images.length > 10) return 'Too many images (max 10)';
+  for (const img of images) {
+    if (typeof img !== 'string' || !img.startsWith('data:image')) return 'Each image must be a data URL';
+    if (img.length > 3 * 1024 * 1024 * 1.6) return 'Each image must be <= ~3MB';
+  }
+  return null;
+}
+function validateMsgImages(images) {
+  if (!images) return null;
+  if (!Array.isArray(images)) return 'images must be an array';
+  if (images.length > 5) return 'Too many images (max 5)';
   for (const img of images) {
     if (typeof img !== 'string' || !img.startsWith('data:image')) return 'Each image must be a data URL';
     if (img.length > 3 * 1024 * 1024 * 1.6) return 'Each image must be <= ~3MB';
@@ -498,7 +519,7 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Conversations & messages                                            */
+/* Conversations & messages (with images)                              */
 /* ------------------------------------------------------------------ */
 function isMember(convo, uid){ return convo && (convo.a_user_id === uid || convo.b_user_id === uid); }
 
@@ -523,7 +544,6 @@ app.post('/api/conversations', auth, (req, res) => {
   }
 });
 
-/* ✅ Robust conversation list using LEFT JOIN (provides listing_title) */
 app.get('/api/conversations', auth, (req, res) => {
   const me = req.user.id;
 
@@ -555,25 +575,49 @@ app.get('/api/conversations/:id/messages', auth, (req, res) => {
   const convo = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
   if (!convo) return res.status(404).json({ error: 'Not found' });
   if (!isMember(convo, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
-  const rows = db.prepare(`
+
+  const msgs = db.prepare(`
     SELECT m.*, u.username AS sender_username
     FROM messages m JOIN users u ON u.id = m.sender_id
     WHERE m.conversation_id = ?
     ORDER BY m.id ASC
   `).all(id);
-  res.json(rows);
+
+  const getImgs = db.prepare('SELECT image_data FROM message_images WHERE message_id = ? ORDER BY position ASC');
+  const out = msgs.map(m => ({ ...m, images: getImgs.all(m.id).map(r => r.image_data) }));
+
+  res.json(out);
 });
 
 app.post('/api/conversations/:id/messages', auth, (req, res) => {
   const id = Number(req.params.id);
-  const { body } = req.body || {};
-  if (!body || !String(body).trim()) return res.status(400).json({ error: 'Message body required' });
+  const { body, images } = req.body || {};
+
+  if ((!body || !String(body).trim()) && (!Array.isArray(images) || images.length === 0)) {
+    return res.status(400).json({ error: 'Message body or image required' });
+  }
+
   const convo = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
   if (!convo) return res.status(404).json({ error: 'Not found' });
   if (!isMember(convo, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
-  const info = db.prepare('INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)').run(id, req.user.id, String(body).slice(0,2000), nowIso());
-  const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(info.lastInsertRowid);
-  res.json(row);
+
+  const err = validateMsgImages(images);
+  if (err) return res.status(400).json({ error: err });
+
+  const info = db.prepare(
+    'INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)'
+  ).run(id, req.user.id, String(body || '').slice(0,2000), nowIso());
+
+  const msgId = info.lastInsertRowid;
+
+  if (Array.isArray(images) && images.length) {
+    const stmt = db.prepare('INSERT INTO message_images (message_id, image_data, position) VALUES (?, ?, ?)');
+    images.forEach((img, i) => stmt.run(msgId, img, i));
+  }
+
+  const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
+  const imgs = db.prepare('SELECT image_data FROM message_images WHERE message_id = ? ORDER BY position ASC').all(msgId).map(r => r.image_data);
+  res.json({ ...row, images: imgs });
 });
 
 /* ------------------------------------------------------------------ */
