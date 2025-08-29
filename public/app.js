@@ -1,94 +1,77 @@
-/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price) + admin delete-all & per-card + private tags (visible only in edit/create form) */
+/* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price) + admin delete-all & per-card + private tags (visible only in edit/create form)
+   Updated: adds global 401 handling + messages render guards to prevent white screen after logout.
+*/
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
-  // --- API helpers ---
-  const api = {
-    async me() { const r = await fetch('/api/me', { credentials: 'include' }); return r.json(); },
-    async register({ username, email, password }) {
-      const r = await fetch('/api/register', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, email, password }) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Register failed');
-      return r.json();
-    },
-    async login(email, password) {
-      const r = await fetch('/api/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Login failed');
-      return r.json();
-    },
-    async logout() { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); },
+  // lightweight navigator hooks for api interceptor
+  const AppNav = { setUser: () => {}, setTab: () => {} };
 
-    async listAll(q) {
-      const url = '/api/listings' + (q ? `?q=${encodeURIComponent(q)}` : '');
-      const r = await fetch(url);
-      return r.json();
-    },
-    async listMine() {
-      const r = await fetch('/api/listings?mine=1', { credentials: 'include' });
-      if (!r.ok) return [];
-      return r.json(); // includes tags for owner
-    },
-    async createListing(payload) {
-      const r = await fetch('/api/listings', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Create failed');
-      return r.json();
-    },
-    async updateListing(id, payload) {
-      const r = await fetch(`/api/listings/${id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Update failed');
-      return r.json();
-    },
-    async deleteListing(id) {
-      const r = await fetch(`/api/listings/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
-      return r.json();
-    },
-    async adminDeleteListing(id) {
-      const r = await fetch(`/api/admin/listings/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!r.ok) throw new Error((await r.json()).error || 'Admin delete failed');
-      return r.json();
-    },
-    async adminDeleteAll() {
-      const r = await fetch('/api/admin/listings', { method: 'DELETE', credentials: 'include' });
-      if (!r.ok) throw new Error((await r.json()).error || 'Admin delete-all failed');
-      return r.json();
-    },
-
-    async ensureConversation({ with_user_id, listing_id }) {
-      const r = await fetch('/api/conversations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ with_user_id, listing_id }) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Conversation failed');
-      return r.json();
-    },
-    async listConversations() { const r = await fetch('/api/conversations', { credentials: 'include' }); if (!r.ok) throw new Error('Not logged in'); return r.json(); },
-    async getMessages(id) { const r = await fetch(`/api/conversations/${id}/messages`, { credentials: 'include' }); if (!r.ok) throw new Error('Cannot load messages'); return r.json(); },
-    async sendMessage(id, body) {
-      const r = await fetch(`/api/conversations/${id}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
-      if (!r.ok) throw new Error((await r.json()).error || 'Send failed');
-      return r.json();
-    },
-
-    async getListingImages(id) { const r = await fetch(`/api/listings/${id}/images`); return r.json(); },
-
-    async aiAnalyze({ images, hint }) {
-      const r = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images, hint })
-      });
-      if (!r.ok) throw new Error((await r.json()).error || 'AI analysis failed');
-      return r.json(); // { title, tags: [], suggested_price }
-    }
-  };
-
-  // --- Helpers ---
+  // --- DOM helper / utils ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
   function price(n) { return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
-
-  // Seen-state helpers (persisted per user)
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+
+  // --- API helpers with centralized 401 handling ---
+  const api = {
+    async _fetch(url, opts = {}) {
+      const res = await fetch(url, { credentials: 'include', ...opts });
+      if (res.status === 401) {
+        // session gone/expired → force signed-out UI and send user to Listings
+        AppNav.setUser(null);
+        AppNav.setTab('browse');
+        throw new Error('auth');
+      }
+      if (!res.ok) {
+        let msg = 'request_failed';
+        try { msg = (await res.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
+      try { return await res.json(); } catch { return null; }
+    },
+
+    me()              { return this._fetch('/api/me', { method:'GET' }); },
+    register(payload) { return this._fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); },
+    login(email, password) {
+      return this._fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) });
+    },
+    async logout() {
+      // logout is idempotent server-side; we still call it for cookie clearing
+      try { await this._fetch('/api/logout', { method:'POST' }); }
+      catch { /* ignore */ }
+    },
+
+    listAll(q)      { return this._fetch('/api/listings' + (q ? `?q=${encodeURIComponent(q)}` : ''), { method:'GET' }); },
+    listMine()      { return this._fetch('/api/listings?mine=1', { method:'GET' }); },
+    createListing(payload) {
+      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    },
+    updateListing(id, payload) {
+      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    },
+    deleteListing(id) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }); },
+
+    adminDeleteListing(id) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }); },
+    adminDeleteAll()       { return this._fetch('/api/admin/listings', { method:'DELETE' }); },
+
+    ensureConversation({ with_user_id, listing_id }) {
+      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) });
+    },
+    listConversations() { return this._fetch('/api/conversations', { method:'GET' }); },
+    getMessages(id)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }); },
+    sendMessage(id, body) {
+      return this._fetch(`/api/conversations/${id}/messages`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ body }) });
+    },
+
+    getListingImages(id){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }); },
+
+    aiAnalyze({ images, hint }) {
+      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
+    }
+  };
 
   // --- Header ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
@@ -106,7 +89,7 @@
           H('button', { className: 'btn', onClick: async () => {
             await api.logout();
             setUser(null);
-            onNav('browse');   // ensure we leave Messages after logout
+            onNav('browse');   // leave any protected view immediately
           } }, 'Log out')
         )
       : H(AuthButtons, { setUser });
@@ -114,7 +97,10 @@
     const messagesBtn = H('button', {
       className: `btn ${active==='messages'?'primary':''}`,
       style: { position: 'relative' },
-      onClick: () => onNav('messages')
+      onClick: () => {
+        if (!user) { alert('Log in to view messages.'); return; }
+        onNav('messages');
+      }
     }, 'Messages',
       (unreadCount > 0) &&
         H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
@@ -234,6 +220,7 @@
       } catch (e) {
         setAiErr(e.message || 'AI failed');
       } finally {
+        setAiErr(v => v); // keep any error visible
         setAiBusy(false);
       }
     }
@@ -310,7 +297,7 @@
     );
   }
 
-  // --- Listing card (shows Title; tags never shown) ---
+  // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
@@ -361,6 +348,9 @@
 
   // --- Messages ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
+    // guard: never render messages UI if no user (prevents white screen)
+    if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
+
     const [convos, setConvos] = useState([]);
     const [activeId, setActiveId] = useState(initialActiveId || null);
     const [msgs, setMsgs] = useState([]);
@@ -448,6 +438,9 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // expose setters to API interceptor
+    useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
+
     const mineById = useMemo(() => {
       const map = Object.create(null);
       (mine || []).forEach(m => { map[m.id] = m; });
@@ -488,7 +481,7 @@
       return () => clearInterval(t);
     }, [user?.id]);
 
-    // If signed out while on Messages, go back to Listings
+    // If signed out while on Messages, go back to Listings (guard)
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
     }, [user, tab]);
@@ -574,14 +567,18 @@
           ),
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
         ),
-        tab==='messages' && H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
+        (tab==='messages') &&
+          (user
+            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
+            : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
+          )
       )
     );
   }
 
   function useAuth() {
     const [user, setUser] = useState(null);
-    useEffect(() => { api.me().then(setUser); }, []);
+    useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
     return { user, setUser };
   }
 
