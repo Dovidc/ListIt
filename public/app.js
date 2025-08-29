@@ -359,7 +359,7 @@
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [convos, setConvos] = useState([]);
     const [activeId, setActiveId] = useState(initialActiveId || null);
-    aconst [msgs, setMsgs] = useState([]);
+    const [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
 
