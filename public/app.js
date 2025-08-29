@@ -1,6 +1,6 @@
 /* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
    + admin delete-all & per-card + private tags (visible only in edit/create)
-   Updated: global 401 handling, logout-to-browse safety, Messages with image attachments (pick/preview/send/view)
+   Updated: global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
 */
 
 (() => {
@@ -74,6 +74,31 @@
       return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
     }
   };
+
+  // --- Attach icon button ---
+  function AttachButton({ onClick, title = 'Attach images' }) {
+    return H('button', {
+      className: 'icon-btn',
+      type: 'button',
+      onClick,
+      title,
+      'aria-label': title,
+      style: {
+        width: 40, height: 40, borderRadius: 12,
+        border: '1px solid #e5e7eb',
+        background: '#fff',
+        display: 'grid',
+        placeItems: 'center',
+        cursor: 'pointer'
+      }
+    },
+      H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+        H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
+        H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
+        H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      )
+    );
+  }
 
   // --- Header ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
@@ -347,7 +372,7 @@
     );
   }
 
-  // --- Messages (now with image attachments) ---
+  // --- Messages (with image attachments + attach icon) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -450,8 +475,22 @@
           ))
         ),
         activeId && H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
-          H('input', { type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs, style:{ maxWidth:220 } }),
-          H('input', { placeholder:'Type a message…', value:input, onChange:e=>setInput(e.target.value), onKeyDown:e=>{ if(e.key==='Enter') send(); } }),
+          // hidden input
+          H('input', {
+            type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
+            style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
+          }),
+          // icon button to trigger picker
+          H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
+          // message text box
+          H('input', {
+            placeholder:'Type a message…',
+            value:input,
+            onChange:e=>setInput(e.target.value),
+            onKeyDown:e=>{ if(e.key==='Enter') send(); },
+            style:{ flex:1 }
+          }),
+          // send button
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
         imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
