@@ -1,5 +1,5 @@
 /* public/mobile.css */
-/* Mobile-only tweaks. Desktop styles remain untouched. */
+/* Mobile-only tweaks. Desktop stays unchanged. */
 
 /* Base readability & tap targets */
 html, body { font-size: 16px; }
@@ -10,34 +10,68 @@ html, body { font-size: 16px; }
 .grid { grid-template-columns: 1fr; gap: 14px; }
 .split { flex-direction: column; gap: 12px; }
 .sidebar { width: 100%; max-width: 100%; }
+.row { flex-wrap: wrap; } /* allow wrapping where needed */
 
-/* Header: stack neatly */
-header .container { display: grid; gap: 10px; grid-template-columns: 1fr; }
-header nav, header .row { flex-wrap: wrap; gap: 8px; }
-header .muted { display: none; } /* optional */
-
-/* Inputs & buttons */
+/* Inputs & buttons (global mobile defaults) */
 input, textarea, select, .btn {
   font-size: 16px;
   min-height: 44px;
   padding: 12px 14px;
   width: 100%;
 }
-.message { font-size: 15px; max-width: 92%; }
+
+/* =========================
+   HEADER: compact controls
+   ========================= */
+
+/* 1) Ensure header buttons DON'T stretch full width */
+header nav .btn,
+header .container > .row:last-child .btn {
+  width: auto !important;            /* override width:100% */
+  display: inline-flex;
+}
+
+/* 2) Tabs (Listings / Nearby / Messages) — smaller pills */
+header nav .btn {
+  font-size: 14px !important;
+  padding: 6px 10px !important;
+  min-height: 32px !important;
+  border-radius: 14px !important;
+}
+
+/* Optional: keep strong focus for active tab without huge size */
+header nav .btn.primary {
+  box-shadow: inset 0 0 0 2px #111;
+}
+
+/* 3) Auth area buttons (right side, includes Log out) — smaller than tabs */
+header .container > .row:last-child .btn {
+  font-size: 13px !important;
+  padding: 6px 10px !important;
+  min-height: 32px !important;
+  border-radius: 12px !important;
+}
+
+/* 4) Make Log out the SMALLEST (last button in that group) */
+header .container > .row:last-child .btn:last-child {
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+  min-height: 28px !important;
+  border-radius: 12px !important;
+  opacity: .9;
+}
 
 /* Cards */
 .card { border-radius: 20px; }
-.aspect { padding-top: 62%; }     /* slightly taller cover image */
+.aspect { padding-top: 62%; }
 .card .row { gap: 8px; }
+.message { font-size: 15px; max-width: 92%; }
 
-/* Search & controls */
+/* Search & selects */
 header input { min-width: 140px; }
-select { width: auto; }           /* let select size to content */
+select { width: auto; }
 
-/* Nearby header controls */
-.row { flex-wrap: wrap; }         /* allow control wrap on small width */
-
-/* Lightbox (same behavior, ensured on phones) */
+/* Lightbox (keep centered/contained on phones) */
 .modal-inner {
   display: flex;
   align-items: center;
@@ -64,41 +98,3 @@ label { font-weight: 600; }
 
 /* Keep content visible above mobile keyboards */
 main { padding-bottom: 16px; }
-
-/* === Header tabs & auth area — compact on mobile === */
-
-/* 1) Stop tabs/auth buttons from stretching full width */
-header nav .btn,
-header .container > .row:last-child .btn {
-  width: auto;                 /* override the global width:100% rule */
-}
-
-/* 2) Make the three tabs (Listings / Nearby / Messages) smaller */
-header nav .btn {
-  font-size: 14px;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-radius: 14px;
-}
-
-/* Optional: keep the active tab visually strong without looking huge */
-header nav .btn.primary {
-  box-shadow: inset 0 0 0 2px #111;
-}
-
-/* 3) Make auth buttons (e.g., Admin Delete, Log out) smaller than tabs */
-header .container > .row:last-child .btn {
-  font-size: 13px;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-radius: 12px;
-}
-
-/* 4) Make Log out the smallest (it's the last button in the auth area) */
-header .container > .row:last-child .btn:last-child {
-  font-size: 12px;
-  padding: 4px 10px;
-  min-height: 28px;
-  border-radius: 12px;
-  opacity: .9;
-}

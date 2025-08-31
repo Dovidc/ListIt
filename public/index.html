@@ -114,7 +114,9 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
     <!-- App (cache-busted) -->
-    <script src="/app.js?v=mobile-css-1"></script>
+    <!-- Mobile-only overrides -->
+<link rel="stylesheet" href="/mobile.css?v=tab-compact-5" media="(max-width: 720px)">
+
 
     <!-- Auto-resize textareas -->
     <script>
