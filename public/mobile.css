@@ -64,3 +64,41 @@ label { font-weight: 600; }
 
 /* Keep content visible above mobile keyboards */
 main { padding-bottom: 16px; }
+
+/* === Header tabs & auth area — compact on mobile === */
+
+/* 1) Stop tabs/auth buttons from stretching full width */
+header nav .btn,
+header .container > .row:last-child .btn {
+  width: auto;                 /* override the global width:100% rule */
+}
+
+/* 2) Make the three tabs (Listings / Nearby / Messages) smaller */
+header nav .btn {
+  font-size: 14px;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-radius: 14px;
+}
+
+/* Optional: keep the active tab visually strong without looking huge */
+header nav .btn.primary {
+  box-shadow: inset 0 0 0 2px #111;
+}
+
+/* 3) Make auth buttons (e.g., Admin Delete, Log out) smaller than tabs */
+header .container > .row:last-child .btn {
+  font-size: 13px;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-radius: 12px;
+}
+
+/* 4) Make Log out the smallest (it's the last button in the auth area) */
+header .container > .row:last-child .btn:last-child {
+  font-size: 12px;
+  padding: 4px 10px;
+  min-height: 28px;
+  border-radius: 12px;
+  opacity: .9;
+}
