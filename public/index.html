@@ -35,8 +35,30 @@
       /* Modal styles */
       .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:100; }
       .modal.open { display:flex; }
-      .modal-inner { position: relative; max-width: 90vw; max-height: 90vh; background:#000; border-radius: 16px; overflow:hidden; }
-      .modal-inner img { display:block; max-height: 90vh; }
+      /* AFTER — center image and contain to viewport */
+      .modal-inner {
+        position: relative;
+        display: flex;                 /* center the image box */
+        align-items: center;
+        justify-content: center;
+        background:#000;
+        border-radius: 16px;
+        overflow: hidden;
+        max-width: 95vw;               /* a bit wider is fine */
+        max-height: 95vh;
+      }
+
+      .modal-inner img {
+        display: block;
+        max-width: 95vw;               /* constrain by width too */
+        max-height: 95vh;              /* and by height */
+        width: auto;                   /* preserve aspect */
+        height: auto;
+        object-fit: contain;           /* no cropping; fill as much as possible */
+        margin: auto;                  /* center if smaller than box */
+        flex: 0 1 auto;
+}
+
       .arrow { position:absolute; top:50%; transform:translateY(-50%); background: rgba(255,255,255,.2); border:0; padding:10px 14px; cursor:pointer; font-size:18px; color:#fff; }
       .arrow.left { left:8px; } .arrow.right { right:8px; }
       .close { position:absolute; top:8px; right:8px; background: rgba(255,255,255,.2); border:0; padding:8px 10px; cursor:pointer; color:#fff; border-radius: 10px; }
