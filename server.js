@@ -2,6 +2,8 @@
    + messaging (with image attachments) + admin + robust SQLite path + CORS + JWT auth
    + reverse geocoding proxy for "Use my location"
    + semantic/fuzzy location filter that only matches existing listing locations
+   + Bearer token support for mobile apps (Authorization: Bearer <jwt>)
+   + GPS lat/lon per listing + /api/listings/nearby endpoint
 */
 
 const express = require('express');
@@ -142,6 +144,14 @@ CREATE TABLE IF NOT EXISTS message_images (
 CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);
 `);
 
+/* ---- Add lat/lon columns to listings (non-destructive) ---- */
+try { db.prepare('SELECT lat FROM listings LIMIT 1').get(); }
+catch {
+  db.exec('ALTER TABLE listings ADD COLUMN lat REAL;');
+  db.exec('ALTER TABLE listings ADD COLUMN lon REAL;');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);');
+}
+
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
@@ -174,7 +184,7 @@ function fallbackTagsFromTitleDesc(title, desc) {
   const s = `${title || ''} ${desc || ''}`.toLowerCase();
   const words = (s.match(/[a-z0-9\-]{3,}/g) || []).slice(0, 80);
   const freq = {};
-  for (const w of words) { freq[w] = (freq[w] || 0) + 1; }
+  for (const w of words) { freq[w] = (freq[w] || 1) + 1; }
   const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
   const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
   return [...new Set([...base, ...generic])].slice(0, 20);
@@ -182,10 +192,7 @@ function fallbackTagsFromTitleDesc(title, desc) {
 
 /* ---------- fuzzy helpers for location (city) ---------- */
 function normLetters(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
-function cityOf(location){
-  // first chunk before comma, trimmed
-  return String(location||'').split(',')[0].trim();
-}
+function cityOf(location){ return String(location||'').split(',')[0].trim(); }
 function levenshtein(a,b){
   a = String(a); b = String(b);
   const m = a.length, n = b.length;
@@ -193,7 +200,7 @@ function levenshtein(a,b){
   const dp = new Array(n+1);
   for (let j=0;j<=n;j++) dp[j]=j;
   for (let i=1;i<=m;i++){
-    let prev = i-1, cur = i;
+    let prev = i-1;
     dp[0]=i;
     for (let j=1;j<=n;j++){
       const tmp = dp[j];
@@ -209,7 +216,6 @@ function levenshtein(a,b){
   return dp[n];
 }
 function pickMatchingCities(allCities, query){
-  // Only return city strings that exist in DB, but allow fuzzy matching
   const out = new Set();
   const q = (query||'').trim();
   if (!q) return out;
@@ -217,17 +223,15 @@ function pickMatchingCities(allCities, query){
   for (const c of allCities){
     const cn = normLetters(c);
     if (!cn) continue;
-    // direct contains / prefix / exact (case-insensitive)
     if (c.toLowerCase().includes(q.toLowerCase()) || cn.includes(qn) || cn.startsWith(qn)) { out.add(c); continue; }
-    // fuzzy on normalized city
     const d = levenshtein(cn, qn);
-    if (d <= 2) { out.add(c); continue; } // allow small typos
+    if (d <= 2) { out.add(c); continue; }
   }
   return out;
 }
 
 /* ------------------------------------------------------------------ */
-/* Auth helpers                                                        */
+/* Auth helpers (adds Bearer support for mobile)                      */
 /* ------------------------------------------------------------------ */
 function setAuthCookie(res, payload){
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
@@ -239,6 +243,7 @@ function setAuthCookie(res, payload){
     maxAge: 7*24*60*60*1000,
     path: '/'
   });
+  return token; // allow returning in /api/login for mobile clients
 }
 function clearAuthCookie(res){
   res.clearCookie('token', {
@@ -249,16 +254,18 @@ function clearAuthCookie(res){
     path: '/'
   });
 }
+function authFromReq(req){
+  let t = req.cookies?.token;
+  const hdr = req.headers?.authorization || '';
+  if (!t && hdr.startsWith('Bearer ')) t = hdr.slice(7);
+  if (!t) return null;
+  try { return jwt.verify(t, JWT_SECRET); } catch { return null; }
+}
 function auth(req, res, next){
-  const { token } = req.cookies || {};
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    clearAuthCookie(res);
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  const user = authFromReq(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  req.user = user;
+  next();
 }
 function requireAdmin(req, res, next){
   if (!req.user?.is_admin) return res.status(403).json({ error: 'Admin only' });
@@ -302,8 +309,8 @@ app.post('/api/register', async (req, res) => {
     const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
       .run(email, username, hash, nowIso());
     const user = { id: info.lastInsertRowid, email, username, is_admin: 0 };
-    setAuthCookie(res, user);
-    return res.json(user);
+    const token = setAuthCookie(res, user);
+    return res.json({ ...user, token });
   } catch (e) {
     const msg = String(e);
     if (msg.includes('users.email'))   return res.status(409).json({ error: 'Email already registered' });
@@ -322,8 +329,8 @@ app.post('/api/login', async (req, res) => {
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
-  setAuthCookie(res, user);
-  return res.json(user);
+  const token = setAuthCookie(res, user);
+  return res.json({ ...user, token });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -332,15 +339,9 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  const { token } = req.cookies || {};
-  if (!token) return res.json(null);
-  try {
-    const data = jwt.verify(token, JWT_SECRET);
-    return res.json({ id: data.id, email: data.email, username: data.username, is_admin: data.is_admin || 0 });
-  } catch {
-    clearAuthCookie(res);
-    return res.json(null);
-  }
+  const user = authFromReq(req);
+  if (!user) return res.json(null);
+  return res.json({ id: user.id, email: user.email, username: user.username, is_admin: user.is_admin || 0 });
 });
 
 /* ------------------------------------------------------------------ */
@@ -368,7 +369,7 @@ function validateMsgImages(images) {
 
 app.get('/api/listings', (req, res) => {
   const qRaw   = (req.query.q   || '').toString().trim().toLowerCase();
-  const locRaw = (req.query.loc || '').toString().trim(); // keep case for final compare
+  const locRaw = (req.query.loc || '').toString().trim();
   const q  = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
 
@@ -379,7 +380,6 @@ app.get('/api/listings', (req, res) => {
     JOIN users u ON u.id = l.user_id
   `;
 
-  // get base rows (apply text query if provided)
   function baseRowsForUser(userId){
     if (q) {
       return db.prepare(`${SELECT_PUBLIC}
@@ -405,14 +405,9 @@ app.get('/api/listings', (req, res) => {
 
   let rows;
   if (mine) {
-    const { token } = req.cookies || {};
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
-    let me; try { me = jwt.verify(token, JWT_SECRET); } catch {
-      clearAuthCookie(res);
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    rows = baseRowsForUser(me.id);
-    // include tags for owner
+    const user = authFromReq(req);
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    rows = baseRowsForUser(user.id);
     const withTags = rows.map(r => {
       const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
       return { ...r, tags: t ? t.split(',') : [] };
@@ -431,7 +426,6 @@ app.get('/api/listings', (req, res) => {
       const setNorm = new Set(Array.from(matches).map(c => normLetters(c)));
       rows = rows.filter(r => setNorm.has(normLetters(cityOf(r.location))));
     } else {
-      // If nothing fuzzy-matched, keep zero results (strict)
       rows = [];
     }
   }
@@ -451,10 +445,16 @@ app.post('/api/listings', auth, (req, res) => {
   const tagStr = normalizeTags(tags);
   const safeTitle = shortTitle(title) || shortTitle(description);
 
+  // Accept optional lat/lon
+  let lat = Number(req.body.lat);
+  let lon = Number(req.body.lon);
+  if (!Number.isFinite(lat)) lat = null;
+  if (!Number.isFinite(lon)) lon = null;
+
   const info = db.prepare(`
-    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, cover, safeTitle, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr);
+    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, cover, safeTitle, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon);
 
   const listingId = info.lastInsertRowid;
   const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
@@ -485,8 +485,16 @@ app.put('/api/listings/:id', auth, (req, res) => {
   const newLoc  = location ? String(location).slice(0,80) : existing.location;
   const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
 
-  db.prepare('UPDATE listings SET title=?, description=?, location=?, price=? WHERE id=?')
-    .run(newTitle, newDesc, newLoc, newPrice, id);
+  // incoming lat/lon (optional)
+  let newLat = req.body.lat;
+  let newLon = req.body.lon;
+  if (newLat !== undefined) newLat = Number(newLat);
+  if (newLon !== undefined) newLon = Number(newLon);
+  if (!Number.isFinite(newLat)) newLat = null;
+  if (!Number.isFinite(newLon)) newLon = null;
+
+  db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
+    .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
 
   if (typeof tags !== 'undefined') {
     const tagStr = normalizeTags(tags);
@@ -717,6 +725,56 @@ app.get('/api/geo/reverse', async (req, res) => {
     console.error('reverse geocode error', e);
     res.status(500).json({ error: 'server_error' });
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Nearby listings endpoint (GPS)                                      */
+/* ------------------------------------------------------------------ */
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const toRad = d => (d * Math.PI) / 180;
+  const R = 6371000; // meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+app.get('/api/listings/nearby', (req, res) => {
+  const lat0 = Number(req.query.lat);
+  const lon0 = Number(req.query.lon);
+  let radius = Number(req.query.radius_m);
+  if (!Number.isFinite(radius) || radius <= 0) radius = 150; // default ≈500 ft
+  if (!Number.isFinite(lat0) || !Number.isFinite(lon0)) {
+    return res.status(400).json({ error: 'lat/lon required' });
+  }
+
+  // quick bounding box prefilter
+  const degLat = radius / 111320;
+  const degLon = radius / (111320 * Math.cos((lat0 * Math.PI) / 180));
+  const minLat = lat0 - degLat, maxLat = lat0 + degLat;
+  const minLon = lon0 - degLon, maxLon = lon0 + degLon;
+
+  const rows = db.prepare(`
+    SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location,
+           l.price, l.created_at, l.lat, l.lon,
+           u.username as owner_username
+    FROM listings l
+    JOIN users u ON u.id = l.user_id
+    WHERE l.lat IS NOT NULL AND l.lon IS NOT NULL
+      AND l.lat BETWEEN @minLat AND @maxLat
+      AND l.lon BETWEEN @minLon AND @maxLon
+    ORDER BY l.id DESC
+  `).all({ minLat, maxLat, minLon, maxLon });
+
+  const out = [];
+  for (const r of rows) {
+    const d = haversineMeters(lat0, lon0, r.lat, r.lon);
+    if (d <= radius) out.push({ ...r, distance_m: Math.round(d) });
+  }
+  out.sort((a,b)=> (a.distance_m||1e12) - (b.distance_m||1e12)); // nearest first
+  res.json(out);
 });
 
 /* ------------------------------------------------------------------ */

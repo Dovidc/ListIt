@@ -3,6 +3,7 @@
    + global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
    + "Use my location" in listing form
    + City autocomplete + semantic location search (fuzzy), still restricted to existing listing locations
+   + GPS Nearby (button + section), stores lat/lon on listings
 */
 
 (() => {
@@ -17,6 +18,12 @@
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+  function fmtDistance(m){
+    if (!Number.isFinite(m)) return '';
+    if (m < 160) return `${Math.round(m*3.28084)} ft`;
+    const mi = m / 1609.344;
+    return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+  }
 
   // --- API (centralized 401 handling) ---
   const api = {
@@ -85,6 +92,12 @@
 
     reverseGeocode(lat, lon) {
       return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
+    },
+
+    // NEW: GPS Nearby
+    listNearby(lat, lon, radius_m = 150) {
+      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
+      return this._fetch(url, { method:'GET' });
     }
   };
 
@@ -291,7 +304,7 @@
     );
   }
 
-  // --- Listing Form (adds "Use my location") ---
+  // --- Listing Form (adds "Use my location" + lat/lon storage) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -304,6 +317,10 @@
 
     const [geoBusy, setGeoBusy] = useState(false);
     const [geoErr, setGeoErr] = useState('');
+
+    // NEW: coords
+    const [lat, setLat] = useState(draft?.lat ?? null);
+    const [lon, setLon] = useState(draft?.lon ?? null);
 
     useEffect(() => {
       (async () => {
@@ -345,6 +362,8 @@
         );
         const r = await api.reverseGeocode(coords.lat, coords.lon);
         setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+        setLat(r?.lat ?? coords.lat);
+        setLon(r?.lon ?? coords.lon);
       } catch (e) {
         setGeoErr('Could not get your location');
       } finally {
@@ -360,7 +379,8 @@
         description: description.trim(),
         location: location.trim(),
         price: Number(priceVal),
-        tags
+        tags,
+        lat, lon
       };
       if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
         alert('Fill all fields and add at least one image.');
@@ -626,6 +646,10 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // NEW: nearby state
+    const [nearby, setNearby] = useState([]);
+    const [nearBusy, setNearBusy] = useState(false);
+
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
     const mineById = useMemo(() => {
@@ -729,11 +753,28 @@
       setMine(prev => prev.filter(x => x.id !== listingId));
     }
 
+    // NEW: Nearby loader
+    async function loadNearby(){
+      try {
+        setNearBusy(true);
+        if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+        const { coords } = await new Promise((res, rej)=>
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+        );
+        const res = await api.listNearby(coords.latitude, coords.longitude, 150); // ≈500 ft
+        setNearby(res || []);
+      } catch (e) {
+        alert('Could not load nearby listings');
+      } finally {
+        setNearBusy(false);
+      }
+    }
+
     return H(React.Fragment, null,
       H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
-          H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px' } },
+          H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
               H('input', {
                 placeholder:'Search title, description, tags…',
@@ -762,9 +803,39 @@
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
                 H('option', { value:'price_desc' }, 'Price: High → Low'),
                 H('option', { value:'city' }, 'City (A → Z)')
-              )
+              ),
+              // NEW: Nearby button
+              H('button', { className:'btn', onClick: loadNearby, disabled: nearBusy }, nearBusy ? 'Finding nearby…' : 'Nearby (≈500 ft)')
             ),
             H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
+          ),
+
+          // NEW: Nearby section
+          (nearby.length > 0) && H('section', { className:'card', style:{ padding:12, marginBottom:16 } },
+            H('div', { style:{ fontWeight:800, marginBottom:8 } }, `Nearby (within ~500 ft)`),
+            H('div', { className:'grid' },
+              nearby.map(item => {
+                const mineItem = mineById[item.id];
+                return H(ListingCard, {
+                  key:item.id,
+                  item,
+                  user,
+                  canEdit: !!mineItem,
+                  onEdit:(it)=>{
+                    const rich = mineById[it.id] || it;
+                    setEditing(rich);
+                    setShowForm(true);
+                    window.scrollTo({ top:0, behavior:'smooth' });
+                  },
+                  onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+                  onMessage: startMessage,
+                  onAdminDelete: handleAdminDelete
+                });
+              })
+            ),
+            H('div', { className:'muted', style:{ marginTop:8 } },
+              'Examples: ', nearby.slice(0,3).map((n,i)=> H('span', { key:i }, (i?', ':'') + fmtDistance(n.distance_m)))
+            )
           ),
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
