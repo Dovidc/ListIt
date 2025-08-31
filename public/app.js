@@ -458,53 +458,79 @@
   }
 
   // --- Listing card ---
-  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
-    const [open, setOpen] = useState(false);
-    const [images, setImages] = useState(null);
-    const [idx, setIdx] = useState(0);
+  // --- Listing card (now shows distance if present) ---
+function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
+  const [open, setOpen] = React.useState(false);
+  const [images, setImages] = React.useState(null);
+  const [idx, setIdx] = React.useState(0);
 
-    async function openModal(start=0){
-      if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
-      setIdx(start); setOpen(true);
+  async function openModal(start=0){
+    if(!images){
+      try {
+        const arr = await api.getListingImages(item.id);
+        setImages(arr && arr.length ? arr : [item.image_data]);
+      } catch {
+        setImages([item.image_data]);
+      }
     }
-
-    const controls = [];
-    if (!user || user.id !== item.user_id) {
-      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
-    }
-    if (canEdit) {
-      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
-      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
-    }
-    if (user?.is_admin) {
-      controls.push(H('button', {
-        key:'admin-del',
-        className:'btn danger',
-        onClick: async () => {
-          if (!confirm('Admin: Delete this listing?')) return;
-          await api.adminDeleteListing(item.id);
-          onAdminDelete?.(item.id);
-        }
-      }, 'Admin Delete'));
-    }
-
-    return H('div', { className:'card' },
-      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
-      H('div', { style:{ padding:16 } },
-        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
-          H('div', null,
-            H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
-            H('div', { className:'muted' }, item.description)
-          ),
-          H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
-        ),
-        H('div', { className:'muted' }, item.location),
-        H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
-        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
-      ),
-      H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
-    );
+    setIdx(start); setOpen(true);
   }
+
+  const controls = [];
+  if (!user || user.id !== item.user_id) {
+    controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
+  }
+  if (canEdit) {
+    controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
+    controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
+  }
+  if (user?.is_admin) {
+    controls.push(H('button', {
+      key:'admin-del',
+      className:'btn danger',
+      onClick: async () => {
+        if (!confirm('Admin: Delete this listing?')) return;
+        await api.adminDeleteListing(item.id);
+        onAdminDelete?.(item.id);
+      }
+    }, 'Admin Delete'));
+  }
+
+  // small green badge style
+  const distBadge = (Number.isFinite(item?.distance_m))
+    ? H('div', {
+        style: {
+          marginTop: 4,
+          fontSize: 12,
+          fontWeight: 700,
+          color: '#059669' // emerald-600
+        }
+      }, fmtDistance(item.distance_m))
+    : null;
+
+  return H('div', { className:'card' },
+    H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } },
+      H('img', { src:item.image_data })
+    ),
+    H('div', { style:{ padding:16 } },
+      H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
+        H('div', null,
+          H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
+          H('div', { className:'muted' }, item.description)
+        ),
+        H('div', { style:{ textAlign:'right' } },
+          H('div', { style:{ fontWeight:800 } }, price(item.price)),
+          distBadge // <- green distance text (only on Nearby items)
+        )
+      ),
+      H('div', { className:'muted' }, item.location),
+      H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
+      H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
+    ),
+    H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
+  );
+}
+
 
   // --- Messages (with image attachments + attach icon) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
