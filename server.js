@@ -1,9 +1,17 @@
-/* server.js — ListIt with usernames + titles + private searchable tags + AI analysis (title, tags, suggested price)
-   + messaging (with image attachments) + admin + robust SQLite path + CORS + JWT auth
-   + reverse geocoding proxy for "Use my location"
-   + semantic/fuzzy location filter that only matches existing listing locations
-   + Bearer token support for mobile apps (Authorization: Bearer <jwt>)
-   + GPS lat/lon per listing + /api/listings/nearby endpoint
+/* server.js — ListIt (full, drop-in)
+   Features:
+   - Users (email, username, bcrypt) + JWT cookies & Bearer support
+   - Listings w/ title, description, price, location, tags (private), multi-images
+   - (NEW) Thin listings via ?noimg=1
+   - (NEW) Batch cover fetch /api/listings/covers
+   - AI analysis (title, tags, suggested price)
+   - Conversations/messages with image attachments
+   - Reverse geocoding proxy (OpenStreetMap)
+   - Fuzzy city filtering & city autocomplete support
+   - GPS lat/lon columns + /api/listings/nearby
+   - Admin delete endpoints
+   - Robust migrations for legacy DBs (adds missing columns safely)
+   - Compression + static caching
 */
 
 const express = require('express');
@@ -14,6 +22,7 @@ const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 let cors; try { cors = require('cors'); } catch {}
+let compression; try { compression = require('compression'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 
 const app = express();
@@ -41,7 +50,14 @@ if (FRONTEND_ORIGIN && cors) {
 }
 
 /* ------------------------------------------------------------------ */
-/* SQLite path handling (Render Disk friendly)                         */
+/* Compression + static caching                                       */
+/* ------------------------------------------------------------------ */
+if (compression) app.use(compression());
+const PUBLIC_DIR = path.join(__dirname, 'public');
+app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
+
+/* ------------------------------------------------------------------ */
+/* SQLite path handling                                               */
 /* ------------------------------------------------------------------ */
 const DEFAULT_DB = path.join(__dirname, 'listit.db');
 const WANTED_DB = process.env.DB_PATH || DEFAULT_DB;
@@ -68,10 +84,26 @@ try {
   console.warn('Using in-memory DB — data will not persist.');
 }
 
-/* ------------------------------------------------------------------ */
-/* Schema + migrations                                                */
-/* ------------------------------------------------------------------ */
 try { db.pragma('journal_mode = WAL'); } catch {}
+try { db.pragma('foreign_keys = ON'); } catch {}
+
+/* ------------------------------------------------------------------ */
+/* Schema + robust migrations                                         */
+/* ------------------------------------------------------------------ */
+function hasColumn(table, col) {
+  try {
+    const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+    return rows.some(r => r.name === col);
+  } catch { return false; }
+}
+function addColumnIfMissing(table, col, ddl) {
+  if (!hasColumn(table, col)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl};`);
+  }
+}
+function createIndexIfMissing(name, ddl) {
+  try { db.exec(ddl); } catch {}
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -81,30 +113,34 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL
 );
 `);
-
-try { db.prepare('SELECT username FROM users LIMIT 1').get(); }
-catch {
-  db.exec('ALTER TABLE users ADD COLUMN username TEXT;');
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);');
-}
-
-try { db.prepare('SELECT is_admin FROM users LIMIT 1').get(); }
-catch { db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;'); }
+addColumnIfMissing('users', 'username', 'TEXT');
+createIndexIfMissing('idx_users_username', 'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);');
+addColumnIfMissing('users', 'is_admin', 'INTEGER DEFAULT 0');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS listings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  image_data TEXT NOT NULL,
-  title TEXT DEFAULT "",
+  image_data TEXT,
+  title TEXT,
   description TEXT NOT NULL,
   location TEXT NOT NULL,
   price REAL NOT NULL,
   created_at TEXT NOT NULL,
-  tags TEXT DEFAULT "",
+  tags TEXT,
+  lat REAL,
+  lon REAL,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
+`);
+/* Backfill legacy schemas */
+addColumnIfMissing('listings', 'image_data', 'TEXT');       // legacy: may exist
+addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
+addColumnIfMissing('listings', 'tags', 'TEXT DEFAULT ""');
+addColumnIfMissing('listings', 'lat', 'REAL');
+addColumnIfMissing('listings', 'lon', 'REAL');
 
+db.exec(`
 CREATE TABLE IF NOT EXISTS listing_images (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   listing_id INTEGER NOT NULL,
@@ -112,8 +148,12 @@ CREATE TABLE IF NOT EXISTS listing_images (
   position INTEGER NOT NULL,
   FOREIGN KEY (listing_id) REFERENCES listings(id)
 );
-CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);
+`);
+createIndexIfMissing('idx_listing_images_listing',
+  'CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);'
+);
 
+db.exec(`
 CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   a_user_id INTEGER NOT NULL,
@@ -122,7 +162,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   created_at TEXT NOT NULL,
   UNIQUE (a_user_id, b_user_id, listing_id)
 );
-
+`);
+db.exec(`
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id INTEGER NOT NULL,
@@ -132,7 +173,6 @@ CREATE TABLE IF NOT EXISTS messages (
   FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );
 `);
-
 db.exec(`
 CREATE TABLE IF NOT EXISTS message_images (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,17 +181,17 @@ CREATE TABLE IF NOT EXISTS message_images (
   position INTEGER NOT NULL,
   FOREIGN KEY (message_id) REFERENCES messages(id)
 );
-CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);
 `);
+createIndexIfMissing('idx_msg_imgs_msg',
+  'CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);'
+);
+createIndexIfMissing('idx_listings_user', 'CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id, id);');
+createIndexIfMissing('idx_listings_created', 'CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(id DESC);');
+createIndexIfMissing('idx_listings_lat_lon', 'CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);');
 
-/* ---- Add lat/lon columns to listings (non-destructive) ---- */
-try { db.prepare('SELECT lat FROM listings LIMIT 1').get(); }
-catch {
-  db.exec('ALTER TABLE listings ADD COLUMN lat REAL;');
-  db.exec('ALTER TABLE listings ADD COLUMN lon REAL;');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);');
-}
-
+/* ------------------------------------------------------------------ */
+/* Utils                                                              */
+/* ------------------------------------------------------------------ */
 function nowIso(){ return new Date().toISOString(); }
 function normalizePair(u1, u2){
   const a = Math.min(Number(u1), Number(u2));
@@ -231,7 +271,7 @@ function pickMatchingCities(allCities, query){
 }
 
 /* ------------------------------------------------------------------ */
-/* Auth helpers (adds Bearer support for mobile)                      */
+/* Auth helpers (cookies + Bearer)                                    */
 /* ------------------------------------------------------------------ */
 function setAuthCookie(res, payload){
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
@@ -243,7 +283,7 @@ function setAuthCookie(res, payload){
     maxAge: 7*24*60*60*1000,
     path: '/'
   });
-  return token; // allow returning in /api/login for mobile clients
+  return token;
 }
 function clearAuthCookie(res){
   res.clearCookie('token', {
@@ -275,7 +315,6 @@ function requireAdmin(req, res, next){
 /* ------------------------------------------------------------------ */
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
 /* ------------------------------------------------------------------ */
 /* Optional admin bootstrap via env vars                               */
@@ -345,7 +384,7 @@ app.get('/api/me', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Listings + semantic location filter                                 */
+/* Listings (thin response + covers + fuzzy city filter)               */
 /* ------------------------------------------------------------------ */
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
@@ -372,35 +411,55 @@ app.get('/api/listings', (req, res) => {
   const locRaw = (req.query.loc || '').toString().trim();
   const q  = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
+  const noimg = req.query.noimg === '1';
 
-  const SELECT_PUBLIC = `
-    SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location, l.price, l.created_at,
-           u.username as owner_username
-    FROM listings l
-    JOIN users u ON u.id = l.user_id
+  const FIELDS_PUBLIC = `
+    l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
+    l.title, l.description, l.location, l.price, l.created_at,
+    u.username as owner_username
+  `;
+  const FIELDS_MINE = `
+    l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
+    l.title, l.description, l.location, l.price, l.created_at,
+    l.tags, u.username as owner_username
   `;
 
   function baseRowsForUser(userId){
     if (q) {
-      return db.prepare(`${SELECT_PUBLIC}
+      return db.prepare(`
+        SELECT ${FIELDS_MINE}
+        FROM listings l
+        JOIN users u ON u.id = l.user_id
         WHERE l.user_id = @uid
           AND (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
         ORDER BY l.id DESC
       `).all({ uid: userId, q });
     }
-    return db.prepare(`${SELECT_PUBLIC}
+    return db.prepare(`
+      SELECT ${FIELDS_MINE}
+      FROM listings l
+      JOIN users u ON u.id = l.user_id
       WHERE l.user_id = @uid
       ORDER BY l.id DESC
     `).all({ uid: userId });
   }
+
   function baseRowsPublic(){
     if (q) {
-      return db.prepare(`${SELECT_PUBLIC}
+      return db.prepare(`
+        SELECT ${FIELDS_PUBLIC}
+        FROM listings l
+        JOIN users u ON u.id = l.user_id
         WHERE (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
         ORDER BY l.id DESC
       `).all({ q });
     }
-    return db.prepare(`${SELECT_PUBLIC} ORDER BY l.id DESC`).all();
+    return db.prepare(`
+      SELECT ${FIELDS_PUBLIC}
+      FROM listings l
+      JOIN users u ON u.id = l.user_id
+      ORDER BY l.id DESC
+    `).all();
   }
 
   let rows;
@@ -408,11 +467,7 @@ app.get('/api/listings', (req, res) => {
     const user = authFromReq(req);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     rows = baseRowsForUser(user.id);
-    const withTags = rows.map(r => {
-      const t = db.prepare('SELECT tags FROM listings WHERE id=?').get(r.id)?.tags || '';
-      return { ...r, tags: t ? t.split(',') : [] };
-    });
-    rows = withTags;
+    rows = rows.map(r => ({ ...r, tags: (r.tags ? String(r.tags).split(',') : []) }));
   } else {
     rows = baseRowsPublic();
   }
@@ -433,19 +488,39 @@ app.get('/api/listings', (req, res) => {
   return res.json(rows);
 });
 
+/* Batch covers: returns cover image for ids */
+app.get('/api/listings/covers', (req, res) => {
+  const idsStr = String(req.query.ids || '').trim();
+  if (!idsStr) return res.json([]);
+  let ids = idsStr.split(',').map(s => Number(s)).filter(Number.isFinite);
+  ids = Array.from(new Set(ids)).slice(0, 200);
+  if (!ids.length) return res.json([]);
+  const placeholders = ids.map(()=>'?').join(',');
+  const rows = db.prepare(`
+    SELECT l.id, COALESCE(li.image_data, l.image_data) AS image_data
+    FROM listings l
+    LEFT JOIN (
+      SELECT listing_id, image_data
+      FROM listing_images
+      WHERE position = 0
+    ) li ON li.listing_id = l.id
+    WHERE l.id IN (${placeholders})
+  `).all(...ids);
+  res.json(rows);
+});
+
 app.post('/api/listings', auth, (req, res) => {
   const { images, image_data, title, description, location, price, tags } = req.body || {};
   const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
   const err = validateImages(imgs);
   if (err) return res.status(400).json({ error: err });
-  if (!description || !location || typeof price !== 'number' || Number.isNaN(price)) {
+  if (!description || !location || typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
     return res.status(400).json({ error: 'Missing fields' });
   }
   const cover = imgs[0];
   const tagStr = normalizeTags(tags);
   const safeTitle = shortTitle(title) || shortTitle(description);
 
-  // Accept optional lat/lon
   let lat = Number(req.body.lat);
   let lon = Number(req.body.lon);
   if (!Number.isFinite(lat)) lat = null;
@@ -454,7 +529,7 @@ app.post('/api/listings', auth, (req, res) => {
   const info = db.prepare(`
     INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, cover, safeTitle, String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon);
+  `).run(req.user.id, cover, String(safeTitle), String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon);
 
   const listingId = info.lastInsertRowid;
   const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
@@ -480,12 +555,11 @@ app.put('/api/listings/:id', auth, (req, res) => {
     db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(imgs[0], id);
   }
 
-  const newTitle = title !== undefined ? shortTitle(title) : existing.title;
+  const newTitle = title !== undefined ? shortTitle(title) : existing.title || '';
   const newDesc = description ? String(description).slice(0,400) : existing.description;
   const newLoc  = location ? String(location).slice(0,80) : existing.location;
   const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
 
-  // incoming lat/lon (optional)
   let newLat = req.body.lat;
   let newLon = req.body.lon;
   if (newLat !== undefined) newLat = Number(newLat);
@@ -707,6 +781,7 @@ app.get('/api/geo/reverse', async (req, res) => {
     const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
     if (geoCache.has(key)) return res.json(geoCache.get(key));
 
+    // Node 18+ has fetch; if your hosting is older, install node-fetch and import it.
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
     const resp = await fetch(url, { headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }});
     if (!resp.ok) return res.status(502).json({ error: 'geocode_failed' });
