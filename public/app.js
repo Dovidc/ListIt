@@ -1,9 +1,11 @@
-/* public/app.js — PERF EDITION
-   - Everything you had (auth, messages w/ images, AI, autocomplete, fuzzy location filter, use my location)
-   - Nearby moved to its own tab/page
-   - Debounced search
-   - Single listings fetch effect (no double calls)
-   - Fast feed: /api/listings?noimg=1 + batch /api/listings/covers
+/* public/app.js — tabs: Listings | Nearby | Messages
+   - usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
+   - admin delete-all & per-card + private tags (visible only in edit/create)
+   - global 401 handling, logout-to-browse safety
+   - Messages with image attachments + attach icon
+   - "Use my location" in listing form
+   - City autocomplete + semantic location search (fuzzy), restricted to existing listing locations
+   - Nearby tab (separate page) with radius selector, uses /api/listings/nearby
 */
 
 (() => {
@@ -23,12 +25,6 @@
     if (m < 160) return `${Math.round(m*3.28084)} ft`;
     const mi = m / 1609.344;
     return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
-  }
-  // tiny debounce
-  function useDebounced(value, delay=250){
-    const [v, setV] = useState(value);
-    useEffect(()=>{ const t = setTimeout(()=>setV(value), delay); return ()=>clearTimeout(t); }, [value, delay]);
-    return v;
   }
 
   // --- API (centralized 401 handling) ---
@@ -57,16 +53,16 @@
       try { await this._fetch('/api/logout', { method:'POST' }); } catch {}
     },
 
-    async listAll(q, loc, noimg=true) {
+    async listAll(q, loc, { noimg=false } = {}) {
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
-      if (noimg) params.set('noimg', '1'); // perf: thin JSON (no images)
+      if (noimg) params.set('noimg', '1');
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
       const r = await fetch(url);
       return r.json();
     },
-    listMine()      { return this._fetch('/api/listings?mine=1&noimg=1', { method:'GET' }); },
+    listMine()      { return this._fetch('/api/listings?mine=1', { method:'GET' }); },
     createListing(payload) {
       return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
     },
@@ -75,9 +71,11 @@
     },
     deleteListing(id) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }); },
 
+    // Admin
     adminDeleteListing(id) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }); },
     adminDeleteAll()       { return this._fetch('/api/admin/listings', { method:'DELETE' }); },
 
+    // Messaging
     ensureConversation({ with_user_id, listing_id }) {
       return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) });
     },
@@ -91,6 +89,7 @@
       });
     },
 
+    // Images
     getListingImages(id){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }); },
 
     // AI
@@ -98,6 +97,7 @@
       return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
     },
 
+    // Geocode
     reverseGeocode(lat, lon) {
       return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
     },
@@ -105,13 +105,6 @@
     // Nearby
     listNearby(lat, lon, radius_m = 150) {
       const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
-      return this._fetch(url, { method:'GET' });
-    },
-
-    // NEW: batch covers for fast grid paint
-    getCovers(ids){
-      if (!ids || !ids.length) return Promise.resolve([]);
-      const url = `/api/listings/covers?ids=${ids.join(',')}`;
       return this._fetch(url, { method:'GET' });
     }
   };
@@ -464,18 +457,14 @@
     );
   }
 
-  // --- Listing card (uses _cover filled by batch covers)
+  // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
 
-    const cover = item.image_data || item._cover || '';
-
     async function openModal(start=0){
-      if(!images){
-        try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [cover]); } catch { setImages([cover]); }
-      }
+      if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
       setIdx(start); setOpen(true);
     }
 
@@ -500,9 +489,7 @@
     }
 
     return H('div', { className:'card' },
-      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in', display:'grid', placeItems:'center' } },
-        cover ? H('img', { src:cover }) : H('div', { className:'muted' }, 'loading…')
-      ),
+      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
       H('div', { style:{ padding:16 } },
         H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
           H('div', null,
@@ -515,7 +502,7 @@
         H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
         H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
       ),
-      H(Lightbox, { open, images: images || [cover].filter(Boolean), index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
+      H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
     );
   }
 
@@ -636,6 +623,12 @@
           }),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
+        imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
+          ...imgFiles.map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
+            H('img', { src, style:{ width:48, height:48, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
+            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:-6, right:-6, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
+          ))
+        ),
         H(Lightbox, {
           open: lb.open,
           images: lb.images,
@@ -647,41 +640,109 @@
     );
   }
 
-  // --- Nearby Page (separate tab)
+  // --- Nearby Page (separate tab, with radius selector) ---
   function NearbyPage({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete }) {
+    const [coords, setCoords] = useState(null);          // { lat, lon }
     const [nearby, setNearby] = useState([]);
     const [nearBusy, setNearBusy] = useState(false);
-    useEffect(()=>{ (async ()=>{
+    const [err, setErr] = useState('');
+
+    // radius state in meters (defaults to ~500 ft)
+    const FT_TO_M = 0.3048;
+    const MI_TO_M = 1609.344;
+    const [radiusM, setRadiusM] = useState(Math.round(500 * FT_TO_M));
+
+    const loadNearby = React.useCallback(async (lat, lon, rM) => {
+      setNearBusy(true); setErr('');
       try {
-        setNearBusy(true);
-        if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-        const { coords } = await new Promise((res, rej)=>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-        );
-        const res = await api.listNearby(coords.latitude, coords.longitude, 150); // ≈500 ft
+        const res = await api.listNearby(lat, lon, rM);
         setNearby(res || []);
       } catch (e) {
-        alert('Could not load nearby listings');
+        setErr('Could not load nearby listings');
+        setNearby([]);
       } finally {
         setNearBusy(false);
       }
-    })(); }, []);
+    }, []);
+
+    // get geolocation once, then fetch
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          if (!('geolocation' in navigator)) { setErr('Geolocation not supported'); return; }
+          const { coords } = await new Promise((res, rej)=>
+            navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+          );
+          if (cancelled) return;
+          const c = { lat: coords.latitude, lon: coords.longitude };
+          setCoords(c);
+          await loadNearby(c.lat, c.lon, radiusM);
+        } catch (e) {
+          if (!cancelled) setErr('Could not get your location');
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []); // run once
+
+    // refetch when radius changes (and we already have coords)
+    useEffect(() => {
+      if (!coords) return;
+      loadNearby(coords.lat, coords.lon, radiusM);
+    }, [radiusM, coords, loadNearby]);
+
+    function setFeet(ft){ setRadiusM(Math.round(ft * FT_TO_M)); }
+    function setMiles(mi){ setRadiusM(Math.round(mi * MI_TO_M)); }
+
     return H(React.Fragment, null,
-      H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
-        H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
-          H('div', { className:'muted' }, nearBusy ? 'Finding nearby…' : `Nearby (within ~500 ft)`),
-        )
+      H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap', alignItems:'center' } },
+        H('div', { className:'row', style:{ gap:10, flexWrap:'wrap', alignItems:'center' } },
+          H('div', { style:{ fontWeight:800 } }, 'Nearby'),
+          H('span', { className:'muted' }, 'Filter radius:'),
+          // Preset buttons
+          H('div', { className:'row', style:{ gap:6, flexWrap:'wrap' } },
+            H('button', { className:'btn', onClick:()=>setFeet(500)         }, '500 ft'),
+            H('button', { className:'btn', onClick:()=>setMiles(0.25)       }, '¼ mi'),
+            H('button', { className:'btn', onClick:()=>setMiles(0.5)        }, '½ mi'),
+            H('button', { className:'btn', onClick:()=>setMiles(1)          }, '1 mi')
+          ),
+          // Custom numeric input (in feet)
+          H('div', { className:'row', style:{ gap:6, alignItems:'center' } },
+            H('input', {
+              style:{ width:100 },
+              inputMode:'numeric',
+              placeholder:'feet…',
+              value: Math.round(radiusM / FT_TO_M) || '',
+              onChange: e => {
+                const val = Number(String(e.target.value).replace(/[^\d]/g,''));
+                if (Number.isFinite(val) && val > 0) setFeet(val);
+              }
+            }),
+            H('span', { className:'muted' }, 'feet')
+          ),
+          nearBusy && H('span', { className:'muted' }, 'Searching…'),
+          (!nearBusy && coords) && H('span', { className:'muted' },
+            ` • Centered near you • Radius ${fmtDistance(radiusM)}`
+          )
+        ),
+        err && H('span', { className:'muted', style:{ color:'#b91c1c' } }, err)
       ),
+
       (nearby.length > 0)
         ? H('section', { className:'grid' },
             nearby.map(item =>
               H(ListingCard, {
                 key:item.id, item, user, canEdit: !!mineById[item.id],
-                onEdit, onDelete, onMessage, onAdminDelete
+                onEdit:(it)=>onEdit(it),
+                onDelete:(it)=>onDelete(it),
+                onMessage:(it)=>onMessage(it),
+                onAdminDelete:onAdminDelete
               })
             )
           )
-        : H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, nearBusy ? 'Finding nearby…' : 'No nearby items found.')
+        : H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } },
+            nearBusy ? 'Finding nearby…' : 'No items within this radius yet.'
+          )
     );
   }
 
@@ -708,50 +769,40 @@
       return map;
     }, [mine]);
 
-    const dq = useDebounced(query, 250);
-    const dloc = useDebounced(locationQuery, 250);
+    async function reload(){
+      const [a, m] = await Promise.all([
+        api.listAll(query.trim() || '', locationQuery.trim() || '', { noimg:false }),
+        user ? api.listMine() : Promise.resolve([])
+      ]);
+      setAll(a); setMine(m||[]);
+    }
+    useEffect(()=>{ reload(); }, [user?.id, locationQuery]);
 
-    // SINGLE EFFECT: listAll (no images) + listMine, then batch covers
     useEffect(() => {
       (async () => {
-        const [a, m] = await Promise.all([
-          api.listAll(dq.trim() || '', dloc.trim() || '', true),
-          user ? api.listMine() : Promise.resolve([])
-        ]);
-        setAll(a || []);
-        setMine(m || []);
-        // batch covers
-        const ids = (a || []).map(x => x.id);
-        if (ids.length) {
-          try {
-            const covers = await api.getCovers(ids);
-            const byId = Object.create(null);
-            (covers || []).forEach(c => { byId[c.id] = c.image_data; });
-            setAll(prev => prev.map(x => byId[x.id] ? { ...x, _cover: byId[x.id] } : x));
-          } catch {}
-        }
+        const a = await api.listAll(query.trim() || '', locationQuery.trim() || '');
+        setAll(a);
       })();
-    }, [user?.id, dq, dloc]);
+    }, [query, locationQuery]);
 
-    // unread count polling (slower interval)
+    async function recomputeUnread() {
+      try {
+        if (!user) { setUnreadCount(0); return; }
+        const convos = await api.listConversations();
+        const seen = loadSeen(user.id);
+        const n = (convos || []).filter(c =>
+          c.last_message_id &&
+          c.last_message_sender_id &&
+          c.last_message_sender_id !== user.id &&
+          (!seen[c.id] || seen[c.id] < c.last_message_id)
+        ).length;
+        setUnreadCount(n);
+      } catch {}
+    }
     useEffect(() => {
       let t;
-      const run = async () => {
-        try {
-          if (!user) { setUnreadCount(0); return; }
-          const convos = await api.listConversations();
-          const seen = loadSeen(user.id);
-          const n = (convos || []).filter(c =>
-            c.last_message_id &&
-            c.last_message_sender_id &&
-            c.last_message_sender_id !== user.id &&
-            (!seen[c.id] || seen[c.id] < c.last_message_id)
-          ).length;
-          setUnreadCount(n);
-        } catch {}
-      };
-      run();
-      t = setInterval(run, 7000);
+      recomputeUnread();
+      t = setInterval(recomputeUnread, 3000);
       return () => clearInterval(t);
     }, [user?.id]);
 
@@ -777,7 +828,7 @@
       return list;
     }, [all, sort]);
 
-    // distinct city options for autocomplete
+    // derive distinct city options for autocomplete
     const cityOptions = useMemo(() => {
       const set = new Set();
       (all || []).forEach(l => {
@@ -803,7 +854,7 @@
       if (!map[convoId] || map[convoId] < lastMsgId) {
         map[convoId] = lastMsgId;
         saveSeen(user.id, map);
-        // unread recompute will happen by interval; no need to force
+        setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
       }
     }
 
@@ -819,6 +870,7 @@
     return H(React.Fragment, null,
       H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
       H('main', { className:'container' },
+
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
@@ -849,8 +901,7 @@
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
                 H('option', { value:'price_desc' }, 'Price: High → Low'),
                 H('option', { value:'city' }, 'City (A → Z)')
-              ),
-              H('button', { className:'btn', onClick: ()=> setTab('nearby') }, 'Nearby')
+              )
             ),
             H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
           ),
@@ -859,7 +910,7 @@
             H(ListingForm, {
               draft: editing,
               onCancel:()=>setShowForm(false),
-              onSaved: async ()=>{ setShowForm(false); setEditing(null); /* data will refresh on next effect tick */ }
+              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); }
             })
           ),
 
@@ -877,7 +928,7 @@
                   setShowForm(true);
                   window.scrollTo({ top:0, behavior:'smooth' });
                 },
-                onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); handleAdminDelete(it.id); } },
+                onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
                 onMessage: startMessage,
                 onAdminDelete: handleAdminDelete
               });
@@ -890,15 +941,14 @@
           H(NearbyPage, {
             user,
             mineById,
-            onEdit:(it)=>{ const rich = mineById[it.id] || it; setEditing(rich); setShowForm(true); window.scrollTo({ top:0, behavior:'smooth' }); },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); handleAdminDelete(it.id); } },
-            onMessage: async (item)=> {
-              if(!user){ alert('Log in to message a seller.'); return; }
-              if(user.id === item.user_id){ alert('This is your listing.'); return; }
-              const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-              setActiveConvoId(convo.id);
-              setTab('messages');
+            onEdit:(it)=>{
+              const rich = mineById[it.id] || it;
+              setEditing(rich);
+              setShowForm(true);
+              window.scrollTo({ top:0, behavior:'smooth' });
             },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+            onMessage: (it)=> startMessage(it),
             onAdminDelete: handleAdminDelete
           }),
 
