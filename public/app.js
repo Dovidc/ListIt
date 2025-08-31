@@ -3,7 +3,7 @@
    + global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
    + "Use my location" in listing form
    + City autocomplete + semantic location search (fuzzy), still restricted to existing listing locations
-   + GPS Nearby (button + section), stores lat/lon on listings
+   + GPS Nearby (as its own tab/page), stores lat/lon on listings
 */
 
 (() => {
@@ -94,7 +94,7 @@
       return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
     },
 
-    // NEW: GPS Nearby
+    // NEW: GPS Nearby endpoint (used by the Nearby tab/page)
     listNearby(lat, lon, radius_m = 150) {
       const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
       return this._fetch(url, { method:'GET' });
@@ -160,7 +160,7 @@
     function onFocus() { if (list.length) setOpen(true); }
     function onBlur() { setTimeout(() => setOpen(false), 100); }
 
-    return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
+    return H('div', { ref: boxRef, className:'city-autocomplete', style: { position:'relative', display:'flex', gap:8 } },
       H('input', {
         placeholder:'City…',
         value: value,
@@ -231,6 +231,7 @@
         ),
         H('nav', { className: 'row' },
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+          H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
           messagesBtn
         ),
         authArea
@@ -395,7 +396,7 @@
 
       H('div', { className:'row', style:{ gap:8 } },
         H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
-        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        aiErr && H('span', { className:'muted', style: { color:'#b91c1c' } }, aiErr),
         H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
       ),
 
@@ -614,12 +615,6 @@
           }),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
-        imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
-          ...imgFiles.map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src, style:{ width:48, height:48, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
-            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:-6, right:-6, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
-          ))
-        ),
         H(Lightbox, {
           open: lb.open,
           images: lb.images,
@@ -628,6 +623,73 @@
           onIndex: (i)=> setLb(s=>({ ...s, index:i }))
         })
       )
+    );
+  }
+
+  // --- Nearby Page (separate tab) ---
+  function NearbyPage({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete }) {
+    const [nearby, setNearby] = React.useState([]);
+    const [busy, setBusy] = React.useState(false);
+    const [err, setErr] = React.useState('');
+    const [radius, setRadius] = React.useState(150); // meters: 150≈500ft
+
+    async function load(r = radius) {
+      setErr(''); setBusy(true);
+      try {
+        if (!('geolocation' in navigator)) { setErr('Geolocation not supported on this device.'); return; }
+        const { coords } = await new Promise((res, rej)=>
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+        );
+        const res = await api.listNearby(coords.latitude, coords.longitude, r);
+        setNearby(res || []);
+      } catch (e) {
+        setErr('Could not load nearby listings.');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    // load once on mount
+    React.useEffect(() => { load(radius); /* eslint-disable-next-line */ }, []);
+
+    return H(React.Fragment, null,
+      H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
+        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' } },
+          H('div', { style:{ fontWeight:800 } }, 'Nearby items'),
+          H('div', { className:'row', style:{ gap:8 } },
+            H('select', {
+              value: radius,
+              onChange: e => { const r = Number(e.target.value); setRadius(r); load(r); }
+            },
+              H('option', { value:150 },  '≈ 500 ft'),
+              H('option', { value:300 },  '≈ 1,000 ft'),
+              H('option', { value:800 },  '≈ 0.5 mi'),
+              H('option', { value:1600 }, '≈ 1.0 mi')
+            ),
+            H('button', { className:'btn', onClick:()=>load(radius), disabled:busy }, busy ? 'Locating…' : 'Refresh')
+          )
+        ),
+        err && H('div', { className:'muted', style:{ color:'#b91c1c', marginTop:6 } }, err),
+        H('div', { className:'muted', style:{ marginTop:6 } }, 'Shows items with GPS saved within the selected radius.')
+      ),
+      (nearby.length > 0)
+        ? H('section', { className:'grid' },
+            nearby.map(item => {
+              const mineItem = mineById[item.id];
+              return H(ListingCard, {
+                key:item.id,
+                item,
+                user,
+                canEdit: !!mineItem,
+                onEdit:(it)=>onEdit(it),
+                onDelete:(it)=>onDelete(it),
+                onMessage:onMessage,
+                onAdminDelete:onAdminDelete
+              });
+            })
+          )
+        : H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } },
+            busy ? 'Searching nearby…' : 'No nearby listings yet.')
     );
   }
 
@@ -645,10 +707,6 @@
 
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
-
-    // NEW: nearby state
-    const [nearby, setNearby] = useState([]);
-    const [nearBusy, setNearBusy] = useState(false);
 
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
@@ -753,28 +811,11 @@
       setMine(prev => prev.filter(x => x.id !== listingId));
     }
 
-    // NEW: Nearby loader
-    async function loadNearby(){
-      try {
-        setNearBusy(true);
-        if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-        const { coords } = await new Promise((res, rej)=>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-        );
-        const res = await api.listNearby(coords.latitude, coords.longitude, 150); // ≈500 ft
-        setNearby(res || []);
-      } catch (e) {
-        alert('Could not load nearby listings');
-      } finally {
-        setNearBusy(false);
-      }
-    }
-
     return H(React.Fragment, null,
       H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
-          H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
+          H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
               H('input', {
                 placeholder:'Search title, description, tags…',
@@ -804,38 +845,10 @@
                 H('option', { value:'price_desc' }, 'Price: High → Low'),
                 H('option', { value:'city' }, 'City (A → Z)')
               ),
-              // NEW: Nearby button
-              H('button', { className:'btn', onClick: loadNearby, disabled: nearBusy }, nearBusy ? 'Finding nearby…' : 'Nearby (≈500 ft)')
+              // Optional quick nav to nearby from the toolbar:
+              H('button', { className:'btn', onClick: ()=> setTab('nearby') }, 'Nearby')
             ),
             H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
-          ),
-
-          // NEW: Nearby section
-          (nearby.length > 0) && H('section', { className:'card', style:{ padding:12, marginBottom:16 } },
-            H('div', { style:{ fontWeight:800, marginBottom:8 } }, `Nearby (within ~500 ft)`),
-            H('div', { className:'grid' },
-              nearby.map(item => {
-                const mineItem = mineById[item.id];
-                return H(ListingCard, {
-                  key:item.id,
-                  item,
-                  user,
-                  canEdit: !!mineItem,
-                  onEdit:(it)=>{
-                    const rich = mineById[it.id] || it;
-                    setEditing(rich);
-                    setShowForm(true);
-                    window.scrollTo({ top:0, behavior:'smooth' });
-                  },
-                  onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-                  onMessage: startMessage,
-                  onAdminDelete: handleAdminDelete
-                });
-              })
-            ),
-            H('div', { className:'muted', style:{ marginTop:8 } },
-              'Examples: ', nearby.slice(0,3).map((n,i)=> H('span', { key:i }, (i?', ':'') + fmtDistance(n.distance_m)))
-            )
           ),
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
@@ -868,6 +881,31 @@
           ),
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
         ),
+
+        (tab==='nearby') &&
+          H(NearbyPage, {
+            user,
+            mineById,
+            onEdit:(it)=>{
+              const rich = mineById[it.id] || it;
+              setEditing(rich);
+              setShowForm(true);
+              window.scrollTo({ top:0, behavior:'smooth' });
+            },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+            onMessage: async (item) => {
+              if(!user){ alert('Log in to message a seller.'); return; }
+              if(user.id === item.user_id){ alert('This is your listing.'); return; }
+              const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
+              setActiveConvoId(convo.id);
+              setTab('messages');
+            },
+            onAdminDelete: (listingId) => {
+              setAll(prev => prev.filter(x => x.id !== listingId));
+              setMine(prev => prev.filter(x => x.id !== listingId));
+            }
+          }),
+
         (tab==='messages') &&
           (user
             ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
