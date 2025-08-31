@@ -99,15 +99,21 @@ label { font-weight: 600; }
 /* Keep content visible above mobile keyboards */
 main { padding-bottom: 16px; }
 
-/* === Nearby dropdown compaction === */
-section.card select.btn {
-  padding: 6px 10px !important;
-  min-height: 34px !important;
-  border-radius: 12px !important;
-  width: auto !important;
+/* Nearby filter area tighter on mobile */
+.nearby-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
 }
-section.card input[placeholder="feet"] {
-  width: 88px !important;
-  min-height: 34px !important;
-  padding: 6px 10px !important;
+.nearby-filter label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.nearby-filter select {
+  font-size: 14px;
+  padding: 6px 8px;
+  min-height: 32px;
+  border-radius: 12px;
+  width: auto;
 }
