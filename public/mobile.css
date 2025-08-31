@@ -1,0 +1,66 @@
+/* public/mobile.css */
+/* Mobile-only tweaks. Desktop styles remain untouched. */
+
+/* Base readability & tap targets */
+html, body { font-size: 16px; }
+* { -webkit-text-size-adjust: 100%; }
+.container { padding: 12px; }
+
+/* Layout */
+.grid { grid-template-columns: 1fr; gap: 14px; }
+.split { flex-direction: column; gap: 12px; }
+.sidebar { width: 100%; max-width: 100%; }
+
+/* Header: stack neatly */
+header .container { display: grid; gap: 10px; grid-template-columns: 1fr; }
+header nav, header .row { flex-wrap: wrap; gap: 8px; }
+header .muted { display: none; } /* optional */
+
+/* Inputs & buttons */
+input, textarea, select, .btn {
+  font-size: 16px;
+  min-height: 44px;
+  padding: 12px 14px;
+  width: 100%;
+}
+.message { font-size: 15px; max-width: 92%; }
+
+/* Cards */
+.card { border-radius: 20px; }
+.aspect { padding-top: 62%; }     /* slightly taller cover image */
+.card .row { gap: 8px; }
+
+/* Search & controls */
+header input { min-width: 140px; }
+select { width: auto; }           /* let select size to content */
+
+/* Nearby header controls */
+.row { flex-wrap: wrap; }         /* allow control wrap on small width */
+
+/* Lightbox (same behavior, ensured on phones) */
+.modal-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 95vw;
+  max-height: 95vh;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.modal-inner img {
+  max-width: 95vw;
+  max-height: 95vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.thumbs { -webkit-overflow-scrolling: touch; }
+.arrow { padding: 8px 12px; }
+
+/* Forms */
+textarea { min-height: 100px; }
+label { font-weight: 600; }
+
+/* Keep content visible above mobile keyboards */
+main { padding-bottom: 16px; }
