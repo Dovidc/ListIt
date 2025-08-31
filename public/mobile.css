@@ -98,3 +98,16 @@ label { font-weight: 600; }
 
 /* Keep content visible above mobile keyboards */
 main { padding-bottom: 16px; }
+
+/* === Nearby dropdown compaction === */
+section.card select.btn {
+  padding: 6px 10px !important;
+  min-height: 34px !important;
+  border-radius: 12px !important;
+  width: auto !important;
+}
+section.card input[placeholder="feet"] {
+  width: 88px !important;
+  min-height: 34px !important;
+  padding: 6px 10px !important;
+}

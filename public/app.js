@@ -1,13 +1,3 @@
-/* public/app.js — tabs: Listings | Nearby | Messages
-   - usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
-   - admin delete-all & per-card + private tags (visible only in edit/create)
-   - global 401 handling, logout-to-browse safety
-   - Messages with image attachments + attach icon
-   - "Use my location" in listing form
-   - City autocomplete + semantic location search (fuzzy), restricted to existing listing locations
-   - Nearby tab (separate page) with radius selector, uses /api/listings/nearby
-*/
-
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -26,6 +16,15 @@
     const mi = m / 1609.344;
     return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
   }
+
+  // --- Distance helpers for Nearby dropdown ---
+  function mi(n){ return Math.round(n * 5280); } // miles -> feet (int)
+  const PRESET_RADII = [
+    { label: '500 ft', value: 500 },
+    { label: '¼ mi',  value: mi(0.25) },
+    { label: '½ mi',  value: mi(0.5) },
+    { label: '1 mi',  value: mi(1) },
+  ];
 
   // --- API (centralized 401 handling) ---
   const api = {
@@ -53,11 +52,10 @@
       try { await this._fetch('/api/logout', { method:'POST' }); } catch {}
     },
 
-    async listAll(q, loc, { noimg=false } = {}) {
+    async listAll(q, loc) {
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
-      if (noimg) params.set('noimg', '1');
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
       const r = await fetch(url);
       return r.json();
@@ -71,11 +69,9 @@
     },
     deleteListing(id) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }); },
 
-    // Admin
     adminDeleteListing(id) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }); },
     adminDeleteAll()       { return this._fetch('/api/admin/listings', { method:'DELETE' }); },
 
-    // Messaging
     ensureConversation({ with_user_id, listing_id }) {
       return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) });
     },
@@ -89,20 +85,17 @@
       });
     },
 
-    // Images
     getListingImages(id){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }); },
 
-    // AI
     aiAnalyze({ images, hint }) {
       return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
     },
 
-    // Geocode
     reverseGeocode(lat, lon) {
       return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
     },
 
-    // Nearby
+    // GPS Nearby
     listNearby(lat, lon, radius_m = 150) {
       const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
       return this._fetch(url, { method:'GET' });
@@ -198,245 +191,6 @@
     );
   }
 
-  // --- Header ---
-  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
-    const authArea = user
-      ? H('div', { className: 'row', style: { gap: 8 } },
-          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
-          user.is_admin && H('button', {
-            className: 'btn danger',
-            onClick: async () => {
-              if (confirm('Delete ALL listings? This cannot be undone.')) {
-                await onAdminDeleteAll?.();
-              }
-            }
-          }, 'Admin: Delete ALL'),
-          H('button', { className: 'btn', onClick: async () => {
-            await api.logout();
-            setUser(null);
-            onNav('browse');   // immediate bounce
-          } }, 'Log out')
-        )
-      : H(AuthButtons, { setUser });
-
-    const messagesBtn = H('button', {
-      className: `btn ${active==='messages'?'primary':''}`,
-      style: { position: 'relative' },
-      onClick: () => {
-        if (!user) { alert('Log in to view messages.'); return; }
-        onNav('messages');
-      }
-    }, 'Messages',
-      (unreadCount > 0) &&
-        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
-    );
-
-    return H('header', null,
-      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 12 } },
-          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
-          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
-        ),
-        H('nav', { className: 'row' },
-          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-          H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-          messagesBtn
-        ),
-        authArea
-      )
-    );
-  }
-
-  function AuthButtons({ setUser }) {
-    const [mode, setMode] = useState('login');
-    const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [err, setErr] = useState('');
-
-    async function go() {
-      setErr('');
-      try {
-        if (mode === 'login') {
-          const u = await api.login(email, password);
-          setUser(u); setEmail(''); setPassword('');
-        } else {
-          const u = await api.register({ username, email, password });
-          setUser(u); setUsername(''); setEmail(''); setPassword('');
-        }
-      } catch(e){ setErr(e.message); }
-    }
-
-    return H('div', { className: 'row', style: { gap: 8 } },
-      H('div', { className: 'row', style: { gap: 6 } },
-        H('button', { className: `btn ${mode==='login'?'primary':''}`, onClick: () => setMode('login') }, 'Log in'),
-        H('button', { className: `btn ${mode==='register'?'primary':''}`, onClick: () => setMode('register') }, 'Register')
-      ),
-      err && H('span', { className: 'muted', style: { color: '#be123c' } }, err),
-      mode==='register' && H('input', { placeholder: 'Username', value: username, onChange: e => setUsername(e.target.value) }),
-      H('input', { placeholder: 'Email', value: email, onChange: e => setEmail(e.target.value) }),
-      H('input', { placeholder: 'Password', type: 'password', value: password, onChange: e => setPassword(e.target.value) }),
-      H('button', { className: 'btn primary', onClick: go }, mode==='login' ? 'Log in' : 'Create account')
-    );
-  }
-
-  // --- Multi Image Picker for listings ---
-  function MultiImagePicker({ values, onChange }) {
-    const ref = useRef();
-    const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-
-    async function pick(e) {
-      const files = Array.from(e.target.files || []);
-      const newImgs = [];
-      for (const f of files) {
-        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
-        newImgs.push(await toB64(f));
-      }
-      onChange([...(values||[]), ...newImgs]);
-      ref.current.value = '';
-    }
-    function removeAt(i) {
-      const next = [...values]; next.splice(i,1); onChange(next);
-    }
-
-    return H('div', null,
-      H('div', { className:'row' },
-        H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
-        H('span', { className:'muted' }, `${(values||[]).length} image(s)`)
-      ),
-      H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
-        ...(values||[]).map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
-          H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
-          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
-        ))
-      )
-    );
-  }
-
-  // --- Listing Form (adds "Use my location" + lat/lon storage) ---
-  function ListingForm({ draft, onCancel, onSaved }) {
-    const [images, setImages] = useState([]);
-    const [title, setTitle] = useState(draft?.title || '');
-    const [description, setDescription] = useState(draft?.description || '');
-    const [location, setLocation] = useState(draft?.location || '');
-    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
-    const [aiBusy, setAiBusy] = useState(false);
-    const [aiErr, setAiErr] = useState('');
-
-    const [geoBusy, setGeoBusy] = useState(false);
-    const [geoErr, setGeoErr] = useState('');
-
-    // NEW: coords
-    const [lat, setLat] = useState(draft?.lat ?? null);
-    const [lon, setLon] = useState(draft?.lon ?? null);
-
-    useEffect(() => {
-      (async () => {
-        if (draft?.id) {
-          try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
-          catch { setImages([draft.image_data].filter(Boolean)); }
-        } else { setImages([]); }
-      })();
-    }, [draft?.id]);
-
-    async function runAI(){
-      setAiErr(''); setAiBusy(true);
-      try {
-        if (!images.length) { alert('Add at least one image first.'); return; }
-        const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
-        if (res.title) setTitle(res.title);
-        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
-        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
-          setPriceVal(String(res.suggested_price));
-        }
-      } catch (e) {
-        setAiErr(e.message || 'AI failed');
-      } finally {
-        setAiBusy(false);
-      }
-    }
-
-    async function useMyLocation() {
-      setGeoErr('');
-      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
-      setGeoBusy(true);
-      try {
-        const coords = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(
-            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-            err => rej(err),
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-          )
-        );
-        const r = await api.reverseGeocode(coords.lat, coords.lon);
-        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
-        setLat(r?.lat ?? coords.lat);
-        setLon(r?.lon ?? coords.lon);
-      } catch (e) {
-        setGeoErr('Could not get your location');
-      } finally {
-        setGeoBusy(false);
-      }
-    }
-
-    async function submit(e){
-      e.preventDefault();
-      const payload = {
-        images,
-        title: title.trim(),
-        description: description.trim(),
-        location: location.trim(),
-        price: Number(priceVal),
-        tags,
-        lat, lon
-      };
-      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
-        alert('Fill all fields and add at least one image.');
-        return;
-      }
-      if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
-      onSaved?.();
-    }
-
-    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
-      H(MultiImagePicker, { values:images, onChange:setImages }),
-
-      H('div', { className:'row', style:{ gap:8 } },
-        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
-        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
-      ),
-
-      H('label', null, 'Title'),
-      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
-
-      H('label', null, 'Description'),
-      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
-
-      H('label', null, 'Location'),
-      H('div', { className:'row', style:{ gap:8 } },
-        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
-        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
-        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
-      ),
-
-      H('label', null, 'Price'),
-      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
-
-      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
-        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
-        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
-        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
-      ),
-
-      H('div', { className:'row' },
-        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
-        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
-      )
-    );
-  }
-
   // --- Lightbox ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
@@ -457,72 +211,98 @@
     );
   }
 
-  // --- Listing card ---
-  // --- Listing card (now shows distance if present) ---
-// --- Listing card (distance shown under location) ---
-function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
-  const [open, setOpen] = React.useState(false);
-  const [images, setImages] = React.useState(null);
-  const [idx, setIdx] = React.useState(0);
-
-  async function openModal(start=0){
-    if(!images){
-      try {
-        const arr = await api.getListingImages(item.id);
-        setImages(arr && arr.length ? arr : [item.image_data]);
-      } catch {
-        setImages([item.image_data]);
+  // --- RadiusPicker (new) ---
+  function RadiusPicker({ radiusFt, setRadiusFt, onApply }) {
+    const presetValue = PRESET_RADII.find(p => p.value === radiusFt)?.value || '';
+    function onPresetChange(e){
+      const v = Number(e.target.value || '0');
+      if (Number.isFinite(v) && v > 0) {
+        setRadiusFt(v);
+        onApply?.(v);
       }
     }
-    setIdx(start); setOpen(true);
-  }
-
-  const controls = [];
-  if (!user || user.id !== item.user_id) {
-    controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
-  }
-  if (canEdit) {
-    controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
-    controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
-  }
-  if (user?.is_admin) {
-    controls.push(H('button', {
-      key:'admin-del',
-      className:'btn danger',
-      onClick: async () => {
-        if (!confirm('Admin: Delete this listing?')) return;
-        await api.adminDeleteListing(item.id);
-        onAdminDelete?.(item.id);
-      }
-    }, 'Admin Delete'));
-  }
-
-  // distance line (only if provided by /nearby)
-  const hasDistance = Number.isFinite(item?.distance_m);
-  const distanceLine = hasDistance
-    ? H('div', { style: { color:'#059669', fontWeight:700, fontSize:12, marginTop:2 } }, fmtDistance(item.distance_m))
-    : null;
-
-  return H('div', { className:'card' },
-    H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
-    H('div', { style:{ padding:16 } },
-      H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
-        H('div', null,
-          H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
-          H('div', { className:'muted' }, item.description)
-        ),
-        H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
+    function onManualChange(e){
+      const v = Number((e.target.value || '').replace(/[^0-9]/g,''));
+      setRadiusFt(v || 0);
+    }
+    function onManualBlur(){
+      if (radiusFt > 0) onApply?.(radiusFt);
+    }
+    return H('div', { className:'row', style:{ gap:8, alignItems:'center', flexWrap:'wrap' } },
+      H('span', { style:{ fontWeight:800, fontSize:22 } }, 'Nearby'),
+      H('span', { className:'muted', style:{ marginLeft:6 } }, 'Filter radius:'),
+      H('select', {
+        value: presetValue,
+        onChange: onPresetChange,
+        className:'btn',
+        style:{ width:'auto', minHeight:36, padding:'6px 10px' }
+      },
+        H('option', { value:'' }, 'Custom…'),
+        ...PRESET_RADII.map(p => H('option', { key:p.value, value:p.value }, p.label))
       ),
-      H('div', { className:'muted' }, item.location),
-      distanceLine, // <<— green distance right under the location
-      H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
-      H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
-    ),
-    H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
-  );
-}
+      H('input', {
+        value: String(radiusFt || ''),
+        inputMode:'numeric',
+        onChange: onManualChange,
+        onBlur: onManualBlur,
+        placeholder:'feet',
+        style:{ width:90 }
+      }),
+      H('span', { className:'muted' }, 'feet'),
+      H('span', { className:'muted', style:{ marginLeft:8 } }, '• Centered near you'),
+      (radiusFt>0) && H('span', { className:'muted', style:{ marginLeft:8 } }, `• Radius ${radiusFt.toLocaleString()} ft`)
+    );
+  }
 
+  // --- Listing card ---
+  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
+    const [open, setOpen] = useState(false);
+    const [images, setImages] = useState(null);
+    const [idx, setIdx] = useState(0);
 
+    async function openModal(start=0){
+      if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
+      setIdx(start); setOpen(true);
+    }
+
+    const controls = [];
+    if (!user || user.id !== item.user_id) {
+      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
+    }
+    if (canEdit) {
+      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
+      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
+    }
+    if (user?.is_admin) {
+      controls.push(H('button', {
+        key:'admin-del',
+        className:'btn danger',
+        onClick: async () => {
+          if (!confirm('Admin: Delete this listing?')) return;
+          await api.adminDeleteListing(item.id);
+          onAdminDelete?.(item.id);
+        }
+      }, 'Admin Delete'));
+    }
+
+    return H('div', { className:'card' },
+      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
+      H('div', { style:{ padding:16 } },
+        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
+          H('div', null,
+            H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
+            H('div', { className:'muted' }, item.description)
+          ),
+          H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
+        ),
+        H('div', { className:'muted' }, item.location),
+        H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
+        (Number.isFinite(item.distance_m)) && H('div', { style:{ color:'#059669', fontWeight:600, marginTop:4 } }, `~${fmtDistance(item.distance_m)}`),
+        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
+      ),
+      H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
+    );
+  }
 
   // --- Messages (with image attachments + attach icon) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
@@ -534,7 +314,6 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
 
-    // attachments state
     const [imgFiles, setImgFiles] = useState([]); // data URLs
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
@@ -641,12 +420,6 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
           }),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
-        imgFiles.length > 0 && H('div', { className:'row', style:{ gap:8, padding:'6px 0' } },
-          ...imgFiles.map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src, style:{ width:48, height:48, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
-            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:-6, right:-6, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
-          ))
-        ),
         H(Lightbox, {
           open: lb.open,
           images: lb.images,
@@ -655,112 +428,6 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
           onIndex: (i)=> setLb(s=>({ ...s, index:i }))
         })
       )
-    );
-  }
-
-  // --- Nearby Page (separate tab, with radius selector) ---
-  function NearbyPage({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete }) {
-    const [coords, setCoords] = useState(null);          // { lat, lon }
-    const [nearby, setNearby] = useState([]);
-    const [nearBusy, setNearBusy] = useState(false);
-    const [err, setErr] = useState('');
-
-    // radius state in meters (defaults to ~500 ft)
-    const FT_TO_M = 0.3048;
-    const MI_TO_M = 1609.344;
-    const [radiusM, setRadiusM] = useState(Math.round(500 * FT_TO_M));
-
-    const loadNearby = React.useCallback(async (lat, lon, rM) => {
-      setNearBusy(true); setErr('');
-      try {
-        const res = await api.listNearby(lat, lon, rM);
-        setNearby(res || []);
-      } catch (e) {
-        setErr('Could not load nearby listings');
-        setNearby([]);
-      } finally {
-        setNearBusy(false);
-      }
-    }, []);
-
-    // get geolocation once, then fetch
-    useEffect(() => {
-      let cancelled = false;
-      (async () => {
-        try {
-          if (!('geolocation' in navigator)) { setErr('Geolocation not supported'); return; }
-          const { coords } = await new Promise((res, rej)=>
-            navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-          );
-          if (cancelled) return;
-          const c = { lat: coords.latitude, lon: coords.longitude };
-          setCoords(c);
-          await loadNearby(c.lat, c.lon, radiusM);
-        } catch (e) {
-          if (!cancelled) setErr('Could not get your location');
-        }
-      })();
-      return () => { cancelled = true; };
-    }, []); // run once
-
-    // refetch when radius changes (and we already have coords)
-    useEffect(() => {
-      if (!coords) return;
-      loadNearby(coords.lat, coords.lon, radiusM);
-    }, [radiusM, coords, loadNearby]);
-
-    function setFeet(ft){ setRadiusM(Math.round(ft * FT_TO_M)); }
-    function setMiles(mi){ setRadiusM(Math.round(mi * MI_TO_M)); }
-
-    return H(React.Fragment, null,
-      H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap', alignItems:'center' } },
-        H('div', { className:'row', style:{ gap:10, flexWrap:'wrap', alignItems:'center' } },
-          H('div', { style:{ fontWeight:800 } }, 'Nearby'),
-          H('span', { className:'muted' }, 'Filter radius:'),
-          // Preset buttons
-          H('div', { className:'row', style:{ gap:6, flexWrap:'wrap' } },
-            H('button', { className:'btn', onClick:()=>setFeet(500)         }, '500 ft'),
-            H('button', { className:'btn', onClick:()=>setMiles(0.25)       }, '¼ mi'),
-            H('button', { className:'btn', onClick:()=>setMiles(0.5)        }, '½ mi'),
-            H('button', { className:'btn', onClick:()=>setMiles(1)          }, '1 mi')
-          ),
-          // Custom numeric input (in feet)
-          H('div', { className:'row', style:{ gap:6, alignItems:'center' } },
-            H('input', {
-              style:{ width:100 },
-              inputMode:'numeric',
-              placeholder:'feet…',
-              value: Math.round(radiusM / FT_TO_M) || '',
-              onChange: e => {
-                const val = Number(String(e.target.value).replace(/[^\d]/g,''));
-                if (Number.isFinite(val) && val > 0) setFeet(val);
-              }
-            }),
-            H('span', { className:'muted' }, 'feet')
-          ),
-          nearBusy && H('span', { className:'muted' }, 'Searching…'),
-          (!nearBusy && coords) && H('span', { className:'muted' },
-            ` • Centered near you • Radius ${fmtDistance(radiusM)}`
-          )
-        ),
-        err && H('span', { className:'muted', style:{ color:'#b91c1c' } }, err)
-      ),
-
-      (nearby.length > 0)
-        ? H('section', { className:'grid' },
-            nearby.map(item =>
-              H(ListingCard, {
-                key:item.id, item, user, canEdit: !!mineById[item.id],
-                onEdit:(it)=>onEdit(it),
-                onDelete:(it)=>onDelete(it),
-                onMessage:(it)=>onMessage(it),
-                onAdminDelete:onAdminDelete
-              })
-            )
-          )
-        : H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } },
-            nearBusy ? 'Finding nearby…' : 'No items within this radius yet.'
-          )
     );
   }
 
@@ -779,6 +446,11 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // Nearby state
+    const [nearby, setNearby] = useState([]);
+    const [nearBusy, setNearBusy] = useState(false);
+    const [radiusFt, setRadiusFt] = useState(500); // NEW
+
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
     const mineById = useMemo(() => {
@@ -788,10 +460,7 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
     }, [mine]);
 
     async function reload(){
-      const [a, m] = await Promise.all([
-        api.listAll(query.trim() || '', locationQuery.trim() || '', { noimg:false }),
-        user ? api.listMine() : Promise.resolve([])
-      ]);
+      const [a, m] = await Promise.all([ api.listAll('', locationQuery), user ? api.listMine() : Promise.resolve([]) ]);
       setAll(a); setMine(m||[]);
     }
     useEffect(()=>{ reload(); }, [user?.id, locationQuery]);
@@ -846,7 +515,6 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
       return list;
     }, [all, sort]);
 
-    // derive distinct city options for autocomplete
     const cityOptions = useMemo(() => {
       const set = new Set();
       (all || []).forEach(l => {
@@ -885,10 +553,27 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
       setMine(prev => prev.filter(x => x.id !== listingId));
     }
 
+    // Nearby loader — now accepts feet (int)
+    async function loadNearbyWithRadius(feet){
+      try {
+        setNearBusy(true);
+        if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+        const { coords } = await new Promise((res, rej)=>
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+        );
+        const meters = Math.max(1, Math.round((feet || 500) * 0.3048)); // ft -> m
+        const res = await api.listNearby(coords.latitude, coords.longitude, meters);
+        setNearby(res || []);
+      } catch (e) {
+        alert('Could not load nearby listings');
+      } finally {
+        setNearBusy(false);
+      }
+    }
+
     return H(React.Fragment, null,
       H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
       H('main', { className:'container' },
-
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style:{ justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
@@ -919,7 +604,8 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
                 H('option', { value:'price_desc' }, 'Price: High → Low'),
                 H('option', { value:'city' }, 'City (A → Z)')
-              )
+              ),
+              // Nearby tab button remains in header; here we keep only search
             ),
             H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
           ),
@@ -955,20 +641,40 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
           !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
         ),
 
-        (tab==='nearby') &&
-          H(NearbyPage, {
-            user,
-            mineById,
-            onEdit:(it)=>{
-              const rich = mineById[it.id] || it;
-              setEditing(rich);
-              setShowForm(true);
-              window.scrollTo({ top:0, behavior:'smooth' });
-            },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-            onMessage: (it)=> startMessage(it),
-            onAdminDelete: handleAdminDelete
-          }),
+        (tab==='nearby') && H(React.Fragment, null,
+          H('section', { className:'card', style:{ padding:12, marginBottom:12 } },
+            H(RadiusPicker, {
+              radiusFt,
+              setRadiusFt,
+              onApply: (ft)=> { setRadiusFt(ft); loadNearbyWithRadius(ft); }
+            }),
+            H('div', { className:'row', style:{ marginTop:8 } },
+              H('button', { className:'btn', onClick: ()=>loadNearbyWithRadius(radiusFt), disabled: nearBusy },
+                nearBusy ? 'Finding nearby…' : 'Refresh'
+              )
+            )
+          ),
+          nearby.length > 0 && H('section', { className:'grid' },
+            nearby.map(item => {
+              const mineItem = mineById[item.id];
+              return H(ListingCard, {
+                key:item.id,
+                item,
+                user,
+                canEdit: !!mineItem,
+                onEdit:(it)=>{
+                  const rich = mineById[it.id] || it;
+                  setEditing(rich);
+                  setShowForm(true);
+                  window.scrollTo({ top:0, behavior:'smooth' });
+                },
+                onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+                onMessage: startMessage
+              });
+            })
+          ),
+          (nearby.length === 0) && H('p', { className:'muted', style:{ margin:'12px 0' } }, 'No nearby items within the selected radius.')
+        ),
 
         (tab==='messages') &&
           (user
@@ -978,6 +684,245 @@ function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdmin
       )
     );
   }
+
+  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
+    const authArea = user
+      ? H('div', { className: 'row', style: { gap: 8 } },
+          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
+          user.is_admin && H('button', {
+            className: 'btn danger',
+            onClick: async () => {
+              if (confirm('Delete ALL listings? This cannot be undone.')) {
+                await onAdminDeleteAll?.();
+              }
+            }
+          }, 'Admin: Delete ALL'),
+          H('button', { className: 'btn', onClick: async () => {
+            await api.logout();
+            setUser(null);
+            onNav('browse');   // immediate bounce
+          } }, 'Log out')
+        )
+      : H(AuthButtons, { setUser });
+
+    const messagesBtn = H('button', {
+      className: `btn ${active==='messages'?'primary':''}`,
+      style: { position: 'relative' },
+      onClick: () => {
+        if (!user) { alert('Log in to view messages.'); return; }
+        onNav('messages');
+      }
+    }, 'Messages',
+      (unreadCount > 0) &&
+        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
+    );
+
+    return H('header', null,
+      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 12 } },
+          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
+          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
+        ),
+        H('nav', { className: 'row' },
+          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+          H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+          messagesBtn
+        ),
+        authArea
+      )
+    );
+  }
+
+  function AuthButtons({ setUser }) {
+    const [mode, setMode] = useState('login');
+    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [err, setErr] = useState('');
+
+    async function go() {
+      setErr('');
+      try {
+        if (mode === 'login') {
+          const u = await api.login(email, password);
+          setUser(u); setEmail(''); setPassword('');
+        } else {
+          const u = await api.register({ username, email, password });
+          setUser(u); setUsername(''); setEmail(''); setPassword('');
+        }
+      } catch(e){ setErr(e.message); }
+    }
+
+    return H('div', { className: 'row', style: { gap: 8 } },
+      H('div', { className: 'row', style: { gap: 6 } },
+        H('button', { className: `btn ${mode==='login'?'primary':''}`, onClick: () => setMode('login') }, 'Log in'),
+        H('button', { className: `btn ${mode==='register'?'primary':''}`, onClick: () => setMode('register') }, 'Register')
+      ),
+      err && H('span', { className: 'muted', style: { color: '#be123c' } }, err),
+      mode==='register' && H('input', { placeholder: 'Username', value: username, onChange: e => setUsername(e.target.value) }),
+      H('input', { placeholder: 'Email', value: email, onChange: e => setEmail(e.target.value) }),
+      H('input', { placeholder: 'Password', type: 'password', value: password, onChange: e => setPassword(e.target.value) }),
+      H('button', { className: 'btn primary', onClick: go }, mode==='login' ? 'Log in' : 'Create account')
+    );
+  }
+
+  // MultiImagePicker + ListingForm remain unchanged from your current version
+  // (omitted here for brevity—they’re identical to your last working file).
+  // ---- START: MultiImagePicker ----
+  function MultiImagePicker({ values, onChange }) {
+    const ref = useRef();
+    const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+
+    async function pick(e) {
+      const files = Array.from(e.target.files || []);
+      const newImgs = [];
+      for (const f of files) {
+        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+        newImgs.push(await toB64(f));
+      }
+      onChange([...(values||[]), ...newImgs]);
+      ref.current.value = '';
+    }
+    function removeAt(i) {
+      const next = [...values]; next.splice(i,1); onChange(next);
+    }
+
+    return H('div', null,
+      H('div', { className:'row' },
+        H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
+        H('span', { className:'muted' }, `${(values||[]).length} image(s)`)
+      ),
+      H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
+        ...(values||[]).map((src,i)=> H('div', { key:i, style:{ position:'relative' } },
+          H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
+        ))
+      )
+    );
+  }
+
+  function ListingForm({ draft, onCancel, onSaved }) {
+    const [images, setImages] = useState([]);
+    const [title, setTitle] = useState(draft?.title || '');
+    const [description, setDescription] = useState(draft?.description || '');
+    const [location, setLocation] = useState(draft?.location || '');
+    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiErr, setAiErr] = useState('');
+
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoErr, setGeoErr] = useState('');
+
+    const [lat, setLat] = useState(draft?.lat ?? null);
+    const [lon, setLon] = useState(draft?.lon ?? null);
+
+    useEffect(() => {
+      (async () => {
+        if (draft?.id) {
+          try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
+          catch { setImages([draft.image_data].filter(Boolean)); }
+        } else { setImages([]); }
+      })();
+    }, [draft?.id]);
+
+    async function runAI(){
+      setAiErr(''); setAiBusy(true);
+      try {
+        if (!images.length) { alert('Add at least one image first.'); return; }
+        const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
+        if (res.title) setTitle(res.title);
+        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+          setPriceVal(String(res.suggested_price));
+        }
+      } catch (e) {
+        setAiErr(e.message || 'AI failed');
+      } finally {
+        setAiBusy(false);
+      }
+    }
+
+    async function useMyLocation() {
+      setGeoErr('');
+      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+      setGeoBusy(true);
+      try {
+        const coords = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            err => rej(err),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          )
+        );
+        const r = await api.reverseGeocode(coords.lat, coords.lon);
+        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+        setLat(r?.lat ?? coords.lat);
+        setLon(r?.lon ?? coords.lon);
+      } catch (e) {
+        setGeoErr('Could not get your location');
+      } finally {
+        setGeoBusy(false);
+      }
+    }
+
+    async function submit(e){
+      e.preventDefault();
+      const payload = {
+        images,
+        title: title.trim(),
+        description: description.trim(),
+        location: location.trim(),
+        price: Number(priceVal),
+        tags,
+        lat, lon
+      };
+      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+        alert('Fill all fields and add at least one image.');
+        return;
+      }
+      if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
+      onSaved?.();
+    }
+
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
+      H(MultiImagePicker, { values:images, onChange:setImages }),
+
+      H('div', { className:'row', style:{ gap:8 } },
+        H('button', { type:'button', className:`btn ${aiBusy?'':''}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
+      ),
+
+      H('label', null, 'Title'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
+
+      H('label', null, 'Description'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+
+      H('label', null, 'Location'),
+      H('div', { className:'row', style:{ gap:8 } },
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
+
+      H('label', null, 'Price'),
+      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+
+      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
+        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+      ),
+
+      H('div', { className:'row' },
+        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
+      )
+    );
+  }
+  // ---- END: ListingForm ----
 
   function useAuth() {
     const [user, setUser] = useState(null);
