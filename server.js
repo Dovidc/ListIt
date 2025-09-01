@@ -365,12 +365,17 @@ app.post('/api/login', async (req, res) => {
   const password = req.body.password || '';
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!row) return res.status(401).json({ error: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password, row.password_hash);
-  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
-  const token = setAuthCookie(res, user);
-  return res.json({ ...user, token });
+  if (!row || !row.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
+  try {
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+    const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
+    const token = setAuthCookie(res, user);
+    return res.json({ ...user, token });
+  } catch (e) {
+    console.error('Bcrypt compare error:', e);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 });
 
 app.post('/api/logout', (req, res) => {
