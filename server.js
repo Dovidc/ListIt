@@ -336,7 +336,7 @@ function requireAdmin(req, res, next){
 /* ------------------------------------------------------------------ */
 /* Auth routes                                                         */
 /* ------------------------------------------------------------------ */
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', (req, res) => {
   const username = (req.body.username || req.body.name || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
@@ -344,7 +344,7 @@ app.post('/api/register', async (req, res) => {
   if (username.length < 3 || username.length > 32) return res.status(400).json({ error: 'Username must be 3–32 chars' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 chars' });
 
-  const hash = await bcrypt.hash(password, 10);
+  const hash = bcrypt.hashSync(password, 10);
   try {
     const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
       .run(email, username, hash, nowIso());
@@ -360,14 +360,14 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!row || !row.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
   try {
-    const ok = await bcrypt.compare(password, row.password_hash);
+    const ok = bcrypt.compareSync(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
     const token = setAuthCookie(res, user);
