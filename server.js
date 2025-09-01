@@ -37,6 +37,20 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 
 /* ------------------------------------------------------------------ */
+/* Core parsers (fixes server_error on login/register)                 */
+/* ------------------------------------------------------------------ */
+app.use(cookieParser());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// nice error for malformed JSON bodies
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({ error: 'invalid_json' });
+  }
+  next(err);
+});
+
+/* ------------------------------------------------------------------ */
 /* CORS (with credentials)                                            */
 /* ------------------------------------------------------------------ */
 if (FRONTEND_ORIGIN && cors) {
@@ -213,7 +227,6 @@ function normalizeTags(input) {
     t = t.replace(/[^a-z0-9 \-]/g, '').trim();
     if (!t || t.length > 32) continue;
     if (seen.has(t)) continue;
-    seen.add(t);
     clean.push(t);
     if (clean.length >= 20) break;
   }
@@ -336,7 +349,7 @@ function requireAdmin(req, res, next){
 /* ------------------------------------------------------------------ */
 /* Auth routes                                                         */
 /* ------------------------------------------------------------------ */
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   const username = (req.body.username || req.body.name || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
@@ -344,7 +357,7 @@ app.post('/api/register', (req, res) => {
   if (username.length < 3 || username.length > 32) return res.status(400).json({ error: 'Username must be 3–32 chars' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 chars' });
 
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   try {
     const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
       .run(email, username, hash, nowIso());
@@ -360,14 +373,14 @@ app.post('/api/register', (req, res) => {
   }
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!row || !row.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
   try {
-    const ok = bcrypt.compareSync(password, row.password_hash);
+    const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
     const token = setAuthCookie(res, user);
@@ -630,7 +643,7 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
           'Analyze the item images and output STRICT JSON with:',
           '"title": concise <=80 chars, no emojis;',
           '"tags": array of 12-24 short, lowercase search terms (generic words users type; include generic synonyms, e.g., "car" for a Jeep);',
-          '"price_usd": fair used-market price in USD as a number (no symbols), based on comparable items and visible condition; estimate conservatively if unsure.',
+          '"price_usd": fair used-market price in USD as a number (no symbols), based on comparable items and visible condition;',
           'Return ONLY JSON.'
         ].join('\n')
       });
