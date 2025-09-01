@@ -321,150 +321,147 @@
   }
 
   // --- Listing Form (immutable GPS on edits + mobile-only opt-in) ---
-  function ListingForm({ draft, onCancel, onSaved }) {
-    const [images, setImages] = useState([]);
-    const [title, setTitle] = useState(draft?.title || '');
-    const [description, setDescription] = useState(draft?.description || '');
-    const [location, setLocation] = useState(draft?.location || '');
-    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
-    const [aiBusy, setAiBusy] = useState(false);
-    const [aiErr, setAiErr] = useState('');
+  // --- Listing Form (immutable GPS on edits; Nearby opt-in is mobile-only) ---
+function ListingForm({ draft, onCancel, onSaved }) {
+  const [images, setImages] = useState([]);
+  const [title, setTitle] = useState(draft?.title || '');
+  const [description, setDescription] = useState(draft?.description || '');
+  const [location, setLocation] = useState(draft?.location || '');
+  const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+  const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState('');
 
-    const hasFixedGps = !!draft?.lat; // already set at creation/first opt-in
-    const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
-    const [geoBusy, setGeoBusy] = useState(false);
-    const [geoErr, setGeoErr] = useState('');
+  const hasFixedGps = !!draft?.lat;           // GPS fixed after first opt-in
+  const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoErr, setGeoErr] = useState('');
 
-    // coords (immutable if hasFixedGps)
-    const [lat, setLat] = useState(draft?.lat ?? null);
-    const [lon, setLon] = useState(draft?.lon ?? null);
+  const [lat, setLat] = useState(draft?.lat ?? null);   // only sent if Nearby=on
+  const [lon, setLon] = useState(draft?.lon ?? null);
 
-    const isMobile = isMobileDevice();
+  const isMobile = isMobileDevice();
 
-    useEffect(() => {
-      (async () => {
-        if (draft?.id) {
-          try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
-          catch { setImages([draft.image_data].filter(Boolean)); }
-        } else { setImages([]); }
-      })();
-    }, [draft?.id]);
+  useEffect(() => {
+    (async () => {
+      if (draft?.id) {
+        try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
+        catch { setImages([draft.image_data].filter(Boolean)); }
+      } else { setImages([]); }
+    })();
+  }, [draft?.id]);
 
-    async function runAI(){
-      setAiErr(''); setAiBusy(true);
-      try {
-        if (!images.length) { alert('Add at least one image first.'); return; }
-        const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
-        if (res.title) setTitle(res.title);
-        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
-        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
-          setPriceVal(String(res.suggested_price));
-        }
-      } catch (e) {
-        setAiErr(e.message || 'AI failed');
-      } finally {
-        setAiBusy(false);
+  async function runAI(){
+    setAiErr(''); setAiBusy(true);
+    try {
+      if (!images.length) { alert('Add at least one image first.'); return; }
+      const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
+      if (res.title) setTitle(res.title);
+      if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+      if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+        setPriceVal(String(res.suggested_price));
       }
-    }
-
-    async function useMyLocation() {
-      setGeoErr('');
-      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
-      setGeoBusy(true);
-      try {
-        const coords = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(
-            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-            err => rej(err),
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-          )
-        );
-        const r = await api.reverseGeocode(coords.lat, coords.lon);
-        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
-        setLat(r?.lat ?? coords.lat);
-        setLon(r?.lon ?? coords.lon);
-      } catch (e) {
-        setGeoErr('Could not get your location');
-      } finally {
-        setGeoBusy(false);
-      }
-    }
-
-    async function submit(e){
-      e.preventDefault();
-      const payload = {
-        images,
-        title: title.trim(),
-        description: description.trim(),
-        location: location.trim(),
-        price: Number(priceVal),
-        tags,
-        enable_nearby: enableNearby ? 1 : 0,
-      };
-      if (enableNearby && !hasFixedGps) {
-        payload.lat = lat;
-        payload.lon = lon;
-      }
-      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
-        alert('Fill all fields and add at least one image.');
-        return;
-      }
-      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-        alert('Enable Nearby requires using your location.');
-        return;
-      }
-      if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
-      onSaved?.();
-    }
-
-    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
-      H(MultiImagePicker, { values:images, onChange:setImages }),
-
-      H('div', { className:'row', style:{ gap:8 } },
-        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
-        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
-      ),
-
-      H('label', null, 'Title'),
-      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
-
-      H('label', null, 'Description'),
-      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
-
-      H('label', null, 'Location'),
-      H('div', { className:'row', style:{ gap:8 } },
-        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
-        (isMobile && enableNearby && !hasFixedGps) &&
-          H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
-        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
-      ),
-      isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
-        H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
-          const checked = e.target.checked;
-          setEnableNearby(checked);
-          if (checked && !hasFixedGps) useMyLocation();
-        } }),
-        H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
-      ),
-      (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
-
-      H('label', null, 'Price'),
-      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
-
-      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
-        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
-        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
-        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
-      ),
-
-      H('div', { className:'row' },
-        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
-        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
-      )
-    );
+    } catch (e) { setAiErr(e.message || 'AI failed'); }
+    finally { setAiBusy(false); }
   }
+
+  async function useMyLocation() {
+    setGeoErr('');
+    if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+    setGeoBusy(true);
+    try {
+      const coords = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+          err => rej(err),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        )
+      );
+      const r = await api.reverseGeocode(coords.lat, coords.lon);
+      setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+      // note: lat/lon are ONLY sent to the server if enable_nearby=1 (mobile users who opt in)
+      setLat(r?.lat ?? coords.lat);
+      setLon(r?.lon ?? coords.lon);
+    } catch { setGeoErr('Could not get your location'); }
+    finally { setGeoBusy(false); }
+  }
+
+  async function submit(e){
+    e.preventDefault();
+    const payload = {
+      images,
+      title: title.trim(),
+      description: description.trim(),
+      location: location.trim(),
+      price: Number(priceVal),
+      tags,
+      enable_nearby: enableNearby ? 1 : 0,
+    };
+    if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
+
+    if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+      alert('Fill all fields and add at least one image.');
+      return;
+    }
+    if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+      alert('Enable Nearby requires using your location.'); return;
+    }
+
+    if (draft) await api.updateListing(draft.id, payload);
+    else      await api.createListing(payload);
+    onSaved?.();
+  }
+
+  return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
+    H(MultiImagePicker, { values:images, onChange:setImages }),
+
+    H('div', { className:'row', style:{ gap:8 } },
+      H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+      aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+      H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
+    ),
+
+    H('label', null, 'Title'),
+    H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
+
+    H('label', null, 'Description'),
+    H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+
+    H('label', null, 'Location'),
+    H('div', { className:'row', style:{ gap:8 } },
+      H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
+      // 👇 ALWAYS visible (desktop + mobile)
+      H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+      geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+    ),
+
+    // Nearby toggle remains MOBILE-ONLY
+    isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
+      H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
+        const checked = e.target.checked;
+        setEnableNearby(checked);
+        if (checked && !hasFixedGps) useMyLocation();
+      }}),
+      H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
+    ),
+    (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
+
+    H('label', null, 'Price'),
+    H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+
+    H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+      H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
+      H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
+      H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+    ),
+
+    H('div', { className:'row' },
+      H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
+      H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
+    )
+  );
+}
+
 
   // --- Lightbox ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
