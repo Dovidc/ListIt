@@ -5,6 +5,7 @@
    + City autocomplete + semantic location search (fuzzy), still restricted to existing listing locations
    + GPS Nearby (separate Nearby tab with dropdown radius), stores lat/lon on listings
    + Distance shown in green on listing tiles when available
+   + Opt-in to enable Nearby (default off)
 */
 
 (() => {
@@ -311,7 +312,7 @@
     );
   }
 
-  // --- Listing Form (adds "Use my location" + lat/lon storage) ---
+  // --- Listing Form (adds opt-in for Nearby + lat/lon storage) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -322,6 +323,7 @@
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
+    const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
     const [geoBusy, setGeoBusy] = useState(false);
     const [geoErr, setGeoErr] = useState('');
 
@@ -387,10 +389,16 @@
         location: location.trim(),
         price: Number(priceVal),
         tags,
-        lat, lon
+        enable_nearby: enableNearby ? 1 : 0,
+        lat: enableNearby ? lat : null,
+        lon: enableNearby ? lon : null
       };
       if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
         alert('Fill all fields and add at least one image.');
+        return;
+      }
+      if (payload.enable_nearby && (payload.lat == null || payload.lon == null)) {
+        alert('Enable Nearby requires using your location.');
         return;
       }
       if (draft) await api.updateListing(draft.id, payload); else await api.createListing(payload);
@@ -417,6 +425,14 @@
         H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
         H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
+      H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
+        H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
+          const checked = e.target.checked;
+          setEnableNearby(checked);
+          if (checked) useMyLocation();
+        } }),
+        H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
       ),
 
       H('label', null, 'Price'),

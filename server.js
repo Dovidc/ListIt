@@ -12,6 +12,7 @@
    - Admin delete endpoints
    - Robust migrations for legacy DBs (adds missing columns safely)
    - Compression + static caching
+   - Opt-in enable_nearby (default 0)
 */
 
 const express = require('express');
@@ -139,6 +140,8 @@ addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'tags', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'lat', 'REAL');
 addColumnIfMissing('listings', 'lon', 'REAL');
+addColumnIfMissing('listings', 'enable_nearby', 'INTEGER DEFAULT 0');
+try { db.exec('UPDATE listings SET enable_nearby = 1 WHERE enable_nearby IS NULL AND lat IS NOT NULL AND lon IS NOT NULL;'); } catch {}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS listing_images (
@@ -421,7 +424,7 @@ app.get('/api/listings', (req, res) => {
   const FIELDS_MINE = `
     l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
     l.title, l.description, l.location, l.price, l.created_at,
-    l.tags, u.username as owner_username
+    l.tags, l.enable_nearby, u.username as owner_username
   `;
 
   function baseRowsForUser(userId){
@@ -510,7 +513,7 @@ app.get('/api/listings/covers', (req, res) => {
 });
 
 app.post('/api/listings', auth, (req, res) => {
-  const { images, image_data, title, description, location, price, tags } = req.body || {};
+  const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
   const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
   const err = validateImages(imgs);
   if (err) return res.status(400).json({ error: err });
@@ -526,10 +529,12 @@ app.post('/api/listings', auth, (req, res) => {
   if (!Number.isFinite(lat)) lat = null;
   if (!Number.isFinite(lon)) lon = null;
 
+  const enNearby = enable_nearby ? 1 : 0;
+
   const info = db.prepare(`
-    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, cover, String(safeTitle), String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon);
+    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, cover, String(safeTitle), String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon, enNearby);
 
   const listingId = info.lastInsertRowid;
   const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
@@ -573,6 +578,11 @@ app.put('/api/listings/:id', auth, (req, res) => {
   if (typeof tags !== 'undefined') {
     const tagStr = normalizeTags(tags);
     db.prepare('UPDATE listings SET tags=? WHERE id=?').run(tagStr, id);
+  }
+
+  if (typeof req.body.enable_nearby !== 'undefined') {
+    const en = req.body.enable_nearby ? 1 : 0;
+    db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(en, id);
   }
 
   const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
@@ -837,7 +847,8 @@ app.get('/api/listings/nearby', (req, res) => {
            u.username as owner_username
     FROM listings l
     JOIN users u ON u.id = l.user_id
-    WHERE l.lat IS NOT NULL AND l.lon IS NOT NULL
+    WHERE l.enable_nearby = 1
+      AND l.lat IS NOT NULL AND l.lon IS NOT NULL
       AND l.lat BETWEEN @minLat AND @maxLat
       AND l.lon BETWEEN @minLon AND @maxLon
     ORDER BY l.id DESC
