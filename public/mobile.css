@@ -117,3 +117,140 @@ main { padding-bottom: 16px; }
   border-radius: 12px;
   width: auto;
 }
+
+/* ============================================================
+   NEARBY (MOBILE): compact 3-up grid with image + price/distance
+   - Scoped to the Nearby tab container. Works if your Nearby tab
+     root has id="tab-nearby" OR data-tab="nearby".
+   - Expects cards to be .card. If you use different markup,
+     this still keeps the grid + image sizing sane.
+   ============================================================ */
+
+/* 3 columns in Nearby on mobile */
+#tab-nearby .grid,
+[data-tab="nearby"] .grid,
+#tab-nearby .nearby-grid,
+[data-tab="nearby"] .nearby-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+/* Compact cards in Nearby */
+#tab-nearby .card,
+[data-tab="nearby"] .card {
+  padding: 6px;
+  border: 1px solid #e5e7eb; /* neutral-200 */
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Square image on top; cover crop */
+#tab-nearby .card img,
+[data-tab="nearby"] .card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  background: #f3f4f6;
+}
+
+/* If you use a positioned .aspect wrapper for images,
+   make it square inside Nearby */
+#tab-nearby .card .aspect,
+[data-tab="nearby"] .card .aspect {
+  padding-top: 100% !important; /* square */
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Price + distance row under image */
+#tab-nearby .card .meta,
+[data-tab="nearby"] .card .meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tab-nearby .card .price,
+[data-tab="nearby"] .card .price,
+#tab-nearby .card [data-field="price"],
+[data-tab="nearby"] .card [data-field="price"],
+#tab-nearby .card .listing-price,
+[data-tab="nearby"] .card .listing-price {
+  font-weight: 700;
+}
+
+#tab-nearby .card .distance,
+[data-tab="nearby"] .card .distance,
+#tab-nearby .card .dist,
+[data-tab="nearby"] .card .dist,
+#tab-nearby .card .listing-distance,
+[data-tab="nearby"] .card .listing-distance {
+  opacity: .85; /* keeps custom green if already applied */
+}
+
+/* Hide extra details in Nearby mobile to keep cards tiny.
+   Adjust these selectors to match your DOM if needed. */
+#tab-nearby .card .title,
+[data-tab="nearby"] .card .title,
+#tab-nearby .card .description,
+[data-tab="nearby"] .card .description,
+#tab-nearby .card .tags,
+[data-tab="nearby"] .card .tags,
+#tab-nearby .card .actions,
+[data-tab="nearby"] .card .actions,
+#tab-nearby .card .meta-extra,
+[data-tab="nearby"] .card .meta-extra,
+#tab-nearby .card .user,
+[data-tab="nearby"] .card .user,
+#tab-nearby .card .location-text,
+[data-tab="nearby"] .card .location-text,
+#tab-nearby .card .date,
+[data-tab="nearby"] .card .date {
+  display: none !important;
+}
+
+/* Tighten any Nearby filter/header spacing on mobile */
+#tab-nearby .nearby-filter,
+[data-tab="nearby"] .nearby-filter {
+  gap: 6px;
+  margin: 6px 0;
+}
+
+/* Make clickable areas comfy but compact */
+#tab-nearby .card a,
+[data-tab="nearby"] .card a {
+  -webkit-tap-highlight-color: rgba(0,0,0,.05);
+}
+
+/* In case your global .grid rule forces 1 column, ensure our
+   Nearby override wins without !important */
+#tab-nearby .grid,
+[data-tab="nearby"] .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Optional: if price text gets too long, clamp */
+#tab-nearby .card .price,
+[data-tab="nearby"] .card .price {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Optional: tiny caption style if you later show anything else */
+#tab-nearby .card .caption,
+[data-tab="nearby"] .card .caption {
+  font-size: 11px;
+  opacity: .8;
+  margin-top: 2px;
+}
