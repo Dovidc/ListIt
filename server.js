@@ -318,10 +318,6 @@ function requireAdmin(req, res, next){
 }
 
 /* ------------------------------------------------------------------ */
-app.use(express.json({ limit: '12mb' }));
-app.use(cookieParser());
-
-/* ------------------------------------------------------------------ */
 /* Optional admin bootstrap via env vars                               */
 /* ------------------------------------------------------------------ */
 (function maybeCreateAdmin() {

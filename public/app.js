@@ -7,10 +7,17 @@
    + Distance shown in green on listing tiles when available
    + Opt-in to enable Nearby (default off)
    + Immutable GPS location on edits (fixed at first opt-in)
+   + Mobile-only Nearby opt-in and tab
 */
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
+
+  // Device detection (moved to global for reuse)
+  function isMobileDevice() {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return /mobile|android|iphone|ipad|tablet|touch/.test(userAgent) || (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
+  }
 
   // small bridge so api can redirect UI on 401s
   const AppNav = { setUser: () => {}, setTab: () => {} };
@@ -199,7 +206,7 @@
   }
 
   // --- Header ---
-  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll }) {
+  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
     const authArea = user
       ? H('div', { className: 'row', style: { gap: 8 } },
           H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
@@ -239,7 +246,7 @@
         ),
         H('nav', { className: 'row' },
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-          H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+          isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
           messagesBtn
         ),
         authArea
@@ -313,7 +320,7 @@
     );
   }
 
-  // --- Listing Form (immutable GPS on edits) ---
+  // --- Listing Form (immutable GPS on edits + mobile-only opt-in) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -332,6 +339,8 @@
     // coords (immutable if hasFixedGps)
     const [lat, setLat] = useState(draft?.lat ?? null);
     const [lon, setLon] = useState(draft?.lon ?? null);
+
+    const isMobile = isMobileDevice();
 
     useEffect(() => {
       (async () => {
@@ -427,11 +436,11 @@
       H('label', null, 'Location'),
       H('div', { className:'row', style:{ gap:8 } },
         H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
-        (!enableNearby || hasFixedGps) ? null :
+        (isMobile && enableNearby && !hasFixedGps) &&
           H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
       ),
-      H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
+      isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
         H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
           const checked = e.target.checked;
           setEnableNearby(checked);
@@ -732,6 +741,8 @@
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    const isMobile = isMobileDevice();
+
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
 
     const mineById = useMemo(() => {
@@ -776,7 +787,8 @@
 
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
-    }, [user, tab]);
+      if (!isMobile && tab === 'nearby') setTab('browse');
+    }, [user, tab, isMobile]);
 
     const feed = useMemo(()=>{
       const list = [...(all || [])];
@@ -836,7 +848,7 @@
     }
 
     return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll }),
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
