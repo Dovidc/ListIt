@@ -13,6 +13,7 @@
    - Robust migrations for legacy DBs (adds missing columns safely)
    - Compression + static caching
    - Opt-in enable_nearby (default 0)
+   - Immutable lat/lon (set once on first opt-in)
 */
 
 const express = require('express');
@@ -131,6 +132,7 @@ CREATE TABLE IF NOT EXISTS listings (
   tags TEXT,
   lat REAL,
   lon REAL,
+  enable_nearby INTEGER DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 `);
@@ -424,7 +426,7 @@ app.get('/api/listings', (req, res) => {
   const FIELDS_MINE = `
     l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
     l.title, l.description, l.location, l.price, l.created_at,
-    l.tags, l.enable_nearby, u.username as owner_username
+    l.tags, l.lat, l.lon, l.enable_nearby, u.username as owner_username
   `;
 
   function baseRowsForUser(userId){
@@ -565,12 +567,14 @@ app.put('/api/listings/:id', auth, (req, res) => {
   const newLoc  = location ? String(location).slice(0,80) : existing.location;
   const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
 
-  let newLat = req.body.lat;
-  let newLon = req.body.lon;
-  if (newLat !== undefined) newLat = Number(newLat);
-  if (newLon !== undefined) newLon = Number(newLon);
-  if (!Number.isFinite(newLat)) newLat = null;
-  if (!Number.isFinite(newLon)) newLon = null;
+  let newLat = null;
+  let newLon = null;
+  if (existing.lat == null && req.body.enable_nearby) {  // first opt-in
+    newLat = Number(req.body.lat);
+    newLon = Number(req.body.lon);
+    if (!Number.isFinite(newLat)) newLat = null;
+    if (!Number.isFinite(newLon)) newLon = null;
+  }
 
   db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
     .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);

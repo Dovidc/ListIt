@@ -6,6 +6,7 @@
    + GPS Nearby (separate Nearby tab with dropdown radius), stores lat/lon on listings
    + Distance shown in green on listing tiles when available
    + Opt-in to enable Nearby (default off)
+   + Immutable GPS location on edits (fixed at first opt-in)
 */
 
 (() => {
@@ -312,7 +313,7 @@
     );
   }
 
-  // --- Listing Form (adds opt-in for Nearby + lat/lon storage) ---
+  // --- Listing Form (immutable GPS on edits) ---
   function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState([]);
     const [title, setTitle] = useState(draft?.title || '');
@@ -323,11 +324,12 @@
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
+    const hasFixedGps = !!draft?.lat; // already set at creation/first opt-in
     const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
     const [geoBusy, setGeoBusy] = useState(false);
     const [geoErr, setGeoErr] = useState('');
 
-    // coords
+    // coords (immutable if hasFixedGps)
     const [lat, setLat] = useState(draft?.lat ?? null);
     const [lon, setLon] = useState(draft?.lon ?? null);
 
@@ -390,14 +392,16 @@
         price: Number(priceVal),
         tags,
         enable_nearby: enableNearby ? 1 : 0,
-        lat: enableNearby ? lat : null,
-        lon: enableNearby ? lon : null
       };
+      if (enableNearby && !hasFixedGps) {
+        payload.lat = lat;
+        payload.lon = lon;
+      }
       if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
         alert('Fill all fields and add at least one image.');
         return;
       }
-      if (payload.enable_nearby && (payload.lat == null || payload.lon == null)) {
+      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
         alert('Enable Nearby requires using your location.');
         return;
       }
@@ -423,17 +427,19 @@
       H('label', null, 'Location'),
       H('div', { className:'row', style:{ gap:8 } },
         H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
-        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+        (!enableNearby || hasFixedGps) ? null :
+          H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
       ),
       H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
         H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
           const checked = e.target.checked;
           setEnableNearby(checked);
-          if (checked) useMyLocation();
+          if (checked && !hasFixedGps) useMyLocation();
         } }),
         H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
       ),
+      (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
 
       H('label', null, 'Price'),
       H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
