@@ -253,53 +253,50 @@
 
   // --- Header ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
-    const authArea = user
-      ? H('div', { className: 'row', style: { gap: 8 } },
-          H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
-          user.is_admin && H('button', {
-            className: 'btn danger',
-            onClick: async () => {
-              if (confirm('Delete ALL listings? This cannot be undone.')) {
-                await onAdminDeleteAll?.();
-              }
+  // Auth area: show username (and admin nuke), but NO logout here anymore
+  const authArea = user
+    ? H('div', { className: 'row', style: { gap: 8 } },
+        H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
+        user.is_admin && H('button', {
+          className: 'btn danger',
+          onClick: async () => {
+            if (confirm('Delete ALL listings? This cannot be undone.')) {
+              await onAdminDeleteAll?.();
             }
-          }, 'Admin: Delete ALL'),
-          H('button', { className: 'btn', onClick: async () => {
-            await api.logout();
-            setUser(null);
-            onNav('browse');   // immediate bounce
-          } }, 'Log out')
-        )
-      : H(AuthButtons, { setUser });
-
-    const messagesBtn = H('button', {
-      className: `btn ${active==='messages'?'primary':''}`,
-      style: { position: 'relative' },
-      onClick: () => {
-        if (!user) { alert('Log in to view messages.'); return; }
-        onNav('messages');
-      }
-    }, 'Messages',
-      (unreadCount > 0) &&
-        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
-    );
-
-    return H('header', null,
-      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 12 } },
-          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
-          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
-        ),
-        H('nav', { className: 'row' },
-          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-          isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-          messagesBtn,
-          H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile') }, 'Profile')
-        ),
-        authArea
+          }
+        }, 'Admin: Delete ALL')
       )
-    );
-  }
+    : H(AuthButtons, { setUser });
+
+  const messagesBtn = H('button', {
+    className: `btn ${active==='messages'?'primary':''}`,
+    style: { position: 'relative' },
+    onClick: () => {
+      if (!user) { alert('Log in to view messages.'); return; }
+      onNav('messages');
+    }
+  }, 'Messages',
+    (unreadCount > 0) &&
+      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
+  );
+
+  return H('header', null,
+    H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+      H('div', { className: 'row', style: { gap: 12 } },
+        H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
+        H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
+      ),
+      H('nav', { className: 'row' },
+        H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+        isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+        messagesBtn,
+        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile') }, 'Profile')
+      ),
+      authArea
+    )
+  );
+}
+
 
   function AuthButtons({ setUser }) {
     const [mode, setMode] = useState('login');
