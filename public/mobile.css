@@ -191,17 +191,18 @@ main { padding-bottom: 16px; }
   padding: 12px;
 }
 
-/* Hide any extra details (though none shown) */
-#tab-nearby .title,
-[data-tab="nearby"] .title,
-#tab-nearby .description,
-[data-tab="nearby"] .description,
-#tab-nearby .price,
-[data-tab="nearby"] .price,
-#tab-nearby .distance,
-[data-tab="nearby"] .distance {
+/* Hide extra details ONLY in the image grid, not in the modal */
+#tab-nearby .masonry .title,
+#tab-nearby .masonry .description,
+#tab-nearby .masonry .price,
+#tab-nearby .masonry .distance,
+[data-tab="nearby"] .masonry .title,
+[data-tab="nearby"] .masonry .description,
+[data-tab="nearby"] .masonry .price,
+[data-tab="nearby"] .masonry .distance {
   display: none !important;
 }
+
 
 /* Tighten any Nearby filter/header spacing on mobile */
 #tab-nearby .nearby-filter,

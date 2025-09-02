@@ -39,6 +39,35 @@
     const mi = m / 1609.344;
     return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
   }
+  // ---- distance helpers (only used when showDistance=true) ----
+function metersFromListing(item) {
+  if (Number.isFinite(item?.distance_m)) return item.distance_m;              // meters from /nearby API
+  if (Number.isFinite(item?.distance_ft)) return item.distance_ft / 3.28084;  // feet -> meters
+  return null;
+}
+const _toRad = d => d * Math.PI / 180;
+function haversineMeters(aLat, aLon, bLat, bLon) {
+  const R = 6371000;
+  const dLat = _toRad(bLat - aLat);
+  const dLon = _toRad(bLon - aLon);
+  const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
+  return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
+}
+// cache geolocation so we don’t prompt repeatedly
+let _coordsPromise = null;
+function getUserCoordsOnce() {
+  if (_coordsPromise) return _coordsPromise;
+  if (!('geolocation' in navigator)) return Promise.resolve(null);
+  _coordsPromise = new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+  return _coordsPromise;
+}
+
 
   // --- API (centralized 401 handling) ---
   const api = {
@@ -484,10 +513,33 @@ function ListingForm({ draft, onCancel, onSaved }) {
   }
 
   // --- Listing card ---
-  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete }) {
+  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
+
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
+
+      const [derivedMeters, setDerivedMeters] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!showDistance) { setDerivedMeters(null); return; }
+
+    // 1) prefer distance sent by /nearby endpoint
+    const fromServer = metersFromListing(item);
+    if (fromServer != null) { setDerivedMeters(fromServer); return; }
+
+    // 2) otherwise compute from user GPS + listing lat/lon (when available)
+    if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
+      getUserCoordsOnce().then(coords => {
+        if (!coords) return;
+        const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
+        setDerivedMeters(m);
+      });
+    } else {
+      setDerivedMeters(null);
+    }
+  }, [showDistance, item?.id, item?.lat, item?.lon]);
+
 
     async function openModal(start=0){
       if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
@@ -526,7 +578,9 @@ function ListingForm({ draft, onCancel, onSaved }) {
         ),
         H('div', { className:'muted' }, item.location),
         // green distance if present
-        (typeof item.distance_m === 'number') && H('div', { className:'distance' }, fmtDistance(item.distance_m) + ' away'),
+        // green distance (Nearby only)
+        (showDistance && derivedMeters != null) && H('div', { className:'distance' }, fmtDistance(derivedMeters) + ' away'),
+
         H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
         H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
       ),
@@ -732,7 +786,8 @@ function ListingForm({ draft, onCancel, onSaved }) {
             onEdit: handleEdit,
             onDelete,
             onMessage,
-            onAdminDelete
+            onAdminDelete,
+            showDistance: true
           })
         )
       )
