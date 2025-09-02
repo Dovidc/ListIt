@@ -228,6 +228,7 @@ function normalizeTags(input) {
     if (!t || t.length > 32) continue;
     if (seen.has(t)) continue;
     clean.push(t);
+    seen.add(t);
     if (clean.length >= 20) break;
   }
   return clean.join(',');

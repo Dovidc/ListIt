@@ -667,6 +667,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
     const [radius, setRadius] = useState(150); // default ≈500 ft
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
+    const [selected, setSelected] = useState(null);
 
     async function load() {
       if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
@@ -686,7 +687,10 @@ function ListingForm({ draft, onCancel, onSaved }) {
 
     useEffect(() => { load(); }, [radius]);
 
-    return H(React.Fragment, null,
+    const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
+    useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
+
+    return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
         H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
           H('label', { htmlFor:'radius' }, 'Filter radius:'),
@@ -704,22 +708,28 @@ function ListingForm({ draft, onCancel, onSaved }) {
           H('button', { className:'btn', onClick:load, disabled:busy }, busy ? 'Finding nearby…' : 'Reload')
         )
       ),
-      H('section', { className:'grid' },
-        items.map(item => {
-          const mine = mineById[item.id];
-          return H(ListingCard, {
-            key:item.id,
-            item,
+      H('section', { className:'masonry' },
+        items.map(item => 
+          H('div', { key:item.id, className:'masonry-item' },
+            H('img', { src: item.image_data, onClick: () => setSelected(item), style: { cursor: 'pointer' } })
+          )
+        )
+      ),
+      (!items.length && !busy) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
+      selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
+        H('div', { className:'modal-inner listing-modal' },
+          H('button', { className:'close', onClick:()=>setSelected(null) }, '✕'),
+          H(ListingCard, {
+            item: selected,
             user,
-            canEdit: !!mine,
+            canEdit: !!mineById[selected.id],
             onEdit,
             onDelete,
             onMessage,
             onAdminDelete
-          });
-        })
-      ),
-      (!items.length && !busy) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.')
+          })
+        )
+      )
     );
   }
 
