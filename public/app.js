@@ -9,8 +9,9 @@
    + Opt-in to enable Nearby (default off)
    + Immutable GPS location on edits (fixed at first opt-in)
    + Mobile-only Nearby opt-in and tab
-   + (NEW) Global loading overlay
-   + (NEW) Lightbox via portal + stopPropagation in cards
+   + Global loading overlay (auto for API calls; silent for polling)
+   + Lightbox via portal + stopPropagation in cards
+   + Profile tab (your listings + logout)
 */
 
 (() => {
@@ -189,7 +190,7 @@
   // --- City Autocomplete (client-side from existing listings) ---
   function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
     const [open, setOpen] = useState(false);
-       const [hover, setHover] = useState(0);
+    const [hover, setHover] = useState(0);
     const boxRef = useRef(null);
 
     const list = useMemo(() => {
@@ -292,7 +293,8 @@
         H('nav', { className: 'row' },
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
           isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-          messagesBtn
+          messagesBtn,
+          H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile') }, 'Profile')
         ),
         authArea
       )
@@ -512,15 +514,17 @@
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
     if(!open) return null;
 
+    const len = Math.max(1, (images && images.length) || 0);
+
     const modal = H('div', {
       className:'modal open lightbox',
       onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); }
     },
       H('div', { className:'modal-inner' },
         H('button', { className:'close', onClick:onClose }, '✕'),
-        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+(images?.length||1))%(images?.length||1)) }, '◀'),
+        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+len)%len) }, '◀'),
         H('img', { src: images[index] }),
-        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%(images?.length||1)) }, '▶'),
+        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%len) }, '▶'),
         H('div', { className:'thumbs' },
           ...(images||[]).map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
         )
@@ -568,11 +572,11 @@
 
     const controls = [];
     if (!user || user.id !== item.user_id) {
-      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage(item) }, 'Message seller'));
+      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage?.(item) }, 'Message seller'));
     }
     if (canEdit) {
-      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit(item) }, 'Edit'));
-      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete(item) }, 'Remove Listing'));
+      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit?.(item) }, 'Edit'));
+      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete?.(item) }, 'Remove Listing'));
     }
     if (user?.is_admin) {
       controls.push(H('button', {
@@ -815,10 +819,57 @@
     );
   }
 
+  // --- Profile Panel (your account + your listings) ---
+  function ProfilePanel({ user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete }) {
+    if (!user) {
+      return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
+        H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
+        H('div', { className: 'muted' }, 'Please log in to view your profile.')
+      );
+    }
+
+    return H(React.Fragment, null,
+      H('section', { className:'card', style:{ padding:16, margin:'12px 0 16px' } },
+        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'center', flexWrap:'wrap' } },
+          H('div', null,
+            H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
+            H('div', { className:'muted' }, 'Your account')
+          ),
+          H('div', { className:'row', style:{ gap:8 } },
+            H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
+            H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
+          )
+        )
+      ),
+
+      H('section', null,
+        H('div', { className:'row', style:{ justifyContent:'space-between', margin:'0 0 12px', flexWrap:'wrap' } },
+          H('div', { style:{ fontWeight:800 } }, `Your listings (${items.length})`)
+        ),
+        H('section', { className:'grid' },
+          (items.length
+            ? items.map(item =>
+                H(ListingCard, {
+                  key:item.id,
+                  item,
+                  user,
+                  canEdit: true,
+                  onEdit,
+                  onDelete,
+                  onAdminDelete
+                })
+              )
+            : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
+          )
+        )
+      )
+    );
+  }
+
   // --- App ---
   function App(){
     const { user, setUser } = useAuth();
-    const [tab, setTab] = useState('browse'); // 'browse' | 'nearby' | 'messages'
+    const [tab, setTab] = useState('browse'); // 'browse' | 'nearby' | 'messages' | 'profile'
     const [all, setAll] = useState([]);
     const [mine, setMine] = useState([]);
     const [query, setQuery] = useState('');
@@ -850,6 +901,11 @@
       const [a, m] = await Promise.all([ api.listAll('', locationQuery), user ? api.listMine() : Promise.resolve([]) ]);
       setAll(a); setMine(m||[]);
     }
+    async function reloadMineOnly(){
+      if (!user) { setMine([]); return; }
+      const m = await api.listMine();
+      setMine(m||[]);
+    }
     useEffect(()=>{ reload(); }, [user?.id, locationQuery]);
 
     useEffect(() => {
@@ -858,6 +914,8 @@
         setAll(a);
       })();
     }, [query, locationQuery]);
+
+    useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
     async function recomputeUnread() {
       try {
@@ -940,6 +998,12 @@
     function handleAdminDelete(listingId) {
       setAll(prev => prev.filter(x => x.id !== listingId));
       setMine(prev => prev.filter(x => x.id !== listingId));
+    }
+
+    async function logoutFromProfile(){
+      await api.logout();
+      setUser(null);
+      setTab('browse');
     }
 
     return H(React.Fragment, null,
@@ -1033,7 +1097,24 @@
           (user
             ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
             : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
-          )
+          ),
+
+        (tab==='profile') &&
+          H(ProfilePanel, {
+            user,
+            items: mine,
+            onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
+            onEdit:(it)=>{
+              const rich = mineById[it.id] || it;
+              setEditing(rich);
+              setShowForm(true);
+              setTab('browse');  // jump to the form
+              window.scrollTo({ top:0, behavior:'smooth' });
+            },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
+            onLogout: logoutFromProfile,
+            onAdminDelete: handleAdminDelete
+          })
       )
     );
   }
