@@ -1,3 +1,4 @@
+// public/app.js
 /* public/app.js — usernames + titles + unread dots + multi-images + AI analysis (title, tags, suggested price)
    + admin delete-all & per-card + private tags (visible only in edit/create)
    + global 401 handling, logout-to-browse safety, Messages with image attachments + attach icon button
@@ -8,6 +9,8 @@
    + Opt-in to enable Nearby (default off)
    + Immutable GPS location on edits (fixed at first opt-in)
    + Mobile-only Nearby opt-in and tab
+   + (NEW) Global loading overlay
+   + (NEW) Lightbox via portal + stopPropagation in cards
 */
 
 (() => {
@@ -19,8 +22,8 @@
     return /mobile|android|iphone|ipad|tablet|touch/.test(userAgent) || (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
   }
 
-  // small bridge so api can redirect UI on 401s
-  const AppNav = { setUser: () => {}, setTab: () => {} };
+  // small bridge so api can redirect UI on 401s + track global loading
+  const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {} };
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
@@ -40,108 +43,121 @@
     return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
   }
   // ---- distance helpers (only used when showDistance=true) ----
-function metersFromListing(item) {
-  if (Number.isFinite(item?.distance_m)) return item.distance_m;              // meters from /nearby API
-  if (Number.isFinite(item?.distance_ft)) return item.distance_ft / 3.28084;  // feet -> meters
-  return null;
-}
-const _toRad = d => d * Math.PI / 180;
-function haversineMeters(aLat, aLon, bLat, bLon) {
-  const R = 6371000;
-  const dLat = _toRad(bLat - aLat);
-  const dLon = _toRad(bLon - aLon);
-  const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
-  return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
-}
-// cache geolocation so we don’t prompt repeatedly
-let _coordsPromise = null;
-function getUserCoordsOnce() {
-  if (_coordsPromise) return _coordsPromise;
-  if (!('geolocation' in navigator)) return Promise.resolve(null);
-  _coordsPromise = new Promise(resolve => {
-    navigator.geolocation.getCurrentPosition(
-      p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+  function metersFromListing(item) {
+    if (Number.isFinite(item?.distance_m)) return item.distance_m;              // meters from /nearby API
+    if (Number.isFinite(item?.distance_ft)) return item.distance_ft / 3.28084;  // feet -> meters
+    return null;
+  }
+  const _toRad = d => d * Math.PI / 180;
+  function haversineMeters(aLat, aLon, bLat, bLon) {
+    const R = 6371000;
+    const dLat = _toRad(bLat - aLat);
+    const dLon = _toRad(bLon - aLon);
+    const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
+  }
+  // cache geolocation so we don’t prompt repeatedly
+  let _coordsPromise = null;
+  function getUserCoordsOnce() {
+    if (_coordsPromise) return _coordsPromise;
+    if (!('geolocation' in navigator)) return Promise.resolve(null);
+    _coordsPromise = new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
+    return _coordsPromise;
+  }
+
+  // --- Global Loader ---
+  function GlobalLoader({ active }) {
+    if (!active) return null;
+    return H('div', { className: 'global-loader' },
+      H('div', { className: 'spinner' }),
+      H('div', { className: 'loader-text' }, 'Loading…')
     );
-  });
-  return _coordsPromise;
-}
+  }
 
-
-  // --- API (centralized 401 handling) ---
+  // --- API (centralized 401 handling + global loader) ---
   const api = {
-    async _fetch(url, opts = {}) {
-      const res = await fetch(url, { credentials: 'include', ...opts });
-      if (res.status === 401) {
-        AppNav.setUser(null);
-        AppNav.setTab('browse');
-        throw new Error('auth');
+    async _fetch(url, opts = {}, meta = {}) {
+      const silent = !!meta.silent;
+      if (!silent) AppNav.incLoad();
+      try {
+        const res = await fetch(url, { credentials: 'include', ...opts });
+        if (res.status === 401) {
+          AppNav.setUser(null);
+          AppNav.setTab('browse');
+          throw new Error('auth');
+        }
+        if (!res.ok) {
+          let msg = 'request_failed';
+          try { msg = (await res.json()).error || msg; } catch {}
+          throw new Error(msg);
+        }
+        try { return await res.json(); } catch { return null; }
+      } finally {
+        if (!silent) AppNav.decLoad();
       }
-      if (!res.ok) {
-        let msg = 'request_failed';
-        try { msg = (await res.json()).error || msg; } catch {}
-        throw new Error(msg);
-      }
-      try { return await res.json(); } catch { return null; }
     },
 
-    me()              { return this._fetch('/api/me', { method:'GET' }); },
-    register(payload) { return this._fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); },
-    login(email, password) {
-      return this._fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) });
+    me(meta)                { return this._fetch('/api/me', { method:'GET' }, meta); },
+    register(payload, meta) { return this._fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta); },
+    login(email, password, meta) {
+      return this._fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) }, meta);
     },
-    async logout() {
-      try { await this._fetch('/api/logout', { method:'POST' }); } catch {}
+    async logout(meta) {
+      try { await this._fetch('/api/logout', { method:'POST' }, meta); } catch {}
     },
 
-    async listAll(q, loc) {
+    async listAll(q, loc, meta) {
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
-      const r = await fetch(url);
-      return r.json();
+      return this._fetch(url, { method: 'GET' }, meta);
     },
-    listMine()      { return this._fetch('/api/listings?mine=1', { method:'GET' }); },
-    createListing(payload) {
-      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
+    createListing(payload, meta) {
+      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
     },
-    updateListing(id, payload) {
-      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    updateListing(id, payload, meta) {
+      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
     },
-    deleteListing(id) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }); },
+    deleteListing(id, meta) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }, meta); },
 
-    adminDeleteListing(id) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }); },
-    adminDeleteAll()       { return this._fetch('/api/admin/listings', { method:'DELETE' }); },
+    adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
+    adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
 
-    ensureConversation({ with_user_id, listing_id }) {
-      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) });
+    ensureConversation({ with_user_id, listing_id }, meta) {
+      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) }, meta);
     },
-    listConversations() { return this._fetch('/api/conversations', { method:'GET' }); },
-    getMessages(id)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }); },
-    sendMessage(id, body, images){
+    listConversations(meta) { return this._fetch('/api/conversations', { method:'GET' }, meta); },
+    getMessages(id, meta)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }, meta); },
+    sendMessage(id, body, images, meta){
       return this._fetch(`/api/conversations/${id}/messages`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ body, images })
-      });
+      }, meta);
     },
 
-    getListingImages(id){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }); },
+    getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
 
-    aiAnalyze({ images, hint }) {
-      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) });
+    aiAnalyze({ images, hint }, meta) {
+      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) }, meta);
     },
 
-    reverseGeocode(lat, lon) {
-      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' });
+    reverseGeocode(lat, lon, meta) {
+      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
     },
 
     // GPS Nearby
-    listNearby(lat, lon, radius_m = 150) {
+    listNearby(lat, lon, radius_m = 150, meta) {
       const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
-      return this._fetch(url, { method:'GET' });
+      return this._fetch(url, { method:'GET' }, meta);
     }
   };
 
@@ -173,7 +189,7 @@ function getUserCoordsOnce() {
   // --- City Autocomplete (client-side from existing listings) ---
   function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
     const [open, setOpen] = useState(false);
-    const [hover, setHover] = useState(0);
+       const [hover, setHover] = useState(0);
     const boxRef = useRef(null);
 
     const list = useMemo(() => {
@@ -349,150 +365,147 @@ function getUserCoordsOnce() {
     );
   }
 
-  // --- Listing Form (immutable GPS on edits + mobile-only opt-in) ---
   // --- Listing Form (immutable GPS on edits; Nearby opt-in is mobile-only) ---
-function ListingForm({ draft, onCancel, onSaved }) {
-  const [images, setImages] = useState([]);
-  const [title, setTitle] = useState(draft?.title || '');
-  const [description, setDescription] = useState(draft?.description || '');
-  const [location, setLocation] = useState(draft?.location || '');
-  const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-  const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiErr, setAiErr] = useState('');
+  function ListingForm({ draft, onCancel, onSaved }) {
+    const [images, setImages] = useState([]);
+    const [title, setTitle] = useState(draft?.title || '');
+    const [description, setDescription] = useState(draft?.description || '');
+    const [location, setLocation] = useState(draft?.location || '');
+    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiErr, setAiErr] = useState('');
 
-  const hasFixedGps = !!draft?.lat;           // GPS fixed after first opt-in
-  const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
-  const [geoBusy, setGeoBusy] = useState(false);
-  const [geoErr, setGeoErr] = useState('');
+    const hasFixedGps = !!draft?.lat;           // GPS fixed after first opt-in
+    const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoErr, setGeoErr] = useState('');
 
-  const [lat, setLat] = useState(draft?.lat ?? null);   // only sent if Nearby=on
-  const [lon, setLon] = useState(draft?.lon ?? null);
+    const [lat, setLat] = useState(draft?.lat ?? null);   // only sent if Nearby=on
+    const [lon, setLon] = useState(draft?.lon ?? null);
 
-  const isMobile = isMobileDevice();
+    const isMobile = isMobileDevice();
 
-  useEffect(() => {
-    (async () => {
-      if (draft?.id) {
-        try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
-        catch { setImages([draft.image_data].filter(Boolean)); }
-      } else { setImages([]); }
-    })();
-  }, [draft?.id]);
+    useEffect(() => {
+      (async () => {
+        if (draft?.id) {
+          try { const arr = await api.getListingImages(draft.id); setImages(arr || [draft.image_data].filter(Boolean)); }
+          catch { setImages([draft.image_data].filter(Boolean)); }
+        } else { setImages([]); }
+      })();
+    }, [draft?.id]);
 
-  async function runAI(){
-    setAiErr(''); setAiBusy(true);
-    try {
-      if (!images.length) { alert('Add at least one image first.'); return; }
-      const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
-      if (res.title) setTitle(res.title);
-      if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
-      if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
-        setPriceVal(String(res.suggested_price));
+    async function runAI(){
+      setAiErr(''); setAiBusy(true);
+      try {
+        if (!images.length) { alert('Add at least one image first.'); return; }
+        const res = await api.aiAnalyze({ images, hint: `${title} ${description}`.trim() });
+        if (res.title) setTitle(res.title);
+        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+          setPriceVal(String(res.suggested_price));
+        }
+      } catch (e) { setAiErr(e.message || 'AI failed'); }
+      finally { setAiBusy(false); }
+    }
+
+    async function useMyLocation() {
+      setGeoErr('');
+      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+      setGeoBusy(true);
+      try {
+        const coords = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            err => rej(err),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          )
+        );
+        const r = await api.reverseGeocode(coords.lat, coords.lon);
+        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+        // note: lat/lon are ONLY sent to the server if enable_nearby=1 (mobile users who opt in)
+        setLat(r?.lat ?? coords.lat);
+        setLon(r?.lon ?? coords.lon);
+      } catch { setGeoErr('Could not get your location'); }
+      finally { setGeoBusy(false); }
+    }
+
+    async function submit(e){
+      e.preventDefault();
+      const payload = {
+        images,
+        title: title.trim(),
+        description: description.trim(),
+        location: location.trim(),
+        price: Number(priceVal),
+        tags,
+        enable_nearby: enableNearby ? 1 : 0,
+      };
+      if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
+
+      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+        alert('Fill all fields and add at least one image.');
+        return;
       }
-    } catch (e) { setAiErr(e.message || 'AI failed'); }
-    finally { setAiBusy(false); }
-  }
+      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+        alert('Enable Nearby requires using your location.'); return;
+      }
 
-  async function useMyLocation() {
-    setGeoErr('');
-    if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
-    setGeoBusy(true);
-    try {
-      const coords = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(
-          p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-          err => rej(err),
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-        )
-      );
-      const r = await api.reverseGeocode(coords.lat, coords.lon);
-      setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
-      // note: lat/lon are ONLY sent to the server if enable_nearby=1 (mobile users who opt in)
-      setLat(r?.lat ?? coords.lat);
-      setLon(r?.lon ?? coords.lon);
-    } catch { setGeoErr('Could not get your location'); }
-    finally { setGeoBusy(false); }
-  }
-
-  async function submit(e){
-    e.preventDefault();
-    const payload = {
-      images,
-      title: title.trim(),
-      description: description.trim(),
-      location: location.trim(),
-      price: Number(priceVal),
-      tags,
-      enable_nearby: enableNearby ? 1 : 0,
-    };
-    if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
-
-    if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
-      alert('Fill all fields and add at least one image.');
-      return;
-    }
-    if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-      alert('Enable Nearby requires using your location.'); return;
+      if (draft) await api.updateListing(draft.id, payload);
+      else      await api.createListing(payload);
+      onSaved?.();
     }
 
-    if (draft) await api.updateListing(draft.id, payload);
-    else      await api.createListing(payload);
-    onSaved?.();
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
+      H(MultiImagePicker, { values:images, onChange:setImages }),
+
+      H('div', { className:'row', style:{ gap:8 } },
+        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
+      ),
+
+      H('label', null, 'Title'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
+
+      H('label', null, 'Description'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+
+      H('label', null, 'Location'),
+      H('div', { className:'row', style:{ gap:8 } },
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
+        // 👇 ALWAYS visible (desktop + mobile)
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
+
+      // Nearby toggle remains MOBILE-ONLY
+      isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
+        H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
+          const checked = e.target.checked;
+          setEnableNearby(checked);
+          if (checked && !hasFixedGps) useMyLocation();
+        }}),
+        H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
+      ),
+      (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
+
+      H('label', null, 'Price'),
+      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+
+      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
+        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+      ),
+
+      H('div', { className:'row' },
+        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
+      )
+    );
   }
 
-  return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
-    H(MultiImagePicker, { values:images, onChange:setImages }),
-
-    H('div', { className:'row', style:{ gap:8 } },
-      H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
-      aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-      H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
-    ),
-
-    H('label', null, 'Title'),
-    H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
-
-    H('label', null, 'Description'),
-    H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
-
-    H('label', null, 'Location'),
-    H('div', { className:'row', style:{ gap:8 } },
-      H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
-      // 👇 ALWAYS visible (desktop + mobile)
-      H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
-      geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
-    ),
-
-    // Nearby toggle remains MOBILE-ONLY
-    isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
-      H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
-        const checked = e.target.checked;
-        setEnableNearby(checked);
-        if (checked && !hasFixedGps) useMyLocation();
-      }}),
-      H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
-    ),
-    (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
-
-    H('label', null, 'Price'),
-    H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
-
-    H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
-      H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
-      H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
-      H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
-    ),
-
-    H('div', { className:'row' },
-      H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
-      H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
-    )
-  );
-}
-
-
-  // --- Lightbox ---
   // --- Lightbox (portal, always on top) ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
@@ -500,24 +513,22 @@ function ListingForm({ draft, onCancel, onSaved }) {
     if(!open) return null;
 
     const modal = H('div', {
-      className:'modal open lightbox',         // note: extra class
+      className:'modal open lightbox',
       onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); }
     },
       H('div', { className:'modal-inner' },
         H('button', { className:'close', onClick:onClose }, '✕'),
-        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+images.length)%images.length) }, '◀'),
+        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+(images?.length||1))%(images?.length||1)) }, '◀'),
         H('img', { src: images[index] }),
-        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%images.length) }, '▶'),
+        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%(images?.length||1)) }, '▶'),
         H('div', { className:'thumbs' },
-          ...images.map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
+          ...(images||[]).map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
         )
       )
     );
 
-    // Render above everything else
     return ReactDOM.createPortal(modal, document.body);
   }
-
 
   // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
@@ -526,27 +537,29 @@ function ListingForm({ draft, onCancel, onSaved }) {
     const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
 
-      const [derivedMeters, setDerivedMeters] = React.useState(null);
+    const [derivedMeters, setDerivedMeters] = React.useState(null);
 
-  React.useEffect(() => {
-    if (!showDistance) { setDerivedMeters(null); return; }
+    React.useEffect(() => {
+      if (!showDistance) { setDerivedMeters(null); return; }
+      const fromServer = metersFromListing(item);
+      if (fromServer != null) { setDerivedMeters(fromServer); return; }
 
-    // 1) prefer distance sent by /nearby endpoint
-    const fromServer = metersFromListing(item);
-    if (fromServer != null) { setDerivedMeters(fromServer); return; }
+      if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
+        getUserCoordsOnce().then(coords => {
+          if (!coords) return;
+          const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
+          setDerivedMeters(m);
+        });
+      } else {
+        setDerivedMeters(null);
+      }
+    }, [showDistance, item?.id, item?.lat, item?.lon]);
 
-    // 2) otherwise compute from user GPS + listing lat/lon (when available)
-    if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
-      getUserCoordsOnce().then(coords => {
-        if (!coords) return;
-        const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
-        setDerivedMeters(m);
-      });
-    } else {
-      setDerivedMeters(null);
-    }
-  }, [showDistance, item?.id, item?.lat, item?.lon]);
-
+    // clamp idx when images arrive
+    React.useEffect(() => {
+      if (!open || !Array.isArray(images)) return;
+      if (idx < 0 || idx >= images.length) setIdx(0);
+    }, [open, images, idx]);
 
     async function openModal(start=0){
       if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
@@ -574,7 +587,11 @@ function ListingForm({ draft, onCancel, onSaved }) {
     }
 
     return H('div', { className:'card' },
-      H('div', { className:'aspect', onClick:()=>openModal(0), style:{ cursor:'zoom-in' } }, H('img', { src:item.image_data })),
+      H('div', {
+        className:'aspect',
+        onClick:(e)=>{ e.stopPropagation(); openModal(0); }, // stop bubbling to parent modal
+        style:{ cursor:'zoom-in' }
+      }, H('img', { src:item.image_data })),
       H('div', { style:{ padding:16 } },
         H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
           H('div', null,
@@ -584,10 +601,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
           H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
         ),
         H('div', { className:'muted' }, item.location),
-        // green distance if present
-        // green distance (Nearby only)
         (showDistance && derivedMeters != null) && H('div', { className:'distance' }, fmtDistance(derivedMeters) + ' away'),
-
         H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
         H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
       ),
@@ -629,11 +643,11 @@ function ListingForm({ draft, onCancel, onSaved }) {
 
     useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
 
-    async function fetchConvos(){ try{ setConvos(await api.listConversations()); } catch(_){} }
+    async function fetchConvos(){ try{ setConvos(await api.listConversations({ silent:true })); } catch(_){} }
     async function fetchMsgs(){
       if(!activeId) return;
       try{
-        const arr = await api.getMessages(activeId);
+        const arr = await api.getMessages(activeId, { silent:true });
         setMsgs(arr);
         if (arr.length) onSeenChange?.(activeId, arr[arr.length-1].id);
       } catch{}
@@ -737,7 +751,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
         const { coords } = await new Promise((res, rej)=>
           navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
         );
-        const res = await api.listNearby(coords.latitude, coords.longitude, radius);
+        const res = await api.listNearby(coords.latitude, coords.longitude, radius, { silent:true });
         setItems(res || []);
       } catch (e) {
         alert('Could not load nearby listings');
@@ -776,7 +790,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
         )
       ),
       H('section', { className:'masonry' },
-        items.map(item => 
+        items.map(item =>
           H('div', { key:item.id, className:'masonry-item' },
             H('img', { src: item.image_data, onClick: () => setSelected(item), style: { cursor: 'pointer' } })
           )
@@ -816,9 +830,15 @@ function ListingForm({ draft, onCancel, onSaved }) {
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    const [loadingCount, setLoadingCount] = useState(0);
+
     const isMobile = isMobileDevice();
 
     useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
+    useEffect(() => {
+      AppNav.incLoad = () => setLoadingCount(c => c + 1);
+      AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
+    }, []);
 
     const mineById = useMemo(() => {
       const map = Object.create(null);
@@ -842,7 +862,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
     async function recomputeUnread() {
       try {
         if (!user) { setUnreadCount(0); return; }
-        const convos = await api.listConversations();
+        const convos = await api.listConversations({ silent:true });
         const seen = loadSeen(user.id);
         const n = (convos || []).filter(c =>
           c.last_message_id &&
@@ -924,6 +944,8 @@ function ListingForm({ draft, onCancel, onSaved }) {
 
     return H(React.Fragment, null,
       H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
+      H(GlobalLoader, { active: loadingCount > 0 }),
+
       H('main', { className:'container' },
         tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
