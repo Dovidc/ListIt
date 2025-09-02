@@ -14,6 +14,7 @@
    - Compression + static caching
    - Opt-in enable_nearby (default 0)
    - Immutable lat/lon (set once on first opt-in)
+   - (UPDATED) Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
 */
 
 const express = require('express');
@@ -36,12 +37,18 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 
+// === Image size knobs ===
+// Max image size (raw) in MB; can override with ENV MAX_IMAGE_MB
+const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
+// Base64 overhead safety factor (data URL + base64 ~ 1.33x; keep headroom)
+const B64_SLOP = 1.6;
+
 /* ------------------------------------------------------------------ */
 /* Core parsers (fixes server_error on login/register)                 */
 /* ------------------------------------------------------------------ */
 app.use(cookieParser());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // nice error for malformed JSON bodies
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && 'body' in err) {
@@ -409,9 +416,10 @@ app.get('/api/me', (req, res) => {
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
   if (images.length > 10) return 'Too many images (max 10)';
+  const maxB64Len = MAX_IMAGE_MB * 1024 * 1024 * B64_SLOP;
   for (const img of images) {
     if (typeof img !== 'string' || !img.startsWith('data:image')) return 'Each image must be a data URL';
-    if (img.length > 3 * 1024 * 1024 * 1.6) return 'Each image must be <= ~3MB';
+    if (img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
   }
   return null;
 }
@@ -419,9 +427,10 @@ function validateMsgImages(images) {
   if (!images) return null;
   if (!Array.isArray(images)) return 'images must be an array';
   if (images.length > 5) return 'Too many images (max 5)';
+  const maxB64Len = MAX_IMAGE_MB * 1024 * 1024 * B64_SLOP;
   for (const img of images) {
     if (typeof img !== 'string' || !img.startsWith('data:image')) return 'Each image must be a data URL';
-    if (img.length > 3 * 1024 * 1024 * 1.6) return 'Each image must be <= ~3MB';
+    if (img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
   }
   return null;
 }
