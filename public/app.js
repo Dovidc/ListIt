@@ -663,7 +663,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
   }
 
   // --- Nearby Panel (separate tab) ---
-  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete }) {
+  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
     const [radius, setRadius] = useState(150); // default ≈500 ft
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
@@ -689,6 +689,12 @@ function ListingForm({ draft, onCancel, onSaved }) {
 
     const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
     useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
+
+    function handleEdit(it) {
+      setSelected(null); // Close modal
+      setTab('browse'); // Switch to browse tab to show form
+      onEdit(it); // Proceed with editing
+    }
 
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
@@ -723,7 +729,7 @@ function ListingForm({ draft, onCancel, onSaved }) {
             item: selected,
             user,
             canEdit: !!mineById[selected.id],
-            onEdit,
+            onEdit: handleEdit,
             onDelete,
             onMessage,
             onAdminDelete
@@ -935,7 +941,8 @@ function ListingForm({ draft, onCancel, onSaved }) {
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
             onMessage: startMessage,
-            onAdminDelete: handleAdminDelete
+            onAdminDelete: handleAdminDelete,
+            setTab
           }),
 
         (tab==='messages') &&
