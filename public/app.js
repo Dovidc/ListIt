@@ -493,24 +493,31 @@ function ListingForm({ draft, onCancel, onSaved }) {
 
 
   // --- Lightbox ---
+  // --- Lightbox (portal, always on top) ---
   function Lightbox({ open, images, index, onClose, onIndex }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
     if(!open) return null;
-    function prev(){ onIndex((index-1+images.length)%images.length); }
-    function next(){ onIndex((index+1)%images.length); }
-    return H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
+
+    const modal = H('div', {
+      className:'modal open lightbox',         // note: extra class
+      onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); }
+    },
       H('div', { className:'modal-inner' },
         H('button', { className:'close', onClick:onClose }, '✕'),
-        H('button', { className:'arrow left', onClick:prev }, '◀'),
+        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+images.length)%images.length) }, '◀'),
         H('img', { src: images[index] }),
-        H('button', { className:'arrow right', onClick:next }, '▶'),
+        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%images.length) }, '▶'),
         H('div', { className:'thumbs' },
           ...images.map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
         )
       )
     );
+
+    // Render above everything else
+    return ReactDOM.createPortal(modal, document.body);
   }
+
 
   // --- Listing card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
