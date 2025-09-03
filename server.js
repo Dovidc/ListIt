@@ -369,7 +369,8 @@ app.post('/api/register', async (req, res) => {
   try {
     const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
       .run(email, username, hash, nowIso());
-    const user = { id: info.lastInsertRowid, email, username, is_admin: 0 };
+    const user = { id: info.lastInsertRowid, email, username, is_admin: false };
+
     const token = setAuthCookie(res, user);
     return res.json({ ...user, token });
   } catch (e) {
@@ -390,7 +391,8 @@ app.post('/api/login', async (req, res) => {
   try {
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-    const user = { id: row.id, email: row.email, username: row.username, is_admin: row.is_admin || 0 };
+    const user = { id: row.id, email: row.email, username: row.username, is_admin: !!row.is_admin };
+
     const token = setAuthCookie(res, user);
     return res.json({ ...user, token });
   } catch (e) {
@@ -407,7 +409,8 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/me', (req, res) => {
   const user = authFromReq(req);
   if (!user) return res.json(null);
-  return res.json({ id: user.id, email: user.email, username: user.username, is_admin: user.is_admin || 0 });
+  return res.json({ id: user.id, email: user.email, username: user.username, is_admin: !!user.is_admin });
+
 });
 
 /* ------------------------------------------------------------------ */

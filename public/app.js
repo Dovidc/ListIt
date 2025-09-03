@@ -257,7 +257,7 @@
   const authArea = user
     ? H('div', { className: 'row', style: { gap: 8 } },
         H('div', { className: 'muted' }, user.username ? `@${user.username}` : user.email),
-        user.is_admin && H('button', {
+        !!user.is_admin && H('button', {
           className: 'btn danger',
           onClick: async () => {
             if (confirm('Delete ALL listings? This cannot be undone.')) {
