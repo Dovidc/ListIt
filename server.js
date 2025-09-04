@@ -633,7 +633,7 @@ app.post('/api/listings', auth, (req, res) => {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    const cover = imgs.length ? imgs[0] : null; // may be null; S3 finalize will set cover if missing
+    const cover = imgs.length ? imgs[0] : '';// may be null; S3 finalize will set cover if missing 
     const tagStr = normalizeTags(tags);
     const safeTitle = shortTitle(title) || shortTitle(description);
 
