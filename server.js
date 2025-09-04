@@ -725,24 +725,40 @@ app.post('/api/uploads/sign', auth, async (req, res) => {
   }
 });
 
+// Replace your existing /api/uploads/finalize with this version
 app.post('/api/uploads/finalize', auth, (req, res) => {
   const { listingId, key, url, width, height, bytes } = req.body || {};
   if (!listingId || !key || !url) return res.status(400).json({ error: 'listingId, key, url required' });
 
-  db.prepare(`
-    INSERT INTO listing_images (listing_id, key, url, width, height, bytes, created_at)
-    VALUES (?,?,?,?,?,?,CAST(strftime('%s','now') AS INTEGER))
-  `).run(Number(listingId), String(key), String(url), width || null, height || null, bytes || null);
+  const lid = Number(listingId);
 
-  // Set cover if missing
+  // Security: ensure the current user owns this listing (or is admin)
+  const owner = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
+  if (!owner) return res.status(404).json({ error: 'Listing not found' });
+  if (!req.user?.is_admin && owner.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Not your listing' });
+  }
+
+  // Determine next position (0-based) for this listing's images
+  const pRow = db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(lid);
+  const pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+
+  // Insert row satisfying NOT NULL constraints
+  db.prepare(`
+    INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+    VALUES (?, '', ?, ?, ?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))
+  `).run(lid, pos, String(key), String(url), width || null, height || null, bytes || null);
+
+  // Set listing cover if missing (first uploaded image)
   db.prepare(`
     UPDATE listings
-    SET image_data = COALESCE(image_data, @url)
-    WHERE id = @listingId
-  `).run({ listingId: Number(listingId), url: String(url) });
+       SET image_data = COALESCE(NULLIF(image_data, ''), @url)
+     WHERE id = @listingId
+  `).run({ listingId: lid, url: String(url) });
 
-  res.json({ ok: true });
+  res.json({ ok: true, position: pos });
 });
+
 
 /* ------------------------------------------------------------------ */
 /* AI Analysis endpoint                                                */

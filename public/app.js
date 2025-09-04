@@ -489,10 +489,10 @@
       finally { setGeoBusy(false); }
     }
 
-    async function submit(e){
-      e.preventDefault();
+      async function submit(e){
+    e.preventDefault();
+    try {
       const payload = {
-        // No images here; S3 uploads handled after create/update
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
@@ -507,20 +507,25 @@
         return;
       }
       if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-        alert('Enable Nearby requires using your location.'); return;
+        alert('Enable Nearby requires using your location.');
+        return;
       }
 
       if (draft) {
         await api.updateListing(draft.id, payload);
-        // Upload any newly added files (append)
         if (files.length) await uploadFilesForListing(draft.id, files);
       } else {
         const created = await api.createListing(payload);
-        if (!created?.id) { alert('Create failed'); return; }
+        if (!created?.id) { throw new Error('Create failed'); }
         if (files.length) await uploadFilesForListing(created.id, files);
       }
       onSaved?.();
+    } catch (err) {
+      console.error('Create/save failed:', err);
+      alert(`Create/save failed: ${err?.message || err}`);
     }
+  }
+
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
 
