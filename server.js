@@ -15,6 +15,7 @@
    - Opt-in enable_nearby (default 0)
    - Immutable lat/lon (set once on first opt-in)
    - (UPDATED) Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
+   - (ADDED) S3 direct uploads: presign + finalize, supports S3 URLs as covers/images
 */
 
 const express = require('express');
@@ -27,6 +28,8 @@ const jwt = require('jsonwebtoken');
 let cors; try { cors = require('cors'); } catch {}
 let compression; try { compression = require('compression'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
+// S3 helper (optional; server still runs if s3.js not present)
+let presignUpload; try { ({ presignUpload } = require('./s3')); } catch {}
 
 const app = express();
 
@@ -46,6 +49,7 @@ const B64_SLOP = 1.6;
 /* ------------------------------------------------------------------ */
 /* Core parsers (fixes server_error on login/register)                 */
 /* ------------------------------------------------------------------ */
+
 app.use(cookieParser());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -135,6 +139,11 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+
+
+
+
 `);
 addColumnIfMissing('users', 'username', 'TEXT');
 createIndexIfMissing('idx_users_username', 'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);');
@@ -157,6 +166,7 @@ CREATE TABLE IF NOT EXISTS listings (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 `);
+
 /* Backfill legacy schemas */
 addColumnIfMissing('listings', 'image_data', 'TEXT');       // legacy: may exist
 addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
@@ -175,9 +185,43 @@ CREATE TABLE IF NOT EXISTS listing_images (
   FOREIGN KEY (listing_id) REFERENCES listings(id)
 );
 `);
-createIndexIfMissing('idx_listing_images_listing',
-  'CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);'
+// (NEW) S3-supporting columns on listing_images (non-breaking)
+// Add S3-era columns if missing
+addColumnIfMissing('listing_images', 'key', 'TEXT');
+addColumnIfMissing('listing_images', 'url', 'TEXT');
+addColumnIfMissing('listing_images', 'width', 'INTEGER');
+addColumnIfMissing('listing_images', 'height', 'INTEGER');
+addColumnIfMissing('listing_images', 'bytes', 'INTEGER');
+addColumnIfMissing('listing_images', 'created_at', "INTEGER DEFAULT (strftime('%s','now'))");
+
+// (Optional) extra index for the backfill ORDER BY id — give it a new name
+createIndexIfMissing(
+  'idx_listing_images_listing_id',
+  'CREATE INDEX IF NOT EXISTS idx_listing_images_listing_id ON listing_images(listing_id, id)'
 );
+
+// Cover backfill: prefer position=0 if present; else first row.
+// Run AFTER table/columns exist.
+try {
+  db.exec(`
+    UPDATE listings
+    SET image_data = (
+      SELECT COALESCE(url, image_data)
+      FROM listing_images
+      WHERE listing_id = listings.id
+      ORDER BY
+        CASE WHEN position IS NULL THEN 1 ELSE 0 END,  -- non-null positions first
+        position ASC,
+        id ASC
+      LIMIT 1
+    )
+    WHERE image_data IS NULL OR image_data = '';
+  `);
+  console.log('Cover backfill complete');
+} catch (e) {
+  console.warn('Cover backfill skipped:', e.message);
+}
+
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS conversations (
@@ -355,6 +399,51 @@ function requireAdmin(req, res, next){
 })();
 
 /* ------------------------------------------------------------------ */
+/* S3 Upload endpoints (optional; only active if s3.js is present)     */
+/* ------------------------------------------------------------------ */
+
+// Ask server for a presigned S3 PUT URL (client uploads bytes directly to S3)
+app.post('/api/uploads/sign', auth, async (req, res) => {
+  try {
+    if (!presignUpload) return res.status(501).json({ error: 's3_not_configured' });
+    const { filename, contentType, bytes } = req.body || {};
+    const sig = await presignUpload({ filename, contentType, bytes });
+    res.json(sig);
+  } catch (e) {
+    console.error('presign error:', e);
+    res.status(400).json({ error: String(e.message || e) });
+  }
+});
+
+// Record an uploaded S3 image in SQLite; first image becomes cover
+app.post('/api/uploads/finalize', auth, (req, res) => {
+  try {
+    const { listingId, key, url, width, height, bytes } = req.body || {};
+    const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(Number(listingId));
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (!req.user.is_admin && listing.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
+
+    const { c } = db.prepare('SELECT COUNT(1) AS c FROM listing_images WHERE listing_id = ?').get(Number(listingId));
+    const position = c ? (db.prepare('SELECT COALESCE(MAX(position)+1,0) AS p FROM listing_images WHERE listing_id = ?').get(Number(listingId)).p || 0) : 0;
+
+    db.prepare(`
+      INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+      VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)
+    `).run(Number(listingId), position, key || null, url || null, Number(width) || null, Number(height) || null, Number(bytes) || null, nowIso());
+
+    // If it's the first image, set cover to the URL so existing clients can show it
+    if (c === 0 && url) {
+      db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(String(url), Number(listingId));
+    }
+
+    res.json({ ok: true, position });
+  } catch (e) {
+    console.error('finalize error:', e);
+    res.status(400).json({ error: 'finalize_failed' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Auth routes                                                         */
 /* ------------------------------------------------------------------ */
 app.post('/api/register', async (req, res) => {
@@ -520,7 +609,7 @@ app.get('/api/listings', (req, res) => {
   return res.json(rows);
 });
 
-/* Batch covers: returns cover image for ids */
+/* Batch covers: returns cover image for ids (S3 URL or base64) */
 app.get('/api/listings/covers', (req, res) => {
   const idsStr = String(req.query.ids || '').trim();
   if (!idsStr) return res.json([]);
@@ -529,10 +618,10 @@ app.get('/api/listings/covers', (req, res) => {
   if (!ids.length) return res.json([]);
   const placeholders = ids.map(()=>'?').join(',');
   const rows = db.prepare(`
-    SELECT l.id, COALESCE(li.image_data, l.image_data) AS image_data
+    SELECT l.id, COALESCE(li.url, li.image_data, l.image_data) AS image_data
     FROM listings l
     LEFT JOIN (
-      SELECT listing_id, image_data
+      SELECT listing_id, url, image_data
       FROM listing_images
       WHERE position = 0
     ) li ON li.listing_id = l.id
@@ -541,15 +630,24 @@ app.get('/api/listings/covers', (req, res) => {
   res.json(rows);
 });
 
+/* Create listing
+   - Legacy path: accepts base64 data URLs in body.images and stores them
+   - S3 path: if body.s3 === 1 and no images provided, creates listing without images.
+*/
 app.post('/api/listings', auth, (req, res) => {
-  const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
+  const { images, image_data, title, description, location, price, tags, enable_nearby, s3 } = req.body || {};
+  const useS3 = String(s3 || '') === '1' || s3 === 1 || s3 === true;
+
   const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
-  const err = validateImages(imgs);
-  if (err) return res.status(400).json({ error: err });
+  if (!useS3) {
+    const err = validateImages(imgs);
+    if (err) return res.status(400).json({ error: err });
+  }
   if (!description || !location || typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
     return res.status(400).json({ error: 'Missing fields' });
   }
-  const cover = imgs[0];
+
+  const cover = useS3 ? null : imgs[0];
   const tagStr = normalizeTags(tags);
   const safeTitle = shortTitle(title) || shortTitle(description);
 
@@ -566,8 +664,12 @@ app.post('/api/listings', auth, (req, res) => {
   `).run(req.user.id, cover, String(safeTitle), String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon, enNearby);
 
   const listingId = info.lastInsertRowid;
-  const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
-  imgs.forEach((img, i) => stmt.run(listingId, img, i));
+
+  if (!useS3) {
+    const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
+    imgs.forEach((img, i) => stmt.run(listingId, img, i));
+  }
+
   const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
   res.json(row);
 });
@@ -632,8 +734,13 @@ app.delete('/api/listings/:id', auth, (req, res) => {
 
 app.get('/api/listings/:id/images', (req, res) => {
   const id = Number(req.params.id);
-  const rows = db.prepare('SELECT image_data FROM listing_images WHERE listing_id = ? ORDER BY position ASC').all(id);
-  res.json(rows.map(r => r.image_data));
+  const rows = db.prepare(`
+    SELECT COALESCE(url, image_data) AS image
+    FROM listing_images
+    WHERE listing_id = ?
+    ORDER BY position ASC
+  `).all(id);
+  res.json(rows.map(r => r.image));
 });
 
 /* ------------------------------------------------------------------ */

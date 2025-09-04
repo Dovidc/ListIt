@@ -12,6 +12,7 @@
    + Global loading overlay (auto for API calls; silent for polling)
    + Lightbox via portal + stopPropagation in cards
    + Profile tab (your listings + logout)
+   + (ADDED) S3 direct uploads with presign/finalize; transparent fallback to legacy base64 flow
 */
 
 (() => {
@@ -70,6 +71,34 @@
       );
     });
     return _coordsPromise;
+  }
+
+  // --------- S3 helpers (dataURL -> Blob, filename, dims) ----------
+  function dataURLtoBlob(dataURL) {
+    // data:[<mediatype>][;base64],<data>
+    const idx = dataURL.indexOf(',');
+    const meta = dataURL.slice(0, idx);
+    const b64 = dataURL.slice(idx + 1);
+    const m = /^data:(.*?);base64$/i.exec(meta);
+    const contentType = m ? m[1] : 'application/octet-stream';
+    const bin = atob(b64);
+    const len = bin.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: contentType });
+    return { blob, contentType };
+  }
+  function extFromType(t) {
+    const map = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif' };
+    return map[(t||'').toLowerCase()] || 'bin';
+  }
+  function dimsFromDataURL(dataURL) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve({ w: null, h: null });
+      img.src = dataURL;
+    });
   }
 
   // --- Global Loader ---
@@ -159,6 +188,22 @@
     listNearby(lat, lon, radius_m = 150, meta) {
       const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
       return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    // ---- S3 direct-upload endpoints ----
+    uploadSign({ filename, contentType, bytes }, meta) {
+      return this._fetch('/api/uploads/sign', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ filename, contentType, bytes })
+      }, meta);
+    },
+    uploadFinalize(listingId, payload, meta) {
+      return this._fetch('/api/uploads/finalize', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ listingId, ...payload })
+      }, meta);
     }
   };
 
@@ -340,7 +385,9 @@
       const files = Array.from(e.target.files || []);
       const newImgs = [];
       for (const f of files) {
-        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+        // allow larger files so S3 path can handle (server enforces limit via env)
+        const MAX_MB = 10;
+        if (f.size > MAX_MB*1024*1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
         newImgs.push(await toB64(f));
       }
       onChange([...(values||[]), ...newImgs]);
@@ -431,8 +478,7 @@
 
     async function submit(e){
       e.preventDefault();
-      const payload = {
-        images,
+      const payloadBase = {
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
@@ -440,19 +486,64 @@
         tags,
         enable_nearby: enableNearby ? 1 : 0,
       };
-      if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
+      if (enableNearby && !hasFixedGps) { payloadBase.lat = lat; payloadBase.lon = lon; }
 
-      if (!images.length || !payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+      if (!images.length || !payloadBase.description || !payloadBase.location || Number.isNaN(payloadBase.price) || payloadBase.price <= 0) {
         alert('Fill all fields and add at least one image.');
         return;
       }
-      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+      if (payloadBase.enable_nearby && !hasFixedGps && (payloadBase.lat == null || payloadBase.lon == null)) {
         alert('Enable Nearby requires using your location.'); return;
       }
 
-      if (draft) await api.updateListing(draft.id, payload);
-      else      await api.createListing(payload);
-      onSaved?.();
+      // Prefer S3 path if the server is configured; fallback to legacy base64 if not.
+      let created = null;
+      try {
+        // 1) Create listing with S3 flag (no inline images)
+        created = draft
+          ? await api.updateListing(draft.id, { ...payloadBase, s3: 1 })
+          : await api.createListing({ ...payloadBase, s3: 1 });
+
+        const listingId = created.id || draft?.id;
+        if (!listingId) throw new Error('create_failed');
+
+        // 2) Upload images directly to S3 (sequential to avoid too many in-flight requests)
+        for (let i = 0; i < images.length; i++) {
+          const dataURL = images[i];
+          const { blob, contentType } = dataURLtoBlob(dataURL);
+          const sig = await api.uploadSign({
+            filename: `img${i}.${extFromType(contentType)}`,
+            contentType,
+            bytes: blob.size
+          });
+          // PUT bytes to S3
+          AppNav.incLoad();
+          await fetch(sig.uploadUrl, { method:'PUT', body: blob, headers:{ 'Content-Type': contentType } });
+          AppNav.decLoad();
+          const d = await dimsFromDataURL(dataURL);
+          await api.uploadFinalize(listingId, {
+            key: sig.Key, url: sig.publicUrl,
+            width: d.w, height: d.h, bytes: blob.size
+          });
+        }
+
+        onSaved?.();
+      } catch (err) {
+        // Fallback path: if S3 not configured or failed, use legacy base64 flow
+        console.warn('S3 upload failed or unavailable, falling back to legacy:', err?.message || err);
+        try {
+          if (created?.id) {
+            await api.updateListing(created.id, { images, ...payloadBase, s3: 0 });
+          } else if (draft?.id) {
+            await api.updateListing(draft.id, { images, ...payloadBase, s3: 0 });
+          } else {
+            await api.createListing({ images, ...payloadBase, s3: 0 });
+          }
+          onSaved?.();
+        } catch (e2) {
+          alert('Could not save your listing.');
+        }
+      }
     }
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
@@ -630,7 +721,8 @@
       const files = Array.from(e.target.files || []);
       const next = [...imgFiles];
       for (const f of files) {
-        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+        const MAX_MB = 10;
+        if (f.size > MAX_MB*1024*1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
         next.push(await toB64(f));
         if (next.length >= 5) break;
       }
