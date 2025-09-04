@@ -16,6 +16,7 @@
    - Opt-in enable_nearby (default 0)
    - Immutable lat/lon (set once on first opt-in)
    - (UPDATED) Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
+   - Refactored: Messages support S3 URLs (stored in message_images.url if provided)
 */
 
 const express = require('express');
@@ -38,6 +39,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.s3.amazonaws.com';
 
 // === Image size knobs ===
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
@@ -256,6 +258,15 @@ CREATE TABLE IF NOT EXISTS message_images (
   FOREIGN KEY (message_id) REFERENCES messages(id)
 );
 `);
+
+/* --- (NEW) S3-era columns on message_images (safe for existing DBs) --- */
+addColumnIfMissing('message_images', 'key', 'TEXT');
+addColumnIfMissing('message_images', 'url', 'TEXT');
+addColumnIfMissing('message_images', 'width', 'INTEGER');
+addColumnIfMissing('message_images', 'height', 'INTEGER');
+addColumnIfMissing('message_images', 'bytes', 'INTEGER');
+addColumnIfMissing('message_images', 'created_at', 'INTEGER DEFAULT 0');
+
 createIndexIfMissing('idx_msg_imgs_msg',
   'CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);'
 );
@@ -480,8 +491,9 @@ function validateMsgImages(images) {
   if (images.length > 5) return 'Too many images (max 5)';
   const maxB64Len = MAX_IMAGE_MB * 1024 * 1024 * B64_SLOP;
   for (const img of images) {
-    if (typeof img !== 'string' || !img.startsWith('data:image')) return 'Each image must be a data URL';
-    if (img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
+    if (typeof img !== 'string') return 'Each image must be a string';
+    if (img.startsWith('data:image/') && img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
+    if (img.startsWith('https://') && !img.startsWith(PUBLIC_ASSET_BASE)) return 'Invalid image URL';
   }
   return null;
 }
@@ -867,7 +879,7 @@ app.get('/api/conversations/:id/messages', auth, (req, res) => {
     ORDER BY m.id ASC
   `).all(id);
 
-  const getImgs = db.prepare('SELECT image_data FROM message_images WHERE message_id = ? ORDER BY position ASC');
+  const getImgs = db.prepare('SELECT COALESCE(url, image_data) AS image_data FROM message_images WHERE message_id = ? ORDER BY position ASC');
   const out = msgs.map(m => ({ ...m, images: getImgs.all(m.id).map(r => r.image_data) }));
 
   res.json(out);
@@ -895,12 +907,20 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   const msgId = info.lastInsertRowid;
 
   if (Array.isArray(images) && images.length) {
-    const stmt = db.prepare('INSERT INTO message_images (message_id, image_data, position) VALUES (?, ?, ?)');
-    images.forEach((img, i) => stmt.run(msgId, img, i));
+    const stmt = db.prepare('INSERT INTO message_images (message_id, position, image_data, url) VALUES (?, ?, ?, ?)');
+    images.forEach((img, i) => {
+      let data = null, u = null;
+      if (typeof img === 'string') {
+        if (img.startsWith('data:image/')) data = img;
+        else if (img.startsWith('https://') && img.startsWith(PUBLIC_ASSET_BASE)) u = img;
+        else return; // skip invalid
+      }
+      stmt.run(msgId, i, data, u);
+    });
   }
 
   const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
-  const imgs = db.prepare('SELECT image_data FROM message_images WHERE message_id = ? ORDER BY position ASC').all(msgId).map(r => r.image_data);
+  const imgs = db.prepare('SELECT COALESCE(url, image_data) AS image_data FROM message_images WHERE message_id = ? ORDER BY position ASC').all(msgId).map(r => r.image_data);
   res.json({ ...row, images: imgs });
 });
 

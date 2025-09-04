@@ -1,4 +1,5 @@
 // public/app.js — S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
+// Refactored: Messages now upload images to S3 (presign + PUT), send public URLs instead of base64
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -155,7 +156,7 @@
     }
   };
 
-  // Upload a single file to S3 then finalize in DB
+  // Upload a single file to S3 then finalize in DB (for listings)
   async function uploadOneImage(listingId, file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
@@ -189,6 +190,19 @@
       out.push(url);
     }
     return out;
+  }
+
+  // Upload a single file to S3 (for messages; no finalize, just return public URL)
+  async function uploadOneMessageImage(file) {
+    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+    if (sig.error) throw new Error(sig.error);
+
+    // PUT bytes to S3
+    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
+    if (!putRes.ok) throw new Error('s3_put_failed');
+
+    // No dims or finalize for messages
+    return sig.publicUrl;
   }
 
   // --- Attach icon button ---
@@ -328,7 +342,6 @@
   function AuthButtons({ setUser }) {
     const [mode, setMode] = useState('login');
     const [username, setUsername] = useState('');
-    theEmail = useState('')[0]; // avoid eslint nags
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [err, setErr] = useState('');
@@ -672,7 +685,7 @@
     );
   }
 
-  // --- Messages (unchanged; still base64 for chat images) ---
+  // --- Messages (refactored to S3 URLs instead of base64) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -682,18 +695,17 @@
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
 
-    // attachments state (still base64 for chat)
+    // attachments state (now File[] for S3 upload)
     const [imgFiles, setImgFiles] = useState([]);
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
 
-    const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
     async function pickImgs(e){
       const files = Array.from(e.target.files || []);
       const next = [...imgFiles];
       for (const f of files) {
         if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
-        next.push(await toB64(f));
+        next.push(f);
         if (next.length >= 5) break;
       }
       setImgFiles(next);
@@ -727,7 +739,15 @@
     async function send(){
       const bodyTrim = (input || '').trim();
       if(!bodyTrim && imgFiles.length === 0) return;
-      await api.sendMessage(activeId, bodyTrim, imgFiles);
+
+      // Upload images to S3 first
+      const urls = [];
+      for (const f of imgFiles) {
+        const url = await uploadOneMessageImage(f);
+        urls.push(url);
+      }
+
+      await api.sendMessage(activeId, bodyTrim, urls);
       setInput('');
       setImgFiles([]);
       await fetchMsgs();
