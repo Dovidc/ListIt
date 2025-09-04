@@ -475,6 +475,20 @@ app.get('/api/me', (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Listings (thin response + covers + fuzzy city filter)               */
 /* ------------------------------------------------------------------ */
+
+// --- helper to guarantee modern listings columns exist (idempotent) ---
+function ensureListingColumns() {
+  try {
+    addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
+    addColumnIfMissing('listings', 'tags', 'TEXT DEFAULT ""');
+    addColumnIfMissing('listings', 'lat', 'REAL');
+    addColumnIfMissing('listings', 'lon', 'REAL');
+    addColumnIfMissing('listings', 'enable_nearby', 'INTEGER DEFAULT 0');
+  } catch (e) {
+    console.warn('ensureListingColumns failed:', e.message);
+  }
+}
+
 function validateImages(images) {
   if (!Array.isArray(images) || images.length === 0) return 'At least one image is required';
   if (images.length > 10) return 'Too many images (max 10)';
@@ -602,48 +616,79 @@ app.get('/api/listings/covers', (req, res) => {
 });
 
 app.post('/api/listings', auth, (req, res) => {
-  // images/image_data may be omitted (S3-first flow)
-  const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
+  try {
+    // guard against older DBs
+    ensureListingColumns();
 
-  // If legacy base64 images were provided, validate; otherwise skip
-  const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
-  if (imgs.length) {
-    const err = validateImages(imgs);
-    if (err) return res.status(400).json({ error: err });
+    const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
+
+    // If legacy base64 images were provided, validate; otherwise skip (S3-first flow)
+    const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
+    if (imgs.length) {
+      const err = validateImages(imgs);
+      if (err) return res.status(400).json({ error: err });
+    }
+
+    if (!description || !location || typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+
+    const cover = imgs.length ? imgs[0] : null; // may be null; S3 finalize will set cover if missing
+    const tagStr = normalizeTags(tags);
+    const safeTitle = shortTitle(title) || shortTitle(description);
+
+    let lat = Number(req.body.lat);
+    let lon = Number(req.body.lon);
+    if (!Number.isFinite(lat)) lat = null;
+    if (!Number.isFinite(lon)) lon = null;
+
+    const enNearby = enable_nearby ? 1 : 0;
+
+    const info = db.prepare(`
+      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.user.id,
+      cover,
+      String(safeTitle),
+      String(description).slice(0,400),
+      String(location).slice(0,80),
+      Number(price),
+      nowIso(),
+      tagStr,
+      lat,
+      lon,
+      enNearby
+    );
+
+    const listingId = info.lastInsertRowid;
+
+    // If legacy images were provided, persist them. (S3 uploads are handled by /api/uploads/*)
+    if (imgs.length) {
+      const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
+      imgs.forEach((img, i) => stmt.run(listingId, img, i));
+    }
+
+    const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
+    return res.json(row);
+
+  } catch (e) {
+    const msg = String(e && e.message || e || 'db_error');
+    console.error('Create listing failed:', msg);
+
+    // Friendlier messages for common cases
+    if (msg.includes('FOREIGN KEY constraint failed')) {
+      return res.status(400).json({ error: 'auth_stale', detail: 'Please log out and back in, then try again.' });
+    }
+    if (msg.includes('no column') || msg.includes('has no column named')) {
+      return res.status(500).json({ error: 'schema_out_of_date', detail: msg });
+    }
+    if (msg.toLowerCase().includes('not null')) {
+      return res.status(400).json({ error: 'db_constraint', detail: msg });
+    }
+    return res.status(500).json({ error: 'server_error', detail: msg });
   }
-
-  if (!description || !location || typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
-    return res.status(400).json({ error: 'Missing fields' });
-  }
-
-  const cover = imgs.length ? imgs[0] : null; // may be null; S3 finalize will set cover if missing
-  const tagStr = normalizeTags(tags);
-  const safeTitle = shortTitle(title) || shortTitle(description);
-
-  let lat = Number(req.body.lat);
-  let lon = Number(req.body.lon);
-  if (!Number.isFinite(lat)) lat = null;
-  if (!Number.isFinite(lon)) lon = null;
-
-  const enNearby = enable_nearby ? 1 : 0;
-
-  const info = db.prepare(`
-    INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, cover, String(safeTitle), String(description).slice(0,400), String(location).slice(0,80), Number(price), nowIso(), tagStr, lat, lon, enNearby);
-
-  const listingId = info.lastInsertRowid;
-
-  // If legacy images were provided, persist them. (S3 uploads are handled by /api/uploads/*)
-  if (imgs.length) {
-    const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
-    imgs.forEach((img, i) => stmt.run(listingId, img, i));
-  }
-
-  const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
-  res.json(row);
 });
-
 
 app.put('/api/listings/:id', auth, (req, res) => {
   const id = Number(req.params.id);
