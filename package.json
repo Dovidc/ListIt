@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
-    "postinstall": "echo \"postinstall noop\""
+    "postinstall": "npm rebuild better-sqlite3 --build-from-source"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.609.0",
