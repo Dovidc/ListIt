@@ -385,7 +385,7 @@
   // --- MultiFilePicker (for S3 uploads) ---
   function MultiFilePicker({ files, onChange }) {
     const ref = useRef();
-    const MAX_MB = 8;
+    const MAX_MB = 20;
 
     function pick(e) {
       const selected = Array.from(e.target.files || []);
@@ -735,12 +735,13 @@
     const dropRef = useRef();
 
     function addFiles(filesLike) {
-      const MAX_EACH = 3 * 1024 * 1024;
+      const MAX_EACH_MB = 20;
+      const MAX_EACH = MAX_EACH_MB * 1024 * 1024;
       const MAX_COUNT = 5;
       const next = [...imgFiles];
       for (const f of Array.from(filesLike || [])) {
         if (!f || !f.type?.startsWith?.('image/')) continue;
-        if (f.size > MAX_EACH) { alert('Each image must be under 3MB'); continue; }
+        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
         if (next.length >= MAX_COUNT) break;
         next.push(f);
       }

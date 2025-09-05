@@ -51,7 +51,7 @@ const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.s3.amazonaws.com';
 
 // === Image size knobs ===
-const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
+const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 20);
 const B64_SLOP = 1.6;
 
 /* ------------------------------------------------------------------ */

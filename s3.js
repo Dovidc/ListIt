@@ -35,9 +35,9 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
   const Bucket = need('S3_BUCKET');
   const PUBLIC_BASE = need('PUBLIC_ASSET_BASE');
 
-  const max = (+process.env.MAX_IMAGE_MB || 10) * 1024 * 1024;
+  const max = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
   if (bytes > max) throw new Error('Image too large');
-  if (!/^image\/(png|jpe?g|webp|avif)$/i.test(contentType)) throw new Error('Unsupported type');
+  if (!/^image\/(png|jpe?g|webp|avif|heic|heif)$/i.test(contentType)) throw new Error('Unsupported type');
 
   const Key = newKey(filename);
   const cmd = new PutObjectCommand({
