@@ -1,5 +1,6 @@
 // public/app.js — S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
 // Refactored: Messages now upload images to S3 (presign + PUT), send public URLs instead of base64
+// Update: Conversations list shows a small ✕ button to hard-delete a DM thread.
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -42,7 +43,7 @@
     if (!('geolocation' in navigator)) return Promise.resolve(null);
     _coordsPromise = new Promise(resolve => {
       navigator.geolocation.getCurrentPosition(
-        p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude } ),
         () => resolve(null),
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
       );
@@ -121,6 +122,10 @@
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ body, images })
       }, meta);
+    },
+    // NEW: delete a conversation
+    deleteConversation(id, meta) {
+      return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
     },
 
     getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
@@ -489,43 +494,42 @@
       finally { setGeoBusy(false); }
     }
 
-      async function submit(e){
-    e.preventDefault();
-    try {
-      const payload = {
-        title: title.trim(),
-        description: description.trim(),
-        location: location.trim(),
-        price: Number(priceVal),
-        tags,
-        enable_nearby: enableNearby ? 1 : 0,
-      };
-      if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
+    async function submit(e){
+      e.preventDefault();
+      try {
+        const payload = {
+          title: title.trim(),
+          description: description.trim(),
+          location: location.trim(),
+          price: Number(priceVal),
+          tags,
+          enable_nearby: enableNearby ? 1 : 0,
+        };
+        if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
 
-      if (!payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
-        alert('Fill all fields (title optional).');
-        return;
-      }
-      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-        alert('Enable Nearby requires using your location.');
-        return;
-      }
+        if (!payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
+          alert('Fill all fields (title optional).');
+          return;
+        }
+        if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+          alert('Enable Nearby requires using your location.');
+          return;
+        }
 
-      if (draft) {
-        await api.updateListing(draft.id, payload);
-        if (files.length) await uploadFilesForListing(draft.id, files);
-      } else {
-        const created = await api.createListing(payload);
-        if (!created?.id) { throw new Error('Create failed'); }
-        if (files.length) await uploadFilesForListing(created.id, files);
+        if (draft) {
+          await api.updateListing(draft.id, payload);
+          if (files.length) await uploadFilesForListing(draft.id, files);
+        } else {
+          const created = await api.createListing(payload);
+          if (!created?.id) { throw new Error('Create failed'); }
+          if (files.length) await uploadFilesForListing(created.id, files);
+        }
+        onSaved?.();
+      } catch (err) {
+        console.error('Create/save failed:', err);
+        alert(`Create/save failed: ${err?.message || err}`);
       }
-      onSaved?.();
-    } catch (err) {
-      console.error('Create/save failed:', err);
-      alert(`Create/save failed: ${err?.message || err}`);
     }
-  }
-
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
 
@@ -733,6 +737,21 @@
       } catch{}
     }
 
+    // NEW: delete conversation handler
+    async function deleteConvo(id) {
+      if (!id) return;
+      const ok = confirm('Delete this conversation? This removes all messages and images for both participants.');
+      if (!ok) return;
+      try {
+        await api.deleteConversation(id);
+        if (activeId === id) setActiveId(null);
+        setMsgs([]);
+        await fetchConvos();
+      } catch (e) {
+        alert(e?.message || 'Delete failed');
+      }
+    }
+
     useEffect(()=>{ fetchConvos(); }, []);
     useEffect(()=>{
       fetchMsgs();
@@ -777,12 +796,39 @@
         ...(convosDecorated.length ? convosDecorated.map(c => H('div', {
             key:c.id,
             className:'row',
-            style:{ padding:'8px 6px', borderRadius:12, cursor:'pointer', background: c.id===activeId?'#f3f4f6':'transparent', position:'relative' },
+            style:{
+              padding:'8px 6px',
+              borderRadius:12,
+              cursor:'pointer',
+              background: c.id===activeId?'#f3f4f6':'transparent',
+              position:'relative',
+              alignItems:'center',
+              gap:8
+            },
             onClick:()=>setActiveId(c.id)
           },
           H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
           c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
-          c._unread && H('span', { style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' } })
+          c._unread && H('span', {
+            style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' }
+          }),
+          H('button', {
+            title:'Delete conversation',
+            onClick:(e)=>{ e.stopPropagation(); deleteConvo(c.id); },
+            style:{
+              marginLeft: c._unread ? 6 : 'auto',
+              width:22, height:22,
+              lineHeight:'20px',
+              borderRadius:10,
+              border:'1px solid #fee2e2',
+              background:'#fff5f5',
+              color:'#b91c1c',
+              fontWeight:800,
+              display:'grid',
+              placeItems:'center',
+              cursor:'pointer'
+            }
+          }, '×')
         )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
       ),
       H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },

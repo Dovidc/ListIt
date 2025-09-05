@@ -997,6 +997,31 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   res.json({ ...row, images: imgs });
 });
 
+// DELETE a conversation (hard delete for both participants)
+app.delete('/api/conversations/:id', auth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad_id' });
+
+  const convo = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
+  if (!convo) return res.status(404).json({ error: 'Not found' });
+
+  // Only members (or admin) may delete
+  const isMember = (req.user?.id === convo.a_user_id) || (req.user?.id === convo.b_user_id) || !!req.user?.is_admin;
+  if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+
+  // Delete images first, then messages, then conversation
+  db.prepare(`
+    DELETE FROM message_images
+      WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)
+  `).run(id);
+
+  db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
+  db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+
+  res.json({ ok: true });
+});
+
+
 /* ------------------------------------------------------------------ */
 /* Reverse geocoding proxy (OpenStreetMap Nominatim)                   */
 /* ------------------------------------------------------------------ */
