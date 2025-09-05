@@ -4,15 +4,17 @@
   "private": true,
   "type": "commonjs",
   "main": "server.js",
-  "engines": { "node": "18.20.8" },
+  "engines": {
+    "node": "18.20.8"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
     "postinstall": "npm rebuild better-sqlite3 --build-from-source"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.609.0",
-    "@aws-sdk/s3-request-presigner": "^3.609.0",
+    "@aws-sdk/client-s3": "^3.882.0",
+    "@aws-sdk/s3-request-presigner": "^3.882.0",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
     "cookie-parser": "^1.4.7",
