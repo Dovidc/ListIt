@@ -55,13 +55,12 @@ const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
 const B64_SLOP = 1.6;
 
 /* ------------------------------------------------------------------ */
-/* Core parsers (fixes server_error on login/register)                 */
+/* Core parsers                                                        */
 /* ------------------------------------------------------------------ */
 
 app.use(cookieParser());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-// nice error for malformed JSON bodies
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({ error: 'invalid_json' });
@@ -107,16 +106,12 @@ function ensureDirFor(filePath) {
 function isAllowedPublicUrl(u) {
   try {
     const url = new URL(u);
-    // If PUBLIC_ASSET_BASE is set, enforce strict prefix
-    if (PUBLIC_ASSET_BASE) return u.startsWith(PUBLIC_ASSET_BASE);
-    // Else allow common AWS public hosts
+    if (PUBLIC_ASSET_BASE) return u.startsWith(PUBLIC_ASSET_BASE); // strict mode if set
     return (
       url.protocol === 'https:' &&
       (url.hostname.endsWith('.amazonaws.com') || url.hostname.endsWith('.cloudfront.net'))
     );
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 let DB_PATH = WANTED_DB;
@@ -185,9 +180,7 @@ CREATE TABLE IF NOT EXISTS listings (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 `);
-
-/* Backfill legacy schemas (listings) */
-addColumnIfMissing('listings', 'image_data', 'TEXT');       // legacy: may exist
+addColumnIfMissing('listings', 'image_data', 'TEXT');
 addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'tags', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'lat', 'REAL');
@@ -207,33 +200,22 @@ CREATE TABLE IF NOT EXISTS listing_images (
 createIndexIfMissing('idx_listing_images_listing',
   'CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);'
 );
-
-/* --- (NEW) S3-era columns on listing_images (safe for existing DBs) --- */
-addColumnIfMissing('listing_images', 'key', 'TEXT');              // S3 object key
-addColumnIfMissing('listing_images', 'url', 'TEXT');              // public URL
+addColumnIfMissing('listing_images', 'key', 'TEXT');
+addColumnIfMissing('listing_images', 'url', 'TEXT');
 addColumnIfMissing('listing_images', 'width', 'INTEGER');
 addColumnIfMissing('listing_images', 'height', 'INTEGER');
 addColumnIfMissing('listing_images', 'bytes', 'INTEGER');
-addColumnIfMissing('listing_images', 'created_at', 'INTEGER DEFAULT 0'); // must be constant for ALTER TABLE
-
-// Backfill created_at (only for rows where it's NULL or 0)
+addColumnIfMissing('listing_images', 'created_at', 'INTEGER DEFAULT 0');
 try {
   db.exec(`
     UPDATE listing_images
     SET created_at = CAST(strftime('%s','now') AS INTEGER)
     WHERE created_at IS NULL OR created_at = 0;
   `);
-} catch (e) {
-  console.warn('created_at backfill skipped:', e.message);
-}
-
-// Optional helper index for listing_id,id ordering
-createIndexIfMissing(
-  'idx_listing_images_listing_id',
+} catch (e) { console.warn('created_at backfill skipped:', e.message); }
+createIndexIfMissing('idx_listing_images_listing_id',
   'CREATE INDEX IF NOT EXISTS idx_listing_images_listing_id ON listing_images(listing_id, id)'
 );
-
-// --- Cover backfill: prefer position=0 then earliest row; use url if present ---
 try {
   db.exec(`
     UPDATE listings
@@ -250,9 +232,7 @@ try {
     WHERE image_data IS NULL OR image_data = '';
   `);
   console.log('Cover backfill complete');
-} catch (e) {
-  console.warn('Cover backfill skipped:', e.message);
-}
+} catch (e) { console.warn('Cover backfill skipped:', e.message); }
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS conversations (
@@ -283,15 +263,12 @@ CREATE TABLE IF NOT EXISTS message_images (
   FOREIGN KEY (message_id) REFERENCES messages(id)
 );
 `);
-
-/* --- (NEW) S3-era columns on message_images (safe for existing DBs) --- */
 addColumnIfMissing('message_images', 'key', 'TEXT');
 addColumnIfMissing('message_images', 'url', 'TEXT');
 addColumnIfMissing('message_images', 'width', 'INTEGER');
 addColumnIfMissing('message_images', 'height', 'INTEGER');
 addColumnIfMissing('message_images', 'bytes', 'INTEGER');
 addColumnIfMissing('message_images', 'created_at', 'INTEGER DEFAULT 0');
-
 createIndexIfMissing('idx_msg_imgs_msg',
   'CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);'
 );
@@ -339,8 +316,6 @@ function fallbackTagsFromTitleDesc(title, desc) {
   const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
   return [...new Set([...base, ...generic])].slice(0, 20);
 }
-
-/* ---------- fuzzy helpers for location (city) ---------- */
 function normLetters(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
 function cityOf(location){ return String(location||'').split(',')[0].trim(); }
 function levenshtein(a,b){
@@ -355,11 +330,7 @@ function levenshtein(a,b){
     for (let j=1;j<=n;j++){
       const tmp = dp[j];
       const cost = a[i-1]===b[j-1]?0:1;
-      dp[j] = Math.min(
-        dp[j]+1,     // deletion
-        dp[j-1]+1,   // insertion
-        prev+cost    // substitution
-      );
+      dp[j] = Math.min(dp[j]+1, dp[j-1]+1, prev+cost);
       prev = tmp;
     }
   }
@@ -381,7 +352,7 @@ function pickMatchingCities(allCities, query){
 }
 
 /* ------------------------------------------------------------------ */
-/* Auth helpers (cookies + Bearer)                                    */
+/* Auth helpers                                                        */
 /* ------------------------------------------------------------------ */
 function setAuthCookie(res, payload){
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
@@ -423,7 +394,7 @@ function requireAdmin(req, res, next){
 }
 
 /* ------------------------------------------------------------------ */
-/* Optional admin bootstrap via env vars                               */
+/* Optional admin bootstrap                                           */
 /* ------------------------------------------------------------------ */
 (function maybeCreateAdmin() {
   const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
@@ -454,7 +425,6 @@ app.post('/api/register', async (req, res) => {
     const info = db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
       .run(email, username, hash, nowIso());
     const user = { id: info.lastInsertRowid, email, username, is_admin: false };
-
     const token = setAuthCookie(res, user);
     return res.json({ ...user, token });
   } catch (e) {
@@ -476,7 +446,6 @@ app.post('/api/login', async (req, res) => {
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const user = { id: row.id, email: row.email, username: row.username, is_admin: !!row.is_admin };
-
     const token = setAuthCookie(res, user);
     return res.json({ ...user, token });
   } catch (e) {
@@ -485,7 +454,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', (_req, res) => {
   clearAuthCookie(res);
   return res.json({ ok: true });
 });
@@ -494,14 +463,12 @@ app.get('/api/me', (req, res) => {
   const user = authFromReq(req);
   if (!user) return res.json(null);
   return res.json({ id: user.id, email: user.email, username: user.username, is_admin: !!user.is_admin });
-
 });
 
 /* ------------------------------------------------------------------ */
 /* Listings (thin response + covers + fuzzy city filter)               */
 /* ------------------------------------------------------------------ */
 
-// --- helper to guarantee modern listings columns exist (idempotent) ---
 function ensureListingColumns() {
   try {
     addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
@@ -509,9 +476,7 @@ function ensureListingColumns() {
     addColumnIfMissing('listings', 'lat', 'REAL');
     addColumnIfMissing('listings', 'lon', 'REAL');
     addColumnIfMissing('listings', 'enable_nearby', 'INTEGER DEFAULT 0');
-  } catch (e) {
-    console.warn('ensureListingColumns failed:', e.message);
-  }
+  } catch (e) { console.warn('ensureListingColumns failed:', e.message); }
 }
 
 function validateImages(images) {
@@ -525,7 +490,7 @@ function validateImages(images) {
   return null;
 }
 
-/* ---------- UPDATED: allow S3 URLs or base64 for message images ---------- */
+/* ---------- allow S3 URLs or base64 for message images ---------- */
 function validateMsgImages(images) {
   if (!images) return null;
   if (!Array.isArray(images)) return 'images must be an array';
@@ -605,7 +570,7 @@ app.get('/api/listings', (req, res) => {
     rows = baseRowsPublic();
   }
 
-  // semantic location narrowing (only to existing listing locations)
+  // fuzzy location narrowing
   if (locRaw) {
     const distinct = db.prepare('SELECT DISTINCT location FROM listings').all().map(r => r.location).filter(Boolean);
     const allCities = distinct.map(cityOf).filter(Boolean);
@@ -613,15 +578,13 @@ app.get('/api/listings', (req, res) => {
     if (matches.size > 0) {
       const setNorm = new Set(Array.from(matches).map(c => normLetters(c)));
       rows = rows.filter(r => setNorm.has(normLetters(cityOf(r.location))));
-    } else {
-      rows = [];
-    }
+    } else { rows = []; }
   }
 
   return res.json(rows);
 });
 
-/* Batch covers: returns cover image for ids (prefers S3 url, then legacy image_data) */
+/* Batch covers */
 app.get('/api/listings/covers', (req, res) => {
   const idsStr = String(req.query.ids || '').trim();
   if (!idsStr) return res.json([]);
@@ -644,12 +607,9 @@ app.get('/api/listings/covers', (req, res) => {
 
 app.post('/api/listings', auth, (req, res) => {
   try {
-    // guard against older DBs
     ensureListingColumns();
 
     const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
-
-    // If legacy base64 images were provided, validate; otherwise skip (S3-first flow)
     const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
     if (imgs.length) {
       const err = validateImages(imgs);
@@ -660,7 +620,6 @@ app.post('/api/listings', auth, (req, res) => {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    // Use empty string to satisfy older DBs where listings.image_data may be NOT NULL
     const cover = imgs.length ? imgs[0] : '';
     const tagStr = normalizeTags(tags);
     const safeTitle = shortTitle(title) || shortTitle(description);
@@ -684,14 +643,11 @@ app.post('/api/listings', auth, (req, res) => {
       Number(price),
       nowIso(),
       tagStr,
-      lat,
-      lon,
-      enNearby
+      lat, lon, enNearby
     );
 
     const listingId = info.lastInsertRowid;
 
-    // If legacy images were provided, persist them. (S3 uploads are handled by /api/uploads/*)
     if (imgs.length) {
       const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
       imgs.forEach((img, i) => stmt.run(listingId, img, i));
@@ -703,8 +659,6 @@ app.post('/api/listings', auth, (req, res) => {
   } catch (e) {
     const msg = String(e && e.message || e || 'db_error');
     console.error('Create listing failed:', msg);
-
-    // Friendlier messages for common cases
     if (msg.includes('FOREIGN KEY constraint failed')) {
       return res.status(400).json({ error: 'auth_stale', detail: 'Please log out and back in, then try again.' });
     }
@@ -740,9 +694,8 @@ app.put('/api/listings/:id', auth, (req, res) => {
   const newLoc  = location ? String(location).slice(0,80) : existing.location;
   const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
 
-  let newLat = null;
-  let newLon = null;
-  if (existing.lat == null && req.body.enable_nearby) {  // first opt-in
+  let newLat = null, newLon = null;
+  if (existing.lat == null && req.body.enable_nearby) {
     newLat = Number(req.body.lat);
     newLon = Number(req.body.lon);
     if (!Number.isFinite(newLat)) newLat = null;
@@ -758,8 +711,7 @@ app.put('/api/listings/:id', auth, (req, res) => {
   }
 
   if (typeof req.body.enable_nearby !== 'undefined') {
-    const en = req.body.enable_nearby ? 1 : 0;
-    db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(en, id);
+    db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(req.body.enable_nearby ? 1 : 0, id);
   }
 
   const row = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
@@ -776,7 +728,6 @@ app.delete('/api/listings/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* Return all image URLs for a listing (S3 url or legacy image_data) */
 app.get('/api/listings/:id/images', (req, res) => {
   const id = Number(req.params.id);
   const rows = db.prepare('SELECT COALESCE(url, image_data) AS image FROM listing_images WHERE listing_id = ? ORDER BY position ASC, id ASC').all(id);
@@ -784,12 +735,10 @@ app.get('/api/listings/:id/images', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* S3 presign + finalize (direct uploads)                              */
+/* S3 presign + finalize                                              */
 /* ------------------------------------------------------------------ */
 app.post('/api/uploads/sign', auth, async (req, res) => {
-  if (!presignUpload) {
-    return res.status(500).json({ error: 's3_module_not_loaded' });
-  }
+  if (!presignUpload) return res.status(500).json({ error: 's3_module_not_loaded' });
   try {
     const { filename, contentType, bytes } = req.body || {};
     if (!contentType) return res.status(400).json({ error: 'contentType required' });
@@ -801,31 +750,23 @@ app.post('/api/uploads/sign', auth, async (req, res) => {
   }
 });
 
-// Replace your existing /api/uploads/finalize with this version
 app.post('/api/uploads/finalize', auth, (req, res) => {
   const { listingId, key, url, width, height, bytes } = req.body || {};
   if (!listingId || !key || !url) return res.status(400).json({ error: 'listingId, key, url required' });
 
   const lid = Number(listingId);
-
-  // Security: ensure the current user owns this listing (or is admin)
   const owner = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
   if (!owner) return res.status(404).json({ error: 'Listing not found' });
-  if (!req.user?.is_admin && owner.user_id !== req.user.id) {
-    return res.status(403).json({ error: 'Not your listing' });
-  }
+  if (!req.user?.is_admin && owner.user_id !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
 
-  // Determine next position (0-based) for this listing's images
   const pRow = db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(lid);
   const pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
 
-  // Insert row satisfying NOT NULL constraints
   db.prepare(`
     INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
     VALUES (?, '', ?, ?, ?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))
   `).run(lid, pos, String(key), String(url), width || null, height || null, bytes || null);
 
-  // Set listing cover if missing (first uploaded image)
   db.prepare(`
     UPDATE listings
        SET image_data = COALESCE(NULLIF(image_data, ''), @url)
@@ -836,7 +777,7 @@ app.post('/api/uploads/finalize', auth, (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* AI Analysis endpoint                                                */
+/* AI Analysis                                                         */
 /* ------------------------------------------------------------------ */
 app.post('/api/ai/analyze', auth, async (req, res) => {
   try {
@@ -854,8 +795,8 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
           'You are a listing assistant for a local marketplace.',
           'Analyze the item images and output STRICT JSON with:',
           '"title": concise <=80 chars, no emojis;',
-          '"tags": array of 12-24 short, lowercase search terms (generic words users type; include generic synonyms, e.g., "car" for a Jeep);',
-          '"price_usd": fair used-market price in USD as a number (no symbols), based on comparable items and visible condition;',
+          '"tags": array of 12-24 short, lowercase search terms;',
+          '"price_usd": fair used-market price in USD as a number;',
           'Return ONLY JSON.'
         ].join('\n')
       });
@@ -880,7 +821,7 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
       const outTags = tagStr ? tagStr.split(',') : [];
       if (!title) title = 'Item for sale';
 
-      let suggested_price = undefined;
+      let suggested_price;
       if (!Number.isNaN(priceNum)) {
         priceNum = Math.min(Math.max(priceNum, 1), 100000);
         suggested_price = Math.round(priceNum * 100) / 100;
@@ -895,10 +836,9 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
       return res.json({ title, tags: outTags.slice(0, 24), suggested_price });
     }
 
-    // Fallback (no OpenAI)
     const title = shortTitle(hint || 'Item for sale');
     const tags = normalizeTags(fallbackTagsFromTitleDesc(title, hint)).split(',').filter(Boolean);
-    return res.json({ title, tags: tags.slice(0, 20), suggested_price: undefined });
+    return res.json({ title, tags: tags.slice(0, 20) });
   } catch (e) {
     console.error('AI analyze failed:', e);
     return res.status(500).json({ error: 'AI analysis failed' });
@@ -997,7 +937,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
 
   const msgId = info.lastInsertRowid;
 
-  /* ---------- UPDATED: persist either base64 or S3 URL per image ---------- */
+  // IMPORTANT FIX: satisfy NOT NULL on image_data by inserting '' for URL rows
   if (Array.isArray(images) && images.length) {
     const stmt = db.prepare(`
       INSERT INTO message_images (message_id, position, image_data, url)
@@ -1009,7 +949,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
       if (img.startsWith('data:image/')) {
         stmt.run(msgId, i, img, null);
       } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-        stmt.run(msgId, i, null, img);
+        stmt.run(msgId, i, '', img);   // <<— insert empty string instead of NULL
       }
     });
   }
@@ -1019,7 +959,6 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   res.json({ ...row, images: imgs });
 });
 
-// DELETE a conversation (hard delete for both participants)
 app.delete('/api/conversations/:id', auth, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad_id' });
@@ -1027,25 +966,21 @@ app.delete('/api/conversations/:id', auth, (req, res) => {
   const convo = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
   if (!convo) return res.status(404).json({ error: 'Not found' });
 
-  // Only members (or admin) may delete
-  const isMember = (req.user?.id === convo.a_user_id) || (req.user?.id === convo.b_user_id) || !!req.user?.is_admin;
-  if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+  const isMem = (req.user?.id === convo.a_user_id) || (req.user?.id === convo.b_user_id) || !!req.user?.is_admin;
+  if (!isMem) return res.status(403).json({ error: 'Forbidden' });
 
-  // Delete images first, then messages, then conversation
   db.prepare(`
     DELETE FROM message_images
       WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)
   `).run(id);
-
   db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
   db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
 
   res.json({ ok: true });
 });
 
-
 /* ------------------------------------------------------------------ */
-/* Reverse geocoding proxy (OpenStreetMap Nominatim)                   */
+/* Reverse geocoding proxy                                            */
 /* ------------------------------------------------------------------ */
 const geoCache = new Map();
 app.get('/api/geo/reverse', async (req, res) => {
@@ -1079,16 +1014,14 @@ app.get('/api/geo/reverse', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Nearby listings endpoint (GPS)                                      */
+/* Nearby listings endpoint                                           */
 /* ------------------------------------------------------------------ */
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const toRad = d => (d * Math.PI) / 180;
-  const R = 6371000; // meters
+  const R = 6371000;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
@@ -1096,12 +1029,11 @@ app.get('/api/listings/nearby', (req, res) => {
   const lat0 = Number(req.query.lat);
   const lon0 = Number(req.query.lon);
   let radius = Number(req.query.radius_m);
-  if (!Number.isFinite(radius) || radius <= 0) radius = 150; // default ≈500 ft
+  if (!Number.isFinite(radius) || radius <= 0) radius = 150;
   if (!Number.isFinite(lat0) || !Number.isFinite(lon0)) {
     return res.status(400).json({ error: 'lat/lon required' });
   }
 
-  // quick bounding box prefilter
   const degLat = radius / 111320;
   const degLon = radius / (111320 * Math.cos((lat0 * Math.PI) / 180));
   const minLat = lat0 - degLat, maxLat = lat0 + degLat;
@@ -1125,7 +1057,7 @@ app.get('/api/listings/nearby', (req, res) => {
     const d = haversineMeters(lat0, lon0, r.lat, r.lon);
     if (d <= radius) out.push({ ...r, distance_m: Math.round(d) });
   }
-  out.sort((a,b)=> (a.distance_m||1e12) - (b.distance_m||1e12)); // nearest first
+  out.sort((a,b)=> (a.distance_m||1e12) - (b.distance_m||1e12));
   res.json(out);
 });
 
@@ -1139,7 +1071,7 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, (req, res) => {
   res.json({ ok: true, deleted: info.changes });
 });
 
-app.delete('/api/admin/listings', auth, requireAdmin, (req, res) => {
+app.delete('/api/admin/listings', auth, requireAdmin, (_req, res) => {
   db.exec('DELETE FROM listing_images; DELETE FROM listings;');
   res.json({ ok: true });
 });
