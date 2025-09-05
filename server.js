@@ -102,6 +102,25 @@ function ensureDirFor(filePath) {
   catch (e) { console.warn('Could not create DB dir', dir, e.message); return false; }
 }
 
+// URL allowlist for message image attachments
+function isAllowedPublicUrl(u) {
+  try {
+    const url = new URL(u);
+    if (PUBLIC_ASSET_BASE) {
+      return u.startsWith(PUBLIC_ASSET_BASE); // strict if provided
+    }
+    // fallback: common AWS public hosts
+    return (
+      url.protocol === 'https:' &&
+      (url.hostname.endsWith('.amazonaws.com') || url.hostname.endsWith('.cloudfront.net'))
+    );
+  } catch { return false; }
+}
+
+
+
+
+
 let DB_PATH = WANTED_DB;
 if (!ensureDirFor(WANTED_DB)) {
   console.warn('Falling back to local DB path:', DEFAULT_DB);
