@@ -29,20 +29,29 @@ const jwt = require('jsonwebtoken');
 let cors; try { cors = require('cors'); } catch {}
 let compression; try { compression = require('compression'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
+// at top
 let presignUpload;
 try {
   ({ presignUpload } = require('./s3'));
   console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'bucket=', process.env.S3_BUCKET);
-  if (!process.env.AWS_REGION || !process.env.S3_BUCKET || !process.env.PUBLIC_ASSET_BASE) {
-    console.warn('[S3] Missing envs', {
-      AWS_REGION: !!process.env.AWS_REGION,
-      S3_BUCKET: !!process.env.S3_BUCKET,
-      PUBLIC_ASSET_BASE: !!process.env.PUBLIC_ASSET_BASE,
-    });
-  }
 } catch (e) {
   console.error('[S3] require("./s3") failed:', e && e.message);
 }
+
+// /api/uploads/sign
+app.post('/api/uploads/sign', auth, async (req, res) => {
+  if (!presignUpload) return res.status(500).json({ error: 's3_module_not_loaded' });
+  try {
+    const { filename, contentType, bytes } = req.body || {};
+    if (!contentType) return res.status(400).json({ error: 'contentType required' });
+    const sig = await presignUpload({ filename, contentType, bytes });
+    return res.json(sig);
+  } catch (e) {
+    console.error('[S3] sign error:', e);
+    return res.status(400).json({ error: e.message || 'sign_failed' });
+  }
+});
+
 
 
 const app = express();
