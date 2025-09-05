@@ -1,6 +1,12 @@
-// public/app.js — S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
-// Refactored: Messages upload images to S3 (presign + PUT), send public URLs instead of base64
-// NEW: Paste & drag-and-drop images into message composer (+ small DM delete ✕ in list).
+// public/app.js
+//
+// S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
+// Messages: paste/drag/attach images → S3 URLs (kept!)
+// Conversations list: red “×” delete button (kept!)
+// CHANGE: All listing fields optional EXCEPT at least one image.
+//         If price field empty/invalid, default to $0.00 and render the price in green.
+//
+
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -15,7 +21,7 @@
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
-  function price(n) { return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
+  function price(n) { return Number(n ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
@@ -208,7 +214,7 @@
     return sig.publicUrl;
   }
 
-  // --- Attach icon button ---
+  // --- Attach icon button (Messages) ---
   function AttachButton({ onClick, title = 'Attach images' }) {
     return H('button', {
       className: 'icon-btn',
@@ -216,6 +222,7 @@
       onClick,
       title,
       'aria-label': title,
+      'data-testid': 'dm-attach',
       style: {
         width: 40, height: 40, borderRadius: 12,
         border: '1px solid #e5e7eb',
@@ -236,7 +243,7 @@
   // --- City Autocomplete (unchanged) ---
   function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
     const [open, setOpen] = useState(false);
-    const [hover, setHover] = useState(0);
+       const [hover, setHover] = useState(0);
     const boxRef = useRef(null);
 
     const list = useMemo(() => {
@@ -431,7 +438,7 @@
     const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-       const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
@@ -495,20 +502,26 @@
     async function submit(e){
       e.preventDefault();
       try {
+        // --- CHANGE: Only requirement is at least one image (either existing or new files)
+        const hasAnyImage = (existingUrls && existingUrls.length > 0) || (files && files.length > 0);
+        if (!hasAnyImage) {
+          alert('Please add at least one image.');
+          return;
+        }
+
+        // Default price to $0.00 if empty/invalid
+        const parsedPrice = Number(priceVal);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
         const payload = {
-          title: title.trim(),
-          description: description.trim(),
-          location: location.trim(),
-          price: Number(priceVal),
-          tags,
+          title: String(title || '').trim(),          // optional
+          description: String(description || '').trim(), // optional
+          location: String(location || '').trim(),    // optional
+          price: safePrice,                           // default 0
+          tags,                                       // optional
           enable_nearby: enableNearby ? 1 : 0,
         };
         if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
-
-        if (!payload.description || !payload.location || Number.isNaN(payload.price) || payload.price <= 0) {
-          alert('Fill all fields (title optional).');
-          return;
-        }
         if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
           alert('Enable Nearby requires using your location.');
           return;
@@ -529,6 +542,8 @@
       }
     }
 
+    const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
 
       // New uploads (go to S3)
@@ -544,18 +559,18 @@
       H('div', { className:'row', style:{ gap:8 } },
         H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
         aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-        H('span', { className:'muted' }, 'Generates a concise title, ~20 tags, and a suggested price')
+        H('span', { className:'muted' }, 'Only images are required. AI can suggest title/tags/price.')
       ),
 
-      H('label', null, 'Title'),
-      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value) }),
+      H('label', null, 'Title (optional)'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Optional' }),
 
-      H('label', null, 'Description'),
-      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value) }),
+      H('label', null, 'Description (optional)'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value), placeholder:'Optional' }),
 
-      H('label', null, 'Location'),
+      H('label', null, 'Location (optional)'),
       H('div', { className:'row', style:{ gap:8 } },
-        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'City, State' }),
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Optional (City, State)' }),
         H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
       ),
@@ -570,11 +585,22 @@
       ),
       (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
 
-      H('label', null, 'Price'),
-      H('input', { value:priceVal, inputMode:'decimal', onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')) }),
+      H('label', null, 'Price (optional)'),
+      H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+        H('input', {
+          value:priceVal,
+          inputMode:'decimal',
+          onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+          placeholder:'Leave empty for $0.00'
+        }),
+        H('span', {
+          className:'muted',
+          style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
+        }, isFree ? price(0) : price(Number(priceVal)))
+      ),
 
       H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
-        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private)'),
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private, optional)'),
         H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
         H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
       ),
@@ -649,6 +675,8 @@
       setIdx(start); setOpen(true);
     }
 
+    const isFree = Number(item?.price ?? 0) === 0;
+
     const controls = [];
     if (!user || user.id !== item.user_id) {
       controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage?.(item) }, 'Message seller'));
@@ -681,7 +709,7 @@
             H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
             H('div', { className:'muted' }, item.description)
           ),
-          H('div', { style:{ fontWeight:800, textAlign:'right' } }, price(item.price))
+          H('div', { style:{ fontWeight:800, textAlign:'right', color: isFree ? '#16a34a' : '#111' } }, price(item.price))
         ),
         H('div', { className:'muted' }, item.location),
         (showDistance && derivedMeters != null) && H('div', { className:'distance' }, fmtDistance(derivedMeters) + ' away'),
@@ -692,7 +720,7 @@
     );
   }
 
-  // --- Messages (S3 URLs; now supports PASTE + DRAG/DROP attachments) ---
+  // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -700,14 +728,10 @@
     const [activeId, setActiveId] = useState(initialActiveId || null);
     const [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
-    const pollRef = useRef(null);
-
-    // attachments state (File[] for S3 upload)
-    const [imgFiles, setImgFiles] = useState([]);
+    const [imgFiles, setImgFiles] = useState([]); // attachments state (File[] for S3 upload)
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
-
-    // dropzone refs/handlers
+    const pollRef = useRef(null);
     const dropRef = useRef();
 
     function addFiles(filesLike) {
@@ -825,7 +849,7 @@
 
     return H('div', { className:'split' },
       H('aside', { className:'card sidebar', style:{ padding:12 } },
-        H('div', { style:{ fontWeight:700, marginBottom:8 } }, 'Conversations'),
+        H('div', { style: { fontWeight:700, marginBottom:8 } }, 'Conversations'),
         ...(convosDecorated.length ? convosDecorated.map(c => H('div', {
             key:c.id,
             className:'row',
@@ -847,6 +871,7 @@
           }),
           H('button', {
             title:'Delete conversation',
+            'data-testid':'dm-delete',
             onClick:(e)=>{ e.stopPropagation(); deleteConvo(c.id); },
             style:{
               marginLeft: c._unread ? 6 : 'auto',
@@ -1130,8 +1155,8 @@
 
     const feed = useMemo(()=>{
       const list = [...(all || [])];
-      if (sort === 'price_asc') list.sort((a,b)=>a.price-b.price);
-      else if (sort === 'price_desc') list.sort((a,b)=>b.price-a.price);
+      if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
+      else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
       else if (sort === 'city') {
         list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
       } else list.sort((a,b)=>b.id-a.id);

@@ -616,9 +616,13 @@ app.post('/api/listings', auth, (req, res) => {
       if (err) return res.status(400).json({ error: err });
     }
 
-    if (!description || !location || typeof price !== 'number' || Number.isNaN(price) || price <= 0) {
-      return res.status(400).json({ error: 'Missing fields' });
-    }
+    // Fields are optional: coerce strings, clamp length
+    const descStr = String(description ?? '').slice(0,400);
+    const locStr  = String(location ?? '').slice(0,80);
+
+    // Default price to 0 if missing/invalid (allows free listings)
+    const pNum = Number(price);
+    const safePrice = (Number.isFinite(pNum) && pNum >= 0) ? pNum : 0;
 
     const cover = imgs.length ? imgs[0] : '';
     const tagStr = normalizeTags(tags);
@@ -638,9 +642,9 @@ app.post('/api/listings', auth, (req, res) => {
       req.user.id,
       cover,
       String(safeTitle),
-      String(description).slice(0,400),
-      String(location).slice(0,80),
-      Number(price),
+      String(descStr),
+      String(locStr),
+      Number(safePrice),
       nowIso(),
       tagStr,
       lat, lon, enNearby
@@ -689,10 +693,18 @@ app.put('/api/listings/:id', auth, (req, res) => {
     db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(imgs[0], id);
   }
 
-  const newTitle = title !== undefined ? shortTitle(title) : existing.title || '';
-  const newDesc = description ? String(description).slice(0,400) : existing.description;
-  const newLoc  = location ? String(location).slice(0,80) : existing.location;
-  const newPrice = (typeof price === 'number' && !Number.isNaN(price)) ? Number(price) : existing.price;
+  // Allow empty strings; only check for undefined to decide whether to update
+  const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
+  const newDesc  = (description !== undefined) ? String(description).slice(0,400) : existing.description;
+  const newLoc   = (location !== undefined) ? String(location).slice(0,80) : existing.location;
+
+  let newPrice;
+  if (price !== undefined) {
+    const p = Number(price);
+    newPrice = (Number.isFinite(p) && p >= 0) ? p : 0; // allow $0; default to 0 if invalid
+  } else {
+    newPrice = existing.price;
+  }
 
   let newLat = null, newLon = null;
   if (existing.lat == null && req.body.enable_nearby) {
@@ -949,7 +961,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
       if (img.startsWith('data:image/')) {
         stmt.run(msgId, i, img, null);
       } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-        stmt.run(msgId, i, '', img);   // <<— insert empty string instead of NULL
+        stmt.run(msgId, i, '', img);   // insert empty string instead of NULL
       }
     });
   }
