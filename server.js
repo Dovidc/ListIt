@@ -29,7 +29,21 @@ const jwt = require('jsonwebtoken');
 let cors; try { cors = require('cors'); } catch {}
 let compression; try { compression = require('compression'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
-let presignUpload; try { ({ presignUpload } = require('./s3')); } catch {}
+let presignUpload;
+try {
+  ({ presignUpload } = require('./s3'));
+  console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'bucket=', process.env.S3_BUCKET);
+  if (!process.env.AWS_REGION || !process.env.S3_BUCKET || !process.env.PUBLIC_ASSET_BASE) {
+    console.warn('[S3] Missing envs', {
+      AWS_REGION: !!process.env.AWS_REGION,
+      S3_BUCKET: !!process.env.S3_BUCKET,
+      PUBLIC_ASSET_BASE: !!process.env.PUBLIC_ASSET_BASE,
+    });
+  }
+} catch (e) {
+  console.error('[S3] require("./s3") failed:', e && e.message);
+}
+
 
 const app = express();
 
@@ -44,6 +58,9 @@ const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.
 // === Image size knobs ===
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
 const B64_SLOP = 1.6;
+
+
+
 
 /* ------------------------------------------------------------------ */
 /* Core parsers (fixes server_error on login/register)                 */
@@ -759,16 +776,20 @@ app.get('/api/listings/:id/images', (req, res) => {
 /* S3 presign + finalize (direct uploads)                              */
 /* ------------------------------------------------------------------ */
 app.post('/api/uploads/sign', auth, async (req, res) => {
+  if (!presignUpload) {
+    return res.status(500).json({ error: 's3_module_not_loaded' });
+  }
   try {
-    if (!presignUpload) throw new Error('S3 not configured');
     const { filename, contentType, bytes } = req.body || {};
     if (!contentType) return res.status(400).json({ error: 'contentType required' });
     const sig = await presignUpload({ filename, contentType, bytes });
-    res.json(sig);
+    return res.json(sig);
   } catch (e) {
-    res.status(400).json({ error: e.message || 'sign_failed' });
+    console.error('[S3] sign error:', e);
+    return res.status(400).json({ error: e.message || 'sign_failed' });
   }
 });
+
 
 // Replace your existing /api/uploads/finalize with this version
 app.post('/api/uploads/finalize', auth, (req, res) => {
