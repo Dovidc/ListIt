@@ -6,7 +6,7 @@
    - (NEW) Batch cover fetch /api/listings/covers
    - (NEW) S3 direct uploads (presign + finalize) with SQLite metadata
    - AI analysis (title, tags, suggested price)
-   - Conversations/messages with image attachments
+   - Conversations/messages with image attachments (S3 URL or legacy base64)
    - Reverse geocoding proxy (OpenStreetMap)
    - Fuzzy city filtering & city autocomplete support
    - GPS lat/lon columns + /api/listings/nearby
@@ -15,8 +15,7 @@
    - Compression + static caching
    - Opt-in enable_nearby (default 0)
    - Immutable lat/lon (set once on first opt-in)
-   - (UPDATED) Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
-   - Refactored: Messages support S3 URLs (stored in message_images.url if provided)
+   - Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
 */
 
 const express = require('express');
@@ -48,7 +47,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.s3.amazonaws.com';
+const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || ''; // e.g. https://listit-prod-uploads.s3.amazonaws.com/public
 
 // === Image size knobs ===
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
@@ -171,7 +170,7 @@ CREATE TABLE IF NOT EXISTS listings (
 `);
 
 /* Backfill legacy schemas (listings) */
-addColumnIfMissing('listings', 'image_data', 'TEXT');       // legacy: may exist
+addColumnIfMissing('listings', 'image_data', 'TEXT');
 addColumnIfMissing('listings', 'title', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'tags', 'TEXT DEFAULT ""');
 addColumnIfMissing('listings', 'lat', 'REAL');
@@ -192,13 +191,13 @@ createIndexIfMissing('idx_listing_images_listing',
   'CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);'
 );
 
-/* --- (NEW) S3-era columns on listing_images (safe for existing DBs) --- */
+/* --- S3-era columns on listing_images --- */
 addColumnIfMissing('listing_images', 'key', 'TEXT');              // S3 object key
 addColumnIfMissing('listing_images', 'url', 'TEXT');              // public URL
 addColumnIfMissing('listing_images', 'width', 'INTEGER');
 addColumnIfMissing('listing_images', 'height', 'INTEGER');
 addColumnIfMissing('listing_images', 'bytes', 'INTEGER');
-addColumnIfMissing('listing_images', 'created_at', 'INTEGER DEFAULT 0'); // must be constant for ALTER TABLE
+addColumnIfMissing('listing_images', 'created_at', 'INTEGER DEFAULT 0');
 
 // Backfill created_at (only for rows where it's NULL or 0)
 try {
@@ -268,7 +267,7 @@ CREATE TABLE IF NOT EXISTS message_images (
 );
 `);
 
-/* --- (NEW) S3-era columns on message_images (safe for existing DBs) --- */
+/* --- S3-era columns on message_images --- */
 addColumnIfMissing('message_images', 'key', 'TEXT');
 addColumnIfMissing('message_images', 'url', 'TEXT');
 addColumnIfMissing('message_images', 'width', 'INTEGER');
@@ -362,6 +361,23 @@ function pickMatchingCities(allCities, query){
     if (d <= 2) { out.add(c); continue; }
   }
   return out;
+}
+
+/* ----------------------- URL allowlist helper ---------------------- */
+function isAllowedPublicUrl(u) {
+  try {
+    const url = new URL(u);
+    if (PUBLIC_ASSET_BASE) {
+      return u.startsWith(PUBLIC_ASSET_BASE);
+    }
+    // Fallback: allow common AWS public hosts
+    return (
+      url.protocol === 'https:' &&
+      (url.hostname.endsWith('.amazonaws.com') || url.hostname.endsWith('.cloudfront.net'))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -478,7 +494,6 @@ app.get('/api/me', (req, res) => {
   const user = authFromReq(req);
   if (!user) return res.json(null);
   return res.json({ id: user.id, email: user.email, username: user.username, is_admin: !!user.is_admin });
-
 });
 
 /* ------------------------------------------------------------------ */
@@ -515,8 +530,13 @@ function validateMsgImages(images) {
   const maxB64Len = MAX_IMAGE_MB * 1024 * 1024 * B64_SLOP;
   for (const img of images) {
     if (typeof img !== 'string') return 'Each image must be a string';
-    if (img.startsWith('data:image/') && img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
-    if (img.startsWith('https://') && !img.startsWith(PUBLIC_ASSET_BASE)) return 'Invalid image URL';
+    if (img.startsWith('data:image/')) {
+      if (img.length > maxB64Len) return `Each image must be <= ~${MAX_IMAGE_MB}MB`;
+    } else if (img.startsWith('https://')) {
+      if (!isAllowedPublicUrl(img)) return 'Invalid image URL';
+    } else {
+      return 'Invalid image format';
+    }
   }
   return null;
 }
@@ -862,7 +882,7 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
       const outTags = tagStr ? tagStr.split(',') : [];
       if (!title) title = 'Item for sale';
 
-      let suggested_price = undefined;
+      let suggested_price;
       if (!Number.isNaN(priceNum)) {
         priceNum = Math.min(Math.max(priceNum, 1), 100000);
         suggested_price = Math.round(priceNum * 100) / 100;
@@ -985,7 +1005,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
       let data = null, u = null;
       if (typeof img === 'string') {
         if (img.startsWith('data:image/')) data = img;
-        else if (img.startsWith('https://') && img.startsWith(PUBLIC_ASSET_BASE)) u = img;
+        else if (img.startsWith('https://') && isAllowedPublicUrl(img)) u = img;
         else return; // skip invalid
       }
       stmt.run(msgId, i, data, u);
@@ -1006,8 +1026,8 @@ app.delete('/api/conversations/:id', auth, (req, res) => {
   if (!convo) return res.status(404).json({ error: 'Not found' });
 
   // Only members (or admin) may delete
-  const isMember = (req.user?.id === convo.a_user_id) || (req.user?.id === convo.b_user_id) || !!req.user?.is_admin;
-  if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+  const isMem = (req.user?.id === convo.a_user_id) || (req.user?.id === convo.b_user_id) || !!req.user?.is_admin;
+  if (!isMem) return res.status(403).json({ error: 'Forbidden' });
 
   // Delete images first, then messages, then conversation
   db.prepare(`

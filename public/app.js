@@ -1,6 +1,6 @@
 // public/app.js — S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
-// Refactored: Messages now upload images to S3 (presign + PUT), send public URLs instead of base64
-// Update: Conversations list shows a small ✕ button to hard-delete a DM thread.
+// Refactored: Messages upload images to S3 (presign + PUT), send public URLs instead of base64
+// NEW: Paste & drag-and-drop images into message composer (+ small DM delete ✕ in list).
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -123,7 +123,7 @@
         body: JSON.stringify({ body, images })
       }, meta);
     },
-    // NEW: delete a conversation
+    // delete a conversation
     deleteConversation(id, meta) {
       return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
     },
@@ -202,11 +202,9 @@
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
 
-    // PUT bytes to S3
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
 
-    // No dims or finalize for messages
     return sig.publicUrl;
   }
 
@@ -433,7 +431,7 @@
     const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+       const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
@@ -694,7 +692,7 @@
     );
   }
 
-  // --- Messages (refactored to S3 URLs instead of base64) ---
+  // --- Messages (S3 URLs; now supports PASTE + DRAG/DROP attachments) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -704,22 +702,58 @@
     const [input, setInput] = useState('');
     const pollRef = useRef(null);
 
-    // attachments state (now File[] for S3 upload)
+    // attachments state (File[] for S3 upload)
     const [imgFiles, setImgFiles] = useState([]);
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
 
-    async function pickImgs(e){
-      const files = Array.from(e.target.files || []);
+    // dropzone refs/handlers
+    const dropRef = useRef();
+
+    function addFiles(filesLike) {
+      const MAX_EACH = 3 * 1024 * 1024;
+      const MAX_COUNT = 5;
       const next = [...imgFiles];
-      for (const f of files) {
-        if (f.size > 3*1024*1024) { alert('Each image must be under 3MB'); continue; }
+      for (const f of Array.from(filesLike || [])) {
+        if (!f || !f.type?.startsWith?.('image/')) continue;
+        if (f.size > MAX_EACH) { alert('Each image must be under 3MB'); continue; }
+        if (next.length >= MAX_COUNT) break;
         next.push(f);
-        if (next.length >= 5) break;
       }
       setImgFiles(next);
+    }
+
+    function pickImgs(e){
+      addFiles(e.target.files);
       if (fileRef.current) fileRef.current.value = '';
     }
+
+    function onComposerPaste(e){
+      const cd = e.clipboardData;
+      if (!cd) return;
+      const imageItems = Array.from(cd.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+      if (imageItems.length === 0) return; // let normal text paste
+      e.preventDefault(); // we'll handle both text + images ourselves
+
+      // add images
+      const files = imageItems
+        .map(it => it.getAsFile())
+        .filter(Boolean)
+        .map(blob => new File([blob], `pasted-${Date.now()}-${Math.random().toString(36).slice(2)}.${(blob.type.split('/')[1]||'png')}`, { type: blob.type }));
+      addFiles(files);
+
+      // also paste any plain text
+      const txt = cd.getData('text/plain');
+      if (txt) setInput(v => (v ? v + ' ' : '') + txt);
+    }
+
+    function onDragOver(e){ e.preventDefault(); }
+    function onDrop(e){
+      e.preventDefault();
+      const files = e.dataTransfer?.files || [];
+      addFiles(files);
+    }
+
     function removeImg(i){
       const n = [...imgFiles]; n.splice(i,1); setImgFiles(n);
     }
@@ -737,7 +771,6 @@
       } catch{}
     }
 
-    // NEW: delete conversation handler
     async function deleteConvo(id) {
       if (!id) return;
       const ok = confirm('Delete this conversation? This removes all messages and images for both participants.');
@@ -831,8 +864,10 @@
           }, '×')
         )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
       ),
+
       H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },
         !activeId && H('div', { className:'muted' }, 'Select a conversation'),
+
         activeId && H('div', { style:{ flex:1, overflow:'auto', padding:4 } },
           msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
             m.body && H('div', null, m.body),
@@ -845,21 +880,41 @@
               )
           ))
         ),
-        activeId && H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+
+        // Attachment previews (selected or pasted) + tip text
+        activeId && (imgFiles.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
+          ...imgFiles.map((f,i) =>
+            H('div', { key:i, style:{ position:'relative' } },
+              H('img', { src: URL.createObjectURL(f), style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
+              H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
+            )
+          )
+        ),
+
+        activeId && H('div', {
+          className:'row',
+          style:{ alignItems:'flex-end', gap:8 },
+          ref: dropRef,
+          onDragOver,
+          onDrop
+        },
           H('input', {
             type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
             style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
           }),
           H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
-          H('input', {
-            placeholder:'Type a message…',
+          H('textarea', {
+            placeholder:'Type a message…  (Tip: paste or drag images)',
             value:input,
+            rows:2,
+            onPaste:onComposerPaste,
             onChange:e=>setInput(e.target.value),
-            onKeyDown:e=>{ if(e.key==='Enter') send(); },
-            style:{ flex:1 }
+            onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
+            style:{ flex:1, resize:'vertical' }
           }),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
+
         H(Lightbox, {
           open: lb.open,
           images: lb.images,
