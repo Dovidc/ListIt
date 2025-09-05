@@ -29,7 +29,11 @@ const jwt = require('jsonwebtoken');
 let cors; try { cors = require('cors'); } catch {}
 let compression; try { compression = require('compression'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
-// at top
+
+// Initialize app BEFORE any route usage
+const app = express();
+
+// S3 presign module (lazy error tolerant)
 let presignUpload;
 try {
   ({ presignUpload } = require('./s3'));
@@ -37,24 +41,6 @@ try {
 } catch (e) {
   console.error('[S3] require("./s3") failed:', e && e.message);
 }
-
-// /api/uploads/sign
-app.post('/api/uploads/sign', auth, async (req, res) => {
-  if (!presignUpload) return res.status(500).json({ error: 's3_module_not_loaded' });
-  try {
-    const { filename, contentType, bytes } = req.body || {};
-    if (!contentType) return res.status(400).json({ error: 'contentType required' });
-    const sig = await presignUpload({ filename, contentType, bytes });
-    return res.json(sig);
-  } catch (e) {
-    console.error('[S3] sign error:', e);
-    return res.status(400).json({ error: e.message || 'sign_failed' });
-  }
-});
-
-
-
-const app = express();
 
 const PORT = process.env.PORT || 3000;
 const IS_TEST = process.env.NODE_ENV === 'test';
@@ -67,9 +53,6 @@ const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.
 // === Image size knobs ===
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 6);
 const B64_SLOP = 1.6;
-
-
-
 
 /* ------------------------------------------------------------------ */
 /* Core parsers (fixes server_error on login/register)                 */
@@ -369,8 +352,8 @@ function levenshtein(a,b){
 function pickMatchingCities(allCities, query){
   const out = new Set();
   const q = (query||'').trim();
-  if (!q) return out;
   const qn = normLetters(q);
+  if (!q) return out;
   for (const c of allCities){
     const cn = normLetters(c);
     if (!cn) continue;
@@ -659,7 +642,8 @@ app.post('/api/listings', auth, (req, res) => {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    const cover = imgs.length ? imgs[0] : '';// may be null; S3 finalize will set cover if missing 
+    // Use empty string to satisfy older DBs where listings.image_data may be NOT NULL
+    const cover = imgs.length ? imgs[0] : '';
     const tagStr = normalizeTags(tags);
     const safeTitle = shortTitle(title) || shortTitle(description);
 
@@ -799,7 +783,6 @@ app.post('/api/uploads/sign', auth, async (req, res) => {
   }
 });
 
-
 // Replace your existing /api/uploads/finalize with this version
 app.post('/api/uploads/finalize', auth, (req, res) => {
   const { listingId, key, url, width, height, bytes } = req.body || {};
@@ -833,7 +816,6 @@ app.post('/api/uploads/finalize', auth, (req, res) => {
 
   res.json({ ok: true, position: pos });
 });
-
 
 /* ------------------------------------------------------------------ */
 /* AI Analysis endpoint                                                */
