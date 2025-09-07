@@ -923,7 +923,7 @@
       const next = [...imgFiles];
       for (const f of Array.from(filesLike || [])) {
         if (!f || !f.type?.startsWith?.('image/')) continue;
-        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EECH_MB}MB`); continue; }
+        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
         if (next.length >= MAX_COUNT) break;
         next.push(f);
       }
@@ -1345,7 +1345,8 @@
   function ProfilePanel({
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
     autoListEnabled, setAutoListEnabled,
-    autoPostNearbyEnabled, setAutoPostNearbyEnabled
+    autoPostNearbyEnabled, setAutoPostNearbyEnabled,
+    isMobile
   }) {
     const [showHelp, setShowHelp] = useState(false);
 
@@ -1391,8 +1392,8 @@
           )
         ),
 
-        // Slide-out child when parent is on
-        H('div', {
+        // Slide-out child when parent is on (mobile-only)
+      (isMobile && H('div', {
           style: {
             marginTop: 10,
             overflow: 'hidden',
@@ -1413,9 +1414,7 @@
               H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
             )
           )
-        )
-      ),
-
+        ))),
       H('section', null,
         H('div', { className:'row', style:{ justifyContent:'space-between', margin:'0 0 12px', flexWrap:'wrap' } },
           H('div', { style:{ fontWeight:800 } }, `Your listings (${items.length})`)
@@ -1639,7 +1638,7 @@
               onCancel:()=>setShowForm(false),
               onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
               autoListEnabled,
-              autoPostNearbyEnabled
+              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
             })
           ),
 
@@ -1689,7 +1688,7 @@
           ),
 
         (tab==='profile') &&
-          H(ProfilePanel, {
+          H(ProfilePanel, { isMobile,
             user,
             items: mine,
             onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
@@ -1717,7 +1716,7 @@
         reloadAll: reload,
         reloadMine: reloadMineOnly,
         user,
-        autoPostNearbyEnabled
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       })
     );
   }
