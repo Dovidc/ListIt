@@ -489,7 +489,7 @@ function AutoListHelpModal({ onClose }) {
 
         // intro
         H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
-          'When this is ON, attaching photo(s) in the New listing form will:'
+          'When enabled, Auto-List will:'
         ),
 
         // bullets
@@ -500,7 +500,7 @@ function AutoListHelpModal({ onClose }) {
             listStyle: 'disc'
           }
         },
-          H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
+          H('li', null, 'Allow AI to suggest title, tags and price .'),
           H('li', null, 'Immediately create the listing for you.'),
           H('li', null, 'Upload all selected photos to that listing.')
         ),
