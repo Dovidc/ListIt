@@ -6,9 +6,9 @@
 // CHANGE: All listing fields optional EXCEPT at least one image.
 //         If price field empty/invalid, default to $0.00 and render the price in green.
 // NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
-// NEW: Auto-List setting — profile toggle to auto-AI + auto-create a listing when images are attached.
-//    - Stored per-user in localStorage.
-//    - ListingForm auto-runs AI and creates the listing (then uploads all selected images) when files are added.
+// NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
+//      will AI-analyze and immediately create the listing + upload photos automatically.
+//      Includes “?” help modal with high-contrast text.
 //
 
 (() => {
@@ -29,11 +29,6 @@
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
-  // Auto-List setting store
-  function autoListKey(userId){ return `listit_autolist_${userId||'anon'}`; }
-  function loadAutoList(userId){ try { return localStorage.getItem(autoListKey(userId)) === '1'; } catch { return false; } }
-  function saveAutoList(userId, val){ try { localStorage.setItem(autoListKey(userId), val ? '1' : '0'); } catch {} }
-
   function fmtDistance(m){
     if (!Number.isFinite(m)) return '';
     if (m < 1609.344 * 0.3) {
@@ -442,6 +437,44 @@
     return arr && arr[0];
   }
 
+  // --- Auto-list help modal (high-contrast text) ---
+  function AutoListHelpModal({ onClose }) {
+    return ReactDOM.createPortal(
+      H('div', {
+        className: 'modal open',
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
+        style: { background: 'rgba(0,0,0,0.45)' }
+      },
+        H('div', {
+          className: 'modal-inner',
+          style: {
+            width: 'min(520px, 92vw)',
+            background: '#111',
+            color: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            boxShadow: '0 16px 48px rgba(0,0,0,.4)'
+          }
+        },
+          H('button', { className:'close', onClick:onClose, style:{ color:'#fff' } }, '✕'),
+          H('div', { style:{ fontWeight:800, fontSize:16, marginBottom:8 } }, 'About Auto-list'),
+          H('div', { style:{ opacity:.9, marginBottom:8 } },
+            'When this is ON, attaching photo(s) in the New listing form will:'
+          ),
+          H('ul', { style:{ margin:'0 0 8px 18px', lineHeight:1.6 } },
+            H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
+            H('li', null, 'Immediately create the listing for you.'),
+            H('li', null, 'Upload all selected photos to that listing.')
+          ),
+          H('div', { style:{ opacity:.9, marginTop:6 } },
+            'You can still edit or delete the listing afterwards.'
+          )
+        )
+      ),
+      document.body
+    );
+  }
+
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
@@ -455,9 +488,9 @@
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
-    // Auto-list guard
+    // auto-list guard
+    const autoRunning = useRef(false);
     const [autoBusy, setAutoBusy] = useState(false);
-    const autoRanRef = useRef(false);
 
     const hasFixedGps = !!draft?.lat;
     const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
@@ -516,6 +549,50 @@
       finally { setGeoBusy(false); }
     }
 
+    // Auto-list: when ON, creating a brand-new listing & user added photos → AI + create + upload
+    useEffect(() => {
+      if (!autoListEnabled) return;
+      if (draft) return;            // only for new listings
+      if (!files || files.length === 0) return;
+      if (autoRunning.current) return;
+
+      (async () => {
+        autoRunning.current = true;
+        setAutoBusy(true);
+        try {
+          // AI best-effort
+          let ai = {};
+          try {
+            const dataUrls = await filesToDataUrls(files);
+            ai = await api.aiAnalyze({ images: dataUrls, hint: '' }, { silent:true }) || {};
+          } catch (_) {}
+
+          const parsedPrice = Number(ai.suggested_price);
+          const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+          const payload = {
+            title: (ai.title || 'Item for sale').toString().slice(0, 80),
+            description: '',
+            location: '',
+            price: safePrice,
+            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+            enable_nearby: 0
+          };
+
+          const created = await api.createListing(payload);
+          if (!created?.id) throw new Error('Create failed');
+          await uploadFilesForListing(created.id, files);
+
+          onSaved?.();
+        } catch (err) {
+          console.error('Auto-list failed:', err);
+          alert(`Auto-list failed: ${err?.message || err}`);
+        } finally {
+          setAutoBusy(false);
+        }
+      })();
+    }, [autoListEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
+
     async function submit(e){
       e.preventDefault();
       try {
@@ -559,54 +636,17 @@
       }
     }
 
-    // Auto-list: if enabled, no draft (new), and files added → run AI, create listing, upload all files, save, close
-    useEffect(() => {
-      if (!autoListEnabled) return;
-      if (draft) return; // only for new listings
-      if (!files || files.length === 0) return;
-      if (autoRanRef.current) return;
-
-      (async () => {
-        autoRanRef.current = true;
-        setAutoBusy(true);
-        try {
-          let titleLocal = title, tagsLocal = tags, priceLocal = 0;
-          try {
-            const dataUrls = await filesToDataUrls(files);
-            const res = await api.aiAnalyze({ images: dataUrls, hint: `${title} ${description}`.trim() }, { silent:true });
-            if (res?.title) titleLocal = String(res.title).slice(0,80);
-            if (Array.isArray(res?.tags)) tagsLocal = res.tags.join(', ');
-            if (typeof res?.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) priceLocal = res.suggested_price;
-          } catch {}
-
-          const payload = {
-            title: String(titleLocal || 'Item for sale'),
-            description: String(description || ''),
-            location: String(location || ''),
-            price: Number.isFinite(priceLocal) && priceLocal >= 0 ? priceLocal : 0,
-            tags: String(tagsLocal || ''),
-            enable_nearby: 0
-          };
-
-          const created = await api.createListing(payload);
-          if (!created?.id) throw new Error('Create failed');
-
-          if (files.length) await uploadFilesForListing(created.id, files);
-
-          onSaved?.();
-        } catch (e) {
-          console.error('Auto-list failed', e);
-          alert(`Auto-list failed: ${e?.message || e}`);
-        } finally {
-          setAutoBusy(false);
-        }
-      })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoListEnabled, files, draft]);
-
     const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
+
+      // Auto-list overlay while it works
+      autoBusy && H('div', {
+        style:{
+          position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+          display:'grid', placeItems:'center', zIndex:5, borderRadius:12
+        }
+      }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
 
       // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
@@ -670,20 +710,6 @@
       H('div', { className:'row' },
         H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
         H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
-      ),
-
-      // Auto-list progress overlay
-      (autoBusy) && H('div', {
-        style:{
-          position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
-          display:'grid', placeItems:'center', zIndex:5, textAlign:'center'
-        }
-      },
-        H('div', null,
-          H('div', { className:'spinner' }),
-          H('div', { style:{ fontWeight:800, marginTop:6 } }, 'Auto-listing your item…'),
-          H('div', { className:'muted', style:{ marginTop:4 } }, 'AI is filling details and uploading your images')
-        )
       )
     );
   }
@@ -1230,9 +1256,12 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (with Auto-List toggle) ---
-  function ProfilePanel({ user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete, autoListEnabled, onToggleAutoList }) {
-    const [showAutoInfo, setShowAutoInfo] = useState(false);
+  // --- Profile Panel (added Auto-list toggle + help modal) ---
+  function ProfilePanel({
+    user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
+    autoListEnabled, setAutoListEnabled
+  }) {
+    const [showHelp, setShowHelp] = useState(false);
 
     if (!user) {
       return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
@@ -1243,51 +1272,36 @@
 
     return H(React.Fragment, null,
       H('section', { className:'card', style:{ padding:16, margin:'12px 0 16px' } },
-        H('div', { className:'row', style: { justifyContent:'space-between', alignItems:'center', flexWrap:'wrap' } },
+        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 } },
           H('div', null,
             H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
             H('div', { className:'muted' }, 'Your account')
           ),
-          H('div', { className:'row', style:{ gap:8, alignItems:'center', flexWrap:'wrap' } },
-            // Auto-List toggle
-            H('label', { className:'row', style:{ gap:8, alignItems:'center', marginRight:8 } },
+          // Right controls: Auto-list toggle • New listing • Log out
+          H('div', { className:'row', style:{ gap:12, alignItems:'center', flexWrap:'wrap' } },
+            H('label', { className:'row', style:{ gap:8, alignItems:'center', padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:12 } },
               H('input', {
                 type:'checkbox',
                 checked: !!autoListEnabled,
-                onChange: e => onToggleAutoList?.(!!e.target.checked)
+                onChange: (e) => setAutoListEnabled(e.target.checked),
+                style:{ width:18, height:18 }
               }),
-              H('span', null, 'Auto-list new uploads')
+              H('div', null,
+                H('div', { style:{ fontWeight:700 } }, 'Auto-list'),
+                H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'new uploads')
+              ),
+              H('button', {
+                type:'button',
+                onClick: () => setShowHelp(true),
+                title:'About Auto-list',
+                style:{
+                  marginLeft:6, width:24, height:24, lineHeight:'22px',
+                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+                }
+              }, '?')
             ),
-            H('button', {
-              type:'button',
-              className:'icon-btn',
-              onClick: () => setShowAutoInfo(true),
-              title:'What is Auto-list?',
-              'aria-label':'What is Auto-list?',
-              style:{
-                width:28, height:28, borderRadius:10, border:'1px solid #e5e7eb',
-                background:'#fff', display:'grid', placeItems:'center', cursor:'pointer', fontWeight:800
-              }
-            }, '?'),
             H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
             H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
-          )
-        )
-      ),
-
-      // Auto-list info modal
-      showAutoInfo && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setShowAutoInfo(false); } },
-        H('div', { className:'modal-inner', style:{ maxWidth:520 } },
-          H('button', { className:'close', onClick:()=>setShowAutoInfo(false) }, '✕'),
-          H('div', { style:{ padding:16 } },
-            H('div', { style:{ fontWeight:800, fontSize:18, marginBottom:8 } }, 'About Auto-list'),
-            H('p', null, 'When this is ON, attaching photo(s) in the New listing form will:'),
-            H('ul', null,
-              H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
-              H('li', null, 'Immediately create the listing for you.'),
-              H('li', null, 'Upload all selected photos to that listing.')
-            ),
-            H('p', { className:'muted' }, 'You can still edit or delete the listing afterwards.')
           )
         )
       ),
@@ -1312,7 +1326,9 @@
             : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
           )
         )
-      )
+      ),
+
+      showHelp && H(AutoListHelpModal, { onClose: () => setShowHelp(false) })
     );
   }
 
@@ -1336,10 +1352,12 @@
     // NEW: MassList modal
     const [showMassList, setShowMassList] = useState(false);
 
-    // NEW: Auto-List setting
-    const [autoListEnabled, setAutoListEnabled] = useState(false);
-    useEffect(() => { setAutoListEnabled(loadAutoList(user?.id)); }, [user?.id]);
-    function updateAutoList(val){ setAutoListEnabled(!!val); saveAutoList(user?.id, !!val); }
+    // NEW: Auto-list setting (persisted in localStorage)
+    const AUTO_KEY = 'listit_auto_list';
+    const [autoListEnabled, setAutoListEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
 
     const isMobile = isMobileDevice();
 
@@ -1568,7 +1586,7 @@
             onLogout: logoutFromProfile,
             onAdminDelete: handleAdminDelete,
             autoListEnabled,
-            onToggleAutoList: updateAutoList
+            setAutoListEnabled
           })
       ),
 
@@ -1594,7 +1612,7 @@
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
     root.render(H(App));
-  } else {
+    } else {
     ReactDOM.render(H(App), rootEl);
   }
 })();
