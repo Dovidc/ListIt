@@ -438,42 +438,88 @@
   }
 
   // --- Auto-list help modal (high-contrast text) ---
-  function AutoListHelpModal({ onClose }) {
-    return ReactDOM.createPortal(
+  // --- Auto-list help modal (clean single-column layout) ---
+function AutoListHelpModal({ onClose }) {
+  return ReactDOM.createPortal(
+    H('div', {
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
+      style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
+    },
       H('div', {
-        className: 'modal open',
-        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
-        style: { background: 'rgba(0,0,0,0.45)' }
+        // force single column and good contrast regardless of global CSS
+        className: 'modal-inner',
+        style: {
+          display: 'block',
+          width: 'min(520px, 92vw)',
+          background: '#111',
+          color: '#fff',
+          borderRadius: 16,
+          padding: 16,
+          boxShadow: '0 16px 48px rgba(0,0,0,.45)',
+          lineHeight: 1.55
+        }
       },
+        // header row with title + close
         H('div', {
-          className: 'modal-inner',
           style: {
-            width: 'min(520px, 92vw)',
-            background: '#111',
-            color: '#fff',
-            borderRadius: 16,
-            padding: 16,
-            boxShadow: '0 16px 48px rgba(0,0,0,.4)'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginBottom: 8
           }
         },
-          H('button', { className:'close', onClick:onClose, style:{ color:'#fff' } }, '✕'),
-          H('div', { style:{ fontWeight:800, fontSize:16, marginBottom:8 } }, 'About Auto-list'),
-          H('div', { style:{ opacity:.9, marginBottom:8 } },
-            'When this is ON, attaching photo(s) in the New listing form will:'
-          ),
-          H('ul', { style:{ margin:'0 0 8px 18px', lineHeight:1.6 } },
-            H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
-            H('li', null, 'Immediately create the listing for you.'),
-            H('li', null, 'Upload all selected photos to that listing.')
-          ),
-          H('div', { style:{ opacity:.9, marginTop:6 } },
-            'You can still edit or delete the listing afterwards.'
-          )
-        )
-      ),
-      document.body
-    );
-  }
+          H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
+          H('button', {
+            type: 'button',
+            onClick: onClose,
+            'aria-label': 'Close',
+            // avoid relying on .close class so we don’t inherit odd positioning
+            style: {
+              width: 28, height: 28, borderRadius: 14,
+              border: '1px solid rgba(255,255,255,0.25)',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#fff', cursor: 'pointer',
+              display: 'grid', placeItems: 'center',
+              fontSize: 16, lineHeight: '26px'
+            }
+          }, '✕')
+        ),
+
+        // intro
+        H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
+          'When this is ON, attaching photo(s) in the New listing form will:'
+        ),
+
+        // bullets
+        H('ul', {
+          style: {
+            paddingLeft: 18,
+            margin: '0 0 12px',
+            listStyle: 'disc'
+          }
+        },
+          H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
+          H('li', null, 'Immediately create the listing for you.'),
+          H('li', null, 'Upload all selected photos to that listing.')
+        ),
+
+        // footnote
+        H('div', {
+          style: {
+            fontSize: 13,
+            opacity: 0.9,
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            paddingTop: 10
+          }
+        }, 'You can still edit or delete the listing afterwards.')
+      )
+    ),
+    document.body
+  );
+}
+
 
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled }) {
