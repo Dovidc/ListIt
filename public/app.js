@@ -1207,59 +1207,54 @@ function AutoListHelpModal({ onClose }) {
     function removeAt(i){ const next=[...files]; next.splice(i,1); setFiles(next); }
 
     async function runMassList(){
-      if (!user) { alert('Log in to create listings.'); return; }
-      if (!files.length) { alert('Pick at least one image.'); return; }
-      setBusy(true);
-      setProgress({ done: 0, total: files.length, failed: 0 });
+  if (!user) { alert('Log in to create listings.'); return; }
+  if (!files.length) { alert('Pick at least one image.'); return; }
+  setBusy(true);
+  setProgress({ done: 0, total: files.length, failed: 0 });
 
-      let failed = 0;
+  let failed = 0;
 
-      for (let i=0; i<files.length; i++){
-        const f = files[i];
-        try {
-          // AI analysis per image (best effort)
-          let ai = {};
-          try {
-            const b64 = await fileToDataUrl(f);
-            ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
-          } catch (_) {
-            // ignore AI failure; fallback below
-          }
+  for (let i=0; i<files.length; i++){
+    const f = files[i];
+    try {
+      // AI analysis per image (best effort)
+      let ai = {};
+      try {
+        const b64 = await fileToDataUrl(f);
+        ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
+      } catch (_) { /* ignore AI failure; fallback below */ }
 
-          const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-          const payload = {
-            title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: '',
-            location: '',
-            price: safePrice,
-            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: 0
-          };
+      const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
+      const payload = {
+        title: (ai.title || 'Item for sale').toString().slice(0, 80),
+        description: '',
+        location: '',
+        price: safePrice,
+        tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+        enable_nearby: 0
+      };
 
-          const created = await api.createListing(payload);
-          if (!created?.id) throw new Error('create_failed');
+      const created = await api.createListing(payload);
+      if (!created?.id) throw new Error('create_failed');
 
-          await uploadOneImage(created.id, f);
-        } catch (e) {
-          failed += 1;
-        } finally {
-          setProgress(p => ({ ...p, done: p.done + 1, failed }));
-        }
-      }
-
-      try { await reloadMine(); } catch {}
-      try { await reloadAll(); } catch {}
-
-      setBusy(false);
-      onDone && onDone();
-      onClose && onClose();
-
-      if (failed) {
-        alert(`MassList finished with ${files.length - failed} created, ${failed} failed.`);
-      } else {
-        alert(`MassList finished. Created ${files.length} listings.`);
-      }
+      await uploadOneImage(created.id, f);
+    } catch (e) {
+      failed += 1;
+    } finally {
+      setProgress(p => ({ ...p, done: p.done + 1, failed }));
     }
+  }
+
+  try { await reloadMine(); } catch {}
+  try { await reloadAll(); } catch {}
+
+  setBusy(false);
+
+  const stats = { total: files.length, created: files.length - failed, failed };
+  onDone && onDone(stats);   // let parent decide what to do (navigate, toast, etc.)
+  onClose && onClose();      // close the modal
+}
+
 
     const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
       H('div', { className:'modal-inner', style:{ width:'min(680px, 92vw)', background:'#fff', borderRadius:24, overflow:'hidden' } },
