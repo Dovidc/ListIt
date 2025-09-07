@@ -9,6 +9,8 @@
 // NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
 //      will AI-analyze and immediately create the listing + upload photos automatically.
 //      Includes “?” help modal with high-contrast text.
+// NEW: Auto-list sub-toggle: “Also post to Nearby.” When Auto-list is ON and this is enabled,
+//      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
 //
 
 (() => {
@@ -59,6 +61,20 @@
       );
     });
     return _coordsPromise;
+  }
+
+  // Helper: fetch coords and reverse-geocode into a display string
+  async function fetchCoordsAndReverse() {
+    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+    const { coords } = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+    );
+    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+    return {
+      lat: r?.lat ?? coords.latitude,
+      lon: r?.lon ?? coords.longitude,
+      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    };
   }
 
   // --- Global Loader ---
@@ -308,55 +324,54 @@
     );
   }
 
-  // --- Header (unchanged except props) ---
   // --- Header (profile tab shows @username) ---
-function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
-  // Label for the profile tab: @username if logged in, otherwise "Profile"
-  const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
+    // Label for the profile tab: @username if logged in, otherwise "Profile"
+    const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
 
-  // Right-side area (remove the username text here to avoid duplication)
-  const authArea = user
-    ? H('div', { className: 'row', style: { gap: 8 } },
-        !!user.is_admin && H('button', {
-          className: 'btn danger',
-          onClick: async () => {
-            if (confirm('Delete ALL listings? This cannot be undone.')) {
-              await onAdminDeleteAll?.();
+    // Right-side area (remove the username text here to avoid duplication)
+    const authArea = user
+      ? H('div', { className: 'row', style: { gap: 8 } },
+          !!user.is_admin && H('button', {
+            className: 'btn danger',
+            onClick: async () => {
+              if (confirm('Delete ALL listings? This cannot be undone.')) {
+                await onAdminDeleteAll?.();
+              }
             }
-          }
-        }, 'Admin: Delete ALL')
+          }, 'Admin: Delete ALL')
+        )
+      : H(AuthButtons, { setUser });
+
+    const messagesBtn = H('button', {
+      className: `btn ${active==='messages'?'primary':''}`,
+      style: { position: 'relative' },
+      onClick: () => {
+        if (!user) { alert('Log in to view messages.'); return; }
+        onNav('messages');
+      }
+    }, 'Messages',
+      (unreadCount > 0) &&
+        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
+    );
+
+    return H('header', null,
+      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 12 } },
+          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
+          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
+        ),
+        H('nav', { className: 'row' },
+          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+          isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+          messagesBtn,
+          // Profile tab now shows @username (or email) and opens the same profile/settings as before
+          H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
+        ),
+        authArea
       )
-    : H(AuthButtons, { setUser });
-
-  const messagesBtn = H('button', {
-    className: `btn ${active==='messages'?'primary':''}`,
-    style: { position: 'relative' },
-    onClick: () => {
-      if (!user) { alert('Log in to view messages.'); return; }
-      onNav('messages');
-    }
-  }, 'Messages',
-    (unreadCount > 0) &&
-      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
-  );
-
-  return H('header', null,
-    H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-      H('div', { className: 'row', style: { gap: 12 } },
-        H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
-        H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
-      ),
-      H('nav', { className: 'row' },
-        H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-        isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-        messagesBtn,
-        // Profile tab now shows @username (or email) and opens the same profile/settings as before
-        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
-      ),
-      authArea
-    )
-  );
-}
+    );
+  }
 
 
   function AuthButtons({ setUser }) {
@@ -443,92 +458,91 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
     return arr && arr[0];
   }
 
-  // --- Auto-list help modal (high-contrast text) ---
   // --- Auto-list help modal (clean single-column layout) ---
-function AutoListHelpModal({ onClose }) {
-  return ReactDOM.createPortal(
-    H('div', {
-      className: 'modal open',
-      onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
-      style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
-    },
+  function AutoListHelpModal({ onClose }) {
+    return ReactDOM.createPortal(
       H('div', {
-        // force single column and good contrast regardless of global CSS
-        className: 'modal-inner',
-        style: {
-          display: 'block',
-          width: 'min(520px, 92vw)',
-          background: '#111',
-          color: '#fff',
-          borderRadius: 16,
-          padding: 16,
-          boxShadow: '0 16px 48px rgba(0,0,0,.45)',
-          lineHeight: 1.55
-        }
+        className: 'modal open',
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
+        style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
       },
-        // header row with title + close
         H('div', {
+          // force single column and good contrast regardless of global CSS
+          className: 'modal-inner',
           style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            marginBottom: 8
+            display: 'block',
+            width: 'min(520px, 92vw)',
+            background: '#111',
+            color: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            boxShadow: '0 16px 48px rgba(0,0,0,.45)',
+            lineHeight: 1.55
           }
         },
-          H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
-          H('button', {
-            type: 'button',
-            onClick: onClose,
-            'aria-label': 'Close',
-            // avoid relying on .close class so we don’t inherit odd positioning
+          // header row with title + close
+          H('div', {
             style: {
-              width: 28, height: 28, borderRadius: 14,
-              border: '1px solid rgba(255,255,255,0.25)',
-              background: 'rgba(255,255,255,0.08)',
-              color: '#fff', cursor: 'pointer',
-              display: 'grid', placeItems: 'center',
-              fontSize: 16, lineHeight: '26px'
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8
             }
-          }, '✕')
-        ),
+          },
+            H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              'aria-label': 'Close',
+              // avoid relying on .close class so we don’t inherit odd positioning
+              style: {
+                width: 28, height: 28, borderRadius: 14,
+                border: '1px solid rgba(255,255,255,0.25)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff', cursor: 'pointer',
+                display: 'grid', placeItems: 'center',
+                fontSize: 16, lineHeight: '26px'
+              }
+            }, '✕')
+          ),
 
-        // intro
-        H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
-          'When enabled, Auto-List will:'
-        ),
+          // intro
+          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
+            'When enabled, Auto-List will:'
+          ),
 
-        // bullets
-        H('ul', {
-          style: {
-            paddingLeft: 18,
-            margin: '0 0 12px',
-            listStyle: 'disc'
-          }
-        },
-          H('li', null, 'Allow AI to suggest title, tags and price .'),
-          H('li', null, 'Immediately create the listing for you.'),
-          H('li', null, 'Upload all selected photos to that listing.')
-        ),
+          // bullets
+          H('ul', {
+            style: {
+              paddingLeft: 18,
+              margin: '0 0 12px',
+              listStyle: 'disc'
+            }
+          },
+            H('li', null, 'Allow AI to suggest title, tags and price .'),
+            H('li', null, 'Immediately create the listing for you.'),
+            H('li', null, 'Upload all selected photos to that listing.')
+          ),
 
-        // footnote
-        H('div', {
-          style: {
-            fontSize: 13,
-            opacity: 0.9,
-            borderTop: '1px solid rgba(255,255,255,0.12)',
-            paddingTop: 10
-          }
-        }, 'You can still edit or delete the listing afterwards.')
-      )
-    ),
-    document.body
-  );
-}
+          // footnote
+          H('div', {
+            style: {
+              fontSize: 13,
+              opacity: 0.9,
+              borderTop: '1px solid rgba(255,255,255,0.12)',
+              paddingTop: 10
+            }
+          }, 'You can still edit or delete the listing afterwards.')
+        )
+      ),
+      document.body
+    );
+  }
 
 
   // --- Listing Form (S3-first) ---
-  function ListingForm({ draft, onCancel, onSaved, autoListEnabled }) {
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
     const [existingUrls, setExistingUrls] = useState([]); // Show current images (read-only)
 
@@ -622,14 +636,28 @@ function AutoListHelpModal({ onClose }) {
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
+          // Nearby preference (sub-toggle)
+          let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+          if (autoPostNearbyEnabled) {
+            try {
+              const c = await fetchCoordsAndReverse();
+              enableNearbyAuto = 1;
+              latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+            } catch (_) {
+              // couldn't get location; keep as 0 to avoid server-side validation issues
+              enableNearbyAuto = 0;
+            }
+          }
+
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
             description: '',
-            location: '',
+            location: locAuto || '',
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: 0
+            enable_nearby: enableNearbyAuto
           };
+          if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('Create failed');
@@ -643,7 +671,7 @@ function AutoListHelpModal({ onClose }) {
           setAutoBusy(false);
         }
       })();
-    }, [autoListEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [autoListEnabled, autoPostNearbyEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function submit(e){
       e.preventDefault();
@@ -895,7 +923,7 @@ function AutoListHelpModal({ onClose }) {
       const next = [...imgFiles];
       for (const f of Array.from(filesLike || [])) {
         if (!f || !f.type?.startsWith?.('image/')) continue;
-        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
+        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EECH_MB}MB`); continue; }
         if (next.length >= MAX_COUNT) break;
         next.push(f);
       }
@@ -1185,7 +1213,7 @@ function AutoListHelpModal({ onClose }) {
   }
 
   // --- MassList Modal ---
-  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user }) {
+  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1207,53 +1235,63 @@ function AutoListHelpModal({ onClose }) {
     function removeAt(i){ const next=[...files]; next.splice(i,1); setFiles(next); }
 
     async function runMassList(){
-  if (!user) { alert('Log in to create listings.'); return; }
-  if (!files.length) { alert('Pick at least one image.'); return; }
-  setBusy(true);
-  setProgress({ done: 0, total: files.length, failed: 0 });
+      if (!user) { alert('Log in to create listings.'); return; }
+      if (!files.length) { alert('Pick at least one image.'); return; }
+      setBusy(true);
+      setProgress({ done: 0, total: files.length, failed: 0 });
 
-  let failed = 0;
+      let failed = 0;
 
-  for (let i=0; i<files.length; i++){
-    const f = files[i];
-    try {
-      // AI analysis per image (best effort)
-      let ai = {};
-      try {
-        const b64 = await fileToDataUrl(f);
-        ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
-      } catch (_) { /* ignore AI failure; fallback below */ }
+      // Try to get coords ONCE if auto-post-nearby is enabled
+      let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
+      if (autoPostNearbyEnabled) {
+        try {
+          const c = await fetchCoordsAndReverse();
+          sharedNearby = { ok:true, lat:c.lat, lon:c.lon, display:c.display };
+        } catch (_) { sharedNearby = { ok:false, lat:null, lon:null, display:'' }; }
+      }
 
-      const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-      const payload = {
-        title: (ai.title || 'Item for sale').toString().slice(0, 80),
-        description: '',
-        location: '',
-        price: safePrice,
-        tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-        enable_nearby: 0
-      };
+      for (let i=0; i<files.length; i++){
+        const f = files[i];
+        try {
+          // AI analysis per image (best effort)
+          let ai = {};
+          try {
+            const b64 = await fileToDataUrl(f);
+            ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
+          } catch (_) { /* ignore AI failure; fallback below */ }
 
-      const created = await api.createListing(payload);
-      if (!created?.id) throw new Error('create_failed');
+          const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
+          const payload = {
+            title: (ai.title || 'Item for sale').toString().slice(0, 80),
+            description: '',
+            location: sharedNearby.ok ? sharedNearby.display : '',
+            price: safePrice,
+            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+            enable_nearby: sharedNearby.ok ? 1 : 0
+          };
+          if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
-      await uploadOneImage(created.id, f);
-    } catch (e) {
-      failed += 1;
-    } finally {
-      setProgress(p => ({ ...p, done: p.done + 1, failed }));
+          const created = await api.createListing(payload);
+          if (!created?.id) throw new Error('create_failed');
+
+          await uploadOneImage(created.id, f);
+        } catch (e) {
+          failed += 1;
+        } finally {
+          setProgress(p => ({ ...p, done: p.done + 1, failed }));
+        }
+      }
+
+      try { await reloadMine(); } catch {}
+      try { await reloadAll(); } catch {}
+
+      setBusy(false);
+
+      const stats = { total: files.length, created: files.length - failed, failed };
+      onDone && onDone(stats);   // let parent decide what to do (navigate, toast, etc.)
+      onClose && onClose();      // close the modal
     }
-  }
-
-  try { await reloadMine(); } catch {}
-  try { await reloadAll(); } catch {}
-
-  setBusy(false);
-
-  const stats = { total: files.length, created: files.length - failed, failed };
-  onDone && onDone(stats);   // let parent decide what to do (navigate, toast, etc.)
-  onClose && onClose();      // close the modal
-}
 
 
     const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
@@ -1303,10 +1341,11 @@ function AutoListHelpModal({ onClose }) {
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (added Auto-list toggle + help modal) ---
+  // --- Profile Panel (Auto-list + child toggle + help modal) ---
   function ProfilePanel({
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
-    autoListEnabled, setAutoListEnabled
+    autoListEnabled, setAutoListEnabled,
+    autoPostNearbyEnabled, setAutoPostNearbyEnabled
   }) {
     const [showHelp, setShowHelp] = useState(false);
 
@@ -1349,6 +1388,30 @@ function AutoListHelpModal({ onClose }) {
             ),
             H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
             H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
+          )
+        ),
+
+        // Slide-out child when parent is on
+        H('div', {
+          style: {
+            marginTop: 10,
+            overflow: 'hidden',
+            maxHeight: autoListEnabled ? 120 : 0,
+            transition: 'max-height 220ms ease'
+          }
+        },
+          H('div', { className:'row', style:{ gap:8, alignItems:'center', padding:'8px 10px', border:'1px dashed #e5e7eb', borderRadius:12, background:'#fafafa' } },
+            H('input', {
+              type:'checkbox',
+              checked: !!autoPostNearbyEnabled,
+              onChange: (e) => setAutoPostNearbyEnabled(e.target.checked),
+              disabled: !autoListEnabled,
+              style:{ width:18, height:18 }
+            }),
+            H('div', null,
+              H('div', { style:{ fontWeight:700 } }, 'Also post to Nearby'),
+              H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
+            )
           )
         )
       ),
@@ -1405,6 +1468,13 @@ function AutoListHelpModal({ onClose }) {
       try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
     });
     useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
+
+    // NEW: Auto-list child toggle (persisted)
+    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
+    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
     const isMobile = isMobileDevice();
 
@@ -1568,7 +1638,8 @@ function AutoListHelpModal({ onClose }) {
               draft: editing,
               onCancel:()=>setShowForm(false),
               onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
-              autoListEnabled
+              autoListEnabled,
+              autoPostNearbyEnabled
             })
           ),
 
@@ -1633,7 +1704,9 @@ function AutoListHelpModal({ onClose }) {
             onLogout: logoutFromProfile,
             onAdminDelete: handleAdminDelete,
             autoListEnabled,
-            setAutoListEnabled
+            setAutoListEnabled,
+            autoPostNearbyEnabled,
+            setAutoPostNearbyEnabled
           })
       ),
 
@@ -1643,7 +1716,8 @@ function AutoListHelpModal({ onClose }) {
         onDone: () => {},
         reloadAll: reload,
         reloadMine: reloadMineOnly,
-        user
+        user,
+        autoPostNearbyEnabled
       })
     );
   }
