@@ -5,6 +5,7 @@
 // Conversations list: red “×” delete button (kept!)
 // CHANGE: All listing fields optional EXCEPT at least one image.
 //         If price field empty/invalid, default to $0.00 and render the price in green.
+// NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
 //
 
 (() => {
@@ -150,7 +151,7 @@
       return this._fetch(url, { method:'GET' }, meta);
     },
 
-    // --- NEW: S3 upload helpers ---
+    // --- S3 upload helpers ---
     signUpload({ filename, contentType, bytes }, meta) {
       return this._fetch('/api/uploads/sign', {
         method: 'POST',
@@ -243,7 +244,7 @@
   // --- City Autocomplete (unchanged) ---
   function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
     const [open, setOpen] = useState(false);
-       const [hover, setHover] = useState(0);
+    const [hover, setHover] = useState(0);
     const boxRef = useRef(null);
 
     const list = useMemo(() => {
@@ -427,6 +428,10 @@
     const out = [];
     for (const f of files.slice(0,3)) out.push(await toB64(f));
     return out;
+  }
+  async function fileToDataUrl(file) {
+    const arr = await filesToDataUrls([file]);
+    return arr && arr[0];
   }
 
   // --- Listing Form (S3-first) ---
@@ -1030,6 +1035,130 @@
     );
   }
 
+  // --- MassList Modal ---
+  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user }) {
+    const [files, setFiles] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+
+    const fileRef = useRef();
+
+    function pick(e){
+      const MAX_EACH_MB = 20;
+      const selected = Array.from(e.target.files || []);
+      const next = [...files];
+      for (const f of selected) {
+        if (!f.type?.startsWith?.('image/')) { alert('Only images are allowed'); continue; }
+        if (f.size > MAX_EACH_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
+        next.push(f);
+      }
+      setFiles(next);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+    function removeAt(i){ const next=[...files]; next.splice(i,1); setFiles(next); }
+
+    async function runMassList(){
+      if (!user) { alert('Log in to create listings.'); return; }
+      if (!files.length) { alert('Pick at least one image.'); return; }
+      setBusy(true);
+      setProgress({ done: 0, total: files.length, failed: 0 });
+
+      let failed = 0;
+
+      for (let i=0; i<files.length; i++){
+        const f = files[i];
+        try {
+          // AI analysis per image (best effort)
+          let ai = {};
+          try {
+            const b64 = await fileToDataUrl(f);
+            ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
+          } catch (_) {
+            // ignore AI failure; fallback below
+          }
+
+          const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
+          const payload = {
+            title: (ai.title || 'Item for sale').toString().slice(0, 80),
+            description: '',
+            location: '',
+            price: safePrice,
+            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+            enable_nearby: 0
+          };
+
+          const created = await api.createListing(payload);
+          if (!created?.id) throw new Error('create_failed');
+
+          await uploadOneImage(created.id, f);
+        } catch (e) {
+          failed += 1;
+        } finally {
+          setProgress(p => ({ ...p, done: p.done + 1, failed }));
+        }
+      }
+
+      try { await reloadMine(); } catch {}
+      try { await reloadAll(); } catch {}
+
+      setBusy(false);
+      onDone && onDone();
+      onClose && onClose();
+
+      if (failed) {
+        alert(`MassList finished with ${files.length - failed} created, ${failed} failed.`);
+      } else {
+        alert(`MassList finished. Created ${files.length} listings.`);
+      }
+    }
+
+    const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
+      H('div', { className:'modal-inner', style:{ width:'min(680px, 92vw)', background:'#fff', borderRadius:24, overflow:'hidden' } },
+        H('button', { className:'close', onClick:onClose }, '✕'),
+        H('div', { style:{ padding:16 } },
+          H('div', { style:{ fontWeight:800, fontSize:18, marginBottom:6 } }, 'MassList'),
+          H('div', { className:'muted', style:{ marginBottom:12 } }, 'Pick multiple photos from your gallery. We will create one listing per photo using AI for title, tags, and price (you can edit later).'),
+
+          H('div', { className:'row', style:{ gap:8, alignItems:'center' } },
+            H('input', { type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pick }),
+            H('span', { className:'muted' }, `${files.length} selected`)
+          ),
+
+          files.length > 0 && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap', marginTop:12 } },
+            ...files.map((f,i) =>
+              H('div', { key:i, style:{ position:'relative' } },
+                H('img', { src: URL.createObjectURL(f), style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
+                H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
+              )
+            )
+          ),
+
+          H('div', { className:'row', style:{ marginTop:16 } },
+            H('button', { className:'btn', onClick:onClose, disabled:busy }, 'Cancel'),
+            H('button', { className:`btn primary`, onClick:runMassList, disabled:busy || files.length===0 }, busy ? 'Working…' : 'Confirm MassList')
+          )
+        ),
+
+        // Progress overlay
+        busy && H('div', {
+          style:{
+            position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+            display:'grid', placeItems:'center', zIndex:10, textAlign:'center', padding:'16px'
+          }
+        },
+          H('div', null,
+            H('div', { className:'spinner' }),
+            H('div', { style:{ fontWeight:800, marginTop:6 } }, 'MassList in progress…'),
+            H('div', { className:'muted', style:{ marginTop:4 } }, `${progress.done}/${progress.total} completed`),
+            progress.failed>0 && H('div', { className:'muted', style:{ marginTop:2, color:'#b91c1c' } }, `${progress.failed} failed`)
+          )
+        )
+      )
+    );
+
+    return ReactDOM.createPortal(modal, document.body);
+  }
+
   // --- Profile Panel (unchanged) ---
   function ProfilePanel({ user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete }) {
     if (!user) {
@@ -1093,6 +1222,9 @@
     const [unreadCount, setUnreadCount] = useState(0);
 
     const [loadingCount, setLoadingCount] = useState(0);
+
+    // NEW: MassList modal
+    const [showMassList, setShowMassList] = useState(false);
 
     const isMobile = isMobileDevice();
 
@@ -1245,7 +1377,10 @@
                 H('option', { value:'city' }, 'City (A → Z)')
               )
             ),
-            H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing')
+            H('div', { className:'row', style:{ gap:8 } },
+              H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
+              H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
+            )
           ),
 
           showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
@@ -1317,7 +1452,16 @@
             onLogout: logoutFromProfile,
             onAdminDelete: handleAdminDelete
           })
-      )
+      ),
+
+      // MassList modal
+      showMassList && H(MassListModal, {
+        onClose: () => setShowMassList(false),
+        onDone: () => {},
+        reloadAll: reload,
+        reloadMine: reloadMineOnly,
+        user
+      })
     );
   }
 
@@ -1327,5 +1471,12 @@
     return { user, setUser };
   }
 
-  ReactDOM.render(H(App), document.getElementById('root'));
+  // Robust mount (React 18+ or older)
+  const rootEl = document.getElementById('root');
+  if (ReactDOM.createRoot) {
+    const root = ReactDOM.createRoot(rootEl);
+    root.render(H(App));
+  } else {
+    ReactDOM.render(H(App), rootEl);
+  }
 })();
