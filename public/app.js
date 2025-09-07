@@ -6,6 +6,9 @@
 // CHANGE: All listing fields optional EXCEPT at least one image.
 //         If price field empty/invalid, default to $0.00 and render the price in green.
 // NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
+// NEW: Auto-List setting — profile toggle to auto-AI + auto-create a listing when images are attached.
+//    - Stored per-user in localStorage.
+//    - ListingForm auto-runs AI and creates the listing (then uploads all selected images) when files are added.
 //
 
 (() => {
@@ -26,6 +29,11 @@
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+  // Auto-List setting store
+  function autoListKey(userId){ return `listit_autolist_${userId||'anon'}`; }
+  function loadAutoList(userId){ try { return localStorage.getItem(autoListKey(userId)) === '1'; } catch { return false; } }
+  function saveAutoList(userId, val){ try { localStorage.setItem(autoListKey(userId), val ? '1' : '0'); } catch {} }
+
   function fmtDistance(m){
     if (!Number.isFinite(m)) return '';
     if (m < 1609.344 * 0.3) {
@@ -435,7 +443,7 @@
   }
 
   // --- Listing Form (S3-first) ---
-  function ListingForm({ draft, onCancel, onSaved }) {
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
     const [existingUrls, setExistingUrls] = useState([]); // Show current images (read-only)
 
@@ -446,6 +454,10 @@
     const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
+
+    // Auto-list guard
+    const [autoBusy, setAutoBusy] = useState(false);
+    const autoRanRef = useRef(false);
 
     const hasFixedGps = !!draft?.lat;
     const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
@@ -547,9 +559,54 @@
       }
     }
 
+    // Auto-list: if enabled, no draft (new), and files added → run AI, create listing, upload all files, save, close
+    useEffect(() => {
+      if (!autoListEnabled) return;
+      if (draft) return; // only for new listings
+      if (!files || files.length === 0) return;
+      if (autoRanRef.current) return;
+
+      (async () => {
+        autoRanRef.current = true;
+        setAutoBusy(true);
+        try {
+          let titleLocal = title, tagsLocal = tags, priceLocal = 0;
+          try {
+            const dataUrls = await filesToDataUrls(files);
+            const res = await api.aiAnalyze({ images: dataUrls, hint: `${title} ${description}`.trim() }, { silent:true });
+            if (res?.title) titleLocal = String(res.title).slice(0,80);
+            if (Array.isArray(res?.tags)) tagsLocal = res.tags.join(', ');
+            if (typeof res?.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) priceLocal = res.suggested_price;
+          } catch {}
+
+          const payload = {
+            title: String(titleLocal || 'Item for sale'),
+            description: String(description || ''),
+            location: String(location || ''),
+            price: Number.isFinite(priceLocal) && priceLocal >= 0 ? priceLocal : 0,
+            tags: String(tagsLocal || ''),
+            enable_nearby: 0
+          };
+
+          const created = await api.createListing(payload);
+          if (!created?.id) throw new Error('Create failed');
+
+          if (files.length) await uploadFilesForListing(created.id, files);
+
+          onSaved?.();
+        } catch (e) {
+          console.error('Auto-list failed', e);
+          alert(`Auto-list failed: ${e?.message || e}`);
+        } finally {
+          setAutoBusy(false);
+        }
+      })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoListEnabled, files, draft]);
+
     const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
 
-    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12}},
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
 
       // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
@@ -611,8 +668,22 @@
       ),
 
       H('div', { className:'row' },
-        H('button', { className:'btn primary', type:'submit' }, draft ? 'Save changes' : 'Create listing'),
-        H('button', { className:'btn', type:'button', onClick:onCancel }, 'Cancel')
+        H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
+      ),
+
+      // Auto-list progress overlay
+      (autoBusy) && H('div', {
+        style:{
+          position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+          display:'grid', placeItems:'center', zIndex:5, textAlign:'center'
+        }
+      },
+        H('div', null,
+          H('div', { className:'spinner' }),
+          H('div', { style:{ fontWeight:800, marginTop:6 } }, 'Auto-listing your item…'),
+          H('div', { className:'muted', style:{ marginTop:4 } }, 'AI is filling details and uploading your images')
+        )
       )
     );
   }
@@ -1159,8 +1230,10 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (unchanged) ---
-  function ProfilePanel({ user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete }) {
+  // --- Profile Panel (with Auto-List toggle) ---
+  function ProfilePanel({ user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete, autoListEnabled, onToggleAutoList }) {
+    const [showAutoInfo, setShowAutoInfo] = useState(false);
+
     if (!user) {
       return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
         H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -1170,14 +1243,51 @@
 
     return H(React.Fragment, null,
       H('section', { className:'card', style:{ padding:16, margin:'12px 0 16px' } },
-        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'center', flexWrap:'wrap' } },
+        H('div', { className:'row', style: { justifyContent:'space-between', alignItems:'center', flexWrap:'wrap' } },
           H('div', null,
             H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
             H('div', { className:'muted' }, 'Your account')
           ),
-          H('div', { className:'row', style:{ gap:8 } },
+          H('div', { className:'row', style:{ gap:8, alignItems:'center', flexWrap:'wrap' } },
+            // Auto-List toggle
+            H('label', { className:'row', style:{ gap:8, alignItems:'center', marginRight:8 } },
+              H('input', {
+                type:'checkbox',
+                checked: !!autoListEnabled,
+                onChange: e => onToggleAutoList?.(!!e.target.checked)
+              }),
+              H('span', null, 'Auto-list new uploads')
+            ),
+            H('button', {
+              type:'button',
+              className:'icon-btn',
+              onClick: () => setShowAutoInfo(true),
+              title:'What is Auto-list?',
+              'aria-label':'What is Auto-list?',
+              style:{
+                width:28, height:28, borderRadius:10, border:'1px solid #e5e7eb',
+                background:'#fff', display:'grid', placeItems:'center', cursor:'pointer', fontWeight:800
+              }
+            }, '?'),
             H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
             H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
+          )
+        )
+      ),
+
+      // Auto-list info modal
+      showAutoInfo && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setShowAutoInfo(false); } },
+        H('div', { className:'modal-inner', style:{ maxWidth:520 } },
+          H('button', { className:'close', onClick:()=>setShowAutoInfo(false) }, '✕'),
+          H('div', { style:{ padding:16 } },
+            H('div', { style:{ fontWeight:800, fontSize:18, marginBottom:8 } }, 'About Auto-list'),
+            H('p', null, 'When this is ON, attaching photo(s) in the New listing form will:'),
+            H('ul', null,
+              H('li', null, 'Run AI to suggest title, tags and price (best effort).'),
+              H('li', null, 'Immediately create the listing for you.'),
+              H('li', null, 'Upload all selected photos to that listing.')
+            ),
+            H('p', { className:'muted' }, 'You can still edit or delete the listing afterwards.')
           )
         )
       ),
@@ -1225,6 +1335,11 @@
 
     // NEW: MassList modal
     const [showMassList, setShowMassList] = useState(false);
+
+    // NEW: Auto-List setting
+    const [autoListEnabled, setAutoListEnabled] = useState(false);
+    useEffect(() => { setAutoListEnabled(loadAutoList(user?.id)); }, [user?.id]);
+    function updateAutoList(val){ setAutoListEnabled(!!val); saveAutoList(user?.id, !!val); }
 
     const isMobile = isMobileDevice();
 
@@ -1387,7 +1502,8 @@
             H(ListingForm, {
               draft: editing,
               onCancel:()=>setShowForm(false),
-              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); }
+              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
+              autoListEnabled
             })
           ),
 
@@ -1450,7 +1566,9 @@
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
             onLogout: logoutFromProfile,
-            onAdminDelete: handleAdminDelete
+            onAdminDelete: handleAdminDelete,
+            autoListEnabled,
+            onToggleAutoList: updateAutoList
           })
       ),
 
