@@ -17,7 +17,9 @@ function getS3() {
     // Load AWS SDKs only when needed
     ({ S3Client, PutObjectCommand } = require('@aws-sdk/client-s3'));
     ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
-    _s3 = new S3Client({ region: need('AWS_REGION') });
+    const region = process.env.AWS_REGION || process.env.S3_REGION;
+    if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
+    _s3 = new S3Client({ region });
   }
   return _s3;
 }
@@ -33,12 +35,12 @@ function newKey(filename = 'upload.bin') {
 async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 } = {}) {
   const s3 = getS3(); // validates AWS_REGION
   const Bucket = need('S3_BUCKET');
-  const PUBLIC_BASE = need('PUBLIC_ASSET_BASE');
+  const region = process.env.AWS_REGION || process.env.S3_REGION;
+  const PUBLIC_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim(); // optional
 
   const max = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
   if (bytes > max) throw new Error('Image too large');
-  if (!/^image\/(png|jpe?g|webp|avif|heic|heif)$/i.test(contentType)) throw new Error('Unsupported type');
-
+  if (!/^image\/(png|jpe?g|webp|avif|heic|heif|gif)$/i.test(contentType)) throw new Error('Unsupported type');
   const Key = newKey(filename);
   const cmd = new PutObjectCommand({
     Bucket,
@@ -48,7 +50,8 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
   });
 
   const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 });
-  const publicUrl = `${PUBLIC_BASE}/${Key}`;
+  const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
+  const publicUrl = `${base.replace(/\/+$/,'')}/${Key}`;
   return { Bucket, Key, uploadUrl, publicUrl };
 }
 

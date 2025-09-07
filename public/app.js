@@ -702,7 +702,7 @@
         className:'aspect',
         onClick:(e)=>{ e.stopPropagation(); openModal(0); },
         style:{ cursor:'zoom-in' }
-      }, H('img', { src:item.image_data || (images && images[0]) })),
+      }, H('img', { src:item.image_data || (images && images[0]), loading:'lazy', decoding:'async' })),
       H('div', { style:{ padding:16 } },
         H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
           H('div', null,
@@ -900,7 +900,7 @@
             Array.isArray(m.images) && m.images.length > 0 &&
               H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
                 ...m.images.map((src, i) =>
-                  H('img', { key:i, src, style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
+                  H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
                     onClick:()=>openLightbox(m.images, i) })
                 )
               )
@@ -1007,7 +1007,7 @@
       H('section', { className:'masonry' },
         items.map(item =>
           H('div', { key:item.id, className:'masonry-item' },
-            H('img', { src: item.image_data, onClick: () => setSelected(item), style: { cursor: 'pointer' } })
+            H('img', { src: item.image_data, loading:'lazy', decoding:'async', onClick: () => setSelected(item), style: { cursor: 'pointer' } })
           )
         )
       ),

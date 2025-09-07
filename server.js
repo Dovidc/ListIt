@@ -2,9 +2,9 @@
    Features:
    - Users (email, username, bcrypt) + JWT cookies & Bearer support
    - Listings w/ title, description, price, location, tags (private), multi-images
-   - (NEW) Thin listings via ?noimg=1
-   - (NEW) Batch cover fetch /api/listings/covers
-   - (NEW) S3 direct uploads (presign + finalize) with SQLite metadata
+   - Thin listings via ?noimg=1
+   - Batch cover fetch /api/listings/covers
+   - S3 direct uploads (presign + finalize) with SQLite metadata
    - AI analysis (title, tags, suggested price)
    - Conversations/messages with image attachments
    - Reverse geocoding proxy (OpenStreetMap)
@@ -15,8 +15,9 @@
    - Compression + static caching
    - Opt-in enable_nearby (default 0)
    - Immutable lat/lon (set once on first opt-in)
-   - (UPDATED) Larger image limit via MAX_IMAGE_MB (default 6MB) + 100MB body limit
-   - Refactored: Messages support S3 URLs (stored in message_images.url if provided)
+   - Larger image limit via MAX_IMAGE_MB (default 20MB) + 100MB body limit
+   - Messages support S3 URLs (stored in message_images.url if provided)
+   - Security: CSRF Origin/Referer guard, rate limits, helmet + CSP, finalize URL allowlist, strong JWT secret in prod
 */
 
 const express = require('express');
@@ -26,12 +27,21 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
+
 let cors; try { cors = require('cors'); } catch {}
 let compression; try { compression = require('compression'); } catch {}
+
+// Security deps (optional require to avoid crashing before package.json is updated)
+let helmet; try { helmet = require('helmet'); } catch {}
+let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
+
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 
 // Initialize app BEFORE any route usage
 const app = express();
+app.disable('x-powered-by');
+// Always safe on Render/behind proxies for correct IPs/cookies
+app.set('trust proxy', 1);
 
 // S3 presign module (lazy error tolerant)
 let presignUpload;
@@ -48,7 +58,16 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-const PUBLIC_ASSET_BASE = process.env.PUBLIC_ASSET_BASE || 'https://your-bucket.s3.amazonaws.com';
+const PUBLIC_ASSET_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim();
+const S3_ORIGIN = (process.env.S3_BUCKET && process.env.S3_REGION)
+  ? `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`
+: null;
+const ASSET_ORIGIN = PUBLIC_ASSET_BASE || S3_ORIGIN || null;
+  // Refuse weak/empty JWT secret in production
+if (IS_PROD && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev_jwt_change_me')) {
+  console.error('FATAL: JWT_SECRET must be set to a strong value in production.');
+  process.exit(1);
+}
 
 // === Image size knobs ===
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 20);
@@ -84,6 +103,36 @@ if (FRONTEND_ORIGIN && cors) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Security headers (helmet + CSP + HSTS)                              */
+/* ------------------------------------------------------------------ */
+if (helmet) {
+  app.use(helmet({
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'no-referrer' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow loading from S3/CDN
+  }));
+
+  app.use(helmet.contentSecurityPolicy({
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "img-src": ["'self'", "data:", "https:"],               // S3/CloudFront
+      "script-src": ["'self'", "https://unpkg.com"],           // React UMD
+      "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "font-src": ["https://fonts.gstatic.com"],
+      // allow presigned S3 PUTs/XHR to any https host (tighten to your bucket/CDN later if desired)
+      "connect-src": ["'self'", "https://nominatim.openstreetmap.org", "https:", "wss:"],
+      "frame-ancestors": ["'none'"],
+      "object-src": ["'none'"]
+    }
+  }));
+
+  if (IS_PROD) app.use(helmet.hsts({ maxAge: 15552000 })); // 180d
+} else {
+  console.warn('[security] helmet not installed; skipping security headers');
+}
+
+/* ------------------------------------------------------------------ */
 /* Compression + static caching                                       */
 /* ------------------------------------------------------------------ */
 if (compression) app.use(compression());
@@ -102,7 +151,7 @@ function ensureDirFor(filePath) {
   catch (e) { console.warn('Could not create DB dir', dir, e.message); return false; }
 }
 
-/* -------------------- URL allowlist for message images -------------------- */
+/* -------------------- URL allowlist for message/finalize images ---- */
 function isAllowedPublicUrl(u) {
   try {
     const url = new URL(u);
@@ -113,6 +162,23 @@ function isAllowedPublicUrl(u) {
     );
   } catch { return false; }
 }
+
+/* -------------------- CSRF Origin/Referer guard -------------------- */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+function originGuard(req, res, next) {
+  if (SAFE_METHODS.has(req.method)) return next();
+  if (!FRONTEND_ORIGIN) return next(); // nothing to enforce if not cross-site
+
+  const origin = req.headers.origin || '';
+  const referer = req.headers.referer || '';
+  const ok =
+    (origin && origin === FRONTEND_ORIGIN) ||
+    (referer && referer.startsWith(FRONTEND_ORIGIN + '/'));
+
+  if (!ok) return res.status(403).json({ error: 'bad_origin' });
+  next();
+}
+app.use(originGuard);
 
 let DB_PATH = WANTED_DB;
 if (!ensureDirFor(WANTED_DB)) {
@@ -394,6 +460,17 @@ function requireAdmin(req, res, next){
 }
 
 /* ------------------------------------------------------------------ */
+/* Rate limiters                                                       */
+/* ------------------------------------------------------------------ */
+function mkLimiter(cfg) {
+  return rateLimit ? rateLimit({ ...cfg, standardHeaders: true, legacyHeaders: false }) : (req,res,next)=>next();
+}
+const loginLimiter   = mkLimiter({ windowMs: 15*60*1000, max: 20 });
+const writeLimiter   = mkLimiter({ windowMs: 60*1000, max: 60 });
+const uploadLimiter  = mkLimiter({ windowMs: 10*60*1000, max: 120 });
+const geocodeLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
+
+/* ------------------------------------------------------------------ */
 /* Optional admin bootstrap                                           */
 /* ------------------------------------------------------------------ */
 (function maybeCreateAdmin() {
@@ -412,7 +489,7 @@ function requireAdmin(req, res, next){
 /* ------------------------------------------------------------------ */
 /* Auth routes                                                         */
 /* ------------------------------------------------------------------ */
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', writeLimiter, async (req, res) => {
   const username = (req.body.username || req.body.name || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
@@ -436,7 +513,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -592,20 +669,26 @@ app.get('/api/listings/covers', (req, res) => {
   ids = Array.from(new Set(ids)).slice(0, 200);
   if (!ids.length) return res.json([]);
   const placeholders = ids.map(()=>'?').join(',');
+// More robust: pick first by (position ASC, id ASC), else fall back to listings.image_data
   const rows = db.prepare(`
-    SELECT l.id, COALESCE(li.image, l.image_data) AS image_data
-    FROM listings l
-    LEFT JOIN (
-      SELECT listing_id, COALESCE(url, image_data) AS image
-      FROM listing_images
-      WHERE position = 0
-    ) li ON li.listing_id = l.id
-    WHERE l.id IN (${placeholders})
+    SELECT l.id,
+         COALESCE(
+            (SELECT COALESCE(url, image_data)
+             FROM listing_images
+              WHERE listing_id = l.id
+             ORDER BY
+               CASE WHEN position IS NULL THEN 1 ELSE 0 END,
+                 position ASC, id ASC
+               LIMIT 1),
+             l.image_data
+           ) AS image_data
+      FROM listings l
+     WHERE l.id IN (${placeholders})
   `).all(...ids);
-  res.json(rows);
-});
+   res.json(rows);
+ });
 
-app.post('/api/listings', auth, (req, res) => {
+app.post('/api/listings', auth, writeLimiter, (req, res) => {
   try {
     ensureListingColumns();
 
@@ -676,7 +759,7 @@ app.post('/api/listings', auth, (req, res) => {
   }
 });
 
-app.put('/api/listings/:id', auth, (req, res) => {
+app.put('/api/listings/:id', auth, writeLimiter, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -730,7 +813,7 @@ app.put('/api/listings/:id', auth, (req, res) => {
   res.json(row);
 });
 
-app.delete('/api/listings/:id', auth, (req, res) => {
+app.delete('/api/listings/:id', auth, writeLimiter, (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
@@ -749,7 +832,7 @@ app.get('/api/listings/:id/images', (req, res) => {
 /* ------------------------------------------------------------------ */
 /* S3 presign + finalize                                              */
 /* ------------------------------------------------------------------ */
-app.post('/api/uploads/sign', auth, async (req, res) => {
+app.post('/api/uploads/sign', auth, uploadLimiter, async (req, res) => {
   if (!presignUpload) return res.status(500).json({ error: 's3_module_not_loaded' });
   try {
     const { filename, contentType, bytes } = req.body || {};
@@ -762,9 +845,10 @@ app.post('/api/uploads/sign', auth, async (req, res) => {
   }
 });
 
-app.post('/api/uploads/finalize', auth, (req, res) => {
+app.post('/api/uploads/finalize', auth, uploadLimiter, (req, res) => {
   const { listingId, key, url, width, height, bytes } = req.body || {};
   if (!listingId || !key || !url) return res.status(400).json({ error: 'listingId, key, url required' });
+  if (!isAllowedPublicUrl(url)) return res.status(400).json({ error: 'invalid_asset_url' });
 
   const lid = Number(listingId);
   const owner = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
@@ -791,7 +875,7 @@ app.post('/api/uploads/finalize', auth, (req, res) => {
 /* ------------------------------------------------------------------ */
 /* AI Analysis                                                         */
 /* ------------------------------------------------------------------ */
-app.post('/api/ai/analyze', auth, async (req, res) => {
+app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
   try {
     const images = Array.isArray(req.body.images) ? req.body.images.slice(0, 3) : [];
     const hint = String(req.body.hint || '').slice(0, 200);
@@ -862,7 +946,7 @@ app.post('/api/ai/analyze', auth, async (req, res) => {
 /* ------------------------------------------------------------------ */
 function isMember(convo, uid){ return convo && (convo.a_user_id === uid || convo.b_user_id === uid); }
 
-app.post('/api/conversations', auth, (req, res) => {
+app.post('/api/conversations', auth, writeLimiter, (req, res) => {
   let { with_user_id, listing_id } = req.body || {};
   if (!with_user_id && !listing_id) return res.status(400).json({ error: 'with_user_id or listing_id required' });
   if (listing_id) {
@@ -928,7 +1012,7 @@ app.get('/api/conversations/:id/messages', auth, (req, res) => {
   res.json(out);
 });
 
-app.post('/api/conversations/:id/messages', auth, (req, res) => {
+app.post('/api/conversations/:id/messages', auth, writeLimiter, (req, res) => {
   const id = Number(req.params.id);
   const { body, images } = req.body || {};
 
@@ -971,7 +1055,7 @@ app.post('/api/conversations/:id/messages', auth, (req, res) => {
   res.json({ ...row, images: imgs });
 });
 
-app.delete('/api/conversations/:id', auth, (req, res) => {
+app.delete('/api/conversations/:id', auth, writeLimiter, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad_id' });
 
@@ -995,7 +1079,7 @@ app.delete('/api/conversations/:id', auth, (req, res) => {
 /* Reverse geocoding proxy                                            */
 /* ------------------------------------------------------------------ */
 const geoCache = new Map();
-app.get('/api/geo/reverse', async (req, res) => {
+app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
   try {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
