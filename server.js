@@ -116,7 +116,7 @@ if (helmet) {
     useDefaults: true,
     directives: {
       "default-src": ["'self'"],
-      "img-src": ["'self'", "data:", "https:"],               // S3/CloudFront
+      "img-src": ["'self'", "data:", "https:", "blob:"],              // S3/CloudFront
       "script-src": ["'self'", "https://unpkg.com"],           // React UMD
       "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       "font-src": ["https://fonts.gstatic.com"],
