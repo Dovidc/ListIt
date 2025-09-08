@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS users (
 addColumnIfMissing('users', 'username', 'TEXT');
 createIndexIfMissing('idx_users_username', 'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);');
 addColumnIfMissing('users', 'is_admin', 'INTEGER DEFAULT 0');
+addColumnIfMissing('users', 'paypal_email', 'TEXT');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS listings (
@@ -537,10 +538,22 @@ app.post('/api/logout', (_req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  const user = authFromReq(req);
-  if (!user) return res.json(null);
-  return res.json({ id: user.id, email: user.email, username: user.username, is_admin: !!user.is_admin });
+  const u = authFromReq(req);
+  if (!u) return res.json(null);
+  const row = db.prepare('SELECT id, email, username, is_admin, COALESCE(paypal_email, "") AS paypal_email FROM users WHERE id = ?').get(u.id);
+  if (!row) return res.json(null);
+  return res.json({ id: row.id, email: row.email, username: row.username, is_admin: !!row.is_admin, paypal_email: row.paypal_email });
 });
+
+app.put('/api/me/paypal', auth, writeLimiter, (req, res) => {
+  const email = String(req.body?.paypal_email || '').trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Invalid email' });
+  }
+  db.prepare('UPDATE users SET paypal_email = ? WHERE id = ?').run(email || null, req.user.id);
+  return res.json({ ok: true, paypal_email: email || '' });
+});
+
 
 /* ------------------------------------------------------------------ */
 /* Listings (thin response + covers + fuzzy city filter)               */
@@ -977,6 +990,7 @@ app.get('/api/conversations', auth, (req, res) => {
       CASE WHEN c.a_user_id = @me THEN c.b_user_id ELSE c.a_user_id END AS other_user_id,
       u.username AS other_user_username,
       COALESCE(l.title, '') AS listing_title,
+      l.user_id AS listing_owner_id,
       (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_at,
       (SELECT body       FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
       (SELECT sender_id  FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,

@@ -118,6 +118,15 @@
       try { await this._fetch('/api/logout', { method:'POST' }, meta); } catch {}
     },
 
+    updatePaypalEmail(paypal_email, meta) {
+      return this._fetch('/api/me/paypal', {
+    method:'PUT',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ paypal_email })
+  }, meta);
+},
+
+
     listAll(q, loc, meta) {
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
@@ -1018,8 +1027,21 @@
       await fetchConvos();
     }
 
+    async function revealPaypal() {
+  if (!activeId) return;
+  if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
+  const msg = `My PayPal address: ${user.paypal_email}`;
+  await api.sendMessage(activeId, msg, []);
+  await fetchMsgs();
+  await fetchConvos();
+}
+
+
     const seenMap = loadSeen(user?.id);
     const convosDecorated = (convos||[]).map(c => {
+      const active = (convosDecorated.find(c => c.id === activeId) || convos.find(c => c.id === activeId)) || null;
+      const canRevealPaypal = !!(active && active.listing_id && active.listing_owner_id && user?.id === active.listing_owner_id && user?.paypal_email);
+
       const unread = !!(c.last_message_id && c.last_message_sender_id && c.last_message_sender_id !== user.id && (!seenMap[c.id] || seenMap[c.id] < c.last_message_id));
       return { ...c, _unread: unread };
     }).sort((a,b) => {
@@ -1120,6 +1142,8 @@
             onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
             style:{ flex:1, resize:'vertical' }
           }),
+          canRevealPaypal && H('button', { className:'btn', onClick: revealPaypal }, 'Reveal PayPal address'),
+
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
 
@@ -1350,6 +1374,17 @@
   }) {
     const [showHelp, setShowHelp] = useState(false);
 
+    const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
+    async function savePaypal() {
+    const r = await api.updatePaypalEmail((paypalEmail || '').trim());
+    if (r?.error) { alert(r.error); return; }
+    // refresh global user so Messages sees the latest email
+    const me = await api.me({ silent:true });
+    AppNav.setUser(me);
+    alert('Saved.');
+}
+
+
     if (!user) {
       return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
         H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -1417,6 +1452,22 @@
         ))),
       H('section', null,
         H('div', { className:'row', style:{ justifyContent:'space-between', margin:'0 0 12px', flexWrap:'wrap' } },
+              H('section', { style:{ marginTop:12 } },
+      H('label', null, 'PayPal email'),
+      H('div', { className:'row', style:{ gap:8, alignItems:'center', flexWrap:'wrap' } },
+        H('input', {
+          value: paypalEmail,
+          onChange: e => setPaypalEmail(e.target.value),
+          placeholder: 'name@example.com',
+          style:{ minWidth: 260 }
+        }),
+        H('button', { className:'btn', onClick: savePaypal }, 'Save')
+      ),
+      H('div', { className:'muted', style:{ fontSize:12, marginTop:4 } },
+        'When you press “Reveal PayPal address” in a DM, the email you save here will be sent as a normal message.'
+      )
+    ),
+
           H('div', { style:{ fontWeight:800 } }, `Your listings (${items.length})`)
         ),
         H('section', { className:'grid' },
