@@ -214,18 +214,11 @@ main { padding-bottom: 16px; }
 [data-tab="nearby"] a {
   -webkit-tap-highlight-color: rgba(0,0,0,.05);
 }
-/* 4) Make Log out the SMALLEST (last button in that group) */
-header .container > .row:last-child .btn:last-child {
-  font-size: 12px !important;
-  padding: 4px 10px !important;
-  min-height: 28px !important;
-  border-radius: 12px !important;
-  opacity: .9;
-}
-/* Reusable Masonry layout (used by Nearby + Listings) */
+
+/* ---------- Reusable Masonry (Nearby + Listings) ---------- */
 .masonry {
-  column-count: 2;
-  column-gap: 10px;
+  column-count: 3;        /* match Nearby */
+  column-gap: 8px;        /* match Nearby */
 }
 @media (min-width: 768px) {
   .masonry { column-count: 3; }
@@ -235,16 +228,13 @@ header .container > .row:last-child .btn:last-child {
 }
 .masonry-item {
   break-inside: avoid;
-  margin-bottom: 10px;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 8px;
   display: block;
 }
-
-/* Ensure cards fit the column width cleanly */
 .masonry-item .card {
   width: 100%;
-  display: inline-block; /* needed so cards don’t span columns */
+  display: inline-block; /* prevents spanning columns */
 }
 .masonry-item img { width: 100%; height: auto; display: block; }
-
-
-

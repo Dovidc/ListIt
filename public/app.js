@@ -1504,6 +1504,17 @@
     const [locationQuery, setLocationQuery] = useState('');
     const [sort, setSort] = useState('new');
     const [showForm, setShowForm] = useState(false);
+    // add after: const [showForm, setShowForm] = useState(false);
+    const [selectedListing, setSelectedListing] = useState(null);
+
+    // optional: close with ESC like Nearby
+    useEffect(() => {
+      if (!selectedListing) return;
+      const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
+      window.addEventListener('keydown', esc);
+      return () => window.removeEventListener('keydown', esc);
+    }, [selectedListing]);
+
     const [editing, setEditing] = useState(null);
 
     const [activeConvoId, setActiveConvoId] = useState(null);
@@ -1696,33 +1707,9 @@
           ),
 
           // Masonry collage for Listings (replaces the old 'grid' section)
-            H('div', { className:'masonry' },
-              ...feed.map(item => {
-                const mineItem = mineById[item.id];
-                return H('div', { key:item.id, className:'masonry-item' },
-                  H(ListingCard, {
-                    item,
-                    user,
-                    canEdit: !!mineItem,
-                    onEdit:(it)=>{
-                      const rich = mineById[it.id] || it;
-                      setEditing(rich);
-                      setShowForm(true);
-                      window.scrollTo({ top:0, behavior:'smooth' });
-                    },
-                    onDelete: async(it)=>{
-                      if (confirm('Remove this listing? (Your past messages will remain)')) {
-                        await api.deleteListing(it.id);
-                        await reload();
-                      }
-                    },
-                    onMessage: startMessage,
-                    onAdminDelete: handleAdminDelete
-                  })
-                );
-              })
-            ),
-            !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
+            // Image-only masonry for Listings (matches Nearby; no distance badge here)
+
+
 
         ),
 
