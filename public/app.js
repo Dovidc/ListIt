@@ -1027,21 +1027,22 @@
 
   // ------- FIX: build decorated list first, THEN compute active/canReveal -------
   const seenMap = loadSeen(user?.id);
-
   const convosDecorated = (convos || [])
-    .map(c => {
-      const unread = !!(c.last_message_id && c.last_message_sender_id &&
-                        c.last_message_sender_id !== user.id &&
-                        (!seenMap[c.id] || seenMap[c.id] < c.last_message_id));
-      return { ...c, _unread: unread };
-    })
-    .sort((a,b) => {
-      const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
-      if (ub - ua) return ub - ua;
-      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-      return tb - ta;
-    });
+   .map(c => {
+     const unread = !!(
+       c.last_message_id && c.last_message_sender_id &&
+       c.last_message_sender_id !== user.id &&
+       (!seenMap[c.id] || seenMap[c.id] < c.last_message_id)
+     );
+     return { ...c, _unread: unread };
+   })
+   .sort((a,b) => {
+     const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
+     if (ub - ua) return ub - ua;
+     const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+     const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+     return tb - ta;
+   });
 
   const active = (convosDecorated.find(c => c.id === activeId) || (convos || []).find(c => c.id === activeId)) || null;
 
