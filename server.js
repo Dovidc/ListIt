@@ -540,10 +540,48 @@ app.post('/api/logout', (_req, res) => {
 app.get('/api/me', (req, res) => {
   const u = authFromReq(req);
   if (!u) return res.json(null);
-  const row = db.prepare('SELECT id, email, username, is_admin, COALESCE(paypal_email, "") AS paypal_email FROM users WHERE id = ?').get(u.id);
-  if (!row) return res.json(null);
-  return res.json({ id: row.id, email: row.email, username: row.username, is_admin: !!row.is_admin, paypal_email: row.paypal_email });
+
+  try {
+    const row = db.prepare(`
+      SELECT id, email, username, is_admin,
+             COALESCE(paypal_email, '') AS paypal_email
+      FROM users
+      WHERE id = ?
+    `).get(u.id);
+
+    if (!row) return res.json(null);
+    return res.json({
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      is_admin: !!row.is_admin,
+      paypal_email: row.paypal_email
+    });
+
+  } catch (e) {
+    // Fallback if the column doesn't exist yet (avoids 500 + logout on refresh)
+    const msg = String(e && e.message || '');
+    if (msg.includes('no such column: paypal_email')) {
+      const row = db.prepare(`
+        SELECT id, email, username, is_admin,
+               '' AS paypal_email
+        FROM users
+        WHERE id = ?
+      `).get(u.id);
+      if (!row) return res.json(null);
+      return res.json({
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        is_admin: !!row.is_admin,
+        paypal_email: ''
+      });
+    }
+    console.error('GET /api/me failed:', e);
+    return res.status(500).json({ error: 'me_failed' });
+  }
 });
+
 
 app.put('/api/me/paypal', auth, writeLimiter, (req, res) => {
   const email = String(req.body?.paypal_email || '').trim().toLowerCase();
