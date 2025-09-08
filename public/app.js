@@ -913,138 +913,129 @@
 
   // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
-    if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
+  if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
-    const [convos, setConvos] = useState([]);
-    const [activeId, setActiveId] = useState(initialActiveId || null);
-    const [msgs, setMsgs] = useState([]);
-    const [input, setInput] = useState('');
-    const [imgFiles, setImgFiles] = useState([]); // attachments state (File[] for S3 upload)
-    const fileRef = useRef();
-    const [lb, setLb] = useState({ open:false, images:[], index:0 });
-    const pollRef = useRef(null);
-    const dropRef = useRef();
+  const [convos, setConvos] = useState([]);
+  const [activeId, setActiveId] = useState(initialActiveId || null);
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState('');
+  const [imgFiles, setImgFiles] = useState([]); // attachments (File[] for S3 upload)
+  const fileRef = useRef();
+  const [lb, setLb] = useState({ open:false, images:[], index:0 });
+  const pollRef = useRef(null);
+  const dropRef = useRef();
 
-    function addFiles(filesLike) {
-      const MAX_EACH_MB = 20;
-      const MAX_EACH = MAX_EACH_MB * 1024 * 1024;
-      const MAX_COUNT = 5;
-      const next = [...imgFiles];
-      for (const f of Array.from(filesLike || [])) {
-        if (!f || !f.type?.startsWith?.('image/')) continue;
-        if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
-        if (next.length >= MAX_COUNT) break;
-        next.push(f);
-      }
-      setImgFiles(next);
+  function addFiles(filesLike) {
+    const MAX_EACH_MB = 20;
+    const MAX_EACH = MAX_EACH_MB * 1024 * 1024;
+    const MAX_COUNT = 5;
+    const next = [...imgFiles];
+    for (const f of Array.from(filesLike || [])) {
+      if (!f || !f.type?.startsWith?.('image/')) continue;
+      if (f.size > MAX_EACH) { alert(`Each image must be under ${MAX_EACH_MB}MB`); continue; }
+      if (next.length >= MAX_COUNT) break;
+      next.push(f);
     }
+    setImgFiles(next);
+  }
 
-    function pickImgs(e){
-      addFiles(e.target.files);
-      if (fileRef.current) fileRef.current.value = '';
-    }
+  function pickImgs(e){
+    addFiles(e.target.files);
+    if (fileRef.current) fileRef.current.value = '';
+  }
 
-    function onComposerPaste(e){
-      const cd = e.clipboardData;
-      if (!cd) return;
-      const imageItems = Array.from(cd.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
-      if (imageItems.length === 0) return; // let normal text paste
-      e.preventDefault(); // we'll handle both text + images ourselves
+  function onComposerPaste(e){
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const imageItems = Array.from(cd.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+    if (imageItems.length === 0) return; // let normal text paste
+    e.preventDefault();
 
-      // add images
-      const files = imageItems
-        .map(it => it.getAsFile())
-        .filter(Boolean)
-        .map(blob => new File([blob], `pasted-${Date.now()}-${Math.random().toString(36).slice(2)}.${(blob.type.split('/')[1]||'png')}`, { type: blob.type }));
-      addFiles(files);
+    const files = imageItems
+      .map(it => it.getAsFile())
+      .filter(Boolean)
+      .map(blob => new File([blob], `pasted-${Date.now()}-${Math.random().toString(36).slice(2)}.${(blob.type.split('/')[1]||'png')}`, { type: blob.type }));
+    addFiles(files);
 
-      // also paste any plain text
-      const txt = cd.getData('text/plain');
-      if (txt) setInput(v => (v ? v + ' ' : '') + txt);
-    }
+    const txt = cd.getData('text/plain');
+    if (txt) setInput(v => (v ? v + ' ' : '') + txt);
+  }
 
-    function onDragOver(e){ e.preventDefault(); }
-    function onDrop(e){
-      e.preventDefault();
-      const files = e.dataTransfer?.files || [];
-      addFiles(files);
-    }
+  function onDragOver(e){ e.preventDefault(); }
+  function onDrop(e){ e.preventDefault(); addFiles(e.dataTransfer?.files || []); }
+  function removeImg(i){ const n = [...imgFiles]; n.splice(i,1); setImgFiles(n); }
+  function openLightbox(images, index=0){ setLb({ open:true, images, index }); }
 
-    function removeImg(i){
-      const n = [...imgFiles]; n.splice(i,1); setImgFiles(n);
-    }
-    function openLightbox(images, index=0){ setLb({ open:true, images, index }); }
+  useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
 
-    useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
+  async function fetchConvos(){ try{ setConvos(await api.listConversations({ silent:true })); } catch(_){} }
+  async function fetchMsgs(){
+    if(!activeId) return;
+    try{
+      const arr = await api.getMessages(activeId, { silent:true });
+      setMsgs(arr);
+      if (arr.length) onSeenChange?.(activeId, arr[arr.length-1].id);
+    } catch{}
+  }
 
-    async function fetchConvos(){ try{ setConvos(await api.listConversations({ silent:true })); } catch(_){} }
-    async function fetchMsgs(){
-      if(!activeId) return;
-      try{
-        const arr = await api.getMessages(activeId, { silent:true });
-        setMsgs(arr);
-        if (arr.length) onSeenChange?.(activeId, arr[arr.length-1].id);
-      } catch{}
-    }
-
-    async function deleteConvo(id) {
-      if (!id) return;
-      const ok = confirm('Delete this conversation? This removes all messages and images for both participants.');
-      if (!ok) return;
-      try {
-        await api.deleteConversation(id);
-        if (activeId === id) setActiveId(null);
-        setMsgs([]);
-        await fetchConvos();
-      } catch (e) {
-        alert(e?.message || 'Delete failed');
-      }
-    }
-
-    useEffect(()=>{ fetchConvos(); }, []);
-    useEffect(()=>{
-      fetchMsgs();
-      if(pollRef.current) clearInterval(pollRef.current);
-      if(activeId){ pollRef.current = setInterval(fetchMsgs, 2500); }
-      return ()=> pollRef.current && clearInterval(pollRef.current);
-    }, [activeId]);
-
-    async function send(){
-      const bodyTrim = (input || '').trim();
-      if(!bodyTrim && imgFiles.length === 0) return;
-
-      // Upload images to S3 first
-      const urls = [];
-      for (const f of imgFiles) {
-        const url = await uploadOneMessageImage(f);
-        urls.push(url);
-      }
-
-      await api.sendMessage(activeId, bodyTrim, urls);
-      setInput('');
-      setImgFiles([]);
-      await fetchMsgs();
+  async function deleteConvo(id) {
+    if (!id) return;
+    const ok = confirm('Delete this conversation? This removes all messages and images for both participants.');
+    if (!ok) return;
+    try {
+      await api.deleteConversation(id);
+      if (activeId === id) setActiveId(null);
+      setMsgs([]);
       await fetchConvos();
+    } catch (e) { alert(e?.message || 'Delete failed'); }
+  }
+
+  useEffect(()=>{ fetchConvos(); }, []);
+  useEffect(()=>{
+    fetchMsgs();
+    if(pollRef.current) clearInterval(pollRef.current);
+    if(activeId){ pollRef.current = setInterval(fetchMsgs, 2500); }
+    return ()=> pollRef.current && clearInterval(pollRef.current);
+  }, [activeId]);
+
+  async function send(){
+    const bodyTrim = (input || '').trim();
+    if(!bodyTrim && imgFiles.length === 0) return;
+
+    // Upload images to S3 first
+    const urls = [];
+    for (const f of imgFiles) {
+      const url = await uploadOneMessageImage(f);
+      urls.push(url);
     }
 
-    async function revealPaypal() {
-  if (!activeId) return;
-  if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
-  const msg = `My PayPal address: ${user.paypal_email}`;
-  await api.sendMessage(activeId, msg, []);
-  await fetchMsgs();
-  await fetchConvos();
-}
+    await api.sendMessage(activeId, bodyTrim, urls);
+    setInput('');
+    setImgFiles([]);
+    await fetchMsgs();
+    await fetchConvos();
+  }
 
+  async function revealPaypal() {
+    if (!activeId) return;
+    if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
+    const msg = `My PayPal address: ${user.paypal_email}`;
+    await api.sendMessage(activeId, msg, []);
+    await fetchMsgs();
+    await fetchConvos();
+  }
 
-    const seenMap = loadSeen(user?.id);
-    const convosDecorated = (convos||[]).map(c => {
-      const active = (convosDecorated.find(c => c.id === activeId) || convos.find(c => c.id === activeId)) || null;
-      const canRevealPaypal = !!(active && active.listing_id && active.listing_owner_id && user?.id === active.listing_owner_id && user?.paypal_email);
+  // ------- FIX: build decorated list first, THEN compute active/canReveal -------
+  const seenMap = loadSeen(user?.id);
 
-      const unread = !!(c.last_message_id && c.last_message_sender_id && c.last_message_sender_id !== user.id && (!seenMap[c.id] || seenMap[c.id] < c.last_message_id));
+  const convosDecorated = (convos || [])
+    .map(c => {
+      const unread = !!(c.last_message_id && c.last_message_sender_id &&
+                        c.last_message_sender_id !== user.id &&
+                        (!seenMap[c.id] || seenMap[c.id] < c.last_message_id));
       return { ...c, _unread: unread };
-    }).sort((a,b) => {
+    })
+    .sort((a,b) => {
       const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
       if (ub - ua) return ub - ua;
       const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
@@ -1052,111 +1043,121 @@
       return tb - ta;
     });
 
-    return H('div', { className:'split' },
-      H('aside', { className:'card sidebar', style:{ padding:12 } },
-        H('div', { style: { fontWeight:700, marginBottom:8 } }, 'Conversations'),
-        ...(convosDecorated.length ? convosDecorated.map(c => H('div', {
-            key:c.id,
-            className:'row',
-            style:{
-              padding:'8px 6px',
-              borderRadius:12,
-              cursor:'pointer',
-              background: c.id===activeId?'#f3f4f6':'transparent',
-              position:'relative',
-              alignItems:'center',
-              gap:8
-            },
-            onClick:()=>setActiveId(c.id)
+  const active = (convosDecorated.find(c => c.id === activeId) || (convos || []).find(c => c.id === activeId)) || null;
+
+  const canRevealPaypal = !!(
+    active &&
+    active.listing_id &&
+    active.listing_owner_id &&
+    user?.id === active.listing_owner_id &&
+    user?.paypal_email
+  );
+  // ---------------------------------------------------------------------------
+
+  return H('div', { className:'split' },
+    H('aside', { className:'card sidebar', style:{ padding:12 } },
+      H('div', { style: { fontWeight:700, marginBottom:8 } }, 'Conversations'),
+      ...(convosDecorated.length ? convosDecorated.map(c => H('div', {
+          key:c.id,
+          className:'row',
+          style:{
+            padding:'8px 6px',
+            borderRadius:12,
+            cursor:'pointer',
+            background: c.id===activeId?'#f3f4f6':'transparent',
+            position:'relative',
+            alignItems:'center',
+            gap:8
           },
-          H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
-          c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
-          c._unread && H('span', {
-            style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' }
-          }),
-          H('button', {
-            title:'Delete conversation',
-            'data-testid':'dm-delete',
-            onClick:(e)=>{ e.stopPropagation(); deleteConvo(c.id); },
-            style:{
-              marginLeft: c._unread ? 6 : 'auto',
-              width:22, height:22,
-              lineHeight:'20px',
-              borderRadius:10,
-              border:'1px solid #fee2e2',
-              background:'#fff5f5',
-              color:'#b91c1c',
-              fontWeight:800,
-              display:'grid',
-              placeItems:'center',
-              cursor:'pointer'
-            }
-          }, '×')
-        )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
+          onClick:()=>setActiveId(c.id)
+        },
+        H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
+        c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
+        c._unread && H('span', {
+          style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' }
+        }),
+        H('button', {
+          title:'Delete conversation',
+          'data-testid':'dm-delete',
+          onClick:(e)=>{ e.stopPropagation(); deleteConvo(c.id); },
+          style:{
+            marginLeft: c._unread ? 6 : 'auto',
+            width:22, height:22,
+            lineHeight:'20px',
+            borderRadius:10,
+            border:'1px solid #fee2e2',
+            background:'#fff5f5',
+            color:'#b91c1c',
+            fontWeight:800,
+            display:'grid',
+            placeItems:'center',
+            cursor:'pointer'
+          }
+        }, '×')
+      )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
+    ),
+
+    H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },
+      !activeId && H('div', { className:'muted' }, 'Select a conversation'),
+
+      activeId && H('div', { style:{ flex:1, overflow:'auto', padding:4 } },
+        msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
+          m.body && H('div', null, m.body),
+          Array.isArray(m.images) && m.images.length > 0 &&
+            H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
+              ...m.images.map((src, i) =>
+                H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
+                  onClick:()=>openLightbox(m.images, i) })
+              )
+            )
+        ))
       ),
 
-      H('section', { className:'card col', style:{ padding:12, display:'flex', flexDirection:'column' } },
-        !activeId && H('div', { className:'muted' }, 'Select a conversation'),
-
-        activeId && H('div', { style:{ flex:1, overflow:'auto', padding:4 } },
-          msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
-            m.body && H('div', null, m.body),
-            Array.isArray(m.images) && m.images.length > 0 &&
-              H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
-                ...m.images.map((src, i) =>
-                  H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
-                    onClick:()=>openLightbox(m.images, i) })
-                )
-              )
-          ))
-        ),
-
-        // Attachment previews (selected or pasted) + tip text
-        activeId && (imgFiles.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
-          ...imgFiles.map((f,i) =>
-            H('div', { key:i, style:{ position:'relative' } },
-              H('img', { src: URL.createObjectURL(f), style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
-              H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
-            )
+      (activeId && imgFiles.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
+        ...imgFiles.map((f,i) =>
+          H('div', { key:i, style:{ position:'relative' } },
+            H('img', { src: URL.createObjectURL(f), style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
+            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
           )
-        ),
+        )
+      ),
 
-        activeId && H('div', {
-          className:'row',
-          style:{ alignItems:'flex-end', gap:8 },
-          ref: dropRef,
-          onDragOver,
-          onDrop
-        },
-          H('input', {
-            type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
-            style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
-          }),
-          H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
-          H('textarea', {
-            placeholder:'Type a message…  (Tip: paste or drag images)',
-            value:input,
-            rows:2,
-            onPaste:onComposerPaste,
-            onChange:e=>setInput(e.target.value),
-            onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
-            style:{ flex:1, resize:'vertical' }
-          }),
-          canRevealPaypal && H('button', { className:'btn', onClick: revealPaypal }, 'Reveal PayPal address'),
+      activeId && H('div', {
+        className:'row',
+        style:{ alignItems:'flex-end', gap:8 },
+        ref: dropRef,
+        onDragOver,
+        onDrop
+      },
+        H('input', {
+          type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
+          style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
+        }),
+        H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
+        H('textarea', {
+          placeholder:'Type a message…  (Tip: paste or drag images)',
+          value:input,
+          rows:2,
+          onPaste:onComposerPaste,
+          onChange:e=>setInput(e.target.value),
+          onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
+          style:{ flex:1, resize:'vertical' }
+        }),
+        canRevealPaypal && H('button', { className:'btn', onClick: revealPaypal }, 'Reveal PayPal address'),
+        H('button', { className:'btn primary', onClick:send }, 'Send')
+      ),
 
-          H('button', { className:'btn primary', onClick:send }, 'Send')
-        ),
+      H(Lightbox, {
+        open: lb.open,
+        images: lb.images,
+        index: lb.index,
+        onClose: ()=> setLb({ open:false, images:[], index:0 }),
+        onIndex: (i)=> setLb(s=>({ ...s, index:i }))
+      })
+    )
+  );
+}
 
-        H(Lightbox, {
-          open: lb.open,
-          images: lb.images,
-          index: lb.index,
-          onClose: ()=> setLb({ open:false, images:[], index:0 }),
-          onIndex: (i)=> setLb(s=>({ ...s, index:i }))
-        })
-      )
-    );
-  }
 
   // --- Nearby Panel (unchanged) ---
   function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
