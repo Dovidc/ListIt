@@ -222,4 +222,29 @@ header .container > .row:last-child .btn:last-child {
   border-radius: 12px !important;
   opacity: .9;
 }
+/* Reusable Masonry layout (used by Nearby + Listings) */
+.masonry {
+  column-count: 2;
+  column-gap: 10px;
+}
+@media (min-width: 768px) {
+  .masonry { column-count: 3; }
+}
+@media (min-width: 1024px) {
+  .masonry { column-count: 4; }
+}
+.masonry-item {
+  break-inside: avoid;
+  margin-bottom: 10px;
+  display: block;
+}
+
+/* Ensure cards fit the column width cleanly */
+.masonry-item .card {
+  width: 100%;
+  display: inline-block; /* needed so cards don’t span columns */
+}
+.masonry-item img { width: 100%; height: auto; display: block; }
+
+
 

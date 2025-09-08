@@ -1695,27 +1695,35 @@
             })
           ),
 
-          H('section', { className:'grid' },
-            feed.map(item => {
-              const mineItem = mineById[item.id];
-              return H(ListingCard, {
-                key:item.id,
-                item,
-                user,
-                canEdit: !!mineItem,
-                onEdit:(it)=>{
-                  const rich = mineById[it.id] || it;
-                  setEditing(rich);
-                  setShowForm(true);
-                  window.scrollTo({ top:0, behavior:'smooth' });
-                },
-                onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-                onMessage: startMessage,
-                onAdminDelete: handleAdminDelete
-              });
-            })
-          ),
-          !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
+          // Masonry collage for Listings (replaces the old 'grid' section)
+            H('div', { className:'masonry' },
+              ...feed.map(item => {
+                const mineItem = mineById[item.id];
+                return H('div', { key:item.id, className:'masonry-item' },
+                  H(ListingCard, {
+                    item,
+                    user,
+                    canEdit: !!mineItem,
+                    onEdit:(it)=>{
+                      const rich = mineById[it.id] || it;
+                      setEditing(rich);
+                      setShowForm(true);
+                      window.scrollTo({ top:0, behavior:'smooth' });
+                    },
+                    onDelete: async(it)=>{
+                      if (confirm('Remove this listing? (Your past messages will remain)')) {
+                        await api.deleteListing(it.id);
+                        await reload();
+                      }
+                    },
+                    onMessage: startMessage,
+                    onAdminDelete: handleAdminDelete
+                  })
+                );
+              })
+            ),
+            !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.')
+
         ),
 
         (tab==='nearby') &&
