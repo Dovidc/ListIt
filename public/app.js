@@ -1637,60 +1637,48 @@ function App(){
     return map;
   }, [mine]);
 
-  async function reload(){
-    const [a, m] = await Promise.all([ api.listAll('', locationQuery), user ? api.listMine() : Promise.resolve([]) ]);
-    setAll(a); setMine(m||[]);
-  }
+  // --- Debounce: search query ---
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // --- Debounce: city/location input ---
+  const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
+    return () => clearTimeout(t);
+  }, [locationQuery]);
+
+  // --- Keep your existing reloadMineOnly (unchanged) ---
   async function reloadMineOnly(){
     if (!user) { setMine([]); return; }
     const m = await api.listMine();
     setMine(m||[]);
   }
-// --- Debounce: search query ---
-const [debouncedQuery, setDebouncedQuery] = useState(query);
-useEffect(() => {
-  const t = setTimeout(() => setDebouncedQuery(query), 250);
-  return () => clearTimeout(t);
-}, [query]);
 
-// --- Debounce: city/location input ---
-const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-useEffect(() => {
-  const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-  return () => clearTimeout(t);
-}, [locationQuery]);
-
-// --- Keep your existing reloadMineOnly (unchanged) ---
-async function reloadMineOnly(){
-  if (!user) { setMine([]); return; }
-  const m = await api.listMine();
-  setMine(m||[]);
-}
-
-// --- Single source of truth for listings reload ---
-// Prevent race conditions if user types or location changes quickly
-const reloadReqRef = useRef(0);
-async function reload(){
-  const req = ++reloadReqRef.current;
-  try {
-    const [a, m] = await Promise.all([
-      api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
-      user ? api.listMine() : Promise.resolve([])
-    ]);
-    if (req !== reloadReqRef.current) return; // ignore stale responses
-    setAll(a); setMine(m||[]);
-  } catch (e) {
-    console.error('reload failed', e);
+  // --- Single source of truth for listings reload ---
+  // Prevent race conditions if user types or location changes quickly
+  const reloadReqRef = useRef(0);
+  async function reload(){
+    const req = ++reloadReqRef.current;
+    try {
+      const [a, m] = await Promise.all([
+        api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
+        user ? api.listMine() : Promise.resolve([])
+      ]);
+      if (req !== reloadReqRef.current) return; // ignore stale responses
+      setAll(a); setMine(m||[]);
+    } catch (e) {
+      console.error('reload failed', e);
+    }
   }
-}
 
-// --- Reload when user, query, or location changes (debounced) ---
-useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
+  // --- Reload when user, query, or location changes (debounced) ---
+  useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
 
-// --- Profile tab: refresh "mine" when entering profile (unchanged) ---
-useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
-
-
+  // --- Profile tab: refresh "mine" when entering profile (unchanged) ---
   useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
   async function recomputeUnread() {
@@ -1725,7 +1713,7 @@ useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
     else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
     else if (sort === 'city') {
       list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-    } else list.sort((a,b)=>b.id-a.id);
+    } else list.sort((a,b)=>b.id-a.id); // "Newest"
     return list;
   }, [all, sort]);
 
@@ -1741,6 +1729,30 @@ useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
     }
     return out;
   }, [feed]);
+
+  // --- Listings masonry: detect current column count & interleave so rows read left→right
+  const listMasonRef = useRef(null);
+  const [listCols, setListCols] = useState(isMobile ? 2 : 4);
+
+  useEffect(() => {
+    const el = listMasonRef.current;
+    if (!el) return;
+    const read = () => {
+      const n = parseInt(getComputedStyle(el).columnCount, 10);
+      setListCols(Number.isFinite(n) && n > 0 ? n : (isMobile ? 2 : 4));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    window.addEventListener('resize', read);
+    return () => { ro.disconnect(); window.removeEventListener('resize', read); };
+  }, [isMobile]);
+
+  // Uses the same helper as Nearby: interleaveByColumns(arr, cols)
+  const interleavedTiles = useMemo(
+    () => interleaveByColumns(tiles, listCols),
+    [tiles, listCols]
+  );
 
   const cityOptions = useMemo(() => {
     const set = new Set();
@@ -1843,9 +1855,10 @@ useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
         // Desktop gets columns via inline style; mobile uses mobile.css
         H('section', {
           className:'masonry',
+          ref: listMasonRef,
           style: !isMobile ? { columnCount: 4, columnGap: 12 } : undefined
         },
-          tiles.map(item =>
+          interleavedTiles.map(item =>
             H('div', {
               key:item.id,
               className:'masonry-item',
@@ -1865,7 +1878,7 @@ useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
         ),
 
         // Empty state for Listings
-        !tiles.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+        !interleavedTiles.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
         // Modal with full card (same as Nearby; distance OFF)
         selectedListing && H('div', {
@@ -1955,6 +1968,7 @@ useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
     })
   );
 }
+
 
 
 
