@@ -1574,14 +1574,50 @@ function App(){
     const m = await api.listMine();
     setMine(m||[]);
   }
-  useEffect(()=>{ reload(); }, [user?.id, locationQuery]);
+// --- Debounce: search query ---
+const [debouncedQuery, setDebouncedQuery] = useState(query);
+useEffect(() => {
+  const t = setTimeout(() => setDebouncedQuery(query), 250);
+  return () => clearTimeout(t);
+}, [query]);
 
-  useEffect(() => {
-    (async () => {
-      const a = await api.listAll(query.trim() || '', locationQuery.trim() || '');
-      setAll(a);
-    })();
-  }, [query, locationQuery]);
+// --- Debounce: city/location input ---
+const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
+useEffect(() => {
+  const t = setTimeout(() => setDebouncedLocation(locationQuery), 250);
+  return () => clearTimeout(t);
+}, [locationQuery]);
+
+// --- Keep your existing reloadMineOnly (unchanged) ---
+async function reloadMineOnly(){
+  if (!user) { setMine([]); return; }
+  const m = await api.listMine();
+  setMine(m||[]);
+}
+
+// --- Single source of truth for listings reload ---
+// Prevent race conditions if user types or location changes quickly
+const reloadReqRef = useRef(0);
+async function reload(){
+  const req = ++reloadReqRef.current;
+  try {
+    const [a, m] = await Promise.all([
+      api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
+      user ? api.listMine() : Promise.resolve([])
+    ]);
+    if (req !== reloadReqRef.current) return; // ignore stale responses
+    setAll(a); setMine(m||[]);
+  } catch (e) {
+    console.error('reload failed', e);
+  }
+}
+
+// --- Reload when user, query, or location changes (debounced) ---
+useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
+
+// --- Profile tab: refresh "mine" when entering profile (unchanged) ---
+useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+
 
   useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
