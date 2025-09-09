@@ -17,10 +17,24 @@
   const { useEffect, useMemo, useRef, useState } = React;
 
   // Device detection
-  function isMobileDevice() {
-    const userAgent = navigator.userAgent.toLowerCase();
-    return /mobile|android|iphone|ipad|tablet|touch/.test(userAgent) || (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
+  // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
+// - Matches iPhone/Android/Windows Phone
+// - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
+function isMobileDevice() {
+  const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
+
+  if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
+    return true;
   }
+
+  // iPadOS desktop UA workaround
+  if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+    return true;
+  }
+
+  return false;
+}
+
 
   // small bridge so api can redirect UI on 401s + track global loading
   const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {} };
@@ -1495,6 +1509,7 @@
   }
 
  // --- App ---
+// --- App ---
 function App(){
   const { user, setUser } = useAuth();
   const [tab, setTab] = useState('browse');
@@ -1606,7 +1621,7 @@ function App(){
     return list;
   }, [all, sort]);
 
-  // ⬇️ Derive safe tiles for masonry (skip entries without a thumbnail)
+  // Derive safe tiles for masonry (skip entries without a thumbnail)
   const tiles = useMemo(() => {
     const out = [];
     for (const it of (feed || [])) {
@@ -1717,9 +1732,19 @@ function App(){
         ),
 
         // Image-only masonry for Listings (matches Nearby; no distance badge here)
-        H('section', { className:'masonry' },
+        // Desktop gets columns via inline style; mobile uses mobile.css
+        H('section', {
+          className:'masonry',
+          style: !isMobile ? { columnCount: 4, columnGap: 12 } : undefined
+        },
           tiles.map(item =>
-            H('div', { key:item.id, className:'masonry-item' },
+            H('div', {
+              key:item.id,
+              className:'masonry-item',
+              style: !isMobile
+                ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
+                : undefined
+            },
               H('img', {
                 src: item._thumb,
                 loading:'lazy',
@@ -1822,6 +1847,7 @@ function App(){
     })
   );
 }
+
 
 
   function useAuth() {
