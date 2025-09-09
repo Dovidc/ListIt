@@ -1584,7 +1584,7 @@ useEffect(() => {
 // --- Debounce: city/location input ---
 const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
 useEffect(() => {
-  const t = setTimeout(() => setDebouncedLocation(locationQuery), 250);
+  const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
   return () => clearTimeout(t);
 }, [locationQuery]);
 
