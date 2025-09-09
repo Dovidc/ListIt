@@ -76,6 +76,36 @@ function isMobileDevice() {
     });
     return _coordsPromise;
   }
+  // Arrange items so rows read left→right in a CSS multi-column layout
+function interleaveByColumns(arr, cols) {
+  if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
+  const out = [];
+  for (let c = 0; c < cols; c++) {
+    for (let i = c; i < arr.length; i += cols) out.push(arr[i]);
+  }
+  return out;
+}
+
+// Read actual column-count from the masonry container (responds to CSS + inline styles)
+function useColumnCount(ref, fallbackCols = 3) {
+  const [cols, setCols] = React.useState(fallbackCols);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const read = () => {
+      const cs = getComputedStyle(el);
+      const n = parseInt(cs.columnCount, 10);
+      setCols(Number.isFinite(n) && n > 0 ? n : fallbackCols);
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    window.addEventListener('resize', read);
+    return () => { ro.disconnect(); window.removeEventListener('resize', read); };
+  }, [ref, fallbackCols]);
+  return cols;
+}
+
 
   // Helper: fetch coords and reverse-geocode into a display string
   async function fetchCoordsAndReverse() {
@@ -1176,81 +1206,123 @@ function isMobileDevice() {
 
   // --- Nearby Panel (unchanged) ---
   function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
-    const [radius, setRadius] = useState(150);
-    const [items, setItems] = useState([]);
-    const [busy, setBusy] = useState(false);
-    const [selected, setSelected] = useState(null);
+  const [radius, setRadius] = useState(150);
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState(null);
 
-    async function load() {
-      if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-      setBusy(true);
-      try {
-        const { coords } = await new Promise((res, rej)=>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-        );
-        const res = await api.listNearby(coords.latitude, coords.longitude, radius, { silent:true });
-        setItems(res || []);
-      } catch (e) {
-        alert('Could not load nearby listings');
-      } finally {
-        setBusy(false);
-      }
+  // NEW: masonry container ref + live column-count
+  const masonRef = useRef(null);
+  const [nearbyCols, setNearbyCols] = useState(3);
+  useEffect(() => {
+    if (!masonRef.current) return;
+    const el = masonRef.current;
+
+    const readCols = () => {
+      const cs = getComputedStyle(el);
+      const n = parseInt(cs.columnCount, 10);
+      setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
+    };
+    readCols();
+
+    const ro = new ResizeObserver(readCols);
+    ro.observe(el);
+    window.addEventListener('resize', readCols);
+    return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
+  }, []);
+
+  // NEW: interleave helper (row-wise ordering for CSS column masonry)
+  const interleaved = useMemo(() => {
+    const arr = items || [];
+    if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
+    const out = [];
+    for (let c = 0; c < nearbyCols; c++) {
+      for (let i = c; i < arr.length; i += nearbyCols) out.push(arr[i]);
     }
+    return out;
+  }, [items, nearbyCols]);
 
-    useEffect(() => { load(); }, [radius]);
-
-    const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
-    useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
-
-    function handleEdit(it) {
-      setSelected(null);
-      setTab('browse');
-      onEdit(it);
+  async function load() {
+    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+    setBusy(true);
+    try {
+      const { coords } = await new Promise((res, rej)=>
+        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+      );
+      const res = await api.listNearby(coords.latitude, coords.longitude, radius, { silent:true });
+      setItems(res || []);
+    } catch (e) {
+      alert('Could not load nearby listings');
+    } finally {
+      setBusy(false);
     }
+  }
 
-    return H('div', { id: 'tab-nearby' },
-      H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
-        H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
-          H('label', { htmlFor:'radius' }, 'Filter radius:'),
-          H('select', {
-            id:'radius',
-            value: radius,
-            onChange: e => setRadius(Number(e.target.value)),
-            style:{ width:'auto' }
-          },
-            H('option', { value:150 },  '≈500 ft'),
-            H('option', { value:402 },  '¼ mi'),
-            H('option', { value:805 },  '½ mi'),
-            H('option', { value:1609 }, '1 mi')
-          ),
-          H('button', { className:'btn', onClick:load, disabled:busy }, busy ? 'Finding nearby…' : 'Reload')
-        )
-      ),
-      H('section', { className:'masonry' },
-        items.map(item =>
-          H('div', { key:item.id, className:'masonry-item' },
-            H('img', { src: item.image_data, loading:'lazy', decoding:'async', onClick: () => setSelected(item), style: { cursor: 'pointer' } })
-          )
-        )
-      ),
-      (!items.length && !busy) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
-      selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
-        H('div', { className:'modal-inner listing-modal' },
-          H('button', { className:'close', onClick:()=>setSelected(null) }, '✕'),
-          H(ListingCard, {
-            item: selected,
-            user,
-            canEdit: !!mineById[selected.id],
-            onEdit: handleEdit,
-            onDelete,
-            onMessage,
-            onAdminDelete,
-            showDistance: true
+  useEffect(() => { load(); }, [radius]);
+
+  const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
+  useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
+
+  function handleEdit(it) {
+    setSelected(null);
+    setTab('browse');
+    onEdit(it);
+  }
+
+  return H('div', { id: 'tab-nearby' },
+    H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
+      H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
+        H('label', { htmlFor:'radius' }, 'Filter radius:'),
+        H('select', {
+          id:'radius',
+          value: radius,
+          onChange: e => setRadius(Number(e.target.value)),
+          style:{ width:'auto' }
+        },
+          H('option', { value:150 },  '≈500 ft'),
+          H('option', { value:402 },  '¼ mi'),
+          H('option', { value:805 },  '½ mi'),
+          H('option', { value:1609 }, '1 mi')
+        ),
+        H('button', { className:'btn', onClick:load, disabled:busy }, busy ? 'Finding nearby…' : 'Reload')
+      )
+    ),
+
+    // NOTE: add ref so we can read computed column-count
+    H('section', { className:'masonry', ref: masonRef },
+      interleaved.map(item =>
+        H('div', { key:item.id, className:'masonry-item' },
+          H('img', {
+            src: item.image_data,
+            loading:'lazy',
+            decoding:'async',
+            onClick: () => setSelected(item),
+            style: { cursor: 'pointer' }
           })
         )
       )
-    );
-  }
+    ),
+
+    (!items.length && !busy) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
+
+    selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
+      H('div', { className:'modal-inner listing-modal' },
+        H('button', { className:'close', onClick:()=>setSelected(null) }, '✕'),
+        H(ListingCard, {
+          item: selected,
+          user,
+          canEdit: !!mineById[selected.id],
+          onEdit: handleEdit,
+          onDelete,
+          onMessage,
+          onAdminDelete,
+          showDistance: true
+        })
+      )
+    )
+  );
+}
+
 
   // --- MassList Modal ---
   function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
