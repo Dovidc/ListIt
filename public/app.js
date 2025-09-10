@@ -983,6 +983,52 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
+  // -- SmartImage: sets src only when near viewport; drops it when far away to free memory
+function SmartImage({ src, alt = '', style, onClick }) {
+  const ref = React.useRef(null);
+  const [activeSrc, setActiveSrc] = React.useState(''); // empty = placeholder (no decode)
+
+  React.useEffect(() => {
+    const el = ref.current; if (!el) return;
+    let t = null;
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[0]; if (!e) return;
+
+      if (e.isIntersecting) {
+        // Near viewport? Attach src so the browser downloads/decodes.
+        setActiveSrc(src);
+      } else {
+        // Well outside viewport? Drop src to release decode memory.
+        const distance = e.boundingClientRect.top < 0
+          ? Math.abs(e.boundingClientRect.bottom)
+          : e.boundingClientRect.top;
+        if (distance > window.innerHeight * 2.5) {
+          clearTimeout(t);
+          t = setTimeout(() => setActiveSrc(''), 120); // debounce so quick scrolls don't thrash
+        }
+      }
+    }, { root: null, rootMargin: '800px 0px' }); // pre-attach ~800px before visible
+
+    io.observe(el);
+    return () => { clearTimeout(t); io.disconnect(); };
+  }, [src]);
+
+  return H('img', {
+    ref,
+    src: activeSrc || undefined,
+    alt,
+    loading: 'lazy',
+    decoding: 'async',
+    style,
+    onClick
+  });
+}
+
+
+
+
+
+
   // --- Listing Card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
 
@@ -1812,351 +1858,415 @@
 
   // --- App ---
   function App(){
-    const { user, setUser } = useAuth();
-    const [tab, setTab] = useState('browse');
-    const [all, setAll] = useState([]);
-    const [mine, setMine] = useState([]);
-    const [query, setQuery] = useState('');
-    const [locationQuery, setLocationQuery] = useState('');
-    const [sort, setSort] = useState('new');
-    const [showForm, setShowForm] = useState(false);
+  const { user, setUser } = useAuth();
+  const [tab, setTab] = useState('browse');
+  const [all, setAll] = useState([]);
+  const [mine, setMine] = useState([]);
+  const [query, setQuery] = useState('');
+  const [locationQuery, setLocationQuery] = useState('');
+  const [sort, setSort] = useState('new');
+  const [showForm, setShowForm] = useState(false);
 
-    // Modal selection for full listing card
-    const [selectedListing, setSelectedListing] = useState(null);
-    useEffect(() => {
-      if (!selectedListing) return;
-      const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
-      window.addEventListener('keydown', esc);
-      return () => window.removeEventListener('keydown', esc);
-    }, [selectedListing]);
+  // Modal selection for full listing card
+  const [selectedListing, setSelectedListing] = useState(null);
+  useEffect(() => {
+    if (!selectedListing) return;
+    const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [selectedListing]);
 
-    const [editing, setEditing] = useState(null);
-    const [activeConvoId, setActiveConvoId] = useState(null);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [loadingCount, setLoadingCount] = useState(0);
+  const [editing, setEditing] = useState(null);
+  const [activeConvoId, setActiveConvoId] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingCount, setLoadingCount] = useState(0);
 
-    // NEW: MassList modal
-    const [showMassList, setShowMassList] = useState(false);
+  // NEW: MassList modal
+  const [showMassList, setShowMassList] = useState(false);
 
-    // NEW: Auto-list setting (persisted in localStorage)
-    const AUTO_KEY = 'listit_auto_list';
-    const [autoListEnabled, setAutoListEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
+  // NEW: Auto-list setting (persisted in localStorage)
+  const AUTO_KEY = 'listit_auto_list';
+  const [autoListEnabled, setAutoListEnabled] = useState(() => {
+    try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
 
-    // NEW: Auto-list child toggle (persisted)
-    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
-    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
+  // NEW: Auto-list child toggle (persisted)
+  const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
+  const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
+    try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
-    const isMobile = isMobileDevice();
+  const isMobile = isMobileDevice();
 
-    useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
-    useEffect(() => {
-      AppNav.incLoad = () => setLoadingCount(c => c + 1);
-      AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-    }, []);
+  useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
+  useEffect(() => {
+    AppNav.incLoad = () => setLoadingCount(c => c + 1);
+    AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
+  }, []);
 
-    const mineById = useMemo(() => {
-      const map = Object.create(null);
-      (mine || []).forEach(m => { map[m.id] = m; });
-      return map;
-    }, [mine]);
+  const mineById = useMemo(() => {
+    const map = Object.create(null);
+    (mine || []).forEach(m => { map[m.id] = m; });
+    return map;
+  }, [mine]);
 
-    // --- Debounce: search query ---
-    const [debouncedQuery, setDebouncedQuery] = useState(query);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedQuery(query), 250);
-      return () => clearTimeout(t);
-    }, [query]);
+  // --- Debounce: search query ---
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    // --- Debounce: city/location input ---
-    const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-      return () => clearTimeout(t);
-    }, [locationQuery]);
+  // --- Debounce: city/location input ---
+  const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
+    return () => clearTimeout(t);
+  }, [locationQuery]);
 
-    // --- Keep your existing reloadMineOnly (unchanged) ---
-    async function reloadMineOnly(){
-      if (!user) { setMine([]); return; }
-      const m = await api.listMine();
-      setMine(m||[]);
+  // --- Keep your existing reloadMineOnly (unchanged) ---
+  async function reloadMineOnly(){
+    if (!user) { setMine([]); return; }
+    const m = await api.listMine();
+    setMine(m||[]);
+  }
+
+  // --- Single source of truth for listings reload ---
+  // Prevent race conditions if user types or location changes quickly
+  const reloadReqRef = useRef(0);
+  async function reload(){
+    const req = ++reloadReqRef.current;
+    try {
+      const [a, m] = await Promise.all([
+        api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
+        user ? api.listMine() : Promise.resolve([])
+      ]);
+      if (req !== reloadReqRef.current) return; // ignore stale responses
+      setAll(a); setMine(m||[]);
+    } catch (e) {
+      console.error('reload failed', e);
     }
+  }
 
-    // --- Single source of truth for listings reload ---
-    // Prevent race conditions if user types or location changes quickly
-    const reloadReqRef = useRef(0);
-    async function reload(){
-      const req = ++reloadReqRef.current;
-      try {
-        const [a, m] = await Promise.all([
-          api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
-          user ? api.listMine() : Promise.resolve([])
-        ]);
-        if (req !== reloadReqRef.current) return; // ignore stale responses
-        setAll(a); setMine(m||[]);
-      } catch (e) {
-        console.error('reload failed', e);
+  // --- Reload when user, query, or location changes (debounced) ---
+  useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
+
+  // --- Profile tab: refresh "mine" when entering profile (unchanged) ---
+  useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+
+  async function recomputeUnread() {
+    try {
+      if (!user) { setUnreadCount(0); return; }
+      const convos = await api.listConversations({ silent:true });
+      const seen = loadSeen(user.id);
+      const n = (convos || []).filter(c =>
+        c.last_message_id &&
+        c.last_message_sender_id &&
+        c.last_message_sender_id !== user.id &&
+        (!seen[c.id] || seen[c.id] < c.last_message_id)
+      ).length;
+      setUnreadCount(n);
+    } catch {}
+  }
+  useEffect(() => {
+    let t;
+    recomputeUnread();
+    t = setInterval(recomputeUnread, 3000);
+    return () => clearInterval(t);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user && tab === 'messages') setTab('browse');
+    if (!isMobile && tab === 'nearby') setTab('browse');
+  }, [user, tab, isMobile]);
+
+  const feed = useMemo(()=>{
+    const list = [...(all || [])];
+    if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
+    else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
+    else if (sort === 'city') {
+      list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
+    } else list.sort((a,b)=>b.id-a.id); // "Newest"
+    return list;
+  }, [all, sort]);
+
+  // Derive safe tiles for masonry (skip entries without a thumbnail)
+  const tiles = useMemo(() => {
+    const out = [];
+    for (const it of (feed || [])) {
+      const thumb =
+        it?.image_data ||
+        it?.thumb_url ||
+        (Array.isArray(it?.images) ? it.images[0] : null);
+      if (thumb) out.push({ ...it, _thumb: thumb });
+    }
+    return out;
+  }, [feed]);
+
+  // --- Listings masonry: detect current column count & interleave so rows read left→right
+  const listMasonRef = useRef(null);
+  const listCols = useColumnCount(listMasonRef, isMobile ? 2 : 4);
+
+  // Uses the same helper as Nearby: interleaveByColumns(arr, cols)
+  const interleavedTiles = useMemo(
+    () => interleaveByColumns(tiles, listCols),
+    [tiles, listCols]
+  );
+
+  // --- Mobile windowing: render a capped batch and grow as you scroll
+  const MOBILE_BATCH = 80;
+  const [mobileCount, setMobileCount] = useState(MOBILE_BATCH);
+  const sentinelRef = useRef(null);
+
+  // Reset batch when the feed/filters change
+  useEffect(() => { if (isMobile) setMobileCount(MOBILE_BATCH); }, [debouncedQuery, debouncedLocation, sort, isMobile, tiles.length]);
+
+  // Grow the window when the sentinel comes into view
+  useEffect(() => {
+    if (!isMobile) return;
+    const el = sentinelRef.current; if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setMobileCount(c => Math.min(c + MOBILE_BATCH, interleavedTiles.length));
       }
+    }, { rootMargin: '1000px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isMobile, interleavedTiles.length]);
+
+  const visibleTiles = isMobile ? interleavedTiles.slice(0, mobileCount) : interleavedTiles;
+
+  const cityOptions = useMemo(() => {
+    const set = new Set();
+    (all || []).forEach(l => {
+      const raw = (l.location || '').trim();
+      if (!raw) return;
+      const city = raw.split(',')[0].trim();
+      if (city) set.add(city);
+    });
+    return Array.from(set).sort((a,b)=> a.localeCompare(b));
+  }, [all]);
+
+  async function startMessage(item){
+    if(!user){ alert('Log in to message a seller.'); return; }
+    if(user.id === item.user_id){ alert('This is your listing.'); return; }
+    const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
+    setActiveConvoId(convo.id);
+    setTab('messages');
+  }
+
+  function handleSeen(convoId, lastMsgId){
+    if (!user || !convoId || !lastMsgId) return;
+    const map = loadSeen(user.id);
+    if (!map[convoId] || map[convoId] < lastMsgId) {
+      map[convoId] = lastMsgId;
+      saveSeen(user.id, map);
+      setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
     }
+  }
 
-    // --- Reload when user, query, or location changes (debounced) ---
-    useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
+  async function handleAdminDeleteAll(){
+    await api.adminDeleteAll();
+    setAll([]); setMine([]);
+  }
+  function handleAdminDelete(listingId) {
+    setAll(prev => prev.filter(x => x.id !== listingId));
+    setMine(prev => prev.filter(x => x.id !== listingId));
+  }
 
-    // --- Profile tab: refresh "mine" when entering profile (unchanged) ---
-    useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+  async function logoutFromProfile(){
+    await api.logout();
+    setUser(null);
+    setTab('browse');
+  }
 
-    async function recomputeUnread() {
-      try {
-        if (!user) { setUnreadCount(0); return; }
-        const convos = await api.listConversations({ silent:true });
-        const seen = loadSeen(user.id);
-        const n = (convos || []).filter(c =>
-          c.last_message_id &&
-          c.last_message_sender_id &&
-          c.last_message_sender_id !== user.id &&
-          (!seen[c.id] || seen[c.id] < c.last_message_id)
-        ).length;
-        setUnreadCount(n);
-      } catch {}
-    }
-    useEffect(() => {
-      let t;
-      recomputeUnread();
-      t = setInterval(recomputeUnread, 3000);
-      return () => clearInterval(t);
-    }, [user?.id]);
+  return H(React.Fragment, null,
+    H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
+    H(GlobalLoader, { active: loadingCount > 0 }),
 
-    useEffect(() => {
-      if (!user && tab === 'messages') setTab('browse');
-      if (!isMobile && tab === 'nearby') setTab('browse');
-    }, [user, tab, isMobile]);
-
-    const feed = useMemo(()=>{
-      const list = [...(all || [])];
-      if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
-      else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
-      else if (sort === 'city') {
-        list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-      } else list.sort((a,b)=>b.id-a.id); // "Newest"
-      return list;
-    }, [all, sort]);
-
-    const cityOptions = useMemo(() => {
-      const set = new Set();
-      (all || []).forEach(l => {
-        const raw = (l.location || '').trim();
-        if (!raw) return;
-        const city = raw.split(',')[0].trim();
-        if (city) set.add(city);
-      });
-      return Array.from(set).sort((a,b)=> a.localeCompare(b));
-    }, [all]);
-
-    async function startMessage(item){
-      if(!user){ alert('Log in to message a seller.'); return; }
-      if(user.id === item.user_id){ alert('This is your listing.'); return; }
-      const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-      setActiveConvoId(convo.id);
-      setTab('messages');
-    }
-
-    function handleSeen(convoId, lastMsgId){
-      if (!user || !convoId || !lastMsgId) return;
-      const map = loadSeen(user.id);
-      if (!map[convoId] || map[convoId] < lastMsgId) {
-        map[convoId] = lastMsgId;
-        saveSeen(user.id, map);
-        setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
-      }
-    }
-
-    async function handleAdminDeleteAll(){
-      await api.adminDeleteAll();
-      setAll([]); setMine([]);
-    }
-    function handleAdminDelete(listingId) {
-      setAll(prev => prev.filter(x => x.id !== listingId));
-      setMine(prev => prev.filter(x => x.id !== listingId));
-    }
-
-    async function logoutFromProfile(){
-      await api.logout();
-      setUser(null);
-      setTab('browse');
-    }
-
-    return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
-      H(GlobalLoader, { active: loadingCount > 0 }),
-
-      H('main', { className:'container' },
-        tab==='browse' && H(React.Fragment, null,
-          H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
-            H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
-              H('input', {
-                placeholder:'Search title, description, tags…',
-                value:query,
-                onChange:e=>setQuery(e.target.value),
-                style:{ maxWidth:360 }
-              }),
-              H(CityAutocomplete, {
-                value: locationQuery,
-                onChange: setLocationQuery,
-                options: cityOptions,
-                onUseMyLocation: async () => {
-                  try {
-                    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                    const { coords } = await new Promise((res, rej)=>
-                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-                    );
-                    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-                    const city = r?.city || (r?.display || '').split(',')[0];
-                    if (city) setLocationQuery(city);
-                  } catch { alert('Could not determine your location'); }
-                }
-              }),
-              H('select', { value:sort, onChange:e=>setSort(e.target.value) },
-                H('option', { value:'new' }, 'Newest'),
-                H('option', { value:'price_asc' }, 'Price: Low → High'),
-                H('option', { value:'price_desc' }, 'Price: High → Low'),
-                H('option', { value:'city' }, 'City (A → Z)')
-              )
-            ),
-            H('div', { className:'row', style:{ gap:8 } },
-              H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
-              H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
+    H('main', { className:'container' },
+      tab==='browse' && H(React.Fragment, null,
+        H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
+          H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
+            H('input', {
+              placeholder:'Search title, description, tags…',
+              value:query,
+              onChange:e=>setQuery(e.target.value),
+              style:{ maxWidth:360 }
+            }),
+            H(CityAutocomplete, {
+              value: locationQuery,
+              onChange: setLocationQuery,
+              options: cityOptions,
+              onUseMyLocation: async () => {
+                try {
+                  if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+                  const { coords } = await new Promise((res, rej)=>
+                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                  );
+                  const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+                  const city = r?.city || (r?.display || '').split(',')[0];
+                  if (city) setLocationQuery(city);
+                } catch { alert('Could not determine your location'); }
+              }
+            }),
+            H('select', { value:sort, onChange:e=>setSort(e.target.value) },
+              H('option', { value:'new' }, 'Newest'),
+              H('option', { value:'price_asc' }, 'Price: Low → High'),
+              H('option', { value:'price_desc' }, 'Price: High → Low'),
+              H('option', { value:'city' }, 'City (A → Z)')
             )
           ),
+          H('div', { className:'row', style:{ gap:8 } },
+            H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
+            H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
+          )
+        ),
 
-          showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
-            H(ListingForm, {
-              draft: editing,
-              onCancel:()=>setShowForm(false),
-              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
-              autoListEnabled,
-              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
-            })
-          ),
+        showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
+          H(ListingForm, {
+            draft: editing,
+            onCancel:()=>setShowForm(false),
+            onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
+            autoListEnabled,
+            autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+          })
+        ),
 
-          // NEW: Virtualized masonry for Listings
-          H(VirtualizedListings, {
-            items: feed,
-            isMobile,
-            onOpen: (item, cover) => {
-              // pass a hero image for the modal so the card has a thumbnail immediately
-              setSelectedListing({ ...item, image_data: cover || null });
-            }
-          }),
-
-          // Empty state for Listings
-          !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
-
-          // Modal with full card (distance OFF)
-          selectedListing && H('div', {
-            className:'modal open',
-            onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
-          },
-            H('div', { className:'modal-inner listing-modal' },
-              H('button', { className:'close', onClick:()=>setSelectedListing(null) }, '✕'),
-              H(ListingCard, {
-                item: selectedListing,
-                user,
-                canEdit: !!mineById[selectedListing.id],
-                onEdit:(it)=>{
-                  const rich = mineById[it.id] || it;
-                  setEditing(rich);
-                  setShowForm(true);
-                  setSelectedListing(null);
-                  window.scrollTo({ top:0, behavior:'smooth' });
-                },
-                onDelete: async(it)=>{
-                  if (confirm('Remove this listing? (Your past messages will remain)')) {
-                    await api.deleteListing(it.id);
-                    setSelectedListing(null);
-                    await reload();
-                  }
-                },
-                onMessage: startMessage,
-                onAdminDelete: handleAdminDelete,
-                showDistance: false
+        // RAM-friendly masonry for Listings (uses SmartImage + mobile windowing)
+        H('section', {
+          className:'masonry',
+          ref: listMasonRef,
+          style: !isMobile ? { columnCount: 4, columnGap: 12 } : undefined
+        },
+          visibleTiles.map(item =>
+            H('div', {
+              key:item.id,
+              className:'masonry-item',
+              style: !isMobile
+                ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
+                : undefined
+            },
+              H(SmartImage, {
+                src: item._thumb,
+                style: { width:'100%', height:'auto', display:'block', borderRadius:8, cursor:'pointer' },
+                onClick: () => setSelectedListing(item)
               })
             )
           )
         ),
 
-        (tab==='nearby') &&
-          H(NearbyPanel, {
-            user,
-            mineById,
-            onEdit:(it)=>{
-              const rich = mineById[it.id] || it;
-              setEditing(rich);
-              setShowForm(true);
-              window.scrollTo({ top:0, behavior:'smooth' });
-            },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-            onMessage: startMessage,
-            onAdminDelete: handleAdminDelete,
-            setTab
-          }),
+        // Infinite grow sentinel (mobile only)
+        isMobile && (visibleTiles.length < interleavedTiles.length) &&
+          H('div', { ref: sentinelRef, style: { height: 1 } }),
 
-        (tab==='messages') &&
-          (user
-            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
-            : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
-          ),
+        // Empty state for Listings
+        !tiles.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
-        (tab==='profile') &&
-          H(ProfilePanel, { isMobile,
-            user,
-            items: mine,
-            onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
-            onEdit:(it)=>{
-              const rich = mineById[it.id] || it;
-              setEditing(rich);
-              setShowForm(true);
-              setTab('browse');
-              window.scrollTo({ top:0, behavior:'smooth' });
-            },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
-            onLogout: logoutFromProfile,
-            onAdminDelete: handleAdminDelete,
-            autoListEnabled,
-            setAutoListEnabled,
-            autoPostNearbyEnabled,
-            setAutoPostNearbyEnabled
-          })
+        // Modal with full card (distance OFF)
+        selectedListing && H('div', {
+          className:'modal open',
+          onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
+        },
+          H('div', { className:'modal-inner listing-modal' },
+            H('button', { className:'close', onClick:()=>setSelectedListing(null) }, '✕'),
+            H(ListingCard, {
+              item: selectedListing,
+              user,
+              canEdit: !!mineById[selectedListing.id],
+              onEdit:(it)=>{
+                const rich = mineById[it.id] || it;
+                setEditing(rich);
+                setShowForm(true);
+                setSelectedListing(null);
+                window.scrollTo({ top:0, behavior:'smooth' });
+              },
+              onDelete: async(it)=>{
+                if (confirm('Remove this listing? (Your past messages will remain)')) {
+                  await api.deleteListing(it.id);
+                  setSelectedListing(null);
+                  await reload();
+                }
+              },
+              onMessage: startMessage,
+              onAdminDelete: handleAdminDelete,
+              showDistance: false
+            })
+          )
+        )
       ),
 
-      // MassList modal
-      showMassList && H(MassListModal, {
-        onClose: () => setShowMassList(false),
-        onDone: () => {},
-        reloadAll: reload,
-        reloadMine: reloadMineOnly,
-        user,
-        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
-      })
-    );
-  }
+      (tab==='nearby') &&
+        H(NearbyPanel, {
+          user,
+          mineById,
+          onEdit:(it)=>{
+            const rich = mineById[it.id] || it;
+            setEditing(rich);
+            setShowForm(true);
+            window.scrollTo({ top:0, behavior:'smooth' });
+          },
+          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+          onMessage: startMessage,
+          onAdminDelete: handleAdminDelete,
+          setTab
+        }),
 
-  function useAuth() {
-    const [user, setUser] = useState(null);
-    useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
-    return { user, setUser };
-  }
+      (tab==='messages') &&
+        (user
+          ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
+          : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
+        ),
 
-  // Robust mount (React 18+ or older)
-  const rootEl = document.getElementById('root');
-  if (ReactDOM.createRoot) {
-    const root = ReactDOM.createRoot(rootEl);
-    root.render(H(App));
-  } else {
-    ReactDOM.render(H(App), rootEl);
-  }
+      (tab==='profile') &&
+        H(ProfilePanel, { isMobile,
+          user,
+          items: mine,
+          onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
+          onEdit:(it)=>{
+            const rich = mineById[it.id] || it;
+            setEditing(rich);
+            setShowForm(true);
+            setTab('browse');
+            window.scrollTo({ top:0, behavior:'smooth' });
+          },
+          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
+          onLogout: logoutFromProfile,
+          onAdminDelete: handleAdminDelete,
+          autoListEnabled,
+          setAutoListEnabled,
+          autoPostNearbyEnabled,
+          setAutoPostNearbyEnabled
+        })
+    ),
+
+    // MassList modal
+    showMassList && H(MassListModal, {
+      onClose: () => setShowMassList(false),
+      onDone: () => {},
+      reloadAll: reload,
+      reloadMine: reloadMineOnly,
+      user,
+      autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+    })
+  );
+}
+
+function useAuth() {
+  const [user, setUser] = useState(null);
+  useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
+  return { user, setUser };
+}
+
+// Robust mount (React 18+ or older)
+const rootEl = document.getElementById('root');
+if (ReactDOM.createRoot) {
+  const root = ReactDOM.createRoot(rootEl);
+  root.render(H(App));
+} else {
+  ReactDOM.render(H(App), rootEl);
+}
+
 })();
