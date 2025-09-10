@@ -984,45 +984,81 @@
   }
 
   // -- SmartImage: sets src only when near viewport; drops it when far away to free memory
-function SmartImage({ src, alt = '', style, onClick }) {
-  const ref = React.useRef(null);
-  const [activeSrc, setActiveSrc] = React.useState(''); // empty = placeholder (no decode)
+// -- SmartImage v2: preserves layout with an aspect-ratio wrapper,
+//    and only drops src when far away (configurable: dropFar).
+function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR = 4/3 }) {
+  const wrapRef = React.useRef(null);
+  const imgRef  = React.useRef(null);
+
+  const [activeSrc, setActiveSrc] = React.useState('');   // empty => show placeholder
+  const [ratio, setRatio]         = React.useState(initialAR); // width/height guess; updated on load
 
   React.useEffect(() => {
-    const el = ref.current; if (!el) return;
-    let t = null;
+    const el = wrapRef.current; if (!el) return;
+    let clearTo = null;
+
     const io = new IntersectionObserver((entries) => {
       const e = entries[0]; if (!e) return;
 
       if (e.isIntersecting) {
-        // Near viewport? Attach src so the browser downloads/decodes.
+        // Near viewport -> attach src (download + decode).
         setActiveSrc(src);
-      } else {
-        // Well outside viewport? Drop src to release decode memory.
-        const distance = e.boundingClientRect.top < 0
-          ? Math.abs(e.boundingClientRect.bottom)
-          : e.boundingClientRect.top;
-        if (distance > window.innerHeight * 2.5) {
-          clearTimeout(t);
-          t = setTimeout(() => setActiveSrc(''), 120); // debounce so quick scrolls don't thrash
+      } else if (dropFar) {
+        // Far outside viewport -> drop src to free decoded bitmap.
+        // Use big hysteresis so we don't ping-pong.
+        const top = e.boundingClientRect.top;
+        const bottom = e.boundingClientRect.bottom;
+        const dist = top > 0 ? top : -bottom; // positive px from viewport
+        if (dist > window.innerHeight * 3.5) {
+          clearTimeout(clearTo);
+          clearTo = setTimeout(() => setActiveSrc(''), 120);
         }
       }
-    }, { root: null, rootMargin: '800px 0px' }); // pre-attach ~800px before visible
+    }, { root: null, rootMargin: '1000px 0px' }); // attach early
 
     io.observe(el);
-    return () => { clearTimeout(t); io.disconnect(); };
-  }, [src]);
+    return () => { clearTimeout(clearTo); io.disconnect(); };
+  }, [src, dropFar]);
 
-  return H('img', {
-    ref,
-    src: activeSrc || undefined,
-    alt,
-    loading: 'lazy',
-    decoding: 'async',
-    style,
-    onClick
-  });
+  function onLoad(e) {
+    const w = e.currentTarget.naturalWidth || 0;
+    const h = e.currentTarget.naturalHeight || 0;
+    if (w && h) setRatio(w / h); // lock to real image ratio
+  }
+
+  // Wrapper reserves space even when img has no src
+  return H('div', {
+    ref: wrapRef,
+    style: {
+      position: 'relative',
+      width: '100%',
+      aspectRatio: `${ratio} / 1`,
+      borderRadius: br,
+      overflow: 'hidden',
+      background: '#f3f4f6' // lightweight placeholder
+    }
+  },
+    activeSrc && H('img', {
+      ref: imgRef,
+      src: activeSrc,
+      alt,
+      loading: 'lazy',
+      decoding: 'async',
+      onLoad,
+      style: {
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block',
+        cursor: onClick ? 'pointer' : 'default'
+      },
+      onClick
+    })
+  );
 }
+
 
 
 
@@ -2084,48 +2120,43 @@ function SmartImage({ src, alt = '', style, onClick }) {
 
   // Small tile component: triggers cover fetch when near viewport
   function Tile({ item }){
-    const ref = useRef(null);
-    const [seen, setSeen] = useState(false);
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
 
-    useEffect(() => {
-      const el = ref.current; if (!el) return;
-      const io = new IntersectionObserver((entries) => {
-        if (entries.some(e => e.isIntersecting)) {
-          setSeen(true); io.disconnect();
-        }
-      }, { rootMargin: '800px 0px' });
-      io.observe(el);
-      return () => io.disconnect();
-    }, []);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+    }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
-    useEffect(() => {
-      if (!seen) return;
-      if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
-        ensureCover(item.id);
-      }
-    }, [seen, item.id]);
+  useEffect(() => {
+    if (!seen) return;
+    if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
+      ensureCover(item.id);
+    }
+  }, [seen, item.id]);
 
-    const src = item._thumb || coverById[item.id] || '';
+  const src = item._thumb || coverById[item.id] || '';
 
-    return H('div', {
-      ref,
-      className:'masonry-item',
-      style: !isMobile
-        ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
-        : undefined
-    },
-      src
-        ? H(SmartImage, {
-            src,
-            style: { width:'100%', height:'auto', display:'block', borderRadius:8, cursor:'pointer' },
-            onClick: () => setSelectedListing(item)
-          })
-        : H('div', {
-            // lightweight placeholder; reserves space, avoids layout jank
-            style: { width:'100%', aspectRatio:'4 / 3', borderRadius:8, background:'#f3f4f6' }
-          })
-    );
-  }
+  return H('div', {
+    ref,
+    className:'masonry-item',
+    style: !isMobile
+      ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
+      : undefined
+  },
+    H(SmartImage, {
+      src,
+      br: 8,
+      dropFar: isMobile,
+      onClick: () => setSelectedListing(item)
+    })
+  );
+}
+
 
   // ---------- RENDER ----------
   return H(React.Fragment, null,
