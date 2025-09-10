@@ -1881,17 +1881,16 @@ function SmartImage({ src, alt = '', style, onClick }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(0);
 
-  // NEW: MassList modal
+  // MassList modal
   const [showMassList, setShowMassList] = useState(false);
 
-  // NEW: Auto-list setting (persisted in localStorage)
+  // Auto-list toggles (persisted)
   const AUTO_KEY = 'listit_auto_list';
   const [autoListEnabled, setAutoListEnabled] = useState(() => {
     try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
   });
   useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
 
-  // NEW: Auto-list child toggle (persisted)
   const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
   const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
     try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
@@ -1912,29 +1911,26 @@ function SmartImage({ src, alt = '', style, onClick }) {
     return map;
   }, [mine]);
 
-  // --- Debounce: search query ---
+  // Debounce: search + city
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 250);
     return () => clearTimeout(t);
   }, [query]);
 
-  // --- Debounce: city/location input ---
   const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
     return () => clearTimeout(t);
   }, [locationQuery]);
 
-  // --- Keep your existing reloadMineOnly (unchanged) ---
+  // Reload helpers
   async function reloadMineOnly(){
     if (!user) { setMine([]); return; }
     const m = await api.listMine();
     setMine(m||[]);
   }
 
-  // --- Single source of truth for listings reload ---
-  // Prevent race conditions if user types or location changes quickly
   const reloadReqRef = useRef(0);
   async function reload(){
     const req = ++reloadReqRef.current;
@@ -1943,19 +1939,18 @@ function SmartImage({ src, alt = '', style, onClick }) {
         api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
         user ? api.listMine() : Promise.resolve([])
       ]);
-      if (req !== reloadReqRef.current) return; // ignore stale responses
-      setAll(a); setMine(m||[]);
+      if (req !== reloadReqRef.current) return;
+      setAll(a||[]); setMine(m||[]);
     } catch (e) {
       console.error('reload failed', e);
+      setAll([]); // fail-safe
     }
   }
 
-  // --- Reload when user, query, or location changes (debounced) ---
   useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
-
-  // --- Profile tab: refresh "mine" when entering profile (unchanged) ---
   useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
+  // Unread poll
   async function recomputeUnread() {
     try {
       if (!user) { setUnreadCount(0); return; }
@@ -1971,9 +1966,8 @@ function SmartImage({ src, alt = '', style, onClick }) {
     } catch {}
   }
   useEffect(() => {
-    let t;
     recomputeUnread();
-    t = setInterval(recomputeUnread, 3000);
+    const t = setInterval(recomputeUnread, 3000);
     return () => clearInterval(t);
   }, [user?.id]);
 
@@ -1982,62 +1976,18 @@ function SmartImage({ src, alt = '', style, onClick }) {
     if (!isMobile && tab === 'nearby') setTab('browse');
   }, [user, tab, isMobile]);
 
+  // Sort feed
   const feed = useMemo(()=>{
     const list = [...(all || [])];
     if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
     else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
     else if (sort === 'city') {
       list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-    } else list.sort((a,b)=>b.id-a.id); // "Newest"
+    } else list.sort((a,b)=>b.id-a.id);
     return list;
   }, [all, sort]);
 
-  // Derive safe tiles for masonry (skip entries without a thumbnail)
-  const tiles = useMemo(() => {
-    const out = [];
-    for (const it of (feed || [])) {
-      const thumb =
-        it?.image_data ||
-        it?.thumb_url ||
-        (Array.isArray(it?.images) ? it.images[0] : null);
-      if (thumb) out.push({ ...it, _thumb: thumb });
-    }
-    return out;
-  }, [feed]);
-
-  // --- Listings masonry: detect current column count & interleave so rows read left→right
-  const listMasonRef = useRef(null);
-  const listCols = useColumnCount(listMasonRef, isMobile ? 2 : 4);
-
-  // Uses the same helper as Nearby: interleaveByColumns(arr, cols)
-  const interleavedTiles = useMemo(
-    () => interleaveByColumns(tiles, listCols),
-    [tiles, listCols]
-  );
-
-  // --- Mobile windowing: render a capped batch and grow as you scroll
-  const MOBILE_BATCH = 80;
-  const [mobileCount, setMobileCount] = useState(MOBILE_BATCH);
-  const sentinelRef = useRef(null);
-
-  // Reset batch when the feed/filters change
-  useEffect(() => { if (isMobile) setMobileCount(MOBILE_BATCH); }, [debouncedQuery, debouncedLocation, sort, isMobile, tiles.length]);
-
-  // Grow the window when the sentinel comes into view
-  useEffect(() => {
-    if (!isMobile) return;
-    const el = sentinelRef.current; if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) {
-        setMobileCount(c => Math.min(c + MOBILE_BATCH, interleavedTiles.length));
-      }
-    }, { rootMargin: '1000px 0px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isMobile, interleavedTiles.length]);
-
-  const visibleTiles = isMobile ? interleavedTiles.slice(0, mobileCount) : interleavedTiles;
-
+  // City options (for the autocomplete)
   const cityOptions = useMemo(() => {
     const set = new Set();
     (all || []).forEach(l => {
@@ -2082,6 +2032,102 @@ function SmartImage({ src, alt = '', style, onClick }) {
     setTab('browse');
   }
 
+  // ---------- GRID & IMAGES ----------
+
+  // 1) Build tiles WITHOUT filtering out items that lack an inline thumbnail.
+  const tiles = useMemo(() => {
+    return (feed || []).map(it => ({
+      ...it,
+      _thumb: it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null)
+    }));
+  }, [feed]);
+
+  // 2) Column-count + interleave (row-wise order for CSS columns)
+  const listMasonRef = useRef(null);
+  const listCols = useColumnCount(listMasonRef, isMobile ? 2 : 4);
+  const interleavedTiles = useMemo(
+    () => interleaveByColumns(tiles, listCols),
+    [tiles, listCols]
+  );
+
+  // 3) Mobile windowing
+  const MOBILE_BATCH = 80;
+  const [mobileCount, setMobileCount] = useState(MOBILE_BATCH);
+  const sentinelRef = useRef(null);
+  useEffect(() => { if (isMobile) setMobileCount(MOBILE_BATCH); }, [debouncedQuery, debouncedLocation, sort, isMobile, tiles.length]);
+  useEffect(() => {
+    if (!isMobile) return;
+    const el = sentinelRef.current; if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setMobileCount(c => Math.min(c + MOBILE_BATCH, interleavedTiles.length));
+      }
+    }, { rootMargin: '1000px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isMobile, interleavedTiles.length]);
+  const visibleTiles = isMobile ? interleavedTiles.slice(0, mobileCount) : interleavedTiles;
+
+  // 4) Cover cache + lazy fetch for items that didn't ship a thumb
+  const [coverById, setCoverById] = useState(() => (Object.create(null)));
+  async function ensureCover(id){
+    if (id == null) return;
+    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
+    try {
+      const arr = await api.getListingImages(id, { silent:true });
+      const url = (Array.isArray(arr) && arr[0]) || null;
+      setCoverById(m => ({ ...m, [id]: url }));
+    } catch {
+      setCoverById(m => ({ ...m, [id]: null }));
+    }
+  }
+
+  // Small tile component: triggers cover fetch when near viewport
+  function Tile({ item }){
+    const ref = useRef(null);
+    const [seen, setSeen] = useState(false);
+
+    useEffect(() => {
+      const el = ref.current; if (!el) return;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) {
+          setSeen(true); io.disconnect();
+        }
+      }, { rootMargin: '800px 0px' });
+      io.observe(el);
+      return () => io.disconnect();
+    }, []);
+
+    useEffect(() => {
+      if (!seen) return;
+      if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
+        ensureCover(item.id);
+      }
+    }, [seen, item.id]);
+
+    const src = item._thumb || coverById[item.id] || '';
+
+    return H('div', {
+      ref,
+      className:'masonry-item',
+      style: !isMobile
+        ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
+        : undefined
+    },
+      src
+        ? H(SmartImage, {
+            src,
+            style: { width:'100%', height:'auto', display:'block', borderRadius:8, cursor:'pointer' },
+            onClick: () => setSelectedListing(item)
+          })
+        : H('div', {
+            // lightweight placeholder; reserves space, avoids layout jank
+            style: { width:'100%', aspectRatio:'4 / 3', borderRadius:8, background:'#f3f4f6' }
+          })
+    );
+  }
+
+  // ---------- RENDER ----------
   return H(React.Fragment, null,
     H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
     H(GlobalLoader, { active: loadingCount > 0 }),
@@ -2135,35 +2181,21 @@ function SmartImage({ src, alt = '', style, onClick }) {
           })
         ),
 
-        // RAM-friendly masonry for Listings (uses SmartImage + mobile windowing)
+        // Masonry grid (works whether or not inline thumbs are present)
         H('section', {
           className:'masonry',
           ref: listMasonRef,
           style: !isMobile ? { columnCount: 4, columnGap: 12 } : undefined
         },
-          visibleTiles.map(item =>
-            H('div', {
-              key:item.id,
-              className:'masonry-item',
-              style: !isMobile
-                ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
-                : undefined
-            },
-              H(SmartImage, {
-                src: item._thumb,
-                style: { width:'100%', height:'auto', display:'block', borderRadius:8, cursor:'pointer' },
-                onClick: () => setSelectedListing(item)
-              })
-            )
-          )
+          visibleTiles.map(item => H(Tile, { key:item.id, item }))
         ),
 
         // Infinite grow sentinel (mobile only)
         isMobile && (visibleTiles.length < interleavedTiles.length) &&
           H('div', { ref: sentinelRef, style: { height: 1 } }),
 
-        // Empty state for Listings
-        !tiles.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+        // Empty state (use feed length, not tiles)
+        !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
         // Modal with full card (distance OFF)
         selectedListing && H('div', {
@@ -2253,6 +2285,7 @@ function SmartImage({ src, alt = '', style, onClick }) {
     })
   );
 }
+
 
 function useAuth() {
   const [user, setUser] = useState(null);
