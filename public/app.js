@@ -2029,11 +2029,11 @@ function App(){
     else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
     else if (sort === 'city') {
       list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-    } else list.sort((a,b)=>b.id-a.id);
+    } else list.sort((a,b)=>b.id-a.id); // newest
     return list;
   }, [all, sort]);
 
-  // City options (for the autocomplete)
+  // City options
   const cityOptions = useMemo(() => {
     const set = new Set();
     (all || []).forEach(l => {
@@ -2078,13 +2078,13 @@ function App(){
     setTab('browse');
   }
 
-  // ---------- COVERS (persistent cache, with optional dims) ----------
-  // coverById[id] = { url, w, h } | null
-  const [coverById, setCoverById] = useState(() => (Object.create(null)));
+  // ---------- SIMPLE INFINITE LIST (no masonry) ----------
 
+  // Persistent cover cache: coverById[id] = { url, w, h } | null
+  const [coverById, setCoverById] = useState(() => (Object.create(null)));
   async function ensureCover(id){
     if (id == null) return;
-    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // fetched (even null) -> don't spam
+    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
     try {
       const arr = await api.getListingImages(id, { silent:true });
       let obj = null;
@@ -2099,179 +2099,92 @@ function App(){
     }
   }
 
-  // Build a list of renderable items with best-available cover & aspect ratio
+  // Build render items with best cover + aspect ratio (fallback 4:3)
   const items = useMemo(() => {
     return (feed || []).map(it => {
       const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
       const cached = coverById[it.id];
       const url = inline || cached?.url || '';
-      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : (4/3); // fallback to 4:3
+      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : (4/3);
       return { ...it, __cover:url, __ar: ar };
     });
   }, [feed, coverById]);
 
-  // ---------- VIRTUALIZED MASONRY ----------
-  function useContainerSize(ref){
-  const last = React.useRef(0);
-  const [w, setW] = React.useState(0);
-  const raf = React.useRef(0);
+  // Infinite window: start small, grow as you scroll
+  const BATCH = 40;
+  const [visibleCount, setVisibleCount] = useState(BATCH);
+  useEffect(() => { setVisibleCount(BATCH); }, [debouncedQuery, debouncedLocation, sort, all.length]);
 
-  React.useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-
-    const measure = () => {
-      // getBoundingClientRect is a bit more resilient than clientWidth here
-      const next = Math.floor(el.getBoundingClientRect().width) || 0;
-      if (next > 0 && next !== last.current) {
-        last.current = next;
-        setW(next);
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const el = sentinelRef.current; if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setVisibleCount(c => Math.min(c + BATCH, items.length));
       }
-      // If next is 0, ignore it to avoid collapsing the layout to 0 height.
-    };
+    }, { root: null, rootMargin: '1000px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [items.length]);
 
-    const ro = new ResizeObserver(() => {
-      if (raf.current) cancelAnimationFrame(raf.current);
-      raf.current = requestAnimationFrame(measure);
+  // Prewarm a few covers near the top
+  useEffect(() => {
+    (items || []).slice(0, 12).forEach(it => {
+      if (!it.__cover) ensureCover(it.id);
     });
+  }, [items.length]); // length-based to avoid excessive reruns
 
-    ro.observe(el);
-    measure(); // initial
-
-    return () => {
-      if (raf.current) cancelAnimationFrame(raf.current);
-      ro.disconnect();
-    };
-  }, [ref]);
-
-  // Always return the last known good width (never 0 once we’ve measured).
-  return last.current || w;
-}
-
-
-  function useRafScroll(){
-    const [st, setSt] = useState({ top:0, height: window.innerHeight || 0 });
-    const rAF = useRef(0);
+  // Row: simple image tile with reserved ratio box
+  function Row({ it }){
+    const ref = useRef(null);
     useEffect(() => {
-      const onScroll = () => {
-        if (rAF.current) return;
-        rAF.current = requestAnimationFrame(() => {
-          rAF.current = 0;
-          setSt({ top: window.scrollY || window.pageYOffset || 0, height: window.innerHeight || 0 });
-        });
-      };
-      const onResize = () => onScroll();
-      window.addEventListener('scroll', onScroll, { passive:true });
-      window.addEventListener('resize', onResize);
-      onScroll();
-      return () => { cancelAnimationFrame(rAF.current); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onResize); };
-    }, []);
-    return st;
-  }
+      const el = ref.current; if (!el) return;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) {
+          if (!it.__cover) ensureCover(it.id);
+          io.disconnect();
+        }
+      }, { rootMargin: '800px 0px' });
+      io.observe(el);
+      return () => io.disconnect();
+    }, [it.id, it.__cover]);
 
-  function MasonryVirtual({ data, onOpen }){
-  const ref = React.useRef(null);
-  const width = useContainerSize(ref);
-  const { top:vpTop, height:vpH } = useRafScroll();
+    const src = it.__cover;
+    const ratio = it.__ar || (4/3);
 
-  const COLS = isMobile ? 2 : 4;
-  const GUT  = 12;
-  const colW = width > 0 ? Math.floor((width - (COLS - 1) * GUT) / COLS) : 0;
-
-  // Keep the last valid layout; do not set height to 0 during transient width=0 frames.
-  const [layout, setLayout] = React.useState({ pos: [], height: 0 });
-
-  React.useEffect(() => {
-    if (colW <= 0 || !Array.isArray(data) || data.length === 0) return;
-
-    const colHeights = new Array(COLS).fill(0);
-    const pos = data.map((it, idx) => {
-      // choose the shortest column
-      let col = 0;
-      for (let c = 1; c < COLS; c++) if (colHeights[c] < colHeights[col]) col = c;
-
-      const x = col * (colW + GUT);
-      const h = Math.round(colW / (it.__ar || (4/3)));
-      const y = colHeights[col];
-      colHeights[col] += h + GUT;
-
-      return { idx, x, y, w: colW, h };
-    });
-
-    const height = Math.max(0, Math.max(...colHeights) - GUT);
-    setLayout({ pos, height });
-  }, [data, colW]);
-
-  // Cache the container's page offset; recompute when width changes
-  const containerTopRef = React.useRef(0);
-  React.useEffect(() => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    containerTopRef.current = (window.scrollY || window.pageYOffset || 0) + rect.top;
-  }, [width]);
-
-  const overscan = 800; // px
-  const winTop = (vpTop - containerTopRef.current) - overscan;
-  const winBot = (vpTop - containerTopRef.current) + vpH + overscan;
-
-  const visibleIdx = React.useMemo(() => {
-    const out = [];
-    const arr = layout.pos;
-    for (let i = 0; i < arr.length; i++) {
-      const p = arr[i];
-      if (p.y + p.h >= winTop && p.y <= winBot) out.push(p.idx);
-    }
-    return new Set(out);
-  }, [layout, winTop, winBot]);
-
-  // Fetch covers only for tiles entering the window
-  React.useEffect(() => {
-    for (const i of visibleIdx) {
-      const it = data[i];
-      if (it && !it.__cover) ensureCover(it.id);
-    }
-  }, [visibleIdx, data]);
-
-  return H('section', {
-    ref,
-    style: {
-      position:'relative',
-      height: Math.max(0, layout.height),
-      background: 'transparent'
-    }
-  },
-    layout.pos.map(({ idx, x, y, w, h }) => {
-      if (!visibleIdx.has(idx)) return null;
-      const it = data[idx];
-      const src = it.__cover;
-      return H('div', {
-        key: it.id,
+    return H('div', {
+      ref,
+      className:'card',
+      style: { padding:0, overflow:'hidden', marginBottom:12 }
+    },
+      H('div', {
         style: {
-          position:'absolute',
-          left: x, top: y, width: w, height: h,
-          borderRadius: 8,
-          overflow:'hidden',
-          background:'#f3f4f6',
-          contentVisibility:'auto',
-          contain:'layout paint size style'
+          position:'relative',
+          width:'100%',
+          aspectRatio: `${ratio} / 1`,
+          background:'#f3f4f6'
         }
       },
-        src
-          ? H('img', {
-              src,
-              alt: it.title || 'Item',
-              loading:'lazy',
-              decoding:'async',
-              fetchPriority:'low',
-              style: { width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-              onClick: () => onOpen(it, src)
-            })
-          : null
-      );
-    })
-  );
-}
-
+        src && H('img', {
+          src,
+          alt: it.title || 'Item',
+          loading:'lazy',
+          decoding:'async',
+          fetchPriority:'low',
+          style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
+          onClick: () => setSelectedListing({ ...it, image_data: src })
+        })
+      ),
+      // Tiny info row (optional; remove if you want image-only)
+      H('div', { style:{ padding:12, display:'flex', justifyContent:'space-between', alignItems:'center' } },
+        H('div', null,
+          H('div', { style:{ fontWeight:800 } }, it.title || 'Item for sale'),
+          H('div', { className:'muted' }, it.location || '')
+        ),
+        H('div', { style:{ fontWeight:800 } }, price(it.price || 0))
+      )
+    );
+  }
 
   // ---------- RENDER ----------
   return H(React.Fragment, null,
@@ -2327,14 +2240,14 @@ function App(){
           })
         ),
 
-        // NEW: Virtualized, JS-laid-out masonry (no CSS columns, no SmartImage)
-        H(MasonryVirtual, {
-          data: items,
-          onOpen: (it, cover) => {
-            // pass a hero image so modal has an instant thumbnail
-            setSelectedListing({ ...it, image_data: cover || it.__cover || null });
-          }
-        }),
+        // Simple vertical infinite list
+        H('section', { style:{ display:'block' } },
+          items.slice(0, visibleCount).map(it => H(Row, { key: it.id, it }))
+        ),
+
+        // Sentinel to grow list
+        (visibleCount < items.length) &&
+          H('div', { ref: sentinelRef, style: { height: 1 } }),
 
         // Empty state
         !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
@@ -2427,6 +2340,7 @@ function App(){
     })
   );
 }
+
 
 
 
