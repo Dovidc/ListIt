@@ -308,20 +308,22 @@
       }, meta);
     },
 
-    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit }
+    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit, sort }
     listAll(a, b, meta) {
-      let q, loc, page, limit;
+      let q, loc, page, limit, sort;
       if (typeof a === 'object' && a !== null) {
         q = a.q || '';
         loc = a.loc || '';
         page = a.page || 1;
         limit = a.limit || 75;
+        sort = a.sort || 'new';
         meta = b || {};
       } else {
         q = a || '';
         loc = b || '';
         page = 1;
         limit = 75;
+        sort = 'new';
       }
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
@@ -329,6 +331,7 @@
       params.set('noimg', '1'); // thin-fetch
       params.set('page', String(page));
       params.set('limit', String(limit));
+      params.set('sort', sort);
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
       return this._fetch(url, { method: 'GET' }, meta);
     },
@@ -1904,7 +1907,7 @@
     async function reload(){
       const req = ++reloadReqRef.current;
       try {
-        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE });
+        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
 
         if (req !== reloadReqRef.current) return;
 
@@ -1934,7 +1937,7 @@
       }
     }
 
-    useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page]);
+    useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page, sort]);
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
@@ -1965,18 +1968,7 @@
     }, [user, tab, isMobile]);
 
     // Sort feed (default: keep newest as returned by server)
-    const feed = useMemo(()=>{
-      const base = asArray(all);
-      if (sort === 'price_asc') {
-        return base.slice().sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
-      } else if (sort === 'price_desc') {
-        return base.slice().sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
-      } else if (sort === 'city') {
-        return base.slice().sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-      }
-      // 'new' — already newest from server
-      return base;
-    }, [all, sort]);
+    const feed = all; // Sorting is now handled server-side
 
     // City options
     const cityOptions = useMemo(() => {

@@ -595,7 +595,7 @@ app.put('/api/me/paypal', auth, writeLimiter, (req, res) => {
 
 
 /* ------------------------------------------------------------------ */
-/* Listings (thin response + fuzzy city filter + **pagination**)       */
+/* Listings (thin response + fuzzy city filter + **pagination** + **sorting**)       */
 /* ------------------------------------------------------------------ */
 
 function ensureListingColumns() {
@@ -639,7 +639,7 @@ function validateMsgImages(images) {
  *   - limit: max 75 (default 75)
  *   - page: 1-based pages (used if no cursor provided)
  *   - cursor (aka before_id): keyset pagination; returns items with id < cursor
- *   - order: always by newest (id DESC)
+ *   - sort: 'new' (default, newest first), 'price_asc', 'price_desc', 'city'
  * For /api/listings?mine=1:
  *   - returns full list (legacy behavior) unless any pagination param is supplied.
  */
@@ -648,6 +648,7 @@ app.get('/api/listings', (req, res) => {
   const locRaw = (req.query.loc || '').toString().trim();
   const mine = req.query.mine === '1';
   const noimg = req.query.noimg === '1';
+  const sort = String(req.query.sort || 'new').toLowerCase();
 
   // pagination knobs
   const limitParam = Number(req.query.limit);
@@ -672,6 +673,21 @@ app.get('/api/listings', (req, res) => {
     l.title, l.description, l.location, l.price, l.created_at,
     l.tags, l.lat, l.lon, l.enable_nearby, u.username as owner_username
   `;
+
+  // Dynamic sort clause with tie-breaker (id DESC for stability)
+  let orderSQL = 'ORDER BY l.id DESC';
+  switch (sort) {
+    case 'price_asc':
+      orderSQL = 'ORDER BY l.price ASC, l.id DESC';
+      break;
+    case 'price_desc':
+      orderSQL = 'ORDER BY l.price DESC, l.id DESC';
+      break;
+    case 'city':
+      orderSQL = 'ORDER BY LOWER(l.location) ASC, l.id DESC';
+      break;
+    // default: 'new' (id DESC)
+  }
 
   const itemsForUser = (userId, withPagination=false) => {
     // legacy: by default return full list for mine (no pagination)
@@ -705,7 +721,6 @@ app.get('/api/listings', (req, res) => {
     }
 
     const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
-    const orderSQL = 'ORDER BY l.id DESC';
 
     if (!withPagination) {
       const sql = `
@@ -770,7 +785,6 @@ app.get('/api/listings', (req, res) => {
     }
 
     const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
-    const orderSQL = 'ORDER BY l.id DESC'; // newest first
 
     // LIMIT (+1 for has_more). Use offset only for page-mode (no cursor).
     const lim = limit + 1;
