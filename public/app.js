@@ -983,8 +983,18 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-// SmartImage v2.1 — lockAR defaults to true (never change ratio after mount)
-function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR = 4/3, lockAR = true }) {
+// SmartImage v2.1 — preserves layout with an aspect-ratio wrapper,
+// drops src far off-screen (mobile), and uses lower prefetch distance.
+// Also marks fetchpriority="low" for smoother first-pass scrolling.
+function SmartImage({
+  src,
+  alt = '',
+  br = 8,
+  onClick,
+  dropFar = true,       // pass isMobile from caller
+  initialAR = 4/3,
+  lockAR = true         // keep the initial ratio to avoid any layout shifts
+}) {
   const wrapRef = React.useRef(null);
   const imgRef  = React.useRef(null);
 
@@ -999,24 +1009,26 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
       const e = entries[0]; if (!e) return;
 
       if (e.isIntersecting) {
+        // Near viewport -> attach src (download + decode).
         setActiveSrc(src);
       } else if (dropFar) {
+        // Far outside viewport -> drop src to free decoded bitmap.
         const top = e.boundingClientRect.top;
         const bottom = e.boundingClientRect.bottom;
-        const dist = top > 0 ? top : -bottom;
+        const dist = top > 0 ? top : -bottom; // positive px from viewport
         if (dist > window.innerHeight * 3.5) {
           clearTimeout(clearTo);
           clearTo = setTimeout(() => setActiveSrc(''), 120);
         }
       }
-    }, { root: null, rootMargin: '1000px 0px' });
+    }, { root: null, rootMargin: '600px 0px' }); // ↓ from 1000px to 600px to reduce concurrent decodes
 
     io.observe(el);
     return () => { clearTimeout(clearTo); io.disconnect(); };
   }, [src, dropFar]);
 
   function onLoad(e) {
-    if (lockAR) return; // <-- keep the initial ratio; zero layout shift
+    if (lockAR) return; // keep initial ratio to prevent any layout shift
     const w = e.currentTarget.naturalWidth || 0;
     const h = e.currentTarget.naturalHeight || 0;
     if (w && h) setRatio(w / h);
@@ -1039,6 +1051,7 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
       alt,
       loading: 'lazy',
       decoding: 'async',
+      fetchpriority: 'low', // hint: lower priority during first pass
       onLoad,
       style: {
         position: 'absolute',
@@ -1053,6 +1066,7 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
     })
   );
 }
+
 
 
 
@@ -1898,6 +1912,15 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
   const [locationQuery, setLocationQuery] = useState('');
   const [sort, setSort] = useState('new');
   const [showForm, setShowForm] = useState(false);
+
+      // Prewarm the first 12 items' covers (only those missing inline thumbs)
+  useEffect(() => {
+    (feed || []).slice(0, 12).forEach(it => {
+      if (!it._thumb) ensureCover(it.id);
+    });
+  }, [feed]); // feed already exists above; ensureCover is defined right above this
+
+
 
   // Modal selection for full listing card
   const [selectedListing, setSelectedListing] = useState(null);
