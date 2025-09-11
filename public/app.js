@@ -983,15 +983,13 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // -- SmartImage: sets src only when near viewport; drops it when far away to free memory
-// -- SmartImage v2: preserves layout with an aspect-ratio wrapper,
-//    and only drops src when far away (configurable: dropFar).
-function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR = 4/3 }) {
+// SmartImage v2.1 — lockAR defaults to true (never change ratio after mount)
+function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR = 4/3, lockAR = true }) {
   const wrapRef = React.useRef(null);
   const imgRef  = React.useRef(null);
 
-  const [activeSrc, setActiveSrc] = React.useState('');   // empty => show placeholder
-  const [ratio, setRatio]         = React.useState(initialAR); // width/height guess; updated on load
+  const [activeSrc, setActiveSrc] = React.useState('');
+  const [ratio, setRatio]         = React.useState(initialAR);
 
   React.useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -1001,32 +999,29 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
       const e = entries[0]; if (!e) return;
 
       if (e.isIntersecting) {
-        // Near viewport -> attach src (download + decode).
         setActiveSrc(src);
       } else if (dropFar) {
-        // Far outside viewport -> drop src to free decoded bitmap.
-        // Use big hysteresis so we don't ping-pong.
         const top = e.boundingClientRect.top;
         const bottom = e.boundingClientRect.bottom;
-        const dist = top > 0 ? top : -bottom; // positive px from viewport
+        const dist = top > 0 ? top : -bottom;
         if (dist > window.innerHeight * 3.5) {
           clearTimeout(clearTo);
           clearTo = setTimeout(() => setActiveSrc(''), 120);
         }
       }
-    }, { root: null, rootMargin: '1000px 0px' }); // attach early
+    }, { root: null, rootMargin: '1000px 0px' });
 
     io.observe(el);
     return () => { clearTimeout(clearTo); io.disconnect(); };
   }, [src, dropFar]);
 
   function onLoad(e) {
+    if (lockAR) return; // <-- keep the initial ratio; zero layout shift
     const w = e.currentTarget.naturalWidth || 0;
     const h = e.currentTarget.naturalHeight || 0;
-    if (w && h) setRatio(w / h); // lock to real image ratio
+    if (w && h) setRatio(w / h);
   }
 
-  // Wrapper reserves space even when img has no src
   return H('div', {
     ref: wrapRef,
     style: {
@@ -1035,7 +1030,7 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
       aspectRatio: `${ratio} / 1`,
       borderRadius: br,
       overflow: 'hidden',
-      background: '#f3f4f6' // lightweight placeholder
+      background: '#f3f4f6'
     }
   },
     activeSrc && H('img', {
@@ -1058,6 +1053,7 @@ function SmartImage({ src, alt = '', br = 8, onClick, dropFar = true, initialAR 
     })
   );
 }
+
 
 
 
