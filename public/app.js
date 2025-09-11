@@ -2078,7 +2078,7 @@ function App(){
     setTab('browse');
   }
 
-  // ---------- SIMPLE INFINITE LIST (no masonry) ----------
+  // ---------- LISTINGS: simple infinite grid (no masonry) ----------
 
   // Persistent cover cache: coverById[id] = { url, w, h } | null
   const [coverById, setCoverById] = useState(() => (Object.create(null)));
@@ -2099,13 +2099,13 @@ function App(){
     }
   }
 
-  // Build render items with best cover + aspect ratio (fallback 4:3)
+  // Build render items with best cover + aspect ratio
   const items = useMemo(() => {
     return (feed || []).map(it => {
       const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
       const cached = coverById[it.id];
       const url = inline || cached?.url || '';
-      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : (4/3);
+      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1; // grid tile is square, ar used only for modal prefill if needed
       return { ...it, __cover:url, __ar: ar };
     });
   }, [feed, coverById]);
@@ -2132,11 +2132,12 @@ function App(){
     (items || []).slice(0, 12).forEach(it => {
       if (!it.__cover) ensureCover(it.id);
     });
-  }, [items.length]); // length-based to avoid excessive reruns
+  }, [items.length]);
 
-  // Row: simple image tile with reserved ratio box
-  function Row({ it }){
+  // Grid tile (square)
+  function GridTile({ it }) {
     const ref = useRef(null);
+
     useEffect(() => {
       const el = ref.current; if (!el) return;
       const io = new IntersectionObserver((entries) => {
@@ -2150,21 +2151,9 @@ function App(){
     }, [it.id, it.__cover]);
 
     const src = it.__cover;
-    const ratio = it.__ar || (4/3);
 
-    return H('div', {
-      ref,
-      className:'card',
-      style: { padding:0, overflow:'hidden', marginBottom:12 }
-    },
-      H('div', {
-        style: {
-          position:'relative',
-          width:'100%',
-          aspectRatio: `${ratio} / 1`,
-          background:'#f3f4f6'
-        }
-      },
+    return H('div', { ref, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
+      H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
         src && H('img', {
           src,
           alt: it.title || 'Item',
@@ -2174,14 +2163,6 @@ function App(){
           style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
           onClick: () => setSelectedListing({ ...it, image_data: src })
         })
-      ),
-      // Tiny info row (optional; remove if you want image-only)
-      H('div', { style:{ padding:12, display:'flex', justifyContent:'space-between', alignItems:'center' } },
-        H('div', null,
-          H('div', { style:{ fontWeight:800 } }, it.title || 'Item for sale'),
-          H('div', { className:'muted' }, it.location || '')
-        ),
-        H('div', { style:{ fontWeight:800 } }, price(it.price || 0))
       )
     );
   }
@@ -2240,10 +2221,20 @@ function App(){
           })
         ),
 
-        // Simple vertical infinite list
-        H('section', { style:{ display:'block' } },
-          items.slice(0, visibleCount).map(it => H(Row, { key: it.id, it }))
-        ),
+        // Grid: 4 across desktop, 3 across mobile
+        (() => {
+          const COLS = isMobile ? 3 : 4;
+          const GAP  = 12;
+          return H('section', {
+            style: {
+              display:'grid',
+              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+              gap: GAP
+            }
+          },
+            items.slice(0, visibleCount).map(it => H(GridTile, { key: it.id, it }))
+          );
+        })(),
 
         // Sentinel to grow list
         (visibleCount < items.length) &&
@@ -2340,6 +2331,7 @@ function App(){
     })
   );
 }
+
 
 
 
