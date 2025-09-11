@@ -1902,8 +1902,8 @@ function SmartImage({
     );
   }
 
-  // --- App ---
-  function App(){
+// --- App ---
+function App(){
   const { user, setUser } = useAuth();
   const [tab, setTab] = useState('browse');
   const [all, setAll] = useState([]);
@@ -1912,15 +1912,6 @@ function SmartImage({
   const [locationQuery, setLocationQuery] = useState('');
   const [sort, setSort] = useState('new');
   const [showForm, setShowForm] = useState(false);
-
-      // Prewarm the first 12 items' covers (only those missing inline thumbs)
-  useEffect(() => {
-    (feed || []).slice(0, 12).forEach(it => {
-      if (!it._thumb) ensureCover(it.id);
-    });
-  }, [feed]); // feed already exists above; ensureCover is defined right above this
-
-
 
   // Modal selection for full listing card
   const [selectedListing, setSelectedListing] = useState(null);
@@ -2137,45 +2128,61 @@ function SmartImage({
     }
   }
 
+  // 5) Prewarm the first 12 items' covers (only those missing inline thumbs)
+  useEffect(() => {
+    (feed || []).slice(0, 12).forEach(it => {
+      if (!it._thumb) ensureCover(it.id);
+    });
+  }, [feed]);
+
   // Small tile component: triggers cover fetch when near viewport
   function Tile({ item }){
-  const ref = useRef(null);
-  const [seen, setSeen] = useState(false);
+    const ref = useRef(null);
+    const [seen, setSeen] = useState(false);
 
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) { setSeen(true); io.disconnect(); }
-    }, { rootMargin: '800px 0px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
+    useEffect(() => {
+      const el = ref.current; if (!el) return;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+      }, { rootMargin: '800px 0px' });
+      io.observe(el);
+      return () => io.disconnect();
+    }, []);
 
-  useEffect(() => {
-    if (!seen) return;
-    if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
-      ensureCover(item.id);
-    }
-  }, [seen, item.id]);
+    useEffect(() => {
+      if (!seen) return;
+      if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
+        ensureCover(item.id);
+      }
+    }, [seen, item.id]);
 
-  const src = item._thumb || coverById[item.id] || '';
+    const src = item._thumb || coverById[item.id] || '';
 
-  return H('div', {
-    ref,
-    className:'masonry-item',
-    style: !isMobile
-      ? { breakInside:'avoid', WebkitColumnBreakInside:'avoid', pageBreakInside:'avoid', marginBottom:12 }
-      : undefined
-  },
-    H(SmartImage, {
-      src,
-      br: 8,
-      dropFar: isMobile,
-      onClick: () => setSelectedListing(item)
-    })
-  );
-}
-
+    return H('div', {
+      ref,
+      className:'masonry-item',
+      style: !isMobile
+        ? {
+            breakInside:'avoid',
+            WebkitColumnBreakInside:'avoid',
+            pageBreakInside:'avoid',
+            marginBottom:12,
+            contentVisibility:'auto',
+            containIntrinsicSize:'300px 225px' // 4:3 hint
+          }
+        : {
+            contentVisibility:'auto',
+            containIntrinsicSize:'200px 150px'
+          }
+    },
+      H(SmartImage, {
+        src,
+        br: 8,
+        dropFar: isMobile,
+        onClick: () => setSelectedListing(item)
+      })
+    );
+  }
 
   // ---------- RENDER ----------
   return H(React.Fragment, null,
@@ -2244,7 +2251,7 @@ function SmartImage({
         isMobile && (visibleTiles.length < interleavedTiles.length) &&
           H('div', { ref: sentinelRef, style: { height: 1 } }),
 
-        // Empty state (use feed length, not tiles)
+        // Empty state
         !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
         // Modal with full card (distance OFF)
@@ -2335,6 +2342,7 @@ function SmartImage({
     })
   );
 }
+
 
 
 function useAuth() {
