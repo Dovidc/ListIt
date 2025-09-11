@@ -3,6 +3,7 @@
    - Users (email, username, bcrypt) + JWT cookies & Bearer support
    - Listings w/ title, description, price, location, tags (private), multi-images
    - Thin listings via ?noimg=1
+   - **Pagination** for public listings (75 default, keyset or page)
    - Batch cover fetch /api/listings/covers
    - S3 direct uploads (presign + finalize) with SQLite metadata
    - AI analysis (title, tags, suggested price)
@@ -63,7 +64,7 @@ const S3_ORIGIN = (process.env.S3_BUCKET && process.env.S3_REGION)
   ? `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`
 : null;
 const ASSET_ORIGIN = PUBLIC_ASSET_BASE || S3_ORIGIN || null;
-  // Refuse weak/empty JWT secret in production
+// Refuse weak/empty JWT secret in production
 if (IS_PROD && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev_jwt_change_me')) {
   console.error('FATAL: JWT_SECRET must be set to a strong value in production.');
   process.exit(1);
@@ -594,7 +595,7 @@ app.put('/api/me/paypal', auth, writeLimiter, (req, res) => {
 
 
 /* ------------------------------------------------------------------ */
-/* Listings (thin response + covers + fuzzy city filter)               */
+/* Listings (thin response + fuzzy city filter + **pagination**)       */
 /* ------------------------------------------------------------------ */
 
 function ensureListingColumns() {
@@ -632,13 +633,35 @@ function validateMsgImages(images) {
   return null;
 }
 
+/**
+ * GET /api/listings
+ * Public feed is **paginated** by default:
+ *   - limit: max 75 (default 75)
+ *   - page: 1-based pages (used if no cursor provided)
+ *   - cursor (aka before_id): keyset pagination; returns items with id < cursor
+ *   - order: always by newest (id DESC)
+ * For /api/listings?mine=1:
+ *   - returns full list (legacy behavior) unless any pagination param is supplied.
+ */
 app.get('/api/listings', (req, res) => {
   const qRaw   = (req.query.q   || '').toString().trim().toLowerCase();
   const locRaw = (req.query.loc || '').toString().trim();
-  const q  = qRaw ? `%${qRaw}%` : null;
   const mine = req.query.mine === '1';
   const noimg = req.query.noimg === '1';
 
+  // pagination knobs
+  const limitParam = Number(req.query.limit);
+  const pageParam  = Number(req.query.page);
+  const cursorParam = Number(req.query.cursor || req.query.before || req.query.before_id);
+
+  // Cap limit to 75 as required
+  let limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(75, limitParam)) : 75;
+  const hasCursor = Number.isFinite(cursorParam) && cursorParam > 0;
+  const hasPage = !hasCursor && Number.isFinite(pageParam) && pageParam > 0;
+  const page = hasPage ? pageParam : 1;
+  const offset = hasPage ? (page - 1) * limit : 0;
+
+  // Field sets
   const FIELDS_PUBLIC = `
     l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
     l.title, l.description, l.location, l.price, l.created_at,
@@ -650,66 +673,139 @@ app.get('/api/listings', (req, res) => {
     l.tags, l.lat, l.lon, l.enable_nearby, u.username as owner_username
   `;
 
-  function baseRowsForUser(userId){
-    if (q) {
-      return db.prepare(`
-        SELECT ${FIELDS_MINE}
+  const itemsForUser = (userId, withPagination=false) => {
+    // legacy: by default return full list for mine (no pagination)
+    const fields = FIELDS_MINE;
+    const where = ['l.user_id = @uid'];
+    const params = { uid: userId };
+    if (qRaw) {
+      params.q = `%${qRaw}%`;
+      where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
+    }
+
+    // Fuzzy city filter
+    let locClause = '';
+    const locParams = {};
+    if (locRaw) {
+      const distinct = db.prepare('SELECT DISTINCT location FROM listings').all().map(r => r.location).filter(Boolean);
+      const allCities = distinct.map(cityOf).filter(Boolean);
+      const matches = pickMatchingCities(allCities, locRaw);
+      if (matches.size === 0) {
+        return withPagination
+          ? { items: [], page: page, limit, has_more: false, next_cursor: null }
+          : [];
+      }
+      const patterns = Array.from(matches).slice(0, 30).map((c, i) => {
+        const k = `loc${i}`;
+        locParams[k] = `${c}%`;
+        return `l.location LIKE @${k}`;
+      });
+      locClause = '(' + patterns.join(' OR ') + ')';
+      where.push(locClause);
+    }
+
+    const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+    const orderSQL = 'ORDER BY l.id DESC';
+
+    if (!withPagination) {
+      const sql = `
+        SELECT ${fields}
         FROM listings l
         JOIN users u ON u.id = l.user_id
-        WHERE l.user_id = @uid
-          AND (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
-        ORDER BY l.id DESC
-      `).all({ uid: userId, q });
+        ${whereSQL}
+        ${orderSQL}
+      `;
+      const rows = db.prepare(sql).all({ ...params, ...locParams });
+      return rows.map(r => ({ ...r, tags: (r.tags ? String(r.tags).split(',') : []) }));
     }
-    return db.prepare(`
-      SELECT ${FIELDS_MINE}
+
+    const lim = limit + 1; // lookahead
+    const sql = `
+      SELECT ${fields}
       FROM listings l
       JOIN users u ON u.id = l.user_id
-      WHERE l.user_id = @uid
-      ORDER BY l.id DESC
-    `).all({ uid: userId });
-  }
+      ${whereSQL}
+      ${orderSQL}
+      LIMIT @lim OFFSET @off
+    `;
+    const rows = db.prepare(sql).all({ ...params, ...locParams, lim, off: offset });
+    const has_more = rows.length > limit;
+    const items = has_more ? rows.slice(0, limit) : rows;
+    const next_cursor = items.length ? items[items.length - 1].id : null;
+    return { items: items.map(r => ({ ...r, tags: (r.tags ? String(r.tags).split(',') : []) })), page, limit, has_more, next_cursor };
+  };
 
-  function baseRowsPublic(){
-    if (q) {
-      return db.prepare(`
-        SELECT ${FIELDS_PUBLIC}
-        FROM listings l
-        JOIN users u ON u.id = l.user_id
-        WHERE (LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)
-        ORDER BY l.id DESC
-      `).all({ q });
+  // PUBLIC feed (not mine): always paginated for efficiency
+  if (!mine) {
+    const fields = FIELDS_PUBLIC.trim();
+    const where = [];
+    const params = {};
+    if (qRaw) {
+      params.q = `%${qRaw}%`;
+      where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(IFNULL(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
     }
-    return db.prepare(`
-      SELECT ${FIELDS_PUBLIC}
+
+    // Fuzzy city: compute candidate cities once, then filter via LIKE city%
+    let locClause = '';
+    const locParams = {};
+    if (locRaw) {
+      const distinct = db.prepare('SELECT DISTINCT location FROM listings').all().map(r => r.location).filter(Boolean);
+      const allCities = distinct.map(cityOf).filter(Boolean);
+      const matches = pickMatchingCities(allCities, locRaw);
+      if (matches.size === 0) {
+        return res.json({ items: [], page: page, limit, has_more: false, next_cursor: null });
+      }
+      const patterns = Array.from(matches).slice(0, 30).map((c, i) => {
+        const k = `loc${i}`;
+        locParams[k] = `${c}%`;
+        return `l.location LIKE @${k}`;
+      });
+      locClause = '(' + patterns.join(' OR ') + ')';
+      where.push(locClause);
+    }
+
+    if (hasCursor) {
+      params.before = cursorParam;
+      where.push('l.id < @before');
+    }
+
+    const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+    const orderSQL = 'ORDER BY l.id DESC'; // newest first
+
+    // LIMIT (+1 for has_more). Use offset only for page-mode (no cursor).
+    const lim = limit + 1;
+    const off = hasPage ? offset : 0;
+
+    const sql = `
+      SELECT ${fields}
       FROM listings l
       JOIN users u ON u.id = l.user_id
-      ORDER BY l.id DESC
-    `).all();
+      ${whereSQL}
+      ${orderSQL}
+      LIMIT @lim ${hasPage ? 'OFFSET @off' : ''}
+    `;
+
+    const rows = db.prepare(sql).all({ ...params, ...locParams, lim, off });
+    const has_more = rows.length > limit;
+    const items = has_more ? rows.slice(0, limit) : rows;
+    const next_cursor = items.length ? items[items.length - 1].id : null;
+
+    return res.json({ items, page, limit, has_more, next_cursor });
   }
 
-  let rows;
-  if (mine) {
-    const user = authFromReq(req);
-    if (!user) return res.status(401).json({ error: 'Not authenticated' });
-    rows = baseRowsForUser(user.id);
-    rows = rows.map(r => ({ ...r, tags: (r.tags ? String(r.tags).split(',') : []) }));
-  } else {
-    rows = baseRowsPublic();
+  // MINE
+  const user = authFromReq(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  // Legacy behavior for profile: if no pagination params, return full array
+  const wantsPagination = hasCursor || hasPage || Number.isFinite(limitParam);
+  if (!wantsPagination) {
+    const arr = itemsForUser(user.id, false);
+    return res.json(arr);
   }
 
-  // fuzzy location narrowing
-  if (locRaw) {
-    const distinct = db.prepare('SELECT DISTINCT location FROM listings').all().map(r => r.location).filter(Boolean);
-    const allCities = distinct.map(cityOf).filter(Boolean);
-    const matches = pickMatchingCities(allCities, locRaw);
-    if (matches.size > 0) {
-      const setNorm = new Set(Array.from(matches).map(c => normLetters(c)));
-      rows = rows.filter(r => setNorm.has(normLetters(cityOf(r.location))));
-    } else { rows = []; }
-  }
-
-  return res.json(rows);
+  const paged = itemsForUser(user.id, true);
+  return res.json(paged);
 });
 
 /* Batch covers */
@@ -720,7 +816,7 @@ app.get('/api/listings/covers', (req, res) => {
   ids = Array.from(new Set(ids)).slice(0, 200);
   if (!ids.length) return res.json([]);
   const placeholders = ids.map(()=>'?').join(',');
-// More robust: pick first by (position ASC, id ASC), else fall back to listings.image_data
+  // More robust: pick first by (position ASC, id ASC), else fall back to listings.image_data
   const rows = db.prepare(`
     SELECT l.id,
          COALESCE(
@@ -736,8 +832,8 @@ app.get('/api/listings/covers', (req, res) => {
       FROM listings l
      WHERE l.id IN (${placeholders})
   `).all(...ids);
-   res.json(rows);
- });
+  res.json(rows);
+});
 
 app.post('/api/listings', auth, writeLimiter, (req, res) => {
   try {

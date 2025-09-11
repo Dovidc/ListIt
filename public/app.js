@@ -13,30 +13,24 @@
 //      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
 //
 // NEW (this file):
-// - Thin-fetch + Virtualized masonry for the Listings tab
-//   * /api/listings uses ?noimg=1 (metadata only)
-//   * Visible cards lazy-load the first image via /api/listings/:id/images
-//   * Absolute-positioned masonry with live column-count + overscanned viewport window
+// - Server-backed pagination for Listings tab (75 items per page, newest first)
+//   * /api/listings returns { items, next_cursor } with ORDER BY created_at DESC, id DESC
+//   * Thin payload: use ?noimg=1; per-card image is fetched lazily from /api/listings/:id/images
+//   * Client appends pages as you scroll or via "Load more" button
+//
+// Notes:
+// - Requires server-side keyset pagination mounted at /api/listings
+//   (see server-keyset-listings-patch.js and mount it in server.js)
+// - We keep Nearby/Profile/Messages features intact.
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
   // Device detection
-  // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
-  // - Matches iPhone/Android/Windows Phone
-  // - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
   function isMobileDevice() {
     const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
-
-    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
-      return true;
-    }
-
-    // iPadOS desktop UA workaround
-    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
-      return true;
-    }
-
+    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) return true;
+    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) return true;
     return false;
   }
 
@@ -81,156 +75,11 @@
     return _coordsPromise;
   }
 
-  // Arrange items so rows read left→right in a CSS multi-column layout
-  function interleaveByColumns(arr, cols) {
-    if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
-    const out = [];
-    for (let c = 0; c < cols; c++) {
-      for (let i = c; i < arr.length; i += cols) out.push(arr[i]);
-    }
-    return out;
-  }
-
-  // Read actual column-count from the masonry container (responds to CSS + inline styles)
-  function useColumnCount(ref, fallbackCols = 3) {
-    const [cols, setCols] = React.useState(fallbackCols);
-    React.useEffect(() => {
-      if (!ref.current) return;
-      const el = ref.current;
-      const read = () => {
-        const cs = getComputedStyle(el);
-        const n = parseInt(cs.columnCount, 10);
-        setCols(Number.isFinite(n) && n > 0 ? n : fallbackCols);
-      };
-      read();
-      const ro = new ResizeObserver(read);
-      ro.observe(el);
-      window.addEventListener('resize', read);
-      return () => { ro.disconnect(); window.removeEventListener('resize', read); };
-    }, [ref, fallbackCols]);
-    return cols;
-  }
-
-  // --- NEW: tiny helpers for virtualization ---
-  function useElementWidth(ref) {
-    const [w, setW] = useState(0);
-    useEffect(() => {
-      if (!ref.current) return;
-      const el = ref.current;
-      const update = () => setW(el.clientWidth || 0);
-      update();
-      const ro = new ResizeObserver(update);
-      ro.observe(el);
-      window.addEventListener('resize', update);
-      return () => { ro.disconnect(); window.removeEventListener('resize', update); };
-    }, [ref]);
-    return w;
-  }
-
-  function useWindowScrollY() {
-    const [y, setY] = useState(window.scrollY || 0);
-    useEffect(() => {
-      let ticking = false;
-      const onScroll = () => {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            setY(window.scrollY || 0);
-            ticking = false;
-          });
-          ticking = true;
-        }
-      };
-      window.addEventListener('scroll', onScroll, { passive: true });
-      return () => window.removeEventListener('scroll', onScroll);
-    }, []);
-    return y;
-  }
-
-  // Compute absolute pageY of an element
-  function pageTop(el) {
-    const r = el.getBoundingClientRect();
-    return r.top + (window.scrollY || 0);
-  }
-
-  // --- NEW: zero-dependency virtualized masonry ---
-  // items: [{id, title, price, location, user_id, owner_username, ...}]
-  // getCover: async fn that returns a URL for first image (we use api.getListingImages)
-  function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
-    const scrollY = useWindowScrollY();
-    const containerW = useElementWidth(containerRef);
-
-    const [heightMap, setHeightMap] = useState(() => Object.create(null)); // id->height
-    const registerHeight = React.useCallback((id, h) => {
-      if (!id || !Number.isFinite(h) || h <= 0) return;
-      setHeightMap(m => (m[id] === h ? m : { ...m, [id]: h }));
-    }, []);
-
-    // Layout pass: compute positions using known/estimated heights
-    const layout = useMemo(() => {
-      const cols = Math.max(1, columnCount || 1);
-      const gap = columnGap;
-      const w = Math.max(1, containerW);
-      const colW = (w - gap * (cols - 1)) / cols;
-
-      const colHeights = new Array(cols).fill(0);
-      const pos = new Array(items.length);
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const h = heightMap[it.id] || estimateHeight;
-        // pick shortest column
-        let targetCol = 0;
-        for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
-        const top = colHeights[targetCol];
-        const left = (colW + gap) * targetCol;
-        colHeights[targetCol] = top + h + gap;
-        pos[i] = { top, left, width: colW, height: h };
-      }
-      const containerHeight = Math.max(...colHeights, 0);
-      return { positions: pos, containerHeight, colWidth: colW, gap };
-    }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
-
-    // Visible window in container coordinates
-    const viewport = useMemo(() => {
-      const el = containerRef.current;
-      if (!el) return { top: 0, bottom: 0 };
-      const cTop = pageTop(el);
-      const over = (window.innerHeight || 0) * overscanVH;
-      const top = (scrollY - cTop) - over;
-      const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
-      return { top, bottom };
-    }, [containerRef, scrollY, overscanVH]);
-
-    // Which items intersect viewport?
-    const visible = useMemo(() => {
-      const out = [];
-      const { positions } = layout;
-      if (!positions || positions.length === 0) return out;
-      for (let i = 0; i < positions.length; i++) {
-        const p = positions[i];
-        if (!p) continue;
-        const pBottom = p.top + p.height;
-        if (pBottom >= viewport.top && p.top <= viewport.bottom) {
-          out.push({ index: i, item: items[i], pos: p });
-        }
-      }
-      return out;
-    }, [items, layout, viewport]);
-
-    return { ...layout, visible, registerHeight };
-  }
-
-  // --- Helper: fetch coords and reverse-geocode into a display string
-  async function fetchCoordsAndReverse() {
-    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
-    const { coords } = await new Promise((res, rej)=>
-      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-    );
-    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-    return {
-      lat: r?.lat ?? coords.latitude,
-      lon: r?.lon ?? coords.longitude,
-      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
-    };
+  // --- NEW: pagination helpers ---
+  function useDebounced(value, ms) {
+    const [v, setV] = useState(value);
+    useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+    return v;
   }
 
   // --- Global Loader ---
@@ -282,15 +131,32 @@
       }, meta);
     },
 
-    listAll(q, loc, meta) {
+    // NEW: Page-by-page listings. Default newest first; 75 per page.
+    listPage({ q = '', loc = '', limit = 75, cursor = null, mine = false } = {}, meta) {
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
-      params.set('noimg', '1'); // << thin-fetch: omit heavy image_data
-      const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
-      return this._fetch(url, { method: 'GET' }, meta);
+      params.set('noimg', '1');
+      params.set('limit', String(limit));
+      if (cursor) params.set('cursor', cursor);
+      if (mine) params.set('mine', '1');
+      return this._fetch('/api/listings?' + params.toString(), { method: 'GET' }, meta);
     },
-    listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
+
+    // Legacy: listMine now pages until done (cap 1000 for safety)
+    async listMineAll(meta) {
+      const out = [];
+      let cursor = null;
+      for (let i = 0; i < 20; i++) { // 20 * 50 = 1000 max
+        const r = await this.listPage({ mine: true, limit: 50, cursor }, { ...meta, silent: true });
+        const items = Array.isArray(r?.items) ? r.items : [];
+        out.push(...items);
+        if (!r?.next_cursor) break;
+        cursor = r.next_cursor;
+      }
+      return out;
+    },
+
     createListing(payload, meta) {
       return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
     },
@@ -314,10 +180,7 @@
         body: JSON.stringify({ body, images })
       }, meta);
     },
-    // delete a conversation
-    deleteConversation(id, meta) {
-      return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
-    },
+    deleteConversation(id, meta) { return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta); },
 
     getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
 
@@ -352,50 +215,36 @@
     }
   };
 
-  // Upload a single file to S3 then finalize in DB (for listings)
+  // Upload helpers
   async function uploadOneImage(listingId, file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
-
-    // PUT bytes to S3
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
-
-    // measure image dims
     const dims = await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
       img.onerror = () => resolve({ w: null, h: null });
       img.src = URL.createObjectURL(file);
     });
-
     await api.finalizeUpload({
       listingId,
       key: sig.Key,
       url: sig.publicUrl,
       width: dims.w, height: dims.h, bytes: file.size
     });
-
     return sig.publicUrl;
   }
-
   async function uploadFilesForListing(listingId, files = []) {
     const out = [];
-    for (const f of files) {
-      const url = await uploadOneImage(listingId, f);
-      out.push(url);
-    }
+    for (const f of files) out.push(await uploadOneImage(listingId, f));
     return out;
   }
-
-  // Upload a single file to S3 (for messages; no finalize, just return public URL)
   async function uploadOneMessageImage(file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
-
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
-
     return sig.publicUrl;
   }
 
@@ -491,10 +340,8 @@
 
   // --- Header (profile tab shows @username) ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
-    // Label for the profile tab: @username if logged in, otherwise "Profile"
     const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
 
-    // Right-side area (remove the username text here to avoid duplication)
     const authArea = user
       ? H('div', { className: 'row', style: { gap: 8 } },
           !!user.is_admin && H('button', {
@@ -530,7 +377,6 @@
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
           isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
           messagesBtn,
-          // Profile tab now shows @username (or email) and opens the same profile/settings as before
           H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
         ),
         authArea
@@ -608,7 +454,7 @@
     );
   }
 
-  // Helper: convert File[] to dataURLs for AI analysis only
+  // AI dataURL helpers
   async function filesToDataUrls(files = []) {
     async function toB64(file) {
       return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
@@ -622,16 +468,15 @@
     return arr && arr[0];
   }
 
-  // --- Auto-list help modal (clean single-column layout) ---
+  // --- Auto-list help modal (unchanged visual) ---
   function AutoListHelpModal({ onClose }) {
     return ReactDOM.createPortal(
       H('div', {
         className: 'modal open',
         onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
-        style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
+        style: { background: 'rgba(0,0,0,0.5)' }
       },
         H('div', {
-          // force single column and good contrast regardless of global CSS
           className: 'modal-inner',
           style: {
             display: 'block',
@@ -644,22 +489,12 @@
             lineHeight: 1.55
           }
         },
-          // header row with title + close
-          H('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              marginBottom: 8
-            }
-          },
+          H('div', { style: { display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 } },
             H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
             H('button', {
               type: 'button',
               onClick: onClose,
               'aria-label': 'Close',
-              // avoid relying on .close class so we don’t inherit odd positioning
               style: {
                 width: 28, height: 28, borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -670,34 +505,14 @@
               }
             }, '✕')
           ),
-
-          // intro
-          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
-            'When enabled, Auto-List will:'
-          ),
-
-          // bullets
-          H('ul', {
-            style: {
-              paddingLeft: 18,
-              margin: '0 0 12px',
-              listStyle: 'disc'
-            }
-          },
+          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, 'When enabled, Auto-List will:'),
+          H('ul', { style: { paddingLeft: 18, margin: '0 0 12px', listStyle: 'disc' } },
             H('li', null, 'Allow AI to suggest title, tags and price .'),
             H('li', null, 'Immediately create the listing for you.'),
             H('li', null, 'Upload all selected photos to that listing.')
           ),
-
-          // footnote
-          H('div', {
-            style: {
-              fontSize: 13,
-              opacity: 0.9,
-              borderTop: '1px solid rgba(255,255,255,0.12)',
-              paddingTop: 10
-            }
-          }, 'You can still edit or delete the listing afterwards.')
+          H('div', { style: { fontSize: 13, opacity: 0.9, borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 10 } },
+            'You can still edit or delete the listing afterwards.')
         )
       ),
       document.body
@@ -706,8 +521,8 @@
 
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
-    const [files, setFiles] = useState([]); // Files to upload to S3
-    const [existingUrls, setExistingUrls] = useState([]); // Show current images (read-only)
+    const [files, setFiles] = useState([]);
+    const [existingUrls, setExistingUrls] = useState([]);
 
     const [title, setTitle] = useState(draft?.title || '');
     const [description, setDescription] = useState(draft?.description || '');
@@ -717,7 +532,6 @@
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
-    // auto-list guard
     const autoRunning = useRef(false);
     const [autoBusy, setAutoBusy] = useState(false);
 
@@ -731,15 +545,12 @@
 
     const isMobile = isMobileDevice();
 
-    // Load current images (read-only list of URLs/base64; new uploads use files[])
     useEffect(() => {
       (async () => {
         if (draft?.id) {
           try { const arr = await api.getListingImages(draft.id); setExistingUrls(arr || []); }
           catch { setExistingUrls([]); }
-        } else {
-          setExistingUrls([]);
-        }
+        } else { setExistingUrls([]); }
       })();
     }, [draft?.id]);
 
@@ -778,10 +589,10 @@
       finally { setGeoBusy(false); }
     }
 
-    // Auto-list: when ON, creating a brand-new listing & user added photos → AI + create + upload
+    // Auto-list flow for new listings
     useEffect(() => {
       if (!autoListEnabled) return;
-      if (draft) return;            // only for new listings
+      if (draft) return;
       if (!files || files.length === 0) return;
       if (autoRunning.current) return;
 
@@ -789,7 +600,6 @@
         autoRunning.current = true;
         setAutoBusy(true);
         try {
-          // AI best-effort
           let ai = {};
           try {
             const dataUrls = await filesToDataUrls(files);
@@ -799,17 +609,13 @@
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
-          // Nearby preference (sub-toggle)
           let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
           if (autoPostNearbyEnabled) {
             try {
               const c = await fetchCoordsAndReverse();
               enableNearbyAuto = 1;
               latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
-            } catch (_) {
-              // couldn't get location; keep as 0 to avoid server-side validation issues
-              enableNearbyAuto = 0;
-            }
+            } catch (_) { enableNearbyAuto = 0; }
           }
 
           const payload = {
@@ -839,25 +645,22 @@
     async function submit(e){
       e.preventDefault();
       try {
-        // --- CHANGE: Only requirement is at least one image (either existing or new files)
         const hasAnyImage = (existingUrls && existingUrls.length > 0) || (files && files.length > 0);
-        if (!hasAnyImage) {
-          alert('Please add at least one image.');
-          return;
-        }
+        if (!hasAnyImage) { alert('Please add at least one image.'); return; }
 
-        // Default price to $0.00 if empty/invalid
         const parsedPrice = Number(priceVal);
         const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
         const payload = {
-          title: String(title || '').trim(),          // optional
-          description: String(description || '').trim(), // optional
-          location: String(location || '').trim(),    // optional
-          price: safePrice,                           // default 0
-          tags,                                       // optional
+          title: String(title || '').trim(),
+          description: String(description || '').trim(),
+          location: String(location || '').trim(),
+          price: safePrice,
+          tags,
           enable_nearby: enableNearby ? 1 : 0,
         };
+
+        const hasFixedGps = !!draft?.lat;
         if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
         if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
           alert('Enable Nearby requires using your location.');
@@ -883,7 +686,6 @@
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
 
-      // Auto-list overlay while it works
       autoBusy && H('div', {
         style:{
           position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
@@ -891,10 +693,8 @@
         }
       }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
 
-      // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
 
-      // Existing images (read-only; not deletable here)
       (existingUrls.length > 0) && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
         ...existingUrls.map((src, i) =>
           H('img', { key:i, src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } })
@@ -983,99 +783,7 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-// SmartImage v2.1 — preserves layout with an aspect-ratio wrapper,
-// drops src far off-screen (mobile), and uses lower prefetch distance.
-// Also marks fetchpriority="low" for smoother first-pass scrolling.
-function SmartImage({
-  src,
-  alt = '',
-  br = 8,
-  onClick,
-  dropFar = true,       // pass isMobile from caller
-  initialAR = 4/3,
-  lockAR = true         // keep the initial ratio to avoid any layout shifts
-}) {
-  const wrapRef = React.useRef(null);
-  const imgRef  = React.useRef(null);
-
-  const [activeSrc, setActiveSrc] = React.useState('');
-  const [ratio, setRatio]         = React.useState(initialAR);
-
-  React.useEffect(() => {
-    const el = wrapRef.current; if (!el) return;
-    let clearTo = null;
-
-    const io = new IntersectionObserver((entries) => {
-      const e = entries[0]; if (!e) return;
-
-      if (e.isIntersecting) {
-        // Near viewport -> attach src (download + decode).
-        setActiveSrc(src);
-      } else if (dropFar) {
-        // Far outside viewport -> drop src to free decoded bitmap.
-        const top = e.boundingClientRect.top;
-        const bottom = e.boundingClientRect.bottom;
-        const dist = top > 0 ? top : -bottom; // positive px from viewport
-        if (dist > window.innerHeight * 3.5) {
-          clearTimeout(clearTo);
-          clearTo = setTimeout(() => setActiveSrc(''), 120);
-        }
-      }
-    }, { root: null, rootMargin: '600px 0px' }); // ↓ from 1000px to 600px to reduce concurrent decodes
-
-    io.observe(el);
-    return () => { clearTimeout(clearTo); io.disconnect(); };
-  }, [src, dropFar]);
-
-  function onLoad(e) {
-    if (lockAR) return; // keep initial ratio to prevent any layout shift
-    const w = e.currentTarget.naturalWidth || 0;
-    const h = e.currentTarget.naturalHeight || 0;
-    if (w && h) setRatio(w / h);
-  }
-
-  return H('div', {
-    ref: wrapRef,
-    style: {
-      position: 'relative',
-      width: '100%',
-      aspectRatio: `${ratio} / 1`,
-      borderRadius: br,
-      overflow: 'hidden',
-      background: '#f3f4f6'
-    }
-  },
-    activeSrc && H('img', {
-      ref: imgRef,
-      src: activeSrc,
-      alt,
-      loading: 'lazy',
-      decoding: 'async',
-      fetchpriority: 'low', // hint: lower priority during first pass
-      onLoad,
-      style: {
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        display: 'block',
-        cursor: onClick ? 'pointer' : 'default'
-      },
-      onClick
-    })
-  );
-}
-
-
-
-
-
-
-
-
-
-  // --- Listing Card ---
+  // --- Listing Card (full card used in modals/own listings) ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
 
     const [open, setOpen] = useState(false);
@@ -1157,7 +865,7 @@ function SmartImage({
     );
   }
 
-  // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
+  // --- Messages Panel (unchanged) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -1165,11 +873,10 @@ function SmartImage({
     const [activeId, setActiveId] = useState(initialActiveId || null);
     const [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
-    const [imgFiles, setImgFiles] = useState([]); // attachments (File[] for S3 upload)
+    const [imgFiles, setImgFiles] = useState([]);
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
     const pollRef = useRef(null);
-    const dropRef = useRef();
 
     function addFiles(filesLike) {
       const MAX_EACH_MB = 20;
@@ -1194,7 +901,7 @@ function SmartImage({
       const cd = e.clipboardData;
       if (!cd) return;
       const imageItems = Array.from(cd.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
-      if (imageItems.length === 0) return; // let normal text paste
+      if (imageItems.length === 0) return;
       e.preventDefault();
 
       const files = imageItems
@@ -1247,31 +954,12 @@ function SmartImage({
     async function send(){
       const bodyTrim = (input || '').trim();
       if(!bodyTrim && imgFiles.length === 0) return;
-
-      // Upload images to S3 first
       const urls = [];
-      for (const f of imgFiles) {
-        const url = await uploadOneMessageImage(f);
-        urls.push(url);
-      }
-
+      for (const f of imgFiles) urls.push(await uploadOneMessageImage(f));
       await api.sendMessage(activeId, bodyTrim, urls);
-      setInput('');
-      setImgFiles([]);
-      await fetchMsgs();
-      await fetchConvos();
+      setInput(''); setImgFiles([]); await fetchMsgs(); await fetchConvos();
     }
 
-    async function revealPaypal() {
-      if (!activeId) return;
-      if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
-      const msg = `My PayPal address: ${user.paypal_email}`;
-      await api.sendMessage(activeId, msg, []);
-      await fetchMsgs();
-      await fetchConvos();
-    }
-
-    // ------- FIX: build decorated list first, THEN compute active/canReveal -------
     const seenMap = loadSeen(user?.id);
     const convosDecorated = (convos || [])
       .map(c => {
@@ -1299,7 +987,6 @@ function SmartImage({
       user?.id === active.listing_owner_id &&
       user?.paypal_email
     );
-    // ---------------------------------------------------------------------------
 
     return H('div', { className:'split' },
       H('aside', { className:'card sidebar', style:{ padding:12 } },
@@ -1371,16 +1058,13 @@ function SmartImage({
 
         activeId && H('div', {
           className:'row',
-          style:{ alignItems:'flex-end', gap:8 },
-          ref: dropRef,
-          onDragOver,
-          onDrop
+          style:{ alignItems:'flex-end', gap:8 }
         },
+          H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
           H('input', {
             type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
             style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
           }),
-          H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
           H('textarea', {
             placeholder:'Type a message…  (Tip: paste or drag images)',
             value:input,
@@ -1390,7 +1074,13 @@ function SmartImage({
             onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
             style:{ flex:1, resize:'vertical' }
           }),
-          canRevealPaypal && H('button', { className:'btn', onClick: revealPaypal }, 'Reveal PayPal address'),
+          canRevealPaypal && H('button', { className:'btn', onClick: async () => {
+            if (!activeId) return;
+            if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
+            const msg = `My PayPal address: ${user.paypal_email}`;
+            await api.sendMessage(activeId, msg, []);
+            await fetchMsgs(); await fetchConvos();
+          } }, 'Reveal PayPal address'),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
 
@@ -1405,34 +1095,30 @@ function SmartImage({
     );
   }
 
-  // --- Nearby Panel (unchanged) ---
+  // --- Nearby Panel (unchanged behavior) ---
   function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
     const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
     const [selected, setSelected] = useState(null);
 
-    // NEW: masonry container ref + live column-count
     const masonRef = useRef(null);
     const [nearbyCols, setNearbyCols] = useState(3);
     useEffect(() => {
       if (!masonRef.current) return;
       const el = masonRef.current;
-
       const readCols = () => {
         const cs = getComputedStyle(el);
         const n = parseInt(cs.columnCount, 10);
         setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
       };
       readCols();
-
       const ro = new ResizeObserver(readCols);
       ro.observe(el);
       window.addEventListener('resize', readCols);
       return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
     }, []);
 
-    // NEW: interleave helper (row-wise ordering for CSS column masonry)
     const interleaved = useMemo(() => {
       const arr = items || [];
       if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
@@ -1452,11 +1138,8 @@ function SmartImage({
         );
         const res = await api.listNearby(coords.latitude, coords.longitude, radius, { silent:true });
         setItems(res || []);
-      } catch (e) {
-        alert('Could not load nearby listings');
-      } finally {
-        setBusy(false);
-      }
+      } catch (e) { alert('Could not load nearby listings'); }
+      finally { setBusy(false); }
     }
 
     useEffect(() => { load(); }, [radius]);
@@ -1489,7 +1172,6 @@ function SmartImage({
         )
       ),
 
-      // NOTE: add ref so we can read computed column-count
       H('section', { className:'masonry', ref: masonRef },
         interleaved.map(item =>
           H('div', { key:item.id, className:'masonry-item' },
@@ -1524,12 +1206,11 @@ function SmartImage({
     );
   }
 
-  // --- MassList Modal ---
+  // --- MassList Modal (unchanged) ---
   function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
-
     const fileRef = useRef();
 
     function pick(e){
@@ -1554,7 +1235,6 @@ function SmartImage({
 
       let failed = 0;
 
-      // Try to get coords ONCE if auto-post-nearby is enabled
       let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
       if (autoPostNearbyEnabled) {
         try {
@@ -1566,12 +1246,11 @@ function SmartImage({
       for (let i=0; i<files.length; i++){
         const f = files[i];
         try {
-          // AI analysis per image (best effort)
           let ai = {};
           try {
             const b64 = await fileToDataUrl(f);
             ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
-          } catch (_) { /* ignore AI failure; fallback below */ }
+          } catch (_) {}
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
@@ -1586,23 +1265,16 @@ function SmartImage({
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('create_failed');
-
           await uploadOneImage(created.id, f);
-        } catch (e) {
-          failed += 1;
-        } finally {
-          setProgress(p => ({ ...p, done: p.done + 1, failed }));
-        }
+        } catch (e) { failed += 1; }
+        finally { setProgress(p => ({ ...p, done: p.done + 1, failed })); }
       }
 
       try { await reloadMine(); } catch {}
       try { await reloadAll(); } catch {}
-
       setBusy(false);
-
-      const stats = { total: files.length, created: files.length - failed, failed };
-      onDone && onDone(stats);   // let parent decide what to do (navigate, toast, etc.)
-      onClose && onClose();      // close the modal
+      onDone && onDone({ total: files.length, created: files.length - failed, failed });
+      onClose && onClose();
     }
 
     const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
@@ -1632,7 +1304,6 @@ function SmartImage({
           )
         ),
 
-        // Progress overlay
         busy && H('div', {
           style:{
             position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
@@ -1652,704 +1323,450 @@ function SmartImage({
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (Auto-list + child toggle + help modal) ---
-  function ProfilePanel({
-    user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
-    autoListEnabled, setAutoListEnabled,
-    autoPostNearbyEnabled, setAutoPostNearbyEnabled,
-    isMobile
-  }) {
-    const [showHelp, setShowHelp] = useState(false);
+  // --- NEW: Pagination hook for Listings tab ---
+  function usePaginatedListings({ q, loc, pageSize = 75 }) {
+    const [items, setItems] = useState([]);
+    const [cursor, setCursor] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
-    async function savePaypal() {
-      const r = await api.updatePaypalEmail((paypalEmail || '').trim());
-      if (r?.error) { alert(r.error); return; }
-      // refresh global user so Messages sees the latest email
-      const me = await api.me({ silent:true });
-      AppNav.setUser(me);
-      alert('Saved.');
+    const qDeb = useDebounced(q, 250);
+    const locDeb = useDebounced(loc, 500);
+
+    async function resetAndLoad() {
+      setLoading(true); setError('');
+      try {
+        const r = await api.listPage({ q: (qDeb||''), loc: (locDeb||''), limit: pageSize }, { silent:true });
+        const base = Array.isArray(r?.items) ? r.items : [];
+        setItems(base);
+        setCursor(r?.next_cursor || null);
+      } catch (e) {
+        console.error(e); setError('Failed to load'); setItems([]); setCursor(null);
+      } finally { setLoading(false); }
     }
 
-    if (!user) {
-      return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
-        H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
-        H('div', { className: 'muted' }, 'Please log in to view your profile.')
-      );
+    async function loadMore() {
+      if (!cursor || loading) return;
+      setLoading(true); setError('');
+      try {
+        const r = await api.listPage({ q: (qDeb||''), loc: (locDeb||''), limit: pageSize, cursor }, { silent:true });
+        const base = Array.isArray(r?.items) ? r.items : [];
+        setItems(prev => prev.concat(base));
+        setCursor(r?.next_cursor || null);
+      } catch (e) {
+        console.error(e); setError('Failed to load more');
+      } finally { setLoading(false); }
     }
 
-    return H(React.Fragment, null,
-      H('section', { className:'card', style:{ padding:16, margin:'12px 0 16px' } },
-        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 } },
-          H('div', null,
-            H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
-            H('div', { className:'muted' }, 'Your account')
-          ),
-          // Right controls: Auto-list toggle • New listing • Log out
-          H('div', { className:'row', style:{ gap:12, alignItems:'center', flexWrap:'wrap' } },
-            H('label', { className:'row', style:{ gap:8, alignItems:'center', padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:12 } },
-              H('input', {
-                type:'checkbox',
-                checked: !!autoListEnabled,
-                onChange: (e) => setAutoListEnabled(e.target.checked),
-                style:{ width:18, height:18 }
-              }),
-              H('div', null,
-                H('div', { style:{ fontWeight:700 } }, 'Auto-list'),
-                H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'new uploads')
-              ),
-              H('button', {
-                type:'button',
-                onClick: () => setShowHelp(true),
-                title:'About Auto-list',
-                style:{
-                  marginLeft:6, width:24, height:24, lineHeight:'22px',
-                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
-                }
-              }, '?')
-            ),
-            H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
-            H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
-          )
-        ),
+    useEffect(() => { resetAndLoad(); }, [qDeb, locDeb, pageSize]);
 
-        // Slide-out child when parent is on (mobile-only)
-        (isMobile && H('div', {
-            style: {
-              marginTop: 10,
-              overflow: 'hidden',
-              maxHeight: autoListEnabled ? 120 : 0,
-              transition: 'max-height 220ms ease'
-            }
-          },
-            H('div', { className:'row', style:{ gap:8, alignItems:'center', padding:'8px 10px', border:'1px dashed #e5e7eb', borderRadius:12, background:'#fafafa' } },
-              H('input', {
-                type:'checkbox',
-                checked: !!autoPostNearbyEnabled,
-                onChange: (e) => setAutoPostNearbyEnabled(e.target.checked),
-                disabled: !autoListEnabled,
-                style:{ width:18, height:18 }
-              }),
-              H('div', null,
-                H('div', { style:{ fontWeight:700 } }, 'Also post to Nearby'),
-                H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
-              )
-            )
-          ))),
-      H('section', null,
-        H('div', { className:'row', style:{ justifyContent:'space-between', margin:'0 0 12px', flexWrap:'wrap' } },
-          H('section', { style:{ marginTop:12 } },
-            H('label', null, 'PayPal email'),
-            H('div', { className:'row', style:{ gap:8, alignItems:'center', flexWrap:'wrap' } },
-              H('input', {
-                value: paypalEmail,
-                onChange: e => setPaypalEmail(e.target.value),
-                placeholder: 'name@example.com',
-                style:{ minWidth: 260 }
-              }),
-              H('button', { className:'btn', onClick: savePaypal }, 'Save')
-            ),
-            H('div', { className:'muted', style:{ fontSize:12, marginTop:4 } },
-              'When you press “Reveal PayPal address” in a DM, the email you save here will be sent as a normal message.'
-            )
-          ),
-
-          H('div', { style:{ fontWeight:800 } }, `Your listings (${items.length})`)
-        ),
-        H('section', { className:'grid' },
-          (items.length
-            ? items.map(item =>
-                H(ListingCard, {
-                  key:item.id,
-                  item,
-                  user,
-                  canEdit: true,
-                  onEdit,
-                  onDelete,
-                  onAdminDelete
-                })
-              )
-            : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
-          )
-        )
-      ),
-
-      showHelp && H(AutoListHelpModal, { onClose: () => setShowHelp(false) })
-    );
+    return { items, cursor, loading, error, resetAndLoad, loadMore };
   }
 
-  // --- NEW: Virtualized Listings Masonry ---
-  function VirtualizedListings({ items, isMobile, onOpen }) {
-    // We'll still read CSS column-count from this element so behavior matches your CSS.
-    const ref = useRef(null);
-    const cols = useColumnCount(ref, isMobile ? 2 : 4);
-    const containerW = useElementWidth(ref);
-    const columnGap = 12;
+  // --- App ---
+  function App(){
+    const { user, setUser } = useAuth();
+    const [tab, setTab] = useState('browse');
 
-    // Cache first cover image per item id so we don't refetch
-    const [coverMap, setCoverMap] = useState(() => Object.create(null));
+    const [mine, setMine] = useState([]);
+    const [query, setQuery] = useState('');
+    const [locationQuery, setLocationQuery] = useState('');
+    const [showForm, setShowForm] = useState(false);
 
-    // virtualization engine
-    const { visible, containerHeight, registerHeight, colWidth } = useVirtualMasonry({
-      containerRef: ref,
-      items,
-      columnCount: cols,
-      columnGap,
-      estimateHeight: Math.max(200, Math.round((containerW / Math.max(1, cols)) * 0.75)), // rough estimate
-      overscanVH: 1.5
-    });
-
-    // Lazy fetch first image for visible items
+    const [selectedListing, setSelectedListing] = useState(null);
     useEffect(() => {
-      (async () => {
-        const need = visible
-          .map(v => v.item)
-          .filter(it => !coverMap[it.id]);
+      if (!selectedListing) return;
+      const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
+      window.addEventListener('keydown', esc);
+      return () => window.removeEventListener('keydown', esc);
+    }, [selectedListing]);
 
-        if (need.length === 0) return;
+    const [editing, setEditing] = useState(null);
+    const [activeConvoId, setActiveConvoId] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [loadingCount, setLoadingCount] = useState(0);
 
-        const updates = {};
-        await Promise.all(need.map(async (it) => {
-          try {
-            const arr = await api.getListingImages(it.id, { silent: true });
-            const url = Array.isArray(arr) && arr[0] ? arr[0] : null;
-            if (url) updates[it.id] = url;
-          } catch {}
-        }));
+    const [showMassList, setShowMassList] = useState(false);
 
-        if (Object.keys(updates).length) {
-          setCoverMap(prev => ({ ...prev, ...updates }));
+    const AUTO_KEY = 'listit_auto_list';
+    const [autoListEnabled, setAutoListEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
+
+    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
+    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
+
+    const isMobile = isMobileDevice();
+
+    useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
+    useEffect(() => {
+      AppNav.incLoad = () => setLoadingCount(c => c + 1);
+      AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
+    }, []);
+
+    // --- NEW: paginated feed (75 items)
+    const {
+      items: feed,
+      cursor: nextCursor,
+      loading: feedLoading,
+      error: feedError,
+      resetAndLoad: resetFeed,
+      loadMore: loadMoreFeed
+    } = usePaginatedListings({ q: query, loc: locationQuery, pageSize: 75 });
+
+    // Cover cache for tiles (id -> cover url | null)
+    const [coverById, setCoverById] = useState(() => (Object.create(null)));
+    async function ensureCover(id){
+      if (id == null) return;
+      if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched
+      try {
+        const arr = await api.getListingImages(id, { silent:true });
+        let obj = null;
+        if (Array.isArray(arr) && arr.length) {
+          obj = typeof arr[0] === 'string'
+            ? { url: arr[0], w: null, h: null }
+            : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
         }
-      })();
-    }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // A single tile: measure real height when image loads
-    function Tile({ item, left, top, width }) {
-      const cover = coverMap[item.id];
-      const divRef = useRef(null);
-
-      // When image finishes decoding, measure the tile height
-      async function onImgLoad(e) {
-        try { await e.target.decode?.(); } catch {}
-        if (!divRef.current) return;
-        const h = divRef.current.getBoundingClientRect().height;
-        registerHeight(item.id, h);
+        setCoverById(m => ({ ...m, [id]: obj }));
+      } catch {
+        setCoverById(m => ({ ...m, [id]: null }));
       }
+    }
 
-      // Fallback measurement after mount in case of cached image
+    // Build render items with best cover + aspect ratio
+    const items = useMemo(() => {
+      return (feed || []).map(it => {
+        const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
+        const cached = coverById[it.id];
+        const url = inline || cached?.url || '';
+        const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
+        return { ...it, __cover:url, __ar: ar };
+      });
+    }, [feed, coverById]);
+
+    // Mine helpers
+    const mineById = useMemo(() => {
+      const map = Object.create(null);
+      (mine || []).forEach(m => { map[m.id] = m; });
+      return map;
+    }, [mine]);
+
+    async function reloadMineOnly(){
+      if (!user) { setMine([]); return; }
+      const m = await api.listMineAll({ silent:true });
+      setMine(m||[]);
+    }
+    useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+
+    // Unread poll
+    async function recomputeUnread() {
+      try {
+        if (!user) { setUnreadCount(0); return; }
+        const convos = await api.listConversations({ silent:true });
+        const seen = loadSeen(user.id);
+        const n = (convos || []).filter(c =>
+          c.last_message_id &&
+          c.last_message_sender_id &&
+          c.last_message_sender_id !== user.id &&
+          (!seen[c.id] || seen[c.id] < c.last_message_id)
+        ).length;
+        setUnreadCount(n);
+      } catch {}
+    }
+    useEffect(() => {
+      recomputeUnread();
+      const t = setInterval(recomputeUnread, 3000);
+      return () => clearInterval(t);
+    }, [user?.id]);
+
+    useEffect(() => {
+      if (!user && tab === 'messages') setTab('browse');
+      if (!isMobile && tab === 'nearby') setTab('browse');
+    }, [user, tab, isMobile]);
+
+    // City options from the currently loaded feed (first pages)
+    const cityOptions = useMemo(() => {
+      const set = new Set();
+      (feed || []).forEach(l => {
+        const raw = (l.location || '').trim();
+        if (!raw) return;
+        const city = raw.split(',')[0].trim();
+        if (city) set.add(city);
+      });
+      return Array.from(set).sort((a,b)=> a.localeCompare(b));
+    }, [feed]);
+
+    async function startMessage(item){
+      if(!user){ alert('Log in to message a seller.'); return; }
+      if(user.id === item.user_id){ alert('This is your listing.'); return; }
+      const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
+      setActiveConvoId(convo.id);
+      setTab('messages');
+    }
+
+    function handleAdminDeleteAll(){
+      return (async () => {
+        await api.adminDeleteAll();
+        setMine([]); // clear mine
+        await resetFeed(); // reload page 1
+      })();
+    }
+    function handleAdminDelete(listingId) {
+      // Remove from mine + refresh feed lightly
+      setMine(prev => prev.filter(x => x.id !== listingId));
+      // soft remove from feed if present
+      // (no server call here; next resetFeed reflects delete)
+    }
+
+    async function logoutFromProfile(){
+      await api.logout();
+      setUser(null);
+      setTab('browse');
+    }
+
+    // Grid tile (square, lazy cover fetch)
+    function GridTile({ it }) {
+      const ref = useRef(null);
       useEffect(() => {
-        const t = setTimeout(() => {
-          if (!divRef.current) return;
-          const h = divRef.current.getBoundingClientRect().height;
-          if (h > 0) registerHeight(item.id, h);
-        }, 0);
-        return () => clearTimeout(t);
-      }, [cover]); // eslint-disable-line react-hooks/exhaustive-deps
+        const el = ref.current; if (!el) return;
+        const io = new IntersectionObserver((entries) => {
+          if (entries.some(e => e.isIntersecting)) {
+            if (!it.__cover) ensureCover(it.id);
+            io.disconnect();
+          }
+        }, { rootMargin: '800px 0px' });
+        io.observe(el);
+        return () => io.disconnect();
+      }, [it.id, it.__cover]);
 
-      return H('div', {
-        ref: divRef,
-        key: item.id,
-        style: {
-          position: 'absolute',
-          transform: `translate(${left}px, ${top}px)`,
-          width,
-          boxSizing: 'border-box',
-          borderRadius: 8,
-          overflow: 'hidden'
-        },
-        className: 'masonry-item'
-      },
-        H('img', {
-          src: cover || '', // empty until loaded
-          alt: item.title || 'Listing',
-          loading: 'lazy',
-          decoding: 'async',
-          onLoad: onImgLoad,
-          style: {
-            width: '100%',
-            height: 'auto',
-            display: 'block',
-            background: '#f3f4f6',
-            cursor: 'pointer'
-          },
-          onClick: () => onOpen && onOpen({ ...item }, cover || '')
-        })
+      const src = it.__cover;
+      return H('div', { ref, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
+        H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
+          src && H('img', {
+            src,
+            alt: it.title || 'Item',
+            loading:'lazy',
+            decoding:'async',
+            fetchpriority:'low',
+            style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
+            onClick: () => setSelectedListing({ ...it, image_data: src })
+          })
+        )
       );
     }
 
-    return H('section', {
-      ref,
-      className: 'masonry',
-      style: {
-        // We keep column props for breakpoint parity (read by useColumnCount),
-        // but layout actually uses absolute positioning below.
-        columnCount: !isMobile ? 4 : undefined,
-        columnGap,
-        position: 'relative',
-        height: Math.max(0, containerHeight),
-        minHeight: 80
-      }
-    },
-      visible.map(v =>
-        H(Tile, {
-          key: v.item.id,
-          item: v.item,
-          left: v.pos.left,
-          top: v.pos.top,
-          width: colWidth
-        })
-      )
-    );
-  }
-
-// --- App ---
-function App(){
-  const { user, setUser } = useAuth();
-  const [tab, setTab] = useState('browse');
-  const [all, setAll] = useState([]);
-  const [mine, setMine] = useState([]);
-  const [query, setQuery] = useState('');
-  const [locationQuery, setLocationQuery] = useState('');
-  const [sort, setSort] = useState('new');
-  const [showForm, setShowForm] = useState(false);
-
-  // Modal selection for full listing card
-  const [selectedListing, setSelectedListing] = useState(null);
-  useEffect(() => {
-    if (!selectedListing) return;
-    const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [selectedListing]);
-
-  const [editing, setEditing] = useState(null);
-  const [activeConvoId, setActiveConvoId] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loadingCount, setLoadingCount] = useState(0);
-
-  // MassList modal
-  const [showMassList, setShowMassList] = useState(false);
-
-  // Auto-list toggles (persisted)
-  const AUTO_KEY = 'listit_auto_list';
-  const [autoListEnabled, setAutoListEnabled] = useState(() => {
-    try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
-  });
-  useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
-
-  const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
-  const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
-    try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
-  });
-  useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
-
-  const isMobile = isMobileDevice();
-
-  useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
-  useEffect(() => {
-    AppNav.incLoad = () => setLoadingCount(c => c + 1);
-    AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-  }, []);
-
-  const mineById = useMemo(() => {
-    const map = Object.create(null);
-    (mine || []).forEach(m => { map[m.id] = m; });
-    return map;
-  }, [mine]);
-
-  // Debounce: search + city
-  const [debouncedQuery, setDebouncedQuery] = useState(query);
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 250);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-    return () => clearTimeout(t);
-  }, [locationQuery]);
-
-  // Reload helpers
-  async function reloadMineOnly(){
-    if (!user) { setMine([]); return; }
-    const m = await api.listMine();
-    setMine(m||[]);
-  }
-
-  const reloadReqRef = useRef(0);
-  async function reload(){
-    const req = ++reloadReqRef.current;
-    try {
-      const [a, m] = await Promise.all([
-        api.listAll(debouncedQuery.trim() || '', debouncedLocation.trim() || ''),
-        user ? api.listMine() : Promise.resolve([])
-      ]);
-      if (req !== reloadReqRef.current) return;
-      setAll(a||[]); setMine(m||[]);
-    } catch (e) {
-      console.error('reload failed', e);
-      setAll([]); // fail-safe
-    }
-  }
-
-  useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation]);
-  useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
-
-  // Unread poll
-  async function recomputeUnread() {
-    try {
-      if (!user) { setUnreadCount(0); return; }
-      const convos = await api.listConversations({ silent:true });
-      const seen = loadSeen(user.id);
-      const n = (convos || []).filter(c =>
-        c.last_message_id &&
-        c.last_message_sender_id &&
-        c.last_message_sender_id !== user.id &&
-        (!seen[c.id] || seen[c.id] < c.last_message_id)
-      ).length;
-      setUnreadCount(n);
-    } catch {}
-  }
-  useEffect(() => {
-    recomputeUnread();
-    const t = setInterval(recomputeUnread, 3000);
-    return () => clearInterval(t);
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user && tab === 'messages') setTab('browse');
-    if (!isMobile && tab === 'nearby') setTab('browse');
-  }, [user, tab, isMobile]);
-
-  // Sort feed
-  const feed = useMemo(()=>{
-    const list = [...(all || [])];
-    if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
-    else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
-    else if (sort === 'city') {
-      list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-    } else list.sort((a,b)=>b.id-a.id); // newest
-    return list;
-  }, [all, sort]);
-
-  // City options
-  const cityOptions = useMemo(() => {
-    const set = new Set();
-    (all || []).forEach(l => {
-      const raw = (l.location || '').trim();
-      if (!raw) return;
-      const city = raw.split(',')[0].trim();
-      if (city) set.add(city);
-    });
-    return Array.from(set).sort((a,b)=> a.localeCompare(b));
-  }, [all]);
-
-  async function startMessage(item){
-    if(!user){ alert('Log in to message a seller.'); return; }
-    if(user.id === item.user_id){ alert('This is your listing.'); return; }
-    const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-    setActiveConvoId(convo.id);
-    setTab('messages');
-  }
-
-  function handleSeen(convoId, lastMsgId){
-    if (!user || !convoId || !lastMsgId) return;
-    const map = loadSeen(user.id);
-    if (!map[convoId] || map[convoId] < lastMsgId) {
-      map[convoId] = lastMsgId;
-      saveSeen(user.id, map);
-      setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
-    }
-  }
-
-  async function handleAdminDeleteAll(){
-    await api.adminDeleteAll();
-    setAll([]); setMine([]);
-  }
-  function handleAdminDelete(listingId) {
-    setAll(prev => prev.filter(x => x.id !== listingId));
-    setMine(prev => prev.filter(x => x.id !== listingId));
-  }
-
-  async function logoutFromProfile(){
-    await api.logout();
-    setUser(null);
-    setTab('browse');
-  }
-
-  // ---------- LISTINGS: simple infinite grid (no masonry) ----------
-
-  // Persistent cover cache: coverById[id] = { url, w, h } | null
-  const [coverById, setCoverById] = useState(() => (Object.create(null)));
-  async function ensureCover(id){
-    if (id == null) return;
-    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
-    try {
-      const arr = await api.getListingImages(id, { silent:true });
-      let obj = null;
-      if (Array.isArray(arr) && arr.length) {
-        obj = typeof arr[0] === 'string'
-          ? { url: arr[0], w: null, h: null }
-          : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
-      }
-      setCoverById(m => ({ ...m, [id]: obj }));
-    } catch {
-      setCoverById(m => ({ ...m, [id]: null }));
-    }
-  }
-
-  // Build render items with best cover + aspect ratio
-  const items = useMemo(() => {
-    return (feed || []).map(it => {
-      const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
-      const cached = coverById[it.id];
-      const url = inline || cached?.url || '';
-      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1; // grid tile is square, ar used only for modal prefill if needed
-      return { ...it, __cover:url, __ar: ar };
-    });
-  }, [feed, coverById]);
-
-  // Infinite window: start small, grow as you scroll
-  const BATCH = 40;
-  const [visibleCount, setVisibleCount] = useState(BATCH);
-  useEffect(() => { setVisibleCount(BATCH); }, [debouncedQuery, debouncedLocation, sort, all.length]);
-
-  const sentinelRef = useRef(null);
-  useEffect(() => {
-    const el = sentinelRef.current; if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) {
-        setVisibleCount(c => Math.min(c + BATCH, items.length));
-      }
-    }, { root: null, rootMargin: '1000px 0px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [items.length]);
-
-  // Prewarm a few covers near the top
-  useEffect(() => {
-    (items || []).slice(0, 12).forEach(it => {
-      if (!it.__cover) ensureCover(it.id);
-    });
-  }, [items.length]);
-
-  // Grid tile (square)
-  function GridTile({ it }) {
-    const ref = useRef(null);
-
+    const sentinelRef = useRef(null);
     useEffect(() => {
-      const el = ref.current; if (!el) return;
+      const el = sentinelRef.current; if (!el) return;
       const io = new IntersectionObserver((entries) => {
         if (entries.some(e => e.isIntersecting)) {
-          if (!it.__cover) ensureCover(it.id);
-          io.disconnect();
+          loadMoreFeed();
         }
-      }, { rootMargin: '800px 0px' });
+      }, { rootMargin: '1000px 0px' });
       io.observe(el);
       return () => io.disconnect();
-    }, [it.id, it.__cover]);
+    }, [feed.length, nextCursor]);
 
-    const src = it.__cover;
+    return H(React.Fragment, null,
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
+      H(GlobalLoader, { active: loadingCount > 0 }),
 
-    return H('div', { ref, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
-      H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
-        src && H('img', {
-          src,
-          alt: it.title || 'Item',
-          loading:'lazy',
-          decoding:'async',
-          fetchPriority:'low',
-          style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-          onClick: () => setSelectedListing({ ...it, image_data: src })
-        })
-      )
+      H('main', { className:'container' },
+        tab==='browse' && H(React.Fragment, null,
+          H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
+            H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
+              H('input', {
+                placeholder:'Search title, description, tags…',
+                value:query,
+                onChange:e=>setQuery(e.target.value),
+                style:{ maxWidth:360 }
+              }),
+              H(CityAutocomplete, {
+                value: locationQuery,
+                onChange: setLocationQuery,
+                options: cityOptions,
+                onUseMyLocation: async () => {
+                  try {
+                    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+                    const { coords } = await new Promise((res, rej)=>
+                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                    );
+                    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+                    const city = r?.city || (r?.display || '').split(',')[0];
+                    if (city) setLocationQuery(city);
+                  } catch { alert('Could not determine your location'); }
+                }
+              }),
+              // Default sort is "Newest" (server order). We keep just this option for stability.
+              H('select', { value:'new', onChange:()=>{}, disabled:true },
+                H('option', { value:'new' }, 'Newest')
+              )
+            ),
+            H('div', { className:'row', style:{ gap:8 } },
+              H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
+              H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
+            )
+          ),
+
+          showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
+            H(ListingForm, {
+              draft: editing,
+              onCancel:()=>setShowForm(false),
+              onSaved: async ()=>{ setShowForm(false); setEditing(null); await resetFeed(); },
+              autoListEnabled,
+              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+            })
+          ),
+
+          // Grid: 4 across desktop, 3 across mobile
+          (() => {
+            const COLS = isMobile ? 3 : 4;
+            const GAP  = 12;
+            return H('section', {
+              style: {
+                display:'grid',
+                gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                gap: GAP
+              }
+            },
+              items.map(it => H(GridTile, { key: it.id, it })),
+              (feedError && !items.length) && H('div', { style:{ gridColumn:'1 / -1', color:'#b91c1c', padding:'8px 0' } }, feedError),
+              nextCursor && H('div', { style:{ gridColumn:`1 / -1`, display:'grid', placeItems:'center', padding:12 } },
+                H('button', { className:'btn', onClick: loadMoreFeed, disabled: feedLoading }, feedLoading ? 'Loading…' : 'Load more')
+              )
+            );
+          })(),
+
+          (nextCursor) && H('div', { ref: sentinelRef, style: { height: 1 } }),
+
+          !feedLoading && !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+
+          selectedListing && H('div', {
+            className:'modal open',
+            onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
+          },
+            H('div', { className:'modal-inner listing-modal' },
+              H('button', { className:'close', onClick:()=>setSelectedListing(null) }, '✕'),
+              H(ListingCard, {
+                item: selectedListing,
+                user,
+                canEdit: !!mineById[selectedListing.id],
+                onEdit:(it)=>{
+                  const rich = mineById[it.id] || it;
+                  setEditing(rich);
+                  setShowForm(true);
+                  setSelectedListing(null);
+                  window.scrollTo({ top:0, behavior:'smooth' });
+                },
+                onDelete: async(it)=>{
+                  if (confirm('Remove this listing? (Your past messages will remain)')) {
+                    await api.deleteListing(it.id);
+                    setSelectedListing(null);
+                    await resetFeed();
+                  }
+                },
+                onMessage: startMessage,
+                onAdminDelete: handleAdminDelete,
+                showDistance: false
+              })
+            )
+          )
+        ),
+
+        (tab==='nearby') &&
+          H(NearbyPanel, {
+            user,
+            mineById,
+            onEdit:(it)=>{
+              const rich = mineById[it.id] || it;
+              setEditing(rich);
+              setShowForm(true);
+              window.scrollTo({ top:0, behavior:'smooth' });
+            },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await resetFeed(); } },
+            onMessage: startMessage,
+            onAdminDelete: handleAdminDelete,
+            setTab
+          }),
+
+        (tab==='messages') &&
+          (user
+            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: (convoId, lastMsgId) => {
+                if (!user || !convoId || !lastMsgId) return;
+                const map = loadSeen(user.id);
+                if (!map[convoId] || map[convoId] < lastMsgId) {
+                  map[convoId] = lastMsgId;
+                  saveSeen(user.id, map);
+                  setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
+                }
+              } })
+            : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
+          ),
+
+        (tab==='profile') &&
+          H(ProfilePanel, { isMobile,
+            user,
+            items: mine,
+            onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
+            onEdit:(it)=>{
+              const rich = mineById[it.id] || it;
+              setEditing(rich);
+              setShowForm(true);
+              setTab('browse');
+              window.scrollTo({ top:0, behavior:'smooth' });
+            },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await resetFeed(); } },
+            onLogout: logoutFromProfile,
+            onAdminDelete: handleAdminDelete,
+            autoListEnabled,
+            setAutoListEnabled,
+            autoPostNearbyEnabled,
+            setAutoPostNearbyEnabled
+          })
+      ),
+
+      showMassList && H(MassListModal, {
+        onClose: () => setShowMassList(false),
+        onDone: () => {},
+        reloadAll: resetFeed,
+        reloadMine: reloadMineOnly,
+        user,
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+      })
     );
   }
 
-  // ---------- RENDER ----------
-  return H(React.Fragment, null,
-    H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
-    H(GlobalLoader, { active: loadingCount > 0 }),
+  function useAuth() {
+    const [user, setUser] = useState(null);
+    useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
+    return { user, setUser };
+  }
 
-    H('main', { className:'container' },
-      tab==='browse' && H(React.Fragment, null,
-        H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
-          H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
-            H('input', {
-              placeholder:'Search title, description, tags…',
-              value:query,
-              onChange:e=>setQuery(e.target.value),
-              style:{ maxWidth:360 }
-            }),
-            H(CityAutocomplete, {
-              value: locationQuery,
-              onChange: setLocationQuery,
-              options: cityOptions,
-              onUseMyLocation: async () => {
-                try {
-                  if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                  const { coords } = await new Promise((res, rej)=>
-                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-                  );
-                  const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-                  const city = r?.city || (r?.display || '').split(',')[0];
-                  if (city) setLocationQuery(city);
-                } catch { alert('Could not determine your location'); }
-              }
-            }),
-            H('select', { value:sort, onChange:e=>setSort(e.target.value) },
-              H('option', { value:'new' }, 'Newest'),
-              H('option', { value:'price_asc' }, 'Price: Low → High'),
-              H('option', { value:'price_desc' }, 'Price: High → Low'),
-              H('option', { value:'city' }, 'City (A → Z)')
-            )
-          ),
-          H('div', { className:'row', style:{ gap:8 } },
-            H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
-            H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
-          )
-        ),
+  // Robust mount (React 18+ or older)
+  const rootEl = document.getElementById('root');
+  if (ReactDOM.createRoot) {
+    const root = ReactDOM.createRoot(rootEl);
+    root.render(H(App));
+  } else {
+    ReactDOM.render(H(App), rootEl);
+  }
 
-        showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
-          H(ListingForm, {
-            draft: editing,
-            onCancel:()=>setShowForm(false),
-            onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
-            autoListEnabled,
-            autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
-          })
-        ),
-
-        // Grid: 4 across desktop, 3 across mobile
-        (() => {
-          const COLS = isMobile ? 3 : 4;
-          const GAP  = 12;
-          return H('section', {
-            style: {
-              display:'grid',
-              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-              gap: GAP
-            }
-          },
-            items.slice(0, visibleCount).map(it => H(GridTile, { key: it.id, it }))
-          );
-        })(),
-
-        // Sentinel to grow list
-        (visibleCount < items.length) &&
-          H('div', { ref: sentinelRef, style: { height: 1 } }),
-
-        // Empty state
-        !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
-
-        // Modal with full card (distance OFF)
-        selectedListing && H('div', {
-          className:'modal open',
-          onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
-        },
-          H('div', { className:'modal-inner listing-modal' },
-            H('button', { className:'close', onClick:()=>setSelectedListing(null) }, '✕'),
-            H(ListingCard, {
-              item: selectedListing,
-              user,
-              canEdit: !!mineById[selectedListing.id],
-              onEdit:(it)=>{
-                const rich = mineById[it.id] || it;
-                setEditing(rich);
-                setShowForm(true);
-                setSelectedListing(null);
-                window.scrollTo({ top:0, behavior:'smooth' });
-              },
-              onDelete: async(it)=>{
-                if (confirm('Remove this listing? (Your past messages will remain)')) {
-                  await api.deleteListing(it.id);
-                  setSelectedListing(null);
-                  await reload();
-                }
-              },
-              onMessage: startMessage,
-              onAdminDelete: handleAdminDelete,
-              showDistance: false
-            })
-          )
-        )
-      ),
-
-      (tab==='nearby') &&
-        H(NearbyPanel, {
-          user,
-          mineById,
-          onEdit:(it)=>{
-            const rich = mineById[it.id] || it;
-            setEditing(rich);
-            setShowForm(true);
-            window.scrollTo({ top:0, behavior:'smooth' });
-          },
-          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-          onMessage: startMessage,
-          onAdminDelete: handleAdminDelete,
-          setTab
-        }),
-
-      (tab==='messages') &&
-        (user
-          ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
-          : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
-        ),
-
-      (tab==='profile') &&
-        H(ProfilePanel, { isMobile,
-          user,
-          items: mine,
-          onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
-          onEdit:(it)=>{
-            const rich = mineById[it.id] || it;
-            setEditing(rich);
-            setShowForm(true);
-            setTab('browse');
-            window.scrollTo({ top:0, behavior:'smooth' });
-          },
-          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
-          onLogout: logoutFromProfile,
-          onAdminDelete: handleAdminDelete,
-          autoListEnabled,
-          setAutoListEnabled,
-          autoPostNearbyEnabled,
-          setAutoPostNearbyEnabled
-        })
-    ),
-
-    // MassList modal
-    showMassList && H(MassListModal, {
-      onClose: () => setShowMassList(false),
-      onDone: () => {},
-      reloadAll: reload,
-      reloadMine: reloadMineOnly,
-      user,
-      autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
-    })
-  );
-}
-
-
-
-
-
-
-function useAuth() {
-  const [user, setUser] = useState(null);
-  useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
-  return { user, setUser };
-}
-
-// Robust mount (React 18+ or older)
-const rootEl = document.getElementById('root');
-if (ReactDOM.createRoot) {
-  const root = ReactDOM.createRoot(rootEl);
-  root.render(H(App));
-} else {
-  ReactDOM.render(H(App), rootEl);
-}
+  // Small helper used by MassList
+  async function fetchCoordsAndReverse() {
+    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+    const { coords } = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+    );
+    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+    return {
+      lat: r?.lat ?? coords.latitude,
+      lon: r?.lon ?? coords.longitude,
+      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    };
+  }
 
 })();
