@@ -2112,19 +2112,42 @@ function App(){
 
   // ---------- VIRTUALIZED MASONRY ----------
   function useContainerSize(ref){
-    const [w, setW] = useState(0);
-    useEffect(() => {
-      if (!ref.current) return;
-      const el = ref.current;
-      const ro = new ResizeObserver(() => {
-        setW(el.clientWidth || 0);
-      });
-      ro.observe(el);
-      setW(el.clientWidth || 0);
-      return () => ro.disconnect();
-    }, [ref]);
-    return w;
-  }
+  const last = React.useRef(0);
+  const [w, setW] = React.useState(0);
+  const raf = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+
+    const measure = () => {
+      // getBoundingClientRect is a bit more resilient than clientWidth here
+      const next = Math.floor(el.getBoundingClientRect().width) || 0;
+      if (next > 0 && next !== last.current) {
+        last.current = next;
+        setW(next);
+      }
+      // If next is 0, ignore it to avoid collapsing the layout to 0 height.
+    };
+
+    const ro = new ResizeObserver(() => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+      raf.current = requestAnimationFrame(measure);
+    });
+
+    ro.observe(el);
+    measure(); // initial
+
+    return () => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+      ro.disconnect();
+    };
+  }, [ref]);
+
+  // Always return the last known good width (never 0 once we’ve measured).
+  return last.current || w;
+}
+
 
   function useRafScroll(){
     const [st, setSt] = useState({ top:0, height: window.innerHeight || 0 });
@@ -2147,105 +2170,108 @@ function App(){
   }
 
   function MasonryVirtual({ data, onOpen }){
-    const ref = useRef(null);
-    const width = useContainerSize(ref);
-    const { top:vpTop, height:vpH } = useRafScroll();
+  const ref = React.useRef(null);
+  const width = useContainerSize(ref);
+  const { top:vpTop, height:vpH } = useRafScroll();
 
-    // fixed columns (stable layout)
-    const COLS = isMobile ? 2 : 4;
-    const GUT  = 12;
-    const colW = width > 0 ? Math.floor((width - (COLS - 1) * GUT) / COLS) : 0;
+  const COLS = isMobile ? 2 : 4;
+  const GUT  = 12;
+  const colW = width > 0 ? Math.floor((width - (COLS - 1) * GUT) / COLS) : 0;
 
-    // compute layout (positions + total height), stable with fallback aspect ratios
-    const layout = useMemo(() => {
-      if (colW <= 0 || !Array.isArray(data)) return { pos: [], height: 0 };
-      const colHeights = new Array(COLS).fill(0);
-      const pos = data.map((it, idx) => {
-        // choose the shortest column
-        let col = 0;
-        for (let c=1; c<COLS; c++) if (colHeights[c] < colHeights[col]) col = c;
-        const x = col * (colW + GUT);
-        const h = Math.round(colW / (it.__ar || (4/3)));
-        const y = colHeights[col];
-        colHeights[col] += h + GUT;
-        return { idx, x, y, w: colW, h };
-      });
-      const height = Math.max(...colHeights, 0) - GUT; // drop last gutter
-      return { pos, height };
-    }, [data, colW]);
+  // Keep the last valid layout; do not set height to 0 during transient width=0 frames.
+  const [layout, setLayout] = React.useState({ pos: [], height: 0 });
 
-    // virtual window (overscan)
-    const containerTop = useMemo(() => {
-      // get container's page offset
-      if (!ref.current) return 0;
-      let y = 0, el = ref.current;
-      while (el) { y += el.offsetTop || 0; el = el.offsetParent; }
-      return y;
-    }, [width]); // recompute if width changes (good enough)
+  React.useEffect(() => {
+    if (colW <= 0 || !Array.isArray(data) || data.length === 0) return;
 
-    const overscan = 800; // px
-    const winTop = vpTop - containerTop - overscan;
-    const winBot = vpTop - containerTop + vpH + overscan;
+    const colHeights = new Array(COLS).fill(0);
+    const pos = data.map((it, idx) => {
+      // choose the shortest column
+      let col = 0;
+      for (let c = 1; c < COLS; c++) if (colHeights[c] < colHeights[col]) col = c;
 
-    const visibleIdx = useMemo(() => {
-      const out = [];
-      for (let i=0; i<layout.pos.length; i++){
-        const p = layout.pos[i];
-        if (p.y + p.h >= winTop && p.y <= winBot) out.push(p.idx);
-      }
-      return new Set(out);
-    }, [layout, winTop, winBot]);
+      const x = col * (colW + GUT);
+      const h = Math.round(colW / (it.__ar || (4/3)));
+      const y = colHeights[col];
+      colHeights[col] += h + GUT;
 
-    // make sure we trigger cover fetch for tiles entering the window
-    useEffect(() => {
-      for (const i of visibleIdx) {
-        const it = data[i];
-        if (!it) continue;
-        if (!it.__cover) ensureCover(it.id);
-      }
-    }, [visibleIdx, data]);
+      return { idx, x, y, w: colW, h };
+    });
 
-    // render only visible
-    return H('section', {
-      ref,
-      style: {
-        position:'relative',
-        height: Math.max(0, layout.height),
-        // give a stable background so content-visibility works better
-        background: 'transparent'
-      }
-    },
-      layout.pos.map(({ idx, x, y, w, h }) => {
-        if (!visibleIdx.has(idx)) return null;
-        const it = data[idx];
-        const src = it.__cover;
-        return H('div', {
-          key: it.id,
-          style: {
-            position:'absolute',
-            left: x, top: y, width: w, height: h,
-            borderRadius: 8,
-            overflow:'hidden',
-            background:'#f3f4f6',
-            contentVisibility:'auto',
-            contain:'layout paint size style'
-          }
-        },
-          src
-            ? H('img', {
-                src,
-                alt: it.title || 'Item',
-                loading:'lazy',
-                decoding:'async',
-                fetchPriority:'low',
-                style: { width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-                onClick: () => onOpen(it, src)
-              })
-            : null
-        );
-      })
-    );
-  }
+    const height = Math.max(0, Math.max(...colHeights) - GUT);
+    setLayout({ pos, height });
+  }, [data, colW]);
+
+  // Cache the container's page offset; recompute when width changes
+  const containerTopRef = React.useRef(0);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    containerTopRef.current = (window.scrollY || window.pageYOffset || 0) + rect.top;
+  }, [width]);
+
+  const overscan = 800; // px
+  const winTop = (vpTop - containerTopRef.current) - overscan;
+  const winBot = (vpTop - containerTopRef.current) + vpH + overscan;
+
+  const visibleIdx = React.useMemo(() => {
+    const out = [];
+    const arr = layout.pos;
+    for (let i = 0; i < arr.length; i++) {
+      const p = arr[i];
+      if (p.y + p.h >= winTop && p.y <= winBot) out.push(p.idx);
+    }
+    return new Set(out);
+  }, [layout, winTop, winBot]);
+
+  // Fetch covers only for tiles entering the window
+  React.useEffect(() => {
+    for (const i of visibleIdx) {
+      const it = data[i];
+      if (it && !it.__cover) ensureCover(it.id);
+    }
+  }, [visibleIdx, data]);
+
+  return H('section', {
+    ref,
+    style: {
+      position:'relative',
+      height: Math.max(0, layout.height),
+      background: 'transparent'
+    }
+  },
+    layout.pos.map(({ idx, x, y, w, h }) => {
+      if (!visibleIdx.has(idx)) return null;
+      const it = data[idx];
+      const src = it.__cover;
+      return H('div', {
+        key: it.id,
+        style: {
+          position:'absolute',
+          left: x, top: y, width: w, height: h,
+          borderRadius: 8,
+          overflow:'hidden',
+          background:'#f3f4f6',
+          contentVisibility:'auto',
+          contain:'layout paint size style'
+        }
+      },
+        src
+          ? H('img', {
+              src,
+              alt: it.title || 'Item',
+              loading:'lazy',
+              decoding:'async',
+              fetchPriority:'low',
+              style: { width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
+              onClick: () => onOpen(it, src)
+            })
+          : null
+      );
+    })
+  );
+}
+
 
   // ---------- RENDER ----------
   return H(React.Fragment, null,
