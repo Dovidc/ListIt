@@ -1,15 +1,42 @@
 // public/app.js
-// Listings page: thin-fetch + pagination (75/page) + lazy cover fetch
-// Keeps: S3-first uploads, AI helper, DMs w/ images, Nearby, MassList, Auto-list
+//
+// S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
+// Messages: paste/drag/attach images → S3 URLs (kept!)
+// Conversations list: red “×” delete button (kept!)
+// CHANGE: All listing fields optional EXCEPT at least one image.
+//         If price field empty/invalid, default to $0.00 and render the price in green.
+// NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
+// NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
+//      will AI-analyze and immediately create the listing + upload photos automatically.
+//      Includes “？” help modal with high-contrast text.
+// NEW: Auto-list sub-toggle: “Also post to Nearby.” When Auto-list is ON and this is enabled,
+//      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
+//
+// NEW (this file):
+// - Thin-fetch + pagination for the Listings tab (75 per page, default sort=Newest)
+//   * /api/listings uses ?noimg=1 (metadata only) with ?page=1&limit=75
+//   * Batch prewarm first covers via /api/listings/covers
+//   * Client guards against array OR {rows, hasNext, total, page} responses.
 
 (() => {
   const { useEffect, useMemo, useRef, useState } = React;
 
   // Device detection
+  // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
+  // - Matches iPhone/Android/Windows Phone
+  // - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
   function isMobileDevice() {
     const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
-    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) return true;
-    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) return true;
+
+    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
+      return true;
+    }
+
+    // iPadOS desktop UA workaround
+    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+      return true;
+    }
+
     return false;
   }
 
@@ -52,6 +79,184 @@
       );
     });
     return _coordsPromise;
+  }
+
+  // Arrange items so rows read left→right in a CSS multi-column layout
+  function interleaveByColumns(arr, cols) {
+    if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
+    const out = [];
+    for (let c = 0; c < cols; c++) {
+      for (let i = c; i < arr.length; i += cols) out.push(arr[i]);
+    }
+    return out;
+  }
+
+  // Read actual column-count from the masonry container (responds to CSS + inline styles)
+  function useColumnCount(ref, fallbackCols = 3) {
+    const [cols, setCols] = React.useState(fallbackCols);
+    React.useEffect(() => {
+      if (!ref.current) return;
+      const el = ref.current;
+      const read = () => {
+        const cs = getComputedStyle(el);
+        const n = parseInt(cs.columnCount, 10);
+        setCols(Number.isFinite(n) && n > 0 ? n : fallbackCols);
+      };
+      read();
+      const ro = new ResizeObserver(read);
+      ro.observe(el);
+      window.addEventListener('resize', read);
+      return () => { ro.disconnect(); window.removeEventListener('resize', read); };
+    }, [ref, fallbackCols]);
+    return cols;
+  }
+
+  // --- NEW: tiny helpers for virtualization (kept; used by Nearby) ---
+  function useElementWidth(ref) {
+    const [w, setW] = useState(0);
+    useEffect(() => {
+      if (!ref.current) return;
+      const el = ref.current;
+      const update = () => setW(el.clientWidth || 0);
+      update();
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      window.addEventListener('resize', update);
+      return () => { ro.disconnect(); window.removeEventListener('resize', update); };
+    }, [ref]);
+    return w;
+  }
+
+  function useWindowScrollY() {
+    const [y, setY] = useState(window.scrollY || 0);
+    useEffect(() => {
+      let ticking = false;
+      const onScroll = () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            setY(window.scrollY || 0);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+    return y;
+  }
+
+  // Compute absolute pageY of an element
+  function pageTop(el) {
+    const r = el.getBoundingClientRect();
+    return r.top + (window.scrollY || 0);
+  }
+
+  // --- NEW: robust response guards for listings / pagination ---
+  function normalizeListingsResponse(res, limit = 75) {
+    let rows = [];
+    if (Array.isArray(res)) rows = res;
+    else if (res && typeof res === 'object') {
+      if (Array.isArray(res.rows)) rows = res.rows;
+      else if (Array.isArray(res.items)) rows = res.items;
+      else if (Array.isArray(res.listings)) rows = res.listings;
+      else if (Array.isArray(res.data)) rows = res.data;
+    }
+    let hasNext = false;
+    if (res && typeof res === 'object') {
+      if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
+      else if (typeof res.next === 'boolean') hasNext = res.next;
+      else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
+        const shown = (res.page - 1) * limit + rows.length;
+        hasNext = shown < res.total;
+      } else {
+        hasNext = rows.length === limit;
+      }
+    } else {
+      hasNext = rows.length === limit;
+    }
+    return { rows, hasNext };
+  }
+  const asArray = (x) =>
+    Array.isArray(x) ? x
+    : (x && typeof x === 'object' && (Array.isArray(x.rows) || Array.isArray(x.items) || Array.isArray(x.listings) || Array.isArray(x.data)))
+      ? normalizeListingsResponse(x).rows
+      : [];
+
+  // --- NEW: zero-dependency virtualized masonry (kept; used by Nearby) ---
+  function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
+    const scrollY = useWindowScrollY();
+    const containerW = useElementWidth(containerRef);
+
+    const [heightMap, setHeightMap] = useState(() => Object.create(null)); // id->height
+    const registerHeight = React.useCallback((id, h) => {
+      if (!id || !Number.isFinite(h) || h <= 0) return;
+      setHeightMap(m => (m[id] === h ? m : { ...m, [id]: h }));
+    }, []);
+
+    const layout = useMemo(() => {
+      const cols = Math.max(1, columnCount || 1);
+      const gap = columnGap;
+      const w = Math.max(1, containerW);
+      const colW = (w - gap * (cols - 1)) / cols;
+
+      const colHeights = new Array(cols).fill(0);
+      const pos = new Array(items.length);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const h = heightMap[it.id] || estimateHeight;
+        // pick shortest column
+        let targetCol = 0;
+        for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
+        const top = colHeights[targetCol];
+        const left = (colW + gap) * targetCol;
+        colHeights[targetCol] = top + h + gap;
+        pos[i] = { top, left, width: colW, height: h };
+      }
+      const containerHeight = Math.max(...colHeights, 0);
+      return { positions: pos, containerHeight, colWidth: colW, gap };
+    }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
+
+    const viewport = useMemo(() => {
+      const el = containerRef.current;
+      if (!el) return { top: 0, bottom: 0 };
+      const cTop = pageTop(el);
+      const over = (window.innerHeight || 0) * overscanVH;
+      const top = (scrollY - cTop) - over;
+      const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
+      return { top, bottom };
+    }, [containerRef, scrollY, overscanVH]);
+
+    const visible = useMemo(() => {
+      const out = [];
+      const { positions } = layout;
+      if (!positions || positions.length === 0) return out;
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        if (!p) continue;
+        const pBottom = p.top + p.height;
+        if (pBottom >= viewport.top && p.top <= viewport.bottom) {
+          out.push({ index: i, item: items[i], pos: p });
+        }
+      }
+      return out;
+    }, [items, layout, viewport]);
+
+    return { ...layout, visible, registerHeight };
+  }
+
+  // --- Helper: fetch coords and reverse-geocode into a display string
+  async function fetchCoordsAndReverse() {
+    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+    const { coords } = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+    );
+    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+    return {
+      lat: r?.lat ?? coords.latitude,
+      lon: r?.lon ?? coords.longitude,
+      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    };
   }
 
   // --- Global Loader ---
@@ -103,14 +308,27 @@
       }, meta);
     },
 
-    // NEW: server pagination (75/page) + thin fetch
-    listAll({ q, loc, page = 1, limit = 75 } = {}, meta) {
+    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit }
+    listAll(a, b, meta) {
+      let q, loc, page, limit;
+      if (typeof a === 'object' && a !== null) {
+        q = a.q || '';
+        loc = a.loc || '';
+        page = a.page || 1;
+        limit = a.limit || 75;
+        meta = b || {};
+      } else {
+        q = a || '';
+        loc = b || '';
+        page = 1;
+        limit = 75;
+      }
       const params = new URLSearchParams();
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
-      params.set('noimg', '1');
-      params.set('limit', String(Math.max(1, Math.min(75, limit))));
-      params.set('page', String(Math.max(1, page)));
+      params.set('noimg', '1'); // thin-fetch
+      params.set('page', String(page));
+      params.set('limit', String(limit));
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
       return this._fetch(url, { method: 'GET' }, meta);
     },
@@ -139,17 +357,18 @@
         body: JSON.stringify({ body, images })
       }, meta);
     },
+    // delete a conversation
     deleteConversation(id, meta) {
       return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
     },
 
-    // images
     getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
+
+    // NEW: batch cover prewarm
     getCoversBatch(ids = [], meta) {
-      const uniq = Array.from(new Set(ids.map(Number).filter(Number.isFinite)));
-      if (!uniq.length) return Promise.resolve([]);
-      const url = `/api/listings/covers?ids=${encodeURIComponent(uniq.join(','))}`;
-      return this._fetch(url, { method: 'GET' }, meta);
+      const idsStr = Array.from(new Set(ids.filter(Number.isFinite))).slice(0, 200).join(',');
+      if (!idsStr) return Promise.resolve([]);
+      return this._fetch(`/api/listings/covers?ids=${encodeURIComponent(idsStr)}`, { method:'GET' }, meta);
     },
 
     aiAnalyze({ images, hint }, meta) {
@@ -187,32 +406,46 @@
   async function uploadOneImage(listingId, file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
+
+    // PUT bytes to S3
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
+
+    // measure image dims
     const dims = await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
       img.onerror = () => resolve({ w: null, h: null });
       img.src = URL.createObjectURL(file);
     });
+
     await api.finalizeUpload({
       listingId,
       key: sig.Key,
       url: sig.publicUrl,
       width: dims.w, height: dims.h, bytes: file.size
     });
+
     return sig.publicUrl;
   }
+
   async function uploadFilesForListing(listingId, files = []) {
     const out = [];
-    for (const f of files) out.push(await uploadOneImage(listingId, f));
+    for (const f of files) {
+      const url = await uploadOneImage(listingId, f);
+      out.push(url);
+    }
     return out;
   }
+
+  // Upload a single file to S3 (for messages; no finalize, just return public URL)
   async function uploadOneMessageImage(file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig.error) throw new Error(sig.error);
+
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
+
     return sig.publicUrl;
   }
 
@@ -242,7 +475,7 @@
     );
   }
 
-  // --- City Autocomplete ---
+  // --- City Autocomplete (unchanged) ---
   function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
     const [open, setOpen] = useState(false);
     const [hover, setHover] = useState(0);
@@ -250,8 +483,9 @@
 
     const list = useMemo(() => {
       const v = (value || '').trim().toLowerCase();
-      if (!v) return options.slice(0, 8);
-      return options.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
+      const opts = Array.isArray(options) ? options : [];
+      if (!v) return opts.slice(0, 8);
+      return opts.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
     }, [value, options]);
 
     function pick(s) {
@@ -260,14 +494,19 @@
       setHover(0);
       setTimeout(() => boxRef.current && boxRef.current.querySelector('input')?.focus(), 0);
     }
+
     function onKeyDown(e) {
-      if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) { setOpen(true); return; }
+      if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) {
+        setOpen(true);
+        return;
+      }
       if (!open) return;
       if (e.key === 'ArrowDown') { e.preventDefault(); setHover(h => Math.min(h + 1, list.length - 1)); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setHover(h => Math.max(h - 1, 0)); }
       else if (e.key === 'Enter') { e.preventDefault(); if (list[hover]) pick(list[hover]); }
       else if (e.key === 'Escape') { setOpen(false); }
     }
+
     function onFocus() { if (list.length) setOpen(true); }
     function onBlur() { setTimeout(() => setOpen(false), 100); }
 
@@ -301,9 +540,12 @@
     );
   }
 
-  // --- Header ---
+  // --- Header (profile tab shows @username) ---
   function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
+    // Label for the profile tab: @username if logged in, otherwise "Profile"
     const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+
+    // Right-side area (remove the username text here to avoid duplication)
     const authArea = user
       ? H('div', { className: 'row', style: { gap: 8 } },
           !!user.is_admin && H('button', {
@@ -339,6 +581,7 @@
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
           isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
           messagesBtn,
+          // Profile tab now shows @username (or email) and opens the same profile/settings as before
           H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
         ),
         authArea
@@ -430,15 +673,16 @@
     return arr && arr[0];
   }
 
-  // --- Auto-list help modal ---
+  // --- Auto-list help modal (clean single-column layout) ---
   function AutoListHelpModal({ onClose }) {
     return ReactDOM.createPortal(
       H('div', {
         className: 'modal open',
         onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
-        style: { background: 'rgba(0,0,0,0.5)' }
+        style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
       },
         H('div', {
+          // force single column and good contrast regardless of global CSS
           className: 'modal-inner',
           style: {
             display: 'block',
@@ -451,14 +695,22 @@
             lineHeight: 1.55
           }
         },
+          // header row with title + close
           H('div', {
-            style: { display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8
+            }
           },
             H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
             H('button', {
               type: 'button',
               onClick: onClose,
               'aria-label': 'Close',
+              // avoid relying on .close class so we don’t inherit odd positioning
               style: {
                 width: 28, height: 28, borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -469,14 +721,34 @@
               }
             }, '✕')
           ),
-          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, 'When enabled, Auto-List will:'),
-          H('ul', { style: { paddingLeft: 18, margin: '0 0 12px', listStyle: 'disc' } },
+
+          // intro
+          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
+            'When enabled, Auto-List will:'
+          ),
+
+          // bullets
+          H('ul', {
+            style: {
+              paddingLeft: 18,
+              margin: '0 0 12px',
+              listStyle: 'disc'
+            }
+          },
             H('li', null, 'Allow AI to suggest title, tags and price .'),
             H('li', null, 'Immediately create the listing for you.'),
             H('li', null, 'Upload all selected photos to that listing.')
           ),
-          H('div', { style: { fontSize: 13, opacity: 0.9, borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 10 } },
-            'You can still edit or delete the listing afterwards.')
+
+          // footnote
+          H('div', {
+            style: {
+              fontSize: 13,
+              opacity: 0.9,
+              borderTop: '1px solid rgba(255,255,255,0.12)',
+              paddingTop: 10
+            }
+          }, 'You can still edit or delete the listing afterwards.')
         )
       ),
       document.body
@@ -485,8 +757,8 @@
 
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
-    const [files, setFiles] = useState([]);
-    const [existingUrls, setExistingUrls] = useState([]);
+    const [files, setFiles] = useState([]); // Files to upload to S3
+    const [existingUrls, setExistingUrls] = useState([]); // Show current images (read-only)
 
     const [title, setTitle] = useState(draft?.title || '');
     const [description, setDescription] = useState(draft?.description || '');
@@ -496,6 +768,7 @@
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
+    // auto-list guard
     const autoRunning = useRef(false);
     const [autoBusy, setAutoBusy] = useState(false);
 
@@ -509,6 +782,7 @@
 
     const isMobile = isMobileDevice();
 
+    // Load current images (read-only list of URLs/base64; new uploads use files[])
     useEffect(() => {
       (async () => {
         if (draft?.id) {
@@ -558,7 +832,7 @@
     // Auto-list: when ON, creating a brand-new listing & user added photos → AI + create + upload
     useEffect(() => {
       if (!autoListEnabled) return;
-      if (draft) return;
+      if (draft) return;            // only for new listings
       if (!files || files.length === 0) return;
       if (autoRunning.current) return;
 
@@ -566,6 +840,7 @@
         autoRunning.current = true;
         setAutoBusy(true);
         try {
+          // AI best-effort
           let ai = {};
           try {
             const dataUrls = await filesToDataUrls(files);
@@ -575,16 +850,16 @@
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
+          // Nearby preference (sub-toggle)
           let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
           if (autoPostNearbyEnabled) {
             try {
-              const c = await getUserCoordsOnce();
-              if (c) {
-                const r = await api.reverseGeocode(c.lat, c.lon);
-                enableNearbyAuto = 1;
-                latAuto = r?.lat ?? c.lat; lonAuto = r?.lon ?? c.lon; locAuto = r?.display || '';
-              }
-            } catch (_) { enableNearbyAuto = 0; }
+              const c = await fetchCoordsAndReverse();
+              enableNearbyAuto = 1;
+              latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+            } catch (_) {
+              enableNearbyAuto = 0;
+            }
           }
 
           const payload = {
@@ -600,6 +875,7 @@
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('Create failed');
           await uploadFilesForListing(created.id, files);
+
           onSaved?.();
         } catch (err) {
           console.error('Auto-list failed:', err);
@@ -613,18 +889,23 @@
     async function submit(e){
       e.preventDefault();
       try {
+        // --- CHANGE: Only requirement is at least one image (either existing or new files)
         const hasAnyImage = (existingUrls && existingUrls.length > 0) || (files && files.length > 0);
-        if (!hasAnyImage) { alert('Please add at least one image.'); return; }
+        if (!hasAnyImage) {
+          alert('Please add at least one image.');
+          return;
+        }
 
+        // Default price to $0.00 if empty/invalid
         const parsedPrice = Number(priceVal);
         const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
         const payload = {
-          title: String(title || '').trim(),
-          description: String(description || '').trim(),
-          location: String(location || '').trim(),
-          price: safePrice,
-          tags,
+          title: String(title || '').trim(),          // optional
+          description: String(description || '').trim(), // optional
+          location: String(location || '').trim(),    // optional
+          price: safePrice,                           // default 0
+          tags,                                       // optional
           enable_nearby: enableNearby ? 1 : 0,
         };
         if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
@@ -652,6 +933,7 @@
 
     return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
 
+      // Auto-list overlay while it works
       autoBusy && H('div', {
         style:{
           position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
@@ -659,7 +941,10 @@
         }
       }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
 
+      // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
+
+      // Existing images (read-only; not deletable here)
       (existingUrls.length > 0) && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
         ...existingUrls.map((src, i) =>
           H('img', { key:i, src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } })
@@ -748,11 +1033,93 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
+  // SmartImage v2.1 (kept; not used in main grid now)
+  function SmartImage({
+    src,
+    alt = '',
+    br = 8,
+    onClick,
+    dropFar = true,
+    initialAR = 4/3,
+    lockAR = true
+  }) {
+    const wrapRef = React.useRef(null);
+    const imgRef  = React.useRef(null);
+
+    const [activeSrc, setActiveSrc] = React.useState('');
+    const [ratio, setRatio]         = React.useState(initialAR);
+
+    React.useEffect(() => {
+      const el = wrapRef.current; if (!el) return;
+      let clearTo = null;
+
+      const io = new IntersectionObserver((entries) => {
+        const e = entries[0]; if (!e) return;
+
+        if (e.isIntersecting) {
+          setActiveSrc(src);
+        } else if (dropFar) {
+          const top = e.boundingClientRect.top;
+          const bottom = e.boundingClientRect.bottom;
+          const dist = top > 0 ? top : -bottom; // positive px from viewport
+          if (dist > window.innerHeight * 3.5) {
+            clearTimeout(clearTo);
+            clearTo = setTimeout(() => setActiveSrc(''), 120);
+          }
+        }
+      }, { root: null, rootMargin: '600px 0px' });
+
+      io.observe(el);
+      return () => { clearTimeout(clearTo); io.disconnect(); };
+    }, [src, dropFar]);
+
+    function onLoad(e) {
+      if (lockAR) return;
+      const w = e.currentTarget.naturalWidth || 0;
+      const h = e.currentTarget.naturalHeight || 0;
+      if (w && h) setRatio(w / h);
+    }
+
+    return H('div', {
+      ref: wrapRef,
+      style: {
+        position: 'relative',
+        width: '100%',
+        aspectRatio: `${ratio} / 1`,
+        borderRadius: br,
+        overflow: 'hidden',
+        background: '#f3f4f6'
+      }
+    },
+      activeSrc && H('img', {
+        ref: imgRef,
+        src: activeSrc,
+        alt,
+        loading: 'lazy',
+        decoding: 'async',
+        fetchpriority: 'low',
+        onLoad,
+        style: {
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
+          cursor: onClick ? 'pointer' : 'default'
+        },
+        onClick
+      })
+    );
+  }
+
   // --- Listing Card ---
   function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
+
     const [open, setOpen] = useState(false);
     const [images, setImages] = useState(null);
     const [idx, setIdx] = useState(0);
+
     const [derivedMeters, setDerivedMeters] = React.useState(null);
 
     React.useEffect(() => {
@@ -828,7 +1195,7 @@
     );
   }
 
-  // --- Messages (unchanged core) ---
+  // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
   function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
@@ -836,10 +1203,11 @@
     const [activeId, setActiveId] = useState(initialActiveId || null);
     const [msgs, setMsgs] = useState([]);
     const [input, setInput] = useState('');
-    const [imgFiles, setImgFiles] = useState([]);
+    const [imgFiles, setImgFiles] = useState([]); // attachments (File[] for S3 upload)
     const fileRef = useRef();
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
     const pollRef = useRef(null);
+    const dropRef = useRef();
 
     function addFiles(filesLike) {
       const MAX_EACH_MB = 20;
@@ -854,25 +1222,36 @@
       }
       setImgFiles(next);
     }
-    function pickImgs(e){ addFiles(e.target.files); if (fileRef.current) fileRef.current.value = ''; }
+
+    function pickImgs(e){
+      addFiles(e.target.files);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+
     function onComposerPaste(e){
       const cd = e.clipboardData;
       if (!cd) return;
       const imageItems = Array.from(cd.items || []).filter(it => it.kind === 'file' && it.type.startsWith('image/'));
-      if (imageItems.length === 0) return;
+      if (imageItems.length === 0) return; // let normal text paste
       e.preventDefault();
+
       const files = imageItems
         .map(it => it.getAsFile())
         .filter(Boolean)
         .map(blob => new File([blob], `pasted-${Date.now()}-${Math.random().toString(36).slice(2)}.${(blob.type.split('/')[1]||'png')}`, { type: blob.type }));
       addFiles(files);
+
       const txt = cd.getData('text/plain');
       if (txt) setInput(v => (v ? v + ' ' : '') + txt);
     }
+
+    function onDragOver(e){ e.preventDefault(); }
+    function onDrop(e){ e.preventDefault(); addFiles(e.dataTransfer?.files || []); }
     function removeImg(i){ const n = [...imgFiles]; n.splice(i,1); setImgFiles(n); }
     function openLightbox(images, index=0){ setLb({ open:true, images, index }); }
 
     useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
+
     async function fetchConvos(){ try{ setConvos(await api.listConversations({ silent:true })); } catch(_){} }
     async function fetchMsgs(){
       if(!activeId) return;
@@ -906,8 +1285,14 @@
     async function send(){
       const bodyTrim = (input || '').trim();
       if(!bodyTrim && imgFiles.length === 0) return;
+
+      // Upload images to S3 first
       const urls = [];
-      for (const f of imgFiles) urls.push(await uploadOneMessageImage(f));
+      for (const f of imgFiles) {
+        const url = await uploadOneMessageImage(f);
+        urls.push(url);
+      }
+
       await api.sendMessage(activeId, bodyTrim, urls);
       setInput('');
       setImgFiles([]);
@@ -915,6 +1300,16 @@
       await fetchConvos();
     }
 
+    async function revealPaypal() {
+      if (!activeId) return;
+      if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
+      const msg = `My PayPal address: ${user.paypal_email}`;
+      await api.sendMessage(activeId, msg, []);
+      await fetchMsgs();
+      await fetchConvos();
+    }
+
+    // ------- FIX: build decorated list first, THEN compute active/canReveal -------
     const seenMap = loadSeen(user?.id);
     const convosDecorated = (convos || [])
       .map(c => {
@@ -942,6 +1337,7 @@
       user?.id === active.listing_owner_id &&
       user?.paypal_email
     );
+    // ---------------------------------------------------------------------------
 
     return H('div', { className:'split' },
       H('aside', { className:'card sidebar', style:{ padding:12 } },
@@ -1013,7 +1409,10 @@
 
         activeId && H('div', {
           className:'row',
-          style:{ alignItems:'flex-end', gap:8 }
+          style:{ alignItems:'flex-end', gap:8 },
+          ref: dropRef,
+          onDragOver,
+          onDrop
         },
           H('input', {
             type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
@@ -1029,14 +1428,7 @@
             onKeyDown:e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } },
             style:{ flex:1, resize:'vertical' }
           }),
-          canRevealPaypal && H('button', { className:'btn', onClick: async () => {
-            if (!activeId) return;
-            if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
-            const msg = `My PayPal address: ${user.paypal_email}`;
-            await api.sendMessage(activeId, msg, []);
-            await fetchMsgs();
-            await fetchConvos();
-          } }, 'Reveal PayPal address'),
+          canRevealPaypal && H('button', { className:'btn', onClick: revealPaypal }, 'Reveal PayPal address'),
           H('button', { className:'btn primary', onClick:send }, 'Send')
         ),
 
@@ -1051,12 +1443,43 @@
     );
   }
 
-  // --- Nearby Panel (unchanged from your build logic) ---
+  // --- Nearby Panel (unchanged) ---
   function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
     const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
     const [selected, setSelected] = useState(null);
+
+    // NEW: masonry container ref + live column-count
+    const masonRef = useRef(null);
+    const [nearbyCols, setNearbyCols] = useState(3);
+    useEffect(() => {
+      if (!masonRef.current) return;
+      const el = masonRef.current;
+
+      const readCols = () => {
+        const cs = getComputedStyle(el);
+        const n = parseInt(cs.columnCount, 10);
+        setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
+      };
+      readCols();
+
+      const ro = new ResizeObserver(readCols);
+      ro.observe(el);
+      window.addEventListener('resize', readCols);
+      return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
+    }, []);
+
+    // NEW: interleave helper (row-wise ordering for CSS column masonry)
+    const interleaved = useMemo(() => {
+      const arr = items || [];
+      if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
+      const out = [];
+      for (let c = 0; c < nearbyCols; c++) {
+        for (let i = c; i < arr.length; i += nearbyCols) out.push(arr[i]);
+      }
+      return out;
+    }, [items, nearbyCols]);
 
     async function load() {
       if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
@@ -1069,10 +1492,15 @@
         setItems(res || []);
       } catch (e) {
         alert('Could not load nearby listings');
-      } finally { setBusy(false); }
+      } finally {
+        setBusy(false);
+      }
     }
 
     useEffect(() => { load(); }, [radius]);
+
+    const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
+    useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
 
     function handleEdit(it) {
       setSelected(null);
@@ -1099,8 +1527,9 @@
         )
       ),
 
-      H('section', { className:'masonry' },
-        items.map(item =>
+      // NOTE: add ref so we can read computed column-count
+      H('section', { className:'masonry', ref: masonRef },
+        interleaved.map(item =>
           H('div', { key:item.id, className:'masonry-item' },
             H('img', {
               src: item.image_data,
@@ -1133,7 +1562,7 @@
     );
   }
 
-  // --- MassList Modal (unchanged core) ---
+  // --- MassList Modal (unchanged) ---
   function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
@@ -1162,25 +1591,25 @@
       setProgress({ done: 0, total: files.length, failed: 0 });
 
       let failed = 0;
+
+      // Try to get coords ONCE if auto-post-nearby is enabled
       let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
       if (autoPostNearbyEnabled) {
         try {
-          const c = await getUserCoordsOnce();
-          if (c) {
-            const r = await api.reverseGeocode(c.lat, c.lon);
-            sharedNearby = { ok:true, lat:r?.lat ?? c.lat, lon:r?.lon ?? c.lon, display:r?.display || '' };
-          }
+          const c = await fetchCoordsAndReverse();
+          sharedNearby = { ok:true, lat:c.lat, lon:c.lon, display:c.display };
         } catch (_) { sharedNearby = { ok:false, lat:null, lon:null, display:'' }; }
       }
 
       for (let i=0; i<files.length; i++){
         const f = files[i];
         try {
+          // AI analysis per image (best effort)
           let ai = {};
           try {
             const b64 = await fileToDataUrl(f);
             ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
-          } catch (_) {}
+          } catch (_) { /* ignore AI failure; fallback below */ }
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
@@ -1208,6 +1637,7 @@
       try { await reloadAll(); } catch {}
 
       setBusy(false);
+
       const stats = { total: files.length, created: files.length - failed, failed };
       onDone && onDone(stats);
       onClose && onClose();
@@ -1240,6 +1670,7 @@
           )
         ),
 
+        // Progress overlay
         busy && H('div', {
           style:{
             position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
@@ -1259,7 +1690,7 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (restored) ---
+  // --- Profile Panel (unchanged; defined to avoid “ProfilePanel is not defined”) ---
   function ProfilePanel({
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
     autoListEnabled, setAutoListEnabled,
@@ -1272,6 +1703,7 @@
     async function savePaypal() {
       const r = await api.updatePaypalEmail((paypalEmail || '').trim());
       if (r?.error) { alert(r.error); return; }
+      // refresh global user so Messages sees the latest email
       const me = await api.me({ silent:true });
       AppNav.setUser(me);
       alert('Saved.');
@@ -1291,6 +1723,7 @@
             H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
             H('div', { className:'muted' }, 'Your account')
           ),
+          // Right controls: Auto-list toggle • New listing • Log out
           H('div', { className:'row', style:{ gap:12, alignItems:'center', flexWrap:'wrap' } },
             H('label', { className:'row', style:{ gap:8, alignItems:'center', padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:12 } },
               H('input', {
@@ -1318,6 +1751,7 @@
           )
         ),
 
+        // Slide-out child when parent is on (mobile-only)
         (isMobile && H('div', {
             style: {
               marginTop: 10,
@@ -1382,23 +1816,24 @@
     );
   }
 
-  // --- App ---
+  // ---------- App ----------
+  const PAGE_SIZE = 75;
+
   function App(){
     const { user, setUser } = useAuth();
     const [tab, setTab] = useState('browse');
-
-    // Pagination: 75 per page
-    const PAGE_SIZE = 75;
-    const [page, setPage] = useState(1);
-    const [hasNext, setHasNext] = useState(false);
-
-    const [all, setAll] = useState([]);
+    const [all, setAll] = useState([]);      // current page rows (thin)
     const [mine, setMine] = useState([]);
     const [query, setQuery] = useState('');
     const [locationQuery, setLocationQuery] = useState('');
-    const [sort, setSort] = useState('new'); // restored dropdown, default newest
-
+    const [sort, setSort] = useState('new'); // default: Newest
     const [showForm, setShowForm] = useState(false);
+
+    // Pagination
+    const [page, setPage] = useState(1);
+    const [hasNext, setHasNext] = useState(false);
+
+    // Modal selection for full listing card
     const [selectedListing, setSelectedListing] = useState(null);
     useEffect(() => {
       if (!selectedListing) return;
@@ -1444,59 +1879,48 @@
 
     // Debounce: search + city
     const [debouncedQuery, setDebouncedQuery] = useState(query);
-    useEffect(() => { const t = setTimeout(() => setDebouncedQuery(query), 250); return () => clearTimeout(t); }, [query]);
+    useEffect(() => {
+      const t = setTimeout(() => setDebouncedQuery(query), 250);
+      return () => clearTimeout(t);
+    }, [query]);
 
     const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-    useEffect(() => { const t = setTimeout(() => setDebouncedLocation(locationQuery), 500); return () => clearTimeout(t); }, [locationQuery]);
+    useEffect(() => {
+      const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
+      return () => clearTimeout(t);
+    }, [locationQuery]);
 
-    // Reset to page 1 whenever filters change
+    // Reset to page 1 when filters/sort change
     useEffect(() => { setPage(1); }, [debouncedQuery, debouncedLocation, sort]);
-
-    // Persistent cover cache: coverById[id] = { url, w, h } | null
-    const [coverById, setCoverById] = useState(() => (Object.create(null)));
-    async function ensureCover(id){
-      if (id == null) return;
-      if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
-      try {
-        // ask batch endpoint when possible (we also bulk below)
-        const arr = await api.getListingImages(id, { silent:true });
-        let obj = null;
-        if (Array.isArray(arr) && arr.length) {
-          obj = typeof arr[0] === 'string'
-            ? { url: arr[0], w: null, h: null }
-            : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
-        }
-        setCoverById(m => ({ ...m, [id]: obj }));
-      } catch {
-        setCoverById(m => ({ ...m, [id]: null }));
-      }
-    }
 
     // Reload helpers
     async function reloadMineOnly(){
       if (!user) { setMine([]); return; }
       const m = await api.listMine();
-      setMine(m||[]);
+      setMine(asArray(m)||[]);
     }
 
     const reloadReqRef = useRef(0);
     async function reload(){
       const req = ++reloadReqRef.current;
       try {
-        const a = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE });
+        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE });
+
         if (req !== reloadReqRef.current) return;
-        const rows = a || [];
-        setAll(rows);
-        setHasNext(rows.length === PAGE_SIZE); // if fewer than limit, no next
+
+        const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
+        setAll(rows || []);
+        setHasNext(!!hasNext);
+
         if (user) {
-          try { const m = await api.listMine({ silent: true }); setMine(m || []); } catch {}
+          try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
         } else {
           setMine([]);
         }
 
-        // prewarm covers using the batch endpoint
+        // prewarm a bunch of covers
         try {
-          const ids = rows.slice(0, 24).map(r => r.id);
+          const ids = (rows || []).slice(0, 24).map(r => r.id);
           const covers = await api.getCoversBatch(ids, { silent: true });
           if (Array.isArray(covers) && covers.length) {
             const patch = {};
@@ -1504,7 +1928,6 @@
             setCoverById(prev => ({ ...prev, ...patch }));
           }
         } catch {}
-
       } catch (e) {
         console.error('reload failed', e);
         setAll([]); setHasNext(false);
@@ -1512,6 +1935,8 @@
     }
 
     useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page]);
+
+    useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
     // Unread poll
     async function recomputeUnread() {
@@ -1528,37 +1953,110 @@
         setUnreadCount(n);
       } catch {}
     }
-    useEffect(() => { recomputeUnread(); const t = setInterval(recomputeUnread, 3000); return () => clearInterval(t); }, [user?.id]);
+    useEffect(() => {
+      recomputeUnread();
+      const t = setInterval(recomputeUnread, 3000);
+      return () => clearInterval(t);
+    }, [user?.id]);
 
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
       if (!isMobile && tab === 'nearby') setTab('browse');
     }, [user, tab, isMobile]);
 
-    // Apply sort to the current page (client-side for non-"new")
+    // Sort feed (default: keep newest as returned by server)
     const feed = useMemo(()=>{
-      const list = [...(all || [])];
-      if (sort === 'price_asc') list.sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
-      else if (sort === 'price_desc') list.sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
-      else if (sort === 'city') {
-        list.sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
-      } else list.sort((a,b)=>b.id-a.id); // newest
-      return list;
+      const base = asArray(all);
+      if (sort === 'price_asc') {
+        return base.slice().sort((a,b)=> (Number(a.price||0) - Number(b.price||0)) );
+      } else if (sort === 'price_desc') {
+        return base.slice().sort((a,b)=> (Number(b.price||0) - Number(a.price||0)) );
+      } else if (sort === 'city') {
+        return base.slice().sort((a,b)=> (a.location||'').toLowerCase().localeCompare((b.location||'').toLowerCase()));
+      }
+      // 'new' — already newest from server
+      return base;
     }, [all, sort]);
 
-    // Build render items with best cover
+    // City options
+    const cityOptions = useMemo(() => {
+      const set = new Set();
+      asArray(all).forEach(l => {
+        const raw = (l.location || '').trim();
+        if (!raw) return;
+        const city = raw.split(',')[0].trim();
+        if (city) set.add(city);
+      });
+      return Array.from(set).sort((a,b)=> a.localeCompare(b));
+    }, [all]);
+
+    async function startMessage(item){
+      if(!user){ alert('Log in to message a seller.'); return; }
+      if(user.id === item.user_id){ alert('This is your listing.'); return; }
+      const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
+      setActiveConvoId(convo.id);
+      setTab('messages');
+    }
+
+    function handleSeen(convoId, lastMsgId){
+      if (!user || !convoId || !lastMsgId) return;
+      const map = loadSeen(user.id);
+      if (!map[convoId] || map[convoId] < lastMsgId) {
+        map[convoId] = lastMsgId;
+        saveSeen(user.id, map);
+        setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
+      }
+    }
+
+    async function handleAdminDeleteAll(){
+      await api.adminDeleteAll();
+      setAll([]); setMine([]);
+    }
+    function handleAdminDelete(listingId) {
+      setAll(prev => asArray(prev).filter(x => x.id !== listingId));
+      setMine(prev => (prev||[]).filter(x => x.id !== listingId));
+    }
+
+    async function logoutFromProfile(){
+      await api.logout();
+      setUser(null);
+      setTab('browse');
+    }
+
+    // Persistent cover cache: coverById[id] = { url, w, h } | null
+    const [coverById, setCoverById] = useState(() => (Object.create(null)));
+    async function ensureCover(id){
+      if (id == null) return;
+      if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
+      try {
+        const arr = await api.getListingImages(id, { silent:true });
+        let obj = null;
+        if (Array.isArray(arr) && arr.length) {
+          obj = typeof arr[0] === 'string'
+            ? { url: arr[0], w: null, h: null }
+            : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+        }
+        setCoverById(m => ({ ...m, [id]: obj }));
+      } catch {
+        setCoverById(m => ({ ...m, [id]: null }));
+      }
+    }
+
+    // Build render items with best cover + aspect ratio
     const items = useMemo(() => {
       return (feed || []).map(it => {
         const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
         const cached = coverById[it.id];
         const url = inline || cached?.url || '';
-        return { ...it, __cover:url };
+        const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
+        return { ...it, __cover:url, __ar: ar };
       });
     }, [feed, coverById]);
 
     // Grid tile (square)
     function GridTile({ it }) {
       const ref = useRef(null);
+
       useEffect(() => {
         const el = ref.current; if (!el) return;
         const io = new IntersectionObserver((entries) => {
@@ -1590,10 +2088,7 @@
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: async () => {
-        await api.adminDeleteAll();
-        setAll([]); setMine([]); setHasNext(false); setPage(1);
-      }, isMobile }),
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
       H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
@@ -1608,17 +2103,8 @@
               }),
               H(CityAutocomplete, {
                 value: locationQuery,
-                onChange: v => setLocationQuery(v),
-                options: useMemo(() => {
-                  const set = new Set();
-                  (all || []).forEach(l => {
-                    const raw = (l.location || '').trim();
-                    if (!raw) return;
-                    const city = raw.split(',')[0].trim();
-                    if (city) set.add(city);
-                  });
-                  return Array.from(set).sort((a,b)=> a.localeCompare(b));
-                }, [all]),
+                onChange: setLocationQuery,
+                options: cityOptions,
                 onUseMyLocation: async () => {
                   try {
                     if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
@@ -1631,8 +2117,7 @@
                   } catch { alert('Could not determine your location'); }
                 }
               }),
-              // Sort dropdown (restored)
-              H('select', { value:sort, onChange:e=> setSort(e.target.value) },
+              H('select', { value:sort, onChange:e=>setSort(e.target.value) },
                 H('option', { value:'new' }, 'Newest'),
                 H('option', { value:'price_asc' }, 'Price: Low → High'),
                 H('option', { value:'price_desc' }, 'Price: High → Low'),
@@ -1660,29 +2145,25 @@
             const COLS = isMobile ? 3 : 4;
             const GAP  = 12;
             return H('section', {
-              style: { display:'grid', gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: GAP }
+              style: {
+                display:'grid',
+                gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                gap: GAP
+              }
             },
               items.map(it => H(GridTile, { key: it.id, it }))
             );
           })(),
 
           // Pagination controls
-          H('div', { className:'row', style:{ justifyContent:'center', gap:12, margin:'16px 0' } },
-            H('button', {
-              className:'btn',
-              disabled: page <= 1,
-              onClick: () => setPage(p => Math.max(1, p-1))
-            }, '← Prev'),
-            H('div', { className:'muted' }, `Page ${page}`),
-            H('button', {
-              className:'btn',
-              disabled: !hasNext,
-              onClick: () => setPage(p => p + 1)
-            }, 'Next →')
+          H('div', { className:'row', style:{ justifyContent:'center', gap:8, margin:'16px 0' } },
+            H('button', { className:'btn', disabled: page<=1, onClick:()=>setPage(p=>Math.max(1, p-1)) }, '← Prev'),
+            H('div', { className:'muted', style:{ padding:'6px 10px' } }, `Page ${page}`),
+            H('button', { className:'btn', disabled: !hasNext, onClick:()=>setPage(p=>p+1) }, 'Next →')
           ),
 
           // Empty state
-          !all.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+          !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
           // Modal with full card (distance OFF)
           selectedListing && H('div', {
@@ -1709,17 +2190,8 @@
                     await reload();
                   }
                 },
-                onMessage: async (item) => {
-                  if(!user){ alert('Log in to message a seller.'); return; }
-                  if(user.id === item.user_id){ alert('This is your listing.'); return; }
-                  const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-                  setActiveConvoId(convo.id);
-                  setTab('messages');
-                },
-                onAdminDelete: (listingId) => {
-                  setAll(prev => prev.filter(x => x.id !== listingId));
-                  setMine(prev => prev.filter(x => x.id !== listingId));
-                },
+                onMessage: startMessage,
+                onAdminDelete: handleAdminDelete,
                 showDistance: false
               })
             )
@@ -1737,31 +2209,14 @@
               window.scrollTo({ top:0, behavior:'smooth' });
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
-            onMessage: async (item) => {
-              if(!user){ alert('Log in to message a seller.'); return; }
-              if(user.id === item.user_id){ alert('This is your listing.'); return; }
-              const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-              setActiveConvoId(convo.id);
-              setTab('messages');
-            },
-            onAdminDelete: (listingId) => {
-              setAll(prev => prev.filter(x => x.id !== listingId));
-              setMine(prev => prev.filter(x => x.id !== listingId));
-            },
+            onMessage: startMessage,
+            onAdminDelete: handleAdminDelete,
             setTab
           }),
 
         (tab==='messages') &&
           (user
-            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: (convoId, lastMsgId) => {
-                if (!user || !convoId || !lastMsgId) return;
-                const map = loadSeen(user.id);
-                if (!map[convoId] || map[convoId] < lastMsgId) {
-                  map[convoId] = lastMsgId;
-                  saveSeen(user.id, map);
-                  setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
-                }
-              } })
+            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
             : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
           ),
 
@@ -1778,11 +2233,8 @@
               window.scrollTo({ top:0, behavior:'smooth' });
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
-            onLogout: async () => { await api.logout(); setUser(null); setTab('browse'); },
-            onAdminDelete: (listingId) => {
-              setAll(prev => prev.filter(x => x.id !== listingId));
-              setMine(prev => prev.filter(x => x.id !== listingId));
-            },
+            onLogout: logoutFromProfile,
+            onAdminDelete: handleAdminDelete,
             autoListEnabled,
             setAutoListEnabled,
             autoPostNearbyEnabled,
@@ -1816,4 +2268,5 @@
   } else {
     ReactDOM.render(H(App), rootEl);
   }
+
 })();
