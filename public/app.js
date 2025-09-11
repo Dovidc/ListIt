@@ -2078,108 +2078,171 @@ function App(){
     setTab('browse');
   }
 
-  // ---------- GRID & IMAGES ----------
-
-  // 1) Build tiles WITHOUT filtering out items that lack an inline thumbnail.
-  const tiles = useMemo(() => {
-    return (feed || []).map(it => ({
-      ...it,
-      _thumb: it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null)
-    }));
-  }, [feed]);
-
-  // 2) Column-count + interleave (row-wise order for CSS columns)
-  const listMasonRef = useRef(null);
-  const listCols = useColumnCount(listMasonRef, isMobile ? 2 : 4);
-  const interleavedTiles = useMemo(
-    () => interleaveByColumns(tiles, listCols),
-    [tiles, listCols]
-  );
-
-  // 3) Mobile windowing
-  const MOBILE_BATCH = 80;
-  const [mobileCount, setMobileCount] = useState(MOBILE_BATCH);
-  const sentinelRef = useRef(null);
-  useEffect(() => { if (isMobile) setMobileCount(MOBILE_BATCH); }, [debouncedQuery, debouncedLocation, sort, isMobile, tiles.length]);
-  useEffect(() => {
-    if (!isMobile) return;
-    const el = sentinelRef.current; if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) {
-        setMobileCount(c => Math.min(c + MOBILE_BATCH, interleavedTiles.length));
-      }
-    }, { rootMargin: '1000px 0px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isMobile, interleavedTiles.length]);
-  const visibleTiles = isMobile ? interleavedTiles.slice(0, mobileCount) : interleavedTiles;
-
-  // 4) Cover cache + lazy fetch for items that didn't ship a thumb
+  // ---------- COVERS (persistent cache, with optional dims) ----------
+  // coverById[id] = { url, w, h } | null
   const [coverById, setCoverById] = useState(() => (Object.create(null)));
+
   async function ensureCover(id){
     if (id == null) return;
-    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
+    if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // fetched (even null) -> don't spam
     try {
       const arr = await api.getListingImages(id, { silent:true });
-      const url = (Array.isArray(arr) && arr[0]) || null;
-      setCoverById(m => ({ ...m, [id]: url }));
+      let obj = null;
+      if (Array.isArray(arr) && arr.length) {
+        obj = typeof arr[0] === 'string'
+          ? { url: arr[0], w: null, h: null }
+          : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+      }
+      setCoverById(m => ({ ...m, [id]: obj }));
     } catch {
       setCoverById(m => ({ ...m, [id]: null }));
     }
   }
 
-  // 5) Prewarm the first 12 items' covers (only those missing inline thumbs)
-  useEffect(() => {
-    (feed || []).slice(0, 12).forEach(it => {
-      if (!it._thumb) ensureCover(it.id);
+  // Build a list of renderable items with best-available cover & aspect ratio
+  const items = useMemo(() => {
+    return (feed || []).map(it => {
+      const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
+      const cached = coverById[it.id];
+      const url = inline || cached?.url || '';
+      const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : (4/3); // fallback to 4:3
+      return { ...it, __cover:url, __ar: ar };
     });
-  }, [feed]);
+  }, [feed, coverById]);
 
-  // Small tile component: triggers cover fetch when near viewport
-  function Tile({ item }){
-    const ref = useRef(null);
-    const [seen, setSeen] = useState(false);
-
+  // ---------- VIRTUALIZED MASONRY ----------
+  function useContainerSize(ref){
+    const [w, setW] = useState(0);
     useEffect(() => {
-      const el = ref.current; if (!el) return;
-      const io = new IntersectionObserver((entries) => {
-        if (entries.some(e => e.isIntersecting)) { setSeen(true); io.disconnect(); }
-      }, { rootMargin: '800px 0px' });
-      io.observe(el);
-      return () => io.disconnect();
+      if (!ref.current) return;
+      const el = ref.current;
+      const ro = new ResizeObserver(() => {
+        setW(el.clientWidth || 0);
+      });
+      ro.observe(el);
+      setW(el.clientWidth || 0);
+      return () => ro.disconnect();
+    }, [ref]);
+    return w;
+  }
+
+  function useRafScroll(){
+    const [st, setSt] = useState({ top:0, height: window.innerHeight || 0 });
+    const rAF = useRef(0);
+    useEffect(() => {
+      const onScroll = () => {
+        if (rAF.current) return;
+        rAF.current = requestAnimationFrame(() => {
+          rAF.current = 0;
+          setSt({ top: window.scrollY || window.pageYOffset || 0, height: window.innerHeight || 0 });
+        });
+      };
+      const onResize = () => onScroll();
+      window.addEventListener('scroll', onScroll, { passive:true });
+      window.addEventListener('resize', onResize);
+      onScroll();
+      return () => { cancelAnimationFrame(rAF.current); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onResize); };
     }, []);
+    return st;
+  }
 
-    useEffect(() => {
-      if (!seen) return;
-      if (!item._thumb && !Object.prototype.hasOwnProperty.call(coverById, item.id)) {
-        ensureCover(item.id);
+  function MasonryVirtual({ data, onOpen }){
+    const ref = useRef(null);
+    const width = useContainerSize(ref);
+    const { top:vpTop, height:vpH } = useRafScroll();
+
+    // fixed columns (stable layout)
+    const COLS = isMobile ? 2 : 4;
+    const GUT  = 12;
+    const colW = width > 0 ? Math.floor((width - (COLS - 1) * GUT) / COLS) : 0;
+
+    // compute layout (positions + total height), stable with fallback aspect ratios
+    const layout = useMemo(() => {
+      if (colW <= 0 || !Array.isArray(data)) return { pos: [], height: 0 };
+      const colHeights = new Array(COLS).fill(0);
+      const pos = data.map((it, idx) => {
+        // choose the shortest column
+        let col = 0;
+        for (let c=1; c<COLS; c++) if (colHeights[c] < colHeights[col]) col = c;
+        const x = col * (colW + GUT);
+        const h = Math.round(colW / (it.__ar || (4/3)));
+        const y = colHeights[col];
+        colHeights[col] += h + GUT;
+        return { idx, x, y, w: colW, h };
+      });
+      const height = Math.max(...colHeights, 0) - GUT; // drop last gutter
+      return { pos, height };
+    }, [data, colW]);
+
+    // virtual window (overscan)
+    const containerTop = useMemo(() => {
+      // get container's page offset
+      if (!ref.current) return 0;
+      let y = 0, el = ref.current;
+      while (el) { y += el.offsetTop || 0; el = el.offsetParent; }
+      return y;
+    }, [width]); // recompute if width changes (good enough)
+
+    const overscan = 800; // px
+    const winTop = vpTop - containerTop - overscan;
+    const winBot = vpTop - containerTop + vpH + overscan;
+
+    const visibleIdx = useMemo(() => {
+      const out = [];
+      for (let i=0; i<layout.pos.length; i++){
+        const p = layout.pos[i];
+        if (p.y + p.h >= winTop && p.y <= winBot) out.push(p.idx);
       }
-    }, [seen, item.id]);
+      return new Set(out);
+    }, [layout, winTop, winBot]);
 
-    const src = item._thumb || coverById[item.id] || '';
+    // make sure we trigger cover fetch for tiles entering the window
+    useEffect(() => {
+      for (const i of visibleIdx) {
+        const it = data[i];
+        if (!it) continue;
+        if (!it.__cover) ensureCover(it.id);
+      }
+    }, [visibleIdx, data]);
 
-    return H('div', {
+    // render only visible
+    return H('section', {
       ref,
-      className:'masonry-item',
-      style: !isMobile
-        ? {
-            breakInside:'avoid',
-            WebkitColumnBreakInside:'avoid',
-            pageBreakInside:'avoid',
-            marginBottom:12,
-            contentVisibility:'auto',
-            containIntrinsicSize:'300px 225px' // 4:3 hint
-          }
-        : {
-            contentVisibility:'auto',
-            containIntrinsicSize:'200px 150px'
-          }
+      style: {
+        position:'relative',
+        height: Math.max(0, layout.height),
+        // give a stable background so content-visibility works better
+        background: 'transparent'
+      }
     },
-      H(SmartImage, {
-        src,
-        br: 8,
-        dropFar: isMobile,
-        onClick: () => setSelectedListing(item)
+      layout.pos.map(({ idx, x, y, w, h }) => {
+        if (!visibleIdx.has(idx)) return null;
+        const it = data[idx];
+        const src = it.__cover;
+        return H('div', {
+          key: it.id,
+          style: {
+            position:'absolute',
+            left: x, top: y, width: w, height: h,
+            borderRadius: 8,
+            overflow:'hidden',
+            background:'#f3f4f6',
+            contentVisibility:'auto',
+            contain:'layout paint size style'
+          }
+        },
+          src
+            ? H('img', {
+                src,
+                alt: it.title || 'Item',
+                loading:'lazy',
+                decoding:'async',
+                fetchPriority:'low',
+                style: { width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
+                onClick: () => onOpen(it, src)
+              })
+            : null
+        );
       })
     );
   }
@@ -2238,18 +2301,14 @@ function App(){
           })
         ),
 
-        // Masonry grid (works whether or not inline thumbs are present)
-        H('section', {
-          className:'masonry',
-          ref: listMasonRef,
-          style: !isMobile ? { columnCount: 4, columnGap: 12 } : undefined
-        },
-          visibleTiles.map(item => H(Tile, { key:item.id, item }))
-        ),
-
-        // Infinite grow sentinel (mobile only)
-        isMobile && (visibleTiles.length < interleavedTiles.length) &&
-          H('div', { ref: sentinelRef, style: { height: 1 } }),
+        // NEW: Virtualized, JS-laid-out masonry (no CSS columns, no SmartImage)
+        H(MasonryVirtual, {
+          data: items,
+          onOpen: (it, cover) => {
+            // pass a hero image so modal has an instant thumbnail
+            setSelectedListing({ ...it, image_data: cover || it.__cover || null });
+          }
+        }),
 
         // Empty state
         !feed.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
@@ -2342,6 +2401,7 @@ function App(){
     })
   );
 }
+
 
 
 
