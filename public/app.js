@@ -1620,13 +1620,13 @@
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
-            title: String(title || '').trim(),
-            description: String(description || '').trim(),
-            location: String(location || '').trim(),
-            price: safePrice,
-            tags: String(tags || '').trim(),  // <-- ENSURE STRING
-            enable_nearby: enableNearby ? 1 : 0,
-          };
+          title: (ai.title || 'Item for sale').toString().slice(0, 80),
+          description: 'No description',
+          location: sharedNearby.ok ? sharedNearby.display : 'Not specified',
+          price: safePrice,
+          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+          enable_nearby: sharedNearby.ok ? 1 : 0
+        };
           if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
           const created = await api.createListing(payload);
