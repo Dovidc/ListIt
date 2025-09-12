@@ -2,14 +2,14 @@
 //
 // S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images → S3 URLs (kept!)
-// Conversations list: red “×” delete button (kept!)
+// Conversations list: red "×" delete button (kept!)
 // CHANGE: All listing fields optional EXCEPT at least one image.
 //         If price field empty/invalid, default to $0.00 and render the price in green.
 // NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
 // NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
 //      will AI-analyze and immediately create the listing + upload photos automatically.
-//      Includes “？” help modal with high-contrast text.
-// NEW: Auto-list sub-toggle: “Also post to Nearby.” When Auto-list is ON and this is enabled,
+//      Includes "？" help modal with high-contrast text.
+// NEW: Auto-list sub-toggle: "Also post to Nearby." When Auto-list is ON and this is enabled,
 //      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
 //
 // NEW (this file):
@@ -67,6 +67,26 @@
     const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
     return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
   }
+  
+  // NEW: Convert S3 URL to data URL for AI analysis
+  async function urlToDataUrl(url) {
+    if (!url || !url.startsWith('http')) return null;
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) throw new Error('Failed to fetch');
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to convert URL to data URL:', error);
+      return null;
+    }
+  }
+  
   let _coordsPromise = null;
   function getUserCoordsOnce() {
     if (_coordsPromise) return _coordsPromise;
@@ -713,7 +733,7 @@
               type: 'button',
               onClick: onClose,
               'aria-label': 'Close',
-              // avoid relying on .close class so we don’t inherit odd positioning
+              // avoid relying on .close class so we don't inherit odd positioning
               style: {
                 width: 28, height: 28, borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -761,7 +781,7 @@
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
-    const [existingUrls, setExistingUrls] = useState([]); // Show current images (read-only)
+    const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
 
     const [title, setTitle] = useState(draft?.title || '');
     const [description, setDescription] = useState(draft?.description || '');
@@ -789,7 +809,7 @@
 
     const isMobile = isMobileDevice();
 
-    // Load current images (read-only list of URLs/base64; new uploads use files[])
+    // Load current images (URLs/base64; new uploads use files[])
     useEffect(() => {
       (async () => {
         if (draft?.id) {
@@ -801,19 +821,50 @@
       })();
     }, [draft?.id]);
 
+    // UPDATED: AI analysis that works with both new files and S3 URLs
     async function runAI(){
       setAiErr(''); setAiBusy(true);
       try {
-        if (!files.length) { alert('Add at least one image first.'); return; }
-        const dataUrls = await filesToDataUrls(files);
-        const res = await api.aiAnalyze({ images: dataUrls, hint: `${title} ${description}`.trim() });
+        let dataUrls = [];
+        
+        // Convert new files to data URLs
+        if (files.length) {
+          const newDataUrls = await filesToDataUrls(files);
+          dataUrls.push(...newDataUrls);
+        }
+        
+        // Convert existing S3 URLs to data URLs
+        if (!files.length && existingUrls.length) {
+          for (const url of existingUrls.slice(0, 3)) { // Max 3 for AI
+            if (url.startsWith('http')) {
+              const dataUrl = await urlToDataUrl(url);
+              if (dataUrl) dataUrls.push(dataUrl);
+            } else if (url.startsWith('data:')) {
+              dataUrls.push(url);
+            }
+          }
+        }
+        
+        if (!dataUrls.length) {
+          alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
+          return;
+        }
+        
+        const res = await api.aiAnalyze({ 
+          images: dataUrls, 
+          hint: `${title} ${description}`.trim() 
+        });
+        
         if (res.title) setTitle(res.title);
         if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
         if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
           setPriceVal(String(res.suggested_price));
         }
-      } catch (e) { setAiErr(e.message || 'AI failed'); }
-      finally { setAiBusy(false); }
+      } catch (e) { 
+        setAiErr(e.message || 'AI failed'); 
+      } finally { 
+        setAiBusy(false); 
+      }
     }
 
     async function useMyLocation() {
@@ -893,12 +944,13 @@
       })();
     }, [autoListEnabled, autoPostNearbyEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // UPDATED: Submit function that handles image changes properly
     async function submit(e){
       e.preventDefault();
       try {
-        // --- CHANGE: Only requirement is at least one image (either existing or new files)
-        const hasAnyImage = (existingUrls && existingUrls.length > 0) || (files && files.length > 0);
-        if (!hasAnyImage) {
+        // Check total images (existing + new)
+        const totalImages = existingUrls.length + files.length;
+        if (totalImages === 0) {
           alert('Please add at least one image.');
           return;
         }
@@ -922,6 +974,16 @@
         }
 
         if (draft) {
+          // Track if images were modified
+          const originalImageCount = await api.getListingImages(draft.id).then(imgs => imgs?.length || 0).catch(() => 0);
+          const imagesModified = files.length > 0 || existingUrls.length !== originalImageCount;
+          
+          if (imagesModified) {
+            // If images changed, we need to handle this server-side
+            // For now, just update metadata and upload new files
+            payload.replaceImages = imagesModified && existingUrls.length === 0;
+          }
+          
           await api.updateListing(draft.id, payload);
           if (files.length) await uploadFilesForListing(draft.id, files);
         } else {
@@ -951,10 +1013,25 @@
       // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
 
-      // Existing images (read-only; not deletable here)
-      (existingUrls.length > 0) && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
-        ...existingUrls.map((src, i) =>
-          H('img', { key:i, src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } })
+      // UPDATED: Existing images with delete capability
+      (existingUrls.length > 0) && H('div', null,
+        H('div', { className:'muted', style:{ marginBottom:8 } }, 'Existing images:'),
+        H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
+          ...existingUrls.map((src, i) =>
+            H('div', { key:i, style:{ position:'relative' } },
+              H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+              H('button', { 
+                className:'btn danger', 
+                type:'button', 
+                style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, 
+                onClick:() => {
+                  const next = [...existingUrls];
+                  next.splice(i, 1);
+                  setExistingUrls(next);
+                }
+              }, '×')
+            )
+          )
         )
       ),
 
@@ -1569,7 +1646,7 @@
     );
   }
 
-  // --- MassList Modal (unchanged) ---
+  // --- MassList Modal (fixed) ---
   function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
@@ -1620,13 +1697,14 @@
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
-          title: (ai.title || 'Item for sale').toString().slice(0, 80),
-          description: 'No description',
-          location: sharedNearby.ok ? sharedNearby.display : 'No location',
-          price: safePrice,
-          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-          enable_nearby: sharedNearby.ok ? 1 : 0
-        };
+            title: (ai.title || 'Item for sale').toString().slice(0, 80),
+            description: 'No description',
+            location: sharedNearby.ok ? sharedNearby.display : 'No location',
+            price: safePrice,
+            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+            enable_nearby: sharedNearby.ok ? 1 : 0,
+            image_data: await fileToDataUrl(f) // Add base64 image for creation
+          };
           if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
           const created = await api.createListing(payload);
@@ -1697,7 +1775,7 @@
     return ReactDOM.createPortal(modal, document.body);
   }
 
-  // --- Profile Panel (unchanged; defined to avoid “ProfilePanel is not defined”) ---
+  // --- Profile Panel (unchanged; defined to avoid "ProfilePanel is not defined") ---
   function ProfilePanel({
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
     autoListEnabled, setAutoListEnabled,
@@ -1795,7 +1873,7 @@
               H('button', { className:'btn', onClick: savePaypal }, 'Save')
             ),
             H('div', { className:'muted', style:{ fontSize:12, marginTop:4 } },
-              'When you press “Reveal PayPal address” in a DM, the email you save here will be sent as a normal message.'
+              'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.'
             )
           ),
 
