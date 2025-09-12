@@ -1,4 +1,4 @@
-/* server.js — ListIt (PostgreSQL-ready with async/await) */
+/* server.js — ListIt (PostgreSQL-ready with S3-only image storage) */
 
 const express = require('express');
 const fs = require('fs');
@@ -160,11 +160,12 @@ async function initializeSchema() {
       );
     `);
 
+    // Updated schema: image_data can be NULL since we're using S3
     await db.exec(`
       CREATE TABLE IF NOT EXISTS listing_images (
         id SERIAL PRIMARY KEY,
         listing_id INTEGER NOT NULL REFERENCES listings(id),
-        image_data TEXT NOT NULL,
+        image_data TEXT,
         position INTEGER NOT NULL,
         key TEXT,
         url TEXT,
@@ -200,7 +201,7 @@ async function initializeSchema() {
       CREATE TABLE IF NOT EXISTS message_images (
         id SERIAL PRIMARY KEY,
         message_id INTEGER NOT NULL REFERENCES messages(id),
-        image_data TEXT NOT NULL,
+        image_data TEXT,
         position INTEGER NOT NULL,
         key TEXT,
         url TEXT,
@@ -726,9 +727,8 @@ app.get('/api/listings/covers', async (req, res) => {
               (SELECT COALESCE(url, image_data)
                FROM listing_images
                 WHERE listing_id = l.id
-               ORDER BY
-                 CASE WHEN position IS NULL THEN 1 ELSE 0 END,
-                   position ASC, id ASC
+                  AND url IS NOT NULL
+               ORDER BY position ASC, id ASC
                  LIMIT 1),
                l.image_data
              ) AS image_data
@@ -745,19 +745,15 @@ app.get('/api/listings/covers', async (req, res) => {
 
 app.post('/api/listings', auth, writeLimiter, async (req, res) => {
   try {
-    const { images, image_data, title, description, location, price, tags, enable_nearby } = req.body || {};
-    const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
+    const { title, description, location, price, tags, enable_nearby } = req.body || {};
     
-    if (imgs.length) {
-      const err = validateImages(imgs);
-      if (err) return res.status(400).json({ error: err });
-    }
-
+    // Since we're using S3 only, we don't handle images here
+    // Images will be uploaded separately via /api/uploads/sign and /api/uploads/finalize
+    
     const descStr = String(description ?? '').slice(0,400);
     const locStr = String(location ?? '').slice(0,80);
     const pNum = Number(price);
     const safePrice = (Number.isFinite(pNum) && pNum >= 0) ? pNum : 0;
-    const cover = imgs.length ? imgs[0] : '';
     const tagStr = normalizeTags(tags);
     const safeTitle = shortTitle(title) || shortTitle(description);
 
@@ -773,7 +769,7 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.user.id,
-      cover,
+      null, // No cover image initially since S3 uploads happen separately
       String(safeTitle),
       String(descStr),
       String(locStr),
@@ -785,13 +781,8 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
     const listingId = info.lastInsertRowid;
 
-    if (imgs.length) {
-      const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
-      for (let i = 0; i < imgs.length; i++) {
-        await stmt.run(listingId, imgs[i], i);
-      }
-    }
-
+    // NOTE: Images are NOT inserted here anymore - they come via S3 upload flow
+    
     const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
     return res.json(row);
   } catch (e) {
@@ -811,20 +802,10 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Not your listing' });
     }
 
-    const { images, image_data, title, description, location, price, tags } = req.body || {};
+    const { title, description, location, price, tags } = req.body || {};
     
-    if (images || image_data) {
-      const imgs = Array.isArray(images) ? images : (image_data ? [image_data] : []);
-      const err = validateImages(imgs);
-      if (err) return res.status(400).json({ error: err });
-      
-      await db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
-      const stmt = db.prepare('INSERT INTO listing_images (listing_id, image_data, position) VALUES (?, ?, ?)');
-      for (let i = 0; i < imgs.length; i++) {
-        await stmt.run(id, imgs[i], i);
-      }
-      await db.prepare('UPDATE listings SET image_data = ? WHERE id = ?').run(imgs[0], id);
-    }
+    // NOTE: Image updates should be handled via S3 upload flow, not here
+    // If you need to handle image reordering or deletion, add separate endpoints
 
     const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
     const newDesc = (description !== undefined) ? String(description).slice(0,400) : existing.description;
@@ -888,7 +869,13 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 app.get('/api/listings/:id/images', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const rows = await db.prepare('SELECT COALESCE(url, image_data) AS image FROM listing_images WHERE listing_id = ? ORDER BY position ASC, id ASC').all(id);
+    const rows = await db.prepare(`
+      SELECT COALESCE(url, image_data) AS image 
+      FROM listing_images 
+      WHERE listing_id = ? 
+        AND (url IS NOT NULL OR image_data IS NOT NULL)
+      ORDER BY position ASC, id ASC
+    `).all(id);
     res.json(rows.map(r => r.image));
   } catch (e) {
     console.error('Get listing images failed:', e);
@@ -983,11 +970,13 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
     const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(lid);
     const pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
 
+    // Use NULL for image_data since we're using S3
     await db.prepare(`
       INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
-      VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
     `).run(lid, pos, String(key), String(url), width || null, height || null, bytes || null, Math.floor(Date.now() / 1000));
 
+    // Update listing cover image if it doesn't have one
     await db.prepare(`
       UPDATE listings
          SET image_data = COALESCE(NULLIF(image_data, ''), @url)
@@ -998,6 +987,36 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
   } catch (e) {
     console.error('Finalize upload failed:', e);
     return res.status(500).json({ error: 'finalize_failed' });
+  }
+});
+
+// New endpoint to delete a specific image
+app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async (req, res) => {
+  try {
+    const listingId = Number(req.params.listingId);
+    const imageId = Number(req.params.imageId);
+    
+    const listing = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(listingId);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    
+    if (!req.user.is_admin && listing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not your listing' });
+    }
+    
+    await db.prepare('DELETE FROM listing_images WHERE id = ? AND listing_id = ?').run(imageId, listingId);
+    
+    // Update positions of remaining images
+    await db.exec(`
+      UPDATE listing_images 
+      SET position = position - 1 
+      WHERE listing_id = ${listingId} 
+        AND position > (SELECT position FROM listing_images WHERE id = ${imageId})
+    `);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete image failed:', e);
+    return res.status(500).json({ error: 'delete_failed' });
   }
 });
 
@@ -1207,7 +1226,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
         if (img.startsWith('data:image/')) {
           await stmt.run(msgId, i, img, null);
         } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-          await stmt.run(msgId, i, '', img);
+          await stmt.run(msgId, i, NULL, img);
         }
       }
     }
