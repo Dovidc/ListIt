@@ -577,8 +577,8 @@
     return H('header', null,
       H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
         H('div', { className: 'row', style: { gap: 12 } },
-          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'L'),
-          H('div', null, H('div', { style: { fontWeight: 800 } }, 'ListIt'), H('div', { className: 'muted' }, 'Sell simply'))
+          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#0aaa3aff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'CL'),
+          H('div', null, H('div', { style: { fontWeight: 800 } }, 'Creegslist'), H('div', { className: 'muted' }, 'Sell on the spot'))
         ),
         H('nav', { className: 'row' },
           H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
