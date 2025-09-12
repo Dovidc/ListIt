@@ -682,9 +682,9 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       className: 'modal open',
       onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
     },
-      H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px' } },
+      H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px', background: '#fff', color: '#111' } },
         H('button', { className: 'close', onClick: onClose }, '✕'),
-        H('h2', { style: { margin: '0 0 24px', fontSize: '28px' } }, 
+        H('h2', { style: { margin: '0 0 24px', fontSize: '28px', color: '#111' } }, 
           mode === 'login' ? 'Welcome Back' : 'Create Account'),
         
         H('form', { onSubmit: handleSubmit },
@@ -701,7 +701,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
           ),
           
           H('div', { style: { marginBottom: '16px' } },
-            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Email'),
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color:'#111' } }, 'Email'),
             H('input', {
               type: 'email',
               value: email,
