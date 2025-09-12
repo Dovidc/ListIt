@@ -908,11 +908,11 @@
         const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
         const payload = {
-          title: String(title || '').trim(),          // optional
-          description: String(description || '').trim(), // optional
-          location: String(location || '').trim(),    // optional
-          price: safePrice,                           // default 0
-          tags,                                       // optional
+          title: String(title || '').trim(),
+          description: String(description || 'No description').trim(), // Provide default
+          location: String(location || 'Not specified').trim(),        // Provide default
+          price: safePrice,
+          tags: String(tags || '').trim(),
           enable_nearby: enableNearby ? 1 : 0,
         };
         if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
