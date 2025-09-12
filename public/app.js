@@ -760,41 +760,6 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
 }
 
 
-
-
-  function AuthButtons({ setUser }) {
-    const [mode, setMode] = useState('login');
-    const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [err, setErr] = useState('');
-
-    async function go() {
-      setErr('');
-      try {
-        if (mode === 'login') {
-          const u = await api.login(email, password);
-          setUser(u); setEmail(''); setPassword('');
-        } else {
-          const u = await api.register({ username, email, password });
-          setUser(u); setUsername(''); setEmail(''); setPassword('');
-        }
-      } catch(e){ setErr(e.message); }
-    }
-
-    return H('div', { className: 'row', style: { gap: 8 } },
-      H('div', { className: 'row', style: { gap: 6 } },
-        H('button', { className: `btn ${mode==='login'?'primary':''}`, onClick: () => setMode('login') }, 'Log in'),
-        H('button', { className: `btn ${mode==='register'?'primary':''}`, onClick: () => setMode('register') }, 'Register')
-      ),
-      err && H('span', { className: 'muted', style: { color: '#be123c' } }, err),
-      mode==='register' && H('input', { placeholder: 'Username', value: username, onChange: e => setUsername(e.target.value) }),
-      H('input', { placeholder: 'Email', value: email, onChange: e => setEmail(e.target.value) }),
-      H('input', { placeholder: 'Password', type: 'password', value: password, onChange: e => setPassword(e.target.value) }),
-      H('button', { className: 'btn primary', onClick: go }, mode==='login' ? 'Log in' : 'Create account')
-    );
-  }
-
   // --- MultiFilePicker (for S3 uploads) ---
   function MultiFilePicker({ files, onChange }) {
     const ref = useRef();
