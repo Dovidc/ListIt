@@ -767,7 +767,11 @@
     const [description, setDescription] = useState(draft?.description || '');
     const [location, setLocation] = useState(draft?.location || '');
     const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
-    const [tags, setTags] = useState(Array.isArray(draft?.tags) ? draft.tags.join(', ') : '');
+    const [tags, setTags] = useState(() => {
+      if (!draft?.tags) return '';
+      if (Array.isArray(draft.tags)) return draft.tags.join(', ');
+      return String(draft.tags);
+    });
     const [aiBusy, setAiBusy] = useState(false);
     const [aiErr, setAiErr] = useState('');
 
@@ -1616,12 +1620,12 @@
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
-            title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: '',
-            location: sharedNearby.ok ? sharedNearby.display : '',
+            title: String(title || '').trim(),
+            description: String(description || '').trim(),
+            location: String(location || '').trim(),
             price: safePrice,
-            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: sharedNearby.ok ? 1 : 0
+            tags: String(tags || '').trim(),  // <-- ENSURE STRING
+            enable_nearby: enableNearby ? 1 : 0,
           };
           if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
