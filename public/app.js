@@ -2149,9 +2149,9 @@
 
           // Pagination controls
           H('div', { className:'row', style:{ justifyContent:'center', gap:8, margin:'16px 0' } },
-            H('button', { className:'btn', disabled: page<=1, onClick:()=>setPage(p=>Math.max(1, p-1)) }, '← Prev'),
+            H('button', { className:'btn', disabled: page<=1, onClick:()=>{ setPage(p=>Math.max(1, p-1)); window.scrollTo(0, 0); } }, '← Prev'),
             H('div', { className:'muted', style:{ padding:'6px 10px' } }, `Page ${page}`),
-            H('button', { className:'btn', disabled: !hasNext, onClick:()=>setPage(p=>p+1) }, 'Next →')
+            H('button', { className:'btn', disabled: !hasNext, onClick:()=>{ setPage(p=>p+1); window.scrollTo(0, 0); } }, 'Next →')
           ),
 
           // Empty state
