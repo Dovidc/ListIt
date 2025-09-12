@@ -910,7 +910,7 @@
         const payload = {
           title: String(title || '').trim(),
           description: String(description || 'No description').trim(), // Provide default
-          location: String(location || 'Not specified').trim(),        // Provide default
+          location: String(location || 'No location').trim(),        // Provide default
           price: safePrice,
           tags: String(tags || '').trim(),
           enable_nearby: enableNearby ? 1 : 0,
@@ -1622,7 +1622,7 @@
           const payload = {
           title: (ai.title || 'Item for sale').toString().slice(0, 80),
           description: 'No description',
-          location: sharedNearby.ok ? sharedNearby.display : 'Not specified',
+          location: sharedNearby.ok ? sharedNearby.display : 'No location',
           price: safePrice,
           tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
           enable_nearby: sharedNearby.ok ? 1 : 0
