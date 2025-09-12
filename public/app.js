@@ -871,8 +871,8 @@
 
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: '',
-            location: locAuto || '',
+            description: 'No description',  // Provide default
+            location: locAuto || 'Not specified',  // Provide default
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
             enable_nearby: enableNearbyAuto
