@@ -564,53 +564,203 @@
   }
 
   // --- Header (profile tab shows @username) ---
-  function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile }) {
-    // Label for the profile tab: @username if logged in, otherwise "Profile"
-    const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
-
-    // Right-side area (remove the username text here to avoid duplication)
-    const authArea = user
-      ? H('div', { className: 'row', style: { gap: 8 } },
-          !!user.is_admin && H('button', {
-            className: 'btn danger',
-            onClick: async () => {
-              if (confirm('Delete ALL listings? This cannot be undone.')) {
-                await onAdminDeleteAll?.();
-              }
-            }
-          }, 'Admin: Delete ALL')
-        )
-      : H(AuthButtons, { setUser });
-
-    const messagesBtn = H('button', {
-      className: `btn ${active==='messages'?'primary':''}`,
-      style: { position: 'relative' },
-      onClick: () => {
-        if (!user) { alert('Log in to view messages.'); return; }
-        onNav('messages');
-      }
-    }, 'Messages',
-      (unreadCount > 0) &&
-        H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
-    );
-
+  // --- Header (simplified for modal auth) ---
+function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick }) {
+  // If user not logged in, show Register/Login buttons
+  if (!user) {
     return H('header', null,
       H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
         H('div', { className: 'row', style: { gap: 12 } },
           H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#0aaa3aff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'CL'),
           H('div', null, H('div', { style: { fontWeight: 800 } }, 'Creegslist'), H('div', { className: 'muted' }, 'Sell on the spot'))
         ),
-        H('nav', { className: 'row' },
-          H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-          isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-          messagesBtn,
-          // Profile tab now shows @username (or email) and opens the same profile/settings as before
-          H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
-        ),
-        authArea
+        H('div', { className: 'row', style: { gap: 8 } },
+          H('button', { className: 'btn', onClick: () => onAuthClick('register') }, 'Register'),
+          H('button', { className: 'btn primary', onClick: () => onAuthClick('login') }, 'Log In')
+        )
       )
     );
   }
+
+  // Original header for logged in users
+  const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+
+  const authArea = user
+    ? H('div', { className: 'row', style: { gap: 8 } },
+        !!user.is_admin && H('button', {
+          className: 'btn danger',
+          onClick: async () => {
+            if (confirm('Delete ALL listings? This cannot be undone.')) {
+              await onAdminDeleteAll?.();
+            }
+          }
+        }, 'Admin: Delete ALL')
+      )
+    : null;
+
+  const messagesBtn = H('button', {
+    className: `btn ${active==='messages'?'primary':''}`,
+    style: { position: 'relative' },
+    onClick: () => {
+      if (!user) { alert('Log in to view messages.'); return; }
+      onNav('messages');
+    }
+  }, 'Messages',
+    (unreadCount > 0) &&
+      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
+  );
+
+  return H('header', null,
+    H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+      H('div', { className: 'row', style: { gap: 12 } },
+        H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#0aaa3aff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'CL'),
+        H('div', null, H('div', { style: { fontWeight: 800 } }, 'Creegslist'), H('div', { className: 'muted' }, 'Sell on the spot'))
+      ),
+      H('nav', { className: 'row' },
+        H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+        isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+        messagesBtn,
+        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
+      ),
+      authArea
+    )
+  );
+}
+
+  // --- Auth Modal Component (NEW) ---
+function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
+  const [mode, setMode] = useState(initialMode);
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setError('');
+      setUsername('');
+      setEmail('');
+      setPassword('');
+    }
+  }, [isOpen, initialMode]);
+  
+  // Handle ESC key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+  
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    try {
+      let user;
+      if (mode === 'login') {
+        user = await api.login(email, password);
+      } else {
+        user = await api.register({ username, email, password });
+      }
+      onSuccess(user);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  if (!isOpen) return null;
+  
+  return ReactDOM.createPortal(
+    H('div', { 
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
+    },
+      H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px' } },
+        H('button', { className: 'close', onClick: onClose }, '✕'),
+        H('h2', { style: { margin: '0 0 24px', fontSize: '28px' } }, 
+          mode === 'login' ? 'Welcome Back' : 'Create Account'),
+        
+        H('form', { onSubmit: handleSubmit },
+          mode === 'register' && H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Username'),
+            H('input', {
+              type: 'text',
+              value: username,
+              onChange: e => setUsername(e.target.value),
+              placeholder: 'johndoe',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Email'),
+            H('input', {
+              type: 'email',
+              value: email,
+              onChange: e => setEmail(e.target.value),
+              placeholder: 'john@example.com',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
+            H('input', {
+              type: 'password',
+              value: password,
+              onChange: e => setPassword(e.target.value),
+              placeholder: '••••••••',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          error && H('div', { style: { color: '#be123c', margin: '12px 0' } }, error),
+          
+          H('button', {
+            type: 'submit',
+            className: 'btn primary',
+            style: { width: '100%', marginTop: '16px' },
+            disabled: loading
+          }, loading ? 'Loading...' : (mode === 'login' ? 'Log In' : 'Create Account')),
+          
+          H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
+            mode === 'login' 
+              ? H(React.Fragment, null,
+                  "Don't have an account? ",
+                  H('button', {
+                    type: 'button',
+                    onClick: () => setMode('register'),
+                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
+                  }, 'Register')
+                )
+              : H(React.Fragment, null,
+                  "Already have an account? ",
+                  H('button', {
+                    type: 'button',
+                    onClick: () => setMode('login'),
+                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
+                  }, 'Log In')
+                )
+          )
+        )
+      )
+    ),
+    document.body
+  );
+}
+
+
+
 
   function AuthButtons({ setUser }) {
     const [mode, setMode] = useState('login');
@@ -1913,6 +2063,7 @@
     const [locationQuery, setLocationQuery] = useState('');
     const [sort, setSort] = useState('new'); // default: Newest
     const [showForm, setShowForm] = useState(false);
+    const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
 
     // Pagination
     const [page, setPage] = useState(1);
@@ -1986,38 +2137,40 @@
     }
 
     const reloadReqRef = useRef(0);
-    async function reload(){
-      const req = ++reloadReqRef.current;
-      try {
-        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
+async function reload(){
+  const req = ++reloadReqRef.current;
+  try {
+    // Load listings for ALL users (authenticated or not)
+    const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
 
-        if (req !== reloadReqRef.current) return;
+    if (req !== reloadReqRef.current) return;
 
-        const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
-        setAll(rows || []);
-        setHasNext(!!hasNext);
+    const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
+    setAll(rows || []);
+    setHasNext(!!hasNext);
 
-        if (user) {
-          try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
-        } else {
-          setMine([]);
-        }
-
-        // prewarm a bunch of covers
-        try {
-          const ids = (rows || []).slice(0, 24).map(r => r.id);
-          const covers = await api.getCoversBatch(ids, { silent: true });
-          if (Array.isArray(covers) && covers.length) {
-            const patch = {};
-            covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
-            setCoverById(prev => ({ ...prev, ...patch }));
-          }
-        } catch {}
-      } catch (e) {
-        console.error('reload failed', e);
-        setAll([]); setHasNext(false);
-      }
+    // Only load user's own listings if authenticated
+    if (user) {
+      try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
+    } else {
+      setMine([]);
     }
+
+    // Prewarm a bunch of covers (works for all users)
+    try {
+      const ids = (rows || []).slice(0, 24).map(r => r.id);
+      const covers = await api.getCoversBatch(ids, { silent: true });
+      if (Array.isArray(covers) && covers.length) {
+        const patch = {};
+        covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
+        setCoverById(prev => ({ ...prev, ...patch }));
+      }
+    } catch {}
+  } catch (e) {
+    console.error('reload failed', e);
+    setAll([]); setHasNext(false);
+  }
+}
 
     useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page, sort]);
 
@@ -2089,6 +2242,17 @@
     function handleAdminDelete(listingId) {
       setAll(prev => asArray(prev).filter(x => x.id !== listingId));
       setMine(prev => (prev||[]).filter(x => x.id !== listingId));
+    }
+    // ADD THESE NEW FUNCTIONS:
+    function handleAuthClick(mode) {
+      setAuthModal({ isOpen: true, mode });
+    }
+    
+    function handleAuthSuccess(newUser) {
+      setUser(newUser);
+      // Reload data after successful auth
+      reload();
+      reloadMineOnly();
     }
 
     async function logoutFromProfile(){
@@ -2162,7 +2326,7 @@
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile }),
+      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),
       H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
@@ -2324,7 +2488,16 @@
         reloadMine: reloadMineOnly,
         user,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+      }),
+
+       // ADD THIS NEW AUTH MODAL:
+      H(AuthModal, {
+        isOpen: authModal.isOpen,
+        onClose: () => setAuthModal({ ...authModal, isOpen: false }),
+        initialMode: authModal.mode,
+        onSuccess: handleAuthSuccess
       })
+
     );
   }
 
