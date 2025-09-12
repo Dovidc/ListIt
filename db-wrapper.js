@@ -6,9 +6,14 @@ const { Pool } = require('pg');
 if (process.env.DATABASE_URL) {
   console.log('Using PostgreSQL');
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Render
-  });
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  // ADD THESE LINES:
+  max: 10,                      // Maximum 10 connections (not unlimited)
+  idleTimeoutMillis: 30000,     // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 2000, // Fail fast if can't connect in 2 seconds
+  allowExitOnIdle: true          // Let Node.js exit when all connections idle
+});
 
   // PostgreSQL wrapper that mimics SQLite API
   module.exports = {
