@@ -1226,7 +1226,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
         if (img.startsWith('data:image/')) {
           await stmt.run(msgId, i, img, null);
         } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-          await stmt.run(msgId, i, NULL, img);
+          await stmt.run(msgId, i, null, img);
         }
       }
     }
