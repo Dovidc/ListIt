@@ -957,7 +957,7 @@ app.put('/api/listings/:id', auth, writeLimiter, (req, res) => {
     if (!Number.isFinite(newLat)) newLat = null;
     if (!Number.isFinite(newLon)) newLon = null;
   }
-
+  db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
   db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
     .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
 
