@@ -289,36 +289,68 @@
   }
 
   // --- API ---
-  const api = {
-    async _fetch(url, opts = {}, meta = {}) {
-      const silent = !!meta.silent;
-      if (!silent) AppNav.incLoad();
-      try {
-        const res = await fetch(url, { credentials: 'include', ...opts });
-        if (res.status === 401) {
-          AppNav.setUser(null);
-          AppNav.setTab('browse');
-          throw new Error('auth');
-        }
-        if (!res.ok) {
-          let msg = 'request_failed';
-          try { msg = (await res.json()).error || msg; } catch {}
-          throw new Error(msg);
-        }
-        try { return await res.json(); } catch { return null; }
-      } finally {
-        if (!silent) AppNav.decLoad();
+const api = {
+  async _fetch(url, opts = {}, meta = {}) {
+    const silent = !!meta.silent;
+    if (!silent) AppNav.incLoad();
+    try {
+      const res = await fetch(url, { credentials: 'include', ...opts });
+      if (res.status === 401) {
+        AppNav.setUser(null);
+        AppNav.setTab('browse');
+        throw new Error('auth');
       }
-    },
+      if (!res.ok) {
+        let msg = 'request_failed';
+        try { msg = (await res.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
+      try { return await res.json(); } catch { return null; }
+    } finally {
+      if (!silent) AppNav.decLoad();
+    }
+  },
 
-    me(meta)                { return this._fetch('/api/me', { method:'GET' }, meta); },
-    register(payload, meta) { return this._fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta); },
-    login(email, password, meta) {
-      return this._fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) }, meta);
-    },
-    async logout(meta) {
-      try { await this._fetch('/api/logout', { method:'POST' }, meta); } catch {}
-    },
+  me(meta) { return this._fetch('/api/me', { method:'GET' }, meta); },
+  
+  register(payload, meta) { 
+    return this._fetch('/api/register', { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body:JSON.stringify(payload) 
+    }, meta).then(user => {
+      // ADD THESE LINES:
+      console.log('Register response:', user);
+      if (user && user.token) {
+        sessionStorage.setItem('wsToken', user.token);
+      }
+      return user;
+    });
+  },
+  
+  login(email, password, meta) {
+    return this._fetch('/api/login', { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body:JSON.stringify({ email, password }) 
+    }, meta).then(user => {
+      // ADD THESE LINES:
+      console.log('Login response:', user);
+      if (user && user.token) {
+        sessionStorage.setItem('wsToken', user.token);
+      }
+      return user;
+    });
+  },
+  
+  async logout(meta) {
+    try { 
+      await this._fetch('/api/logout', { method:'POST' }, meta); 
+      // ADD THESE LINES:
+      sessionStorage.removeItem('wsToken');
+      localStorage.removeItem('wsToken');
+    } catch {}
+  },
 
     updatePaypalEmail(paypal_email, meta) {
       return this._fetch('/api/me/paypal', {
