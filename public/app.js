@@ -2156,7 +2156,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 }
 
   // --- Nearby Panel (unchanged) ---
-  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab }) {
+  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab, onViewSeller }) {
     const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
