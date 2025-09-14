@@ -2302,7 +2302,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
     autoListEnabled, setAutoListEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
-    isMobile
+    isMobile,
+    onViewSeller // ADD THIS PARAMETER
   }) {
     const [showHelp, setShowHelp] = useState(false);
 
@@ -2412,7 +2413,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                   onEdit,
                   onDelete,
                   onAdminDelete,
-                  onViewSeller: null // Add this line to explicitly pass null
+                  onViewSeller
                 })
               )
             : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
@@ -2966,7 +2967,8 @@ function App(){
             autoListEnabled,
             setAutoListEnabled,
             autoPostNearbyEnabled,
-            setAutoPostNearbyEnabled
+            setAutoPostNearbyEnabled,
+            onViewSeller: handleViewSeller // ADD THIS LINE
           })
       ),
 
