@@ -822,6 +822,42 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* Get listings by specific user                                      */
+/* ------------------------------------------------------------------ */
+app.get('/api/users/:userId/listings', async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if user exists
+    const userExists = await db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!userExists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get all public listings for this user
+    const rows = await db.prepare(`
+      SELECT 
+        l.id, l.user_id, l.image_data,
+        l.title, l.description, l.location, l.price, l.created_at,
+        u.username as owner_username
+      FROM listings l
+      JOIN users u ON u.id = l.user_id
+      WHERE l.user_id = ?
+      ORDER BY l.id DESC
+    `).all(userId);
+
+    return res.json(rows);
+  } catch (e) {
+    console.error('GET /api/users/:userId/listings failed:', e);
+    return res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
+
 app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
   try {
     const id = Number(req.params.id);

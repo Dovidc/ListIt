@@ -389,6 +389,11 @@ register(payload, meta) {
       return this._fetch(url, { method: 'GET' }, meta);
     },
 
+        // NEW: Get listings by a specific user
+    listByUser(userId, meta) {
+      return this._fetch(`/api/users/${userId}/listings`, { method:'GET' }, meta);
+    },
+
     listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
     createListing(payload, meta) {
       return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
@@ -1504,12 +1509,159 @@ async function submit(e){
         ),
         H('div', { className:'muted' }, item.location),
         (showDistance && derivedMeters != null) && H('div', { className:'distance' }, fmtDistance(derivedMeters) + ' away'),
-        H('div', { className:'muted' }, `Seller: ${item.owner_username ? '@'+item.owner_username : '—'}`),
-        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
+      H('div', { className:'muted' }, 
+        'Seller: ',
+        item.owner_username 
+          ? H('button', {
+              onClick: () => onViewSeller?.(item.user_id, item.owner_username),
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#111',
+                fontWeight: 600,
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                padding: 0,
+                font: 'inherit'
+              }
+            }, `@${item.owner_username}`)
+          : '—'
+      ),        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
       ),
       H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
     );
   }
+
+// NEW: Seller Profile Component
+function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete }) {
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedListing, setSelectedListing] = useState(null);
+
+  useEffect(() => {
+    async function fetchSellerListings() {
+      try {
+        setLoading(true);
+        const items = await api.listByUser(sellerId);
+        setListings(asArray(items));
+      } catch (e) {
+        console.error('Failed to fetch seller listings:', e);
+        setListings([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    if (sellerId) {
+      fetchSellerListings();
+    }
+  }, [sellerId]);
+
+  useEffect(() => {
+    if (!selectedListing) return;
+    const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [selectedListing]);
+
+  if (loading) {
+    return H('div', { style: { padding: '24px', textAlign: 'center' } },
+      H('div', { className: 'spinner' }),
+      H('div', { style: { marginTop: '12px' } }, 'Loading seller profile...')
+    );
+  }
+
+  return H('div', null,
+    H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
+      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
+        H('div', null,
+          H('div', { style: { fontWeight: 800, fontSize: '20px' } }, `@${sellerUsername}'s Listings`),
+          H('div', { className: 'muted' }, `${listings.length} active listing${listings.length !== 1 ? 's' : ''}`)
+        ),
+        H('button', { className: 'btn', onClick: onBack }, '← Back')
+      )
+    ),
+
+    listings.length === 0 
+      ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings from this seller.')
+      : (() => {
+          const isMobile = isMobileDevice();
+          const COLS = isMobile ? 3 : 4;
+          const GAP = 12;
+          
+          return H('section', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+              gap: GAP
+            }
+          },
+            listings.map(it => {
+              const src = it.image_data || '';
+              
+              return H('div', { 
+                key: it.id, 
+                className: 'card', 
+                style: { padding: 0, overflow: 'hidden', borderRadius: 8 } 
+              },
+                H('div', { 
+                  style: { 
+                    position: 'relative', 
+                    width: '100%', 
+                    aspectRatio: '1 / 1', 
+                    background: '#f3f4f6' 
+                  } 
+                },
+                  src && H('img', {
+                    src,
+                    alt: it.title || 'Item',
+                    loading: 'lazy',
+                    decoding: 'async',
+                    fetchPriority: 'low',
+                    style: { 
+                      position: 'absolute', 
+                      inset: 0, 
+                      width: '100%', 
+                      height: '100%', 
+                      objectFit: 'cover', 
+                      display: 'block', 
+                      cursor: 'pointer' 
+                    },
+                    onClick: () => setSelectedListing({ ...it, image_data: src })
+                  })
+                )
+              );
+            })
+          );
+        })(),
+
+    selectedListing && H('div', {
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) setSelectedListing(null); }
+    },
+      H('div', { className: 'modal-inner listing-modal' },
+        H('button', { className: 'close', onClick: () => setSelectedListing(null) }, '✕'),
+        H(ListingCard, {
+          item: selectedListing,
+          user,
+          canEdit: false,
+          onMessage,
+          onAdminDelete: (id) => {
+            setListings(prev => prev.filter(l => l.id !== id));
+            setSelectedListing(null);
+            onAdminDelete?.(id);
+          },
+          showDistance: false,
+          onViewSeller: null // Don't allow recursive seller viewing
+        })
+      )
+    )
+  );
+}
+
+
+
+
 
   // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
 function MessagesPanel({ user, initialActiveId, onSeenChange }) {
@@ -2274,7 +2426,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   // ---------- App ----------
   const PAGE_SIZE = 75;
 
-  function App(){
+function App(){
     const { user, setUser } = useAuth();
     const [tab, setTab] = useState('browse');
     const [all, setAll] = useState([]);      // current page rows (thin)
@@ -2284,7 +2436,10 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [sort, setSort] = useState('new'); // default: Newest
     const [showForm, setShowForm] = useState(false);
     const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
-
+    
+    // NEW: Seller profile state
+    const [viewingSeller, setViewingSeller] = useState(null);
+    
     // Pagination
     const [page, setPage] = useState(1);
     const [hasNext, setHasNext] = useState(false);
@@ -2333,6 +2488,16 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       return map;
     }, [mine]);
 
+    // NEW: Handle viewing seller profile
+    function handleViewSeller(userId, username) {
+      setViewingSeller({ id: userId, username });
+      setSelectedListing(null); // Close any open modal
+    }
+
+    function handleBackFromSeller() {
+      setViewingSeller(null);
+    }
+
     // Debounce: search + city
     const [debouncedQuery, setDebouncedQuery] = useState(query);
     useEffect(() => {
@@ -2357,164 +2522,159 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     }
 
     const reloadReqRef = useRef(0);
-async function reload(){
-  const req = ++reloadReqRef.current;
-  try {
-    // Load listings for ALL users (authenticated or not)
-    const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
+    async function reload(){
+      const req = ++reloadReqRef.current;
+      try {
+        // Load listings for ALL users (authenticated or not)
+        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
 
-    if (req !== reloadReqRef.current) return;
+        if (req !== reloadReqRef.current) return;
 
-    const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
-    setAll(rows || []);
-    setHasNext(!!hasNext);
+        const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
+        setAll(rows || []);
+        setHasNext(!!hasNext);
 
-    // Only load user's own listings if authenticated
-    if (user) {
-      try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
-    } else {
-      setMine([]);
-    }
+        // Only load user's own listings if authenticated
+        if (user) {
+          try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
+        } else {
+          setMine([]);
+        }
 
-    // Prewarm a bunch of covers (works for all users)
-    try {
-      const ids = (rows || []).slice(0, 24).map(r => r.id);
-      const covers = await api.getCoversBatch(ids, { silent: true });
-      if (Array.isArray(covers) && covers.length) {
-        const patch = {};
-        covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
-        setCoverById(prev => ({ ...prev, ...patch }));
+        // Prewarm a bunch of covers (works for all users)
+        try {
+          const ids = (rows || []).slice(0, 24).map(r => r.id);
+          const covers = await api.getCoversBatch(ids, { silent: true });
+          if (Array.isArray(covers) && covers.length) {
+            const patch = {};
+            covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
+            setCoverById(prev => ({ ...prev, ...patch }));
+          }
+        } catch {}
+      } catch (e) {
+        console.error('reload failed', e);
+        setAll([]); setHasNext(false);
       }
-    } catch {}
-  } catch (e) {
-    console.error('reload failed', e);
-    setAll([]); setHasNext(false);
-  }
-}
+    }
 
     useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page, sort]);
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
     // Unread poll
-    // Replace the existing recomputeUnread function:
-  async function recomputeUnread() {
-    try {
-      if (!user) { setUnreadCount(0); return; }
-      const convos = await api.listConversations({ silent:true });
-      const seen = loadSeen(user.id);
-      
-      let unreadCount = 0;
-      for (const c of convos) {
-        // Check if there's a new message we haven't seen
-        if (c.last_message_id && 
-            c.last_message_sender_id && 
-            c.last_message_sender_id !== user.id) {
-          
-          // If we've never seen any messages in this conversation, it's unread
-          if (!seen[c.id]) {
-            unreadCount++;
-          } 
-          // If the last message ID is greater than what we've seen, it's unread
-          else if (c.last_message_id > seen[c.id]) {
-            unreadCount++;
-          }
-        }
-      }
-      
-      setUnreadCount(unreadCount);
-    } catch {}
-  }
-    // Find this existing useEffect in App:
-useEffect(() => {
-  recomputeUnread();
-  //const t = setInterval(recomputeUnread, 3000);
-  //return () => clearInterval(t);
-}, [user?.id]);
-
-// ADD THIS NEW useEffect RIGHT AFTER IT:
-  useEffect(() => {
-    if (!user) return;
-    
-    let ws = null;
-    let reconnectTimeout = null;
-    
-    function connectWebSocket() {
-      const token = sessionStorage.getItem('wsToken') || 
-                  localStorage.getItem('wsToken') ||
-                  document.cookie.match(/token=([^;]+)/)?.[1];
-
-      if (!token) {
-        console.error('No token available for WebSocket (App level)');
-        return;
-      }
-      
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
-      
-      ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        console.log('WebSocket connected (App level)');
-        clearTimeout(reconnectTimeout);
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'new_message' && data.sender_id !== user.id) {
-            // Recompute unread count when new message arrives from another user
-            recomputeUnread();
-          }
-        } catch (e) {
-          console.error('WebSocket message error:', e);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error (App level):', error);
-      };
-      
-      ws.onclose = () => {
-        console.log('WebSocket disconnected (App level)');
-        ws = null;
+    async function recomputeUnread() {
+      try {
+        if (!user) { setUnreadCount(0); return; }
+        const convos = await api.listConversations({ silent:true });
+        const seen = loadSeen(user.id);
         
-        // Reconnect after 3 seconds
-        reconnectTimeout = setTimeout(() => {
-          if (user) connectWebSocket();
-        }, 3000);
-      };
-      
-      // Send ping every 25 seconds to keep connection alive
-      const pingInterval = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
+        let unreadCount = 0;
+        for (const c of convos) {
+          // Check if there's a new message we haven't seen
+          if (c.last_message_id && 
+              c.last_message_sender_id && 
+              c.last_message_sender_id !== user.id) {
+            
+            // If we've never seen any messages in this conversation, it's unread
+            if (!seen[c.id]) {
+              unreadCount++;
+            } 
+            // If the last message ID is greater than what we've seen, it's unread
+            else if (c.last_message_id > seen[c.id]) {
+              unreadCount++;
+            }
+          }
         }
-      }, 25000);
+        
+        setUnreadCount(unreadCount);
+      } catch {}
+    }
+
+    useEffect(() => {
+      recomputeUnread();
+    }, [user?.id]);
+
+    useEffect(() => {
+      if (!user) return;
+      
+      let ws = null;
+      let reconnectTimeout = null;
+      
+      function connectWebSocket() {
+        const token = sessionStorage.getItem('wsToken') || 
+                    localStorage.getItem('wsToken') ||
+                    document.cookie.match(/token=([^;]+)/)?.[1];
+
+        if (!token) {
+          console.error('No token available for WebSocket (App level)');
+          return;
+        }
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+        
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+          console.log('WebSocket connected (App level)');
+          clearTimeout(reconnectTimeout);
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'new_message' && data.sender_id !== user.id) {
+              // Recompute unread count when new message arrives from another user
+              recomputeUnread();
+            }
+          } catch (e) {
+            console.error('WebSocket message error:', e);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('WebSocket error (App level):', error);
+        };
+        
+        ws.onclose = () => {
+          console.log('WebSocket disconnected (App level)');
+          ws = null;
+          
+          // Reconnect after 3 seconds
+          reconnectTimeout = setTimeout(() => {
+            if (user) connectWebSocket();
+          }, 3000);
+        };
+        
+        // Send ping every 25 seconds to keep connection alive
+        const pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 25000);
+        
+        return () => {
+          clearInterval(pingInterval);
+          if (ws) ws.close();
+        };
+      }
+      
+      connectWebSocket();
       
       return () => {
-        clearInterval(pingInterval);
-        if (ws) ws.close();
+        clearTimeout(reconnectTimeout);
+        if (ws) {
+          ws.close();
+          ws = null;
+        }
       };
-    }
-    
-    connectWebSocket();
-    
-    return () => {
-      clearTimeout(reconnectTimeout);
-      if (ws) {
-        ws.close();
-        ws = null;
-      }
-    };
-  }, [user?.id]);
+    }, [user?.id]);
 
-  // Then this existing useEffect continues:
-  useEffect(() => {
-    if (!user && tab === 'messages') setTab('browse');
-    if (!isMobile && tab === 'nearby') setTab('browse');
-  }, [user, tab, isMobile]);
+    useEffect(() => {
+      if (!user && tab === 'messages') setTab('browse');
+      if (!isMobile && tab === 'nearby') setTab('browse');
+    }, [user, tab, isMobile]);
 
     // Sort feed (default: keep newest as returned by server)
     const feed = all; // Sorting is now handled server-side
@@ -2553,11 +2713,12 @@ useEffect(() => {
       await api.adminDeleteAll();
       setAll([]); setMine([]);
     }
+    
     function handleAdminDelete(listingId) {
       setAll(prev => asArray(prev).filter(x => x.id !== listingId));
       setMine(prev => (prev||[]).filter(x => x.id !== listingId));
     }
-    // ADD THESE NEW FUNCTIONS:
+    
     function handleAuthClick(mode) {
       setAuthModal({ isOpen: true, mode });
     }
@@ -2646,7 +2807,18 @@ useEffect(() => {
       H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
-        tab==='browse' && H(React.Fragment, null,
+        // NEW: Show seller profile if viewing
+        viewingSeller && H(SellerProfile, {
+          sellerId: viewingSeller.id,
+          sellerUsername: viewingSeller.username,
+          onBack: handleBackFromSeller,
+          user,
+          onMessage: startMessage,
+          onAdminDelete: handleAdminDelete
+        }),
+
+        // Only show regular tabs if NOT viewing a seller
+        !viewingSeller && tab==='browse' && H(React.Fragment, null,
           H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
               H('input', {
@@ -2746,13 +2918,14 @@ useEffect(() => {
                 },
                 onMessage: startMessage,
                 onAdminDelete: handleAdminDelete,
-                showDistance: false
+                showDistance: false,
+                onViewSeller: handleViewSeller // NEW: Pass the handler
               })
             )
           )
         ),
 
-        (tab==='nearby') &&
+        !viewingSeller && (tab==='nearby') &&
           H(NearbyPanel, {
             user,
             mineById,
@@ -2768,13 +2941,13 @@ useEffect(() => {
             setTab
           }),
 
-        (tab==='messages') &&
+        !viewingSeller && (tab==='messages') &&
           (user
             ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
             : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
           ),
 
-        (tab==='profile') &&
+        !viewingSeller && (tab==='profile') &&
           H(ProfilePanel, { isMobile,
             user,
             items: mine,
@@ -2806,14 +2979,13 @@ useEffect(() => {
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       }),
 
-       // ADD THIS NEW AUTH MODAL:
+      // ADD THIS NEW AUTH MODAL:
       H(AuthModal, {
         isOpen: authModal.isOpen,
         onClose: () => setAuthModal({ ...authModal, isOpen: false }),
         initialMode: authModal.mode,
         onSuccess: handleAuthSuccess
       })
-
     );
   }
 
