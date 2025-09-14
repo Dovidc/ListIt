@@ -1548,7 +1548,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     setIsAtBottom(atBottom);
   };
 
-  // WebSocket connection
+  // WebSocket connection - FIXED: removed activeId dependency
   useEffect(() => {
     if (!user) return;
     
@@ -1566,8 +1566,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;  
       console.log('Connecting to WebSocket:', wsUrl);
-      console.log('Token found:', token ? 'yes' : 'no');
-      console.log('Attempting WebSocket connection to:', wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
@@ -1580,20 +1578,24 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         try {
           const data = JSON.parse(event.data);
           
-          if (data.type === 'new_message' && data.conversation_id === activeId) {
-            // Add new message to current conversation
-            setMsgs(prev => [...prev, data.message]);
-            
-            // Update conversation list
-            fetchConvos();
-            
-            // Use the ref to get current scroll position instead of stale state
-            if (data.sender_id !== user.id && isAtBottomRef.current) {
-              onSeenChange?.(data.conversation_id, data.message.id);
-            }
-          } else if (data.type === 'new_message') {
-            // Just update conversation list for unread indicator
-            fetchConvos();
+          if (data.type === 'new_message') {
+            // Use functional setState to access current activeId without creating dependency
+            setActiveId(currentActiveId => {
+              if (data.conversation_id === currentActiveId) {
+                // Add new message to current conversation
+                setMsgs(prev => [...prev, data.message]);
+                
+                // Only mark as seen if user is at the bottom of the chat
+                if (data.sender_id !== user.id && isAtBottomRef.current) {
+                  onSeenChange?.(data.conversation_id, data.message.id);
+                }
+              }
+              
+              // Always update conversation list for any new message
+              fetchConvos();
+              
+              return currentActiveId; // Return unchanged activeId
+            });
           }
         } catch (e) {
           console.error('WebSocket message error:', e);
@@ -1636,7 +1638,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         wsRef.current = null;
       }
     };
-  }, [user?.id, activeId]); // Removed isAtBottom from dependencies
+  }, [user?.id]); // ONLY depend on user.id, not activeId
 
   // Mark messages as seen when scrolling to bottom
   useEffect(() => {
