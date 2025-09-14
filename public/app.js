@@ -1530,6 +1530,14 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   // Add scroll tracking state
   const msgsContainerRef = useRef(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  
+  // Add ref to track current scroll position to avoid stale closures
+  const isAtBottomRef = useRef(isAtBottom);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    isAtBottomRef.current = isAtBottom;
+  }, [isAtBottom]);
 
   // Check if scrolled to bottom
   const checkIfAtBottom = () => {
@@ -1579,8 +1587,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             // Update conversation list
             fetchConvos();
             
-            // Only mark as seen if user is at the bottom of the chat
-            if (data.sender_id !== user.id && isAtBottom) {
+            // Use the ref to get current scroll position instead of stale state
+            if (data.sender_id !== user.id && isAtBottomRef.current) {
               onSeenChange?.(data.conversation_id, data.message.id);
             }
           } else if (data.type === 'new_message') {
@@ -1628,7 +1636,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         wsRef.current = null;
       }
     };
-  }, [user?.id, activeId, isAtBottom]); // Added isAtBottom to dependencies
+  }, [user?.id, activeId]); // Removed isAtBottom from dependencies
 
   // Mark messages as seen when scrolling to bottom
   useEffect(() => {
