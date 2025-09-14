@@ -1064,6 +1064,57 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       finally { setGeoBusy(false); }
     }
 
+
+    // Add this state after the other useState declarations in ListingForm:
+const [originalUrls, setOriginalUrls] = useState([]);
+
+// Update the useEffect that loads images:
+useEffect(() => {
+  (async () => {
+    if (draft?.id) {
+      try { 
+        const arr = await api.getListingImages(draft.id); 
+        setExistingUrls(arr || []);
+        setOriginalUrls(arr || []); // Track original state
+      }
+      catch { 
+        setExistingUrls([]); 
+        setOriginalUrls([]);
+      }
+    } else {
+      setExistingUrls([]);
+      setOriginalUrls([]);
+    }
+  })();
+}, [draft?.id]);
+
+// Update the submit function:
+async function submit(e){
+  e.preventDefault();
+  try {
+    // ... existing validation code ...
+
+    if (draft) {
+      // Determine which images were deleted
+      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+      
+      // Include deleted images in the payload
+      if (deletedImages.length > 0) {
+        payload.deletedImages = deletedImages;
+      }
+      
+      await api.updateListing(draft.id, payload);
+      if (files.length) await uploadFilesForListing(draft.id, files);
+    } else {
+      // ... existing create logic ...
+    }
+    onSaved?.();
+  } catch (err) {
+    console.error('Create/save failed:', err);
+    alert(`Create/save failed: ${err?.message || err}`);
+  }
+}
+
     // Auto-list: when ON, creating a brand-new listing & user added photos → AI + create + upload
     useEffect(() => {
       if (!autoListEnabled) return;
@@ -1122,58 +1173,62 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     }, [autoListEnabled, autoPostNearbyEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // UPDATED: Submit function that handles image changes properly
-    async function submit(e){
-      e.preventDefault();
-      try {
-        // Check total images (existing + new)
-        const totalImages = existingUrls.length + files.length;
-        if (totalImages === 0) {
-          alert('Please add at least one image.');
-          return;
-        }
-
-        // Default price to $0.00 if empty/invalid
-        const parsedPrice = Number(priceVal);
-        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-        const payload = {
-          title: String(title || '').trim(),
-          description: String(description || 'No description').trim(), // Provide default
-          location: String(location || 'No location').trim(),        // Provide default
-          price: safePrice,
-          tags: String(tags || '').trim(),
-          enable_nearby: enableNearby ? 1 : 0,
-        };
-        if (enableNearby && !hasFixedGps) { payload.lat = lat; payload.lon = lon; }
-        if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-          alert('Enable Nearby requires using your location.');
-          return;
-        }
-
-        if (draft) {
-          // Track if images were modified
-          const originalImageCount = await api.getListingImages(draft.id).then(imgs => imgs?.length || 0).catch(() => 0);
-          const imagesModified = files.length > 0 || existingUrls.length !== originalImageCount;
-          
-          if (imagesModified) {
-            // If images changed, we need to handle this server-side
-            // For now, just update metadata and upload new files
-            payload.replaceImages = imagesModified && existingUrls.length === 0;
-          }
-          
-          await api.updateListing(draft.id, payload);
-          if (files.length) await uploadFilesForListing(draft.id, files);
-        } else {
-          const created = await api.createListing(payload);
-          if (!created?.id) { throw new Error('Create failed'); }
-          if (files.length) await uploadFilesForListing(created.id, files);
-        }
-        onSaved?.();
-      } catch (err) {
-        console.error('Create/save failed:', err);
-        alert(`Create/save failed: ${err?.message || err}`);
-      }
+    // Update the submit function (remove the duplicate and fix it):
+async function submit(e){
+  e.preventDefault();
+  try {
+    // Check total images (existing + new)
+    const totalImages = existingUrls.length + files.length;
+    if (totalImages === 0) {
+      alert('Please add at least one image.');
+      return;
     }
+
+    // Default price to $0.00 if empty/invalid
+    const parsedPrice = Number(priceVal);
+    const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+    const payload = {
+      title: String(title || '').trim(),
+      description: String(description || 'No description').trim(),
+      location: String(location || 'No location').trim(),
+      price: safePrice,
+      tags: String(tags || '').trim(),
+      enable_nearby: enableNearby ? 1 : 0,
+    };
+    
+    if (enableNearby && !hasFixedGps) { 
+      payload.lat = lat; 
+      payload.lon = lon; 
+    }
+    
+    if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+      alert('Enable Nearby requires using your location.');
+      return;
+    }
+
+    if (draft) {
+      // Determine which images were deleted
+      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+      
+      // Include deleted images in the payload
+      if (deletedImages.length > 0) {
+        payload.deletedImages = deletedImages;
+      }
+      
+      await api.updateListing(draft.id, payload);
+      if (files.length) await uploadFilesForListing(draft.id, files);
+    } else {
+      const created = await api.createListing(payload);
+      if (!created?.id) { throw new Error('Create failed'); }
+      if (files.length) await uploadFilesForListing(created.id, files);
+    }
+    onSaved?.();
+  } catch (err) {
+    console.error('Create/save failed:', err);
+    alert(`Create/save failed: ${err?.message || err}`);
+  }
+}
 
     const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
 

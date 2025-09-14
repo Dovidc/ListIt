@@ -832,10 +832,35 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Not your listing' });
     }
 
-    const { title, description, location, price, tags } = req.body || {};
+    const { title, description, location, price, tags, deletedImages } = req.body || {};
     
-    // NOTE: Image updates should be handled via S3 upload flow, not here
-    // If you need to handle image reordering or deletion, add separate endpoints
+    // Handle image deletions
+    if (Array.isArray(deletedImages) && deletedImages.length > 0) {
+      for (const imageUrl of deletedImages) {
+        // Delete by URL match
+        await db.prepare('DELETE FROM listing_images WHERE listing_id = ? AND (url = ? OR image_data = ?)')
+          .run(id, imageUrl, imageUrl);
+      }
+      
+      // Re-index remaining images
+      const remaining = await db.prepare('SELECT id FROM listing_images WHERE listing_id = ? ORDER BY position, id')
+        .all(id);
+      for (let i = 0; i < remaining.length; i++) {
+        await db.prepare('UPDATE listing_images SET position = ? WHERE id = ?')
+          .run(i, remaining[i].id);
+      }
+      
+      // Update listing cover if needed
+      const firstImage = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1')
+        .get(id);
+      if (firstImage) {
+        await db.prepare('UPDATE listings SET image_data = ? WHERE id = ?')
+          .run(firstImage.url || firstImage.image_data, id);
+      } else {
+        await db.prepare('UPDATE listings SET image_data = NULL WHERE id = ?')
+          .run(id);
+      }
+    }
 
     const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
     const newDesc = (description !== undefined) ? String(description).slice(0,400) : existing.description;
