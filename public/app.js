@@ -1737,6 +1737,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
           );
         })(),
 
+    // In SellerProfile component, update the modal section:
     selectedListing && H('div', {
       className: 'modal open',
       onClick: (e) => { if (e.target.classList.contains('modal')) setSelectedListing(null); }
@@ -1747,7 +1748,10 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
           item: selectedListing,
           user,
           canEdit: false,
-          onMessage,
+          onMessage: (item) => {
+            setSelectedListing(null); // Close the modal first
+            onMessage(item); // Then trigger the message flow
+          },
           onAdminDelete: (id) => {
             setListings(prev => prev.filter(l => l.id !== id));
             setSelectedListing(null);
