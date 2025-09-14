@@ -1243,7 +1243,8 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
       .all(msgId);
     
     res.json({ ...row, images: imgs.map(r => r.image_data) });
-  const wsMessage = {
+
+    const wsMessage = {
       type: 'new_message',
       conversation_id: id,
       message: { ...row, images: imgs.map(r => r.image_data) },
@@ -1412,8 +1413,13 @@ async function startServer() {
   
   server.listen(PORT, () => {
     console.log(`ListIt running at http://localhost:${PORT}`);
-    console.log(`WebSocket server ready`);
+    console.log('WebSocket server ready');
   });
+}
+
+// ADD THIS:
+if (require.main === module) {
+  startServer();
 }
 
 module.exports = app;
