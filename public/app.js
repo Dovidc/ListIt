@@ -313,35 +313,36 @@ const api = {
 
   me(meta) { return this._fetch('/api/me', { method:'GET' }, meta); },
   
-  register(payload, meta) { 
-    return this._fetch('/api/register', { 
-      method:'POST', 
-      headers:{'Content-Type':'application/json'}, 
-      body:JSON.stringify(payload) 
-    }, meta).then(user => {
-      // ADD THESE LINES:
-      console.log('Register response:', user);
-      if (user && user.token) {
-        sessionStorage.setItem('wsToken', user.token);
-      }
-      return user;
-    });
-  },
-  
-  login(email, password, meta) {
-    return this._fetch('/api/login', { 
-      method:'POST', 
-      headers:{'Content-Type':'application/json'}, 
-      body:JSON.stringify({ email, password }) 
-    }, meta).then(user => {
-      // ADD THESE LINES:
-      console.log('Login response:', user);
-      if (user && user.token) {
-        sessionStorage.setItem('wsToken', user.token);
-      }
-      return user;
-    });
-  },
+  // In your api object, update login and register methods:
+login(email, password, meta) {
+  return this._fetch('/api/login', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify({ email, password }) 
+  }, meta).then(user => {
+    // ADD THIS:
+    if (user && user.token) {
+      console.log('Storing WebSocket token');
+      sessionStorage.setItem('wsToken', user.token);
+    }
+    return user;
+  });
+},
+
+register(payload, meta) { 
+  return this._fetch('/api/register', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify(payload) 
+  }, meta).then(user => {
+    // ADD THIS:
+    if (user && user.token) {
+      console.log('Storing WebSocket token');
+      sessionStorage.setItem('wsToken', user.token);
+    }
+    return user;
+  });
+},
   
   async logout(meta) {
     try { 
