@@ -21,7 +21,20 @@ app.set('trust proxy', 1);
 const http = require('http');
 const WebSocket = require('ws');
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ 
+  server,
+  path: '/ws'  // Add explicit path for clarity
+});
+
+wss.on('error', (error) => {
+  console.error('WebSocket Server Error:', error);
+});
+
+server.on('upgrade', (request, socket, head) => {
+  console.log('WebSocket upgrade request received for:', request.url);
+});
+
+console.log('WebSocket server configured on path:', wss.options.path || '/');
 
 
 

@@ -1420,8 +1420,10 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
         if (!token) return;
         
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?token=${encodeURIComponent(token)}`;
+        const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;  
         
+        console.log('Connecting to WebSocket:', wsUrl); // Add logging to debug
+
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
         
