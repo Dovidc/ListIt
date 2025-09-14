@@ -14,14 +14,17 @@ let helmet; try { helmet = require('helmet'); } catch {}
 let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
 const http = require('http');
 const WebSocket = require('ws');
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const app = express();
-app.disable('x-powered-by');
-app.set('trust proxy', 1);
+
+
 
 // S3 presign module
 let presignUpload;
