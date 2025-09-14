@@ -1127,8 +1127,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
         .run(a, b, listing_id || null, nowIso());
       return res.json({ id: info.lastInsertRowid, a_user_id: a, b_user_id: b, listing_id: listing_id || null });
     } catch {
-      const row = await db.prepare('SELECT * FROM conversations WHERE a_user_id=? AND b_user_id=? AND listing_id IS ?')
-        .get(a, b, listing_id || null);
+    const row = await db.prepare('SELECT * FROM conversations WHERE a_user_id=? AND b_user_id=? AND listing_id = ?')        .get(a, b, listing_id || null);
       return res.json(row);
     }
   } catch (e) {
