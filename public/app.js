@@ -2312,16 +2312,96 @@ async function reload(){
         setUnreadCount(n);
       } catch {}
     }
-    useEffect(() => {
-      recomputeUnread();
-      //const t = setInterval(recomputeUnread, 3000);
-      //return () => clearInterval(t);
-    }, [user?.id]);
+    // Find this existing useEffect in App:
+useEffect(() => {
+  recomputeUnread();
+  //const t = setInterval(recomputeUnread, 3000);
+  //return () => clearInterval(t);
+}, [user?.id]);
 
-    useEffect(() => {
-      if (!user && tab === 'messages') setTab('browse');
-      if (!isMobile && tab === 'nearby') setTab('browse');
-    }, [user, tab, isMobile]);
+// ADD THIS NEW useEffect RIGHT AFTER IT:
+  useEffect(() => {
+    if (!user) return;
+    
+    let ws = null;
+    let reconnectTimeout = null;
+    
+    function connectWebSocket() {
+      const token = sessionStorage.getItem('wsToken') || 
+                  localStorage.getItem('wsToken') ||
+                  document.cookie.match(/token=([^;]+)/)?.[1];
+
+      if (!token) {
+        console.error('No token available for WebSocket (App level)');
+        return;
+      }
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+      
+      ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected (App level)');
+        clearTimeout(reconnectTimeout);
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'new_message' && data.sender_id !== user.id) {
+            // Recompute unread count when new message arrives from another user
+            recomputeUnread();
+          }
+        } catch (e) {
+          console.error('WebSocket message error:', e);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error (App level):', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket disconnected (App level)');
+        ws = null;
+        
+        // Reconnect after 3 seconds
+        reconnectTimeout = setTimeout(() => {
+          if (user) connectWebSocket();
+        }, 3000);
+      };
+      
+      // Send ping every 25 seconds to keep connection alive
+      const pingInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 25000);
+      
+      return () => {
+        clearInterval(pingInterval);
+        if (ws) ws.close();
+      };
+    }
+    
+    connectWebSocket();
+    
+    return () => {
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+    };
+  }, [user?.id]);
+
+  // Then this existing useEffect continues:
+  useEffect(() => {
+    if (!user && tab === 'messages') setTab('browse');
+    if (!isMobile && tab === 'nearby') setTab('browse');
+  }, [user, tab, isMobile]);
 
     // Sort feed (default: keep newest as returned by server)
     const feed = all; // Sorting is now handled server-side
