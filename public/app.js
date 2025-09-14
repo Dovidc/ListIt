@@ -2809,6 +2809,8 @@ function App(){
     async function startMessage(item){
       if(!user){ alert('Log in to message a seller.'); return; }
       if(user.id === item.user_id){ alert('This is your listing.'); return; }
+
+      setViewingSeller(null);
       const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
       setActiveConvoId(convo.id);
       setTab('messages');
