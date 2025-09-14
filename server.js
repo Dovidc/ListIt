@@ -114,7 +114,16 @@ if (helmet) {
       "script-src": ["'self'", "https://unpkg.com"],
       "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       "font-src": ["https://fonts.gstatic.com"],
-      "connect-src": ["'self'", "https://nominatim.openstreetmap.org", "https:", "wss:"],
+      "connect-src": [
+        "'self'", 
+        "https://nominatim.openstreetmap.org", 
+        "https:", 
+        "wss:",
+        // Add ws: for development WebSocket connections
+        IS_PROD ? null : "ws:",
+        // Optionally, be more specific for development
+        IS_PROD ? null : "ws://localhost:*"
+      ].filter(Boolean),
       "frame-ancestors": ["'none'"],
       "object-src": ["'none'"]
     }
