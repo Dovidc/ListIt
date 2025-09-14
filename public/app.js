@@ -1407,6 +1407,90 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     const [lb, setLb] = useState({ open:false, images:[], index:0 });
     const pollRef = useRef(null);
     const dropRef = useRef();
+    const wsRef = useRef(null);
+    const reconnectTimeoutRef = useRef(null);
+
+    // WebSocket connection
+    useEffect(() => {
+      if (!user) return;
+      
+      function connectWebSocket() {
+        // Get auth token from cookie
+        const token = document.cookie.match(/token=([^;]+)/)?.[1];
+        if (!token) return;
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}?token=${encodeURIComponent(token)}`;
+        
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+          clearTimeout(reconnectTimeoutRef.current);
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'new_message' && data.conversation_id === activeId) {
+              // Add new message to current conversation
+              setMsgs(prev => [...prev, data.message]);
+              
+              // Update conversation list
+              fetchConvos();
+              
+              // Mark as seen if it's from the other user
+              if (data.sender_id !== user.id) {
+                onSeenChange?.(data.conversation_id, data.message.id);
+              }
+            } else if (data.type === 'new_message') {
+              // Just update conversation list for unread indicator
+              fetchConvos();
+            }
+          } catch (e) {
+            console.error('WebSocket message error:', e);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
+        
+        ws.onclose = () => {
+          console.log('WebSocket disconnected');
+          wsRef.current = null;
+          
+          // Reconnect after 3 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (user) connectWebSocket();
+          }, 3000);
+        };
+        
+        // Send ping every 25 seconds to keep connection alive
+        const pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 25000);
+        
+        return () => {
+          clearInterval(pingInterval);
+          ws.close();
+        };
+      }
+      
+      connectWebSocket();
+      
+      return () => {
+        clearTimeout(reconnectTimeoutRef.current);
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+      };
+    }, [user?.id, activeId]); // Include activeId for message filtering
 
     function addFiles(filesLike) {
       const MAX_EACH_MB = 20;
@@ -1476,8 +1560,10 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     useEffect(()=>{ fetchConvos(); }, []);
     useEffect(()=>{
       fetchMsgs();
+      // Reduce polling frequency since we have WebSocket for real-time updates
+      // Keep some polling as fallback in case WebSocket connection fails
       if(pollRef.current) clearInterval(pollRef.current);
-      if(activeId){ pollRef.current = setInterval(fetchMsgs, 2500); }
+      if(activeId){ pollRef.current = setInterval(fetchMsgs, 10000); } // Poll every 10s instead of 2.5s
       return ()=> pollRef.current && clearInterval(pollRef.current);
     }, [activeId]);
 

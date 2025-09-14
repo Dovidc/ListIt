@@ -14,6 +14,11 @@ let helmet; try { helmet = require('helmet'); } catch {}
 let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 
+const http = require('http');
+const WebSocket = require('ws');
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -1236,11 +1241,68 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
       .all(msgId);
     
     res.json({ ...row, images: imgs.map(r => r.image_data) });
+  const wsMessage = {
+      type: 'new_message',
+      conversation_id: id,
+      message: { ...row, images: imgs.map(r => r.image_data) },
+      sender_id: req.user.id,
+      recipient_id: convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id
+    };
+    
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && 
+          (client.userId === wsMessage.recipient_id || client.userId === wsMessage.sender_id)) {
+        client.send(JSON.stringify(wsMessage));
+      }
+    });
+    
   } catch (e) {
     console.error('Send message failed:', e);
     return res.status(500).json({ error: 'send_failed' });
   }
 });
+
+// WebSocket connection handler
+wss.on('connection', (ws, req) => {
+  // Extract token from query string or cookie
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const token = url.searchParams.get('token') || req.headers.cookie?.match(/token=([^;]+)/)?.[1];
+  
+  if (!token) {
+    ws.close(1008, 'No token provided');
+    return;
+  }
+  
+  try {
+    const user = jwt.verify(token, JWT_SECRET);
+    ws.userId = user.id;
+    ws.isAlive = true;
+    
+    ws.on('pong', () => { ws.isAlive = true; });
+    
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+        }
+      } catch {}
+    });
+    
+    ws.send(JSON.stringify({ type: 'connected', userId: user.id }));
+  } catch {
+    ws.close(1008, 'Invalid token');
+  }
+});
+
+// Heartbeat to detect disconnected clients
+const wsHeartbeat = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
 
 app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
   try {
@@ -1346,13 +1408,10 @@ async function startServer() {
   await initializeSchema();
   await maybeCreateAdmin();
   
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`ListIt running at http://localhost:${PORT}`);
+    console.log(`WebSocket server ready`);
   });
-}
-
-if (require.main === module) {
-  startServer();
 }
 
 module.exports = app;
