@@ -653,6 +653,35 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    try {
+      let user;
+      if (mode === 'login') {
+        user = await api.login(email, password);
+      } else {
+        user = await api.register({ username, email, password });
+      }
+      
+      // ADD THESE 3 LINES HERE:
+      if (user.token) {
+        sessionStorage.setItem('wsToken', user.token);
+      }
+      
+      onSuccess(user);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  if (!isOpen) return null;
   
   async function handleSubmit(e) {
     e.preventDefault();
@@ -1416,12 +1445,18 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       
       function connectWebSocket() {
         // Get auth token from cookie
-        const token = document.cookie.match(/token=([^;]+)/)?.[1];
-        if (!token) return;
+        const token = sessionStorage.getItem('wsToken') || 
+                    localStorage.getItem('wsToken') ||
+                    document.cookie.match(/token=([^;]+)/)?.[1];
+
+        if (!token) {
+        console.error('No token available for WebSocket');  // UPDATED MESSAGE
+        return;
+      }
         
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;  
-        
+        console.log('Connecting to WebSocket:', wsUrl); // Add logging to debug
         console.log('Token found:', token ? 'yes' : 'no');
         console.log('Attempting WebSocket connection to:', wsUrl);
         const ws = new WebSocket(wsUrl);
@@ -2310,6 +2345,8 @@ async function reload(){
 
     async function logoutFromProfile(){
       await api.logout();
+      sessionStorage.removeItem('wsToken');
+      localStorage.removeItem('wsToken');
       setUser(null);
       setTab('browse');
     }
