@@ -2298,20 +2298,34 @@ async function reload(){
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
     // Unread poll
-    async function recomputeUnread() {
-      try {
-        if (!user) { setUnreadCount(0); return; }
-        const convos = await api.listConversations({ silent:true });
-        const seen = loadSeen(user.id);
-        const n = (convos || []).filter(c =>
-          c.last_message_id &&
-          c.last_message_sender_id &&
-          c.last_message_sender_id !== user.id &&
-          (!seen[c.id] || seen[c.id] < c.last_message_id)
-        ).length;
-        setUnreadCount(n);
-      } catch {}
-    }
+    // Replace the existing recomputeUnread function:
+  async function recomputeUnread() {
+    try {
+      if (!user) { setUnreadCount(0); return; }
+      const convos = await api.listConversations({ silent:true });
+      const seen = loadSeen(user.id);
+      
+      let unreadCount = 0;
+      for (const c of convos) {
+        // Check if there's a new message we haven't seen
+        if (c.last_message_id && 
+            c.last_message_sender_id && 
+            c.last_message_sender_id !== user.id) {
+          
+          // If we've never seen any messages in this conversation, it's unread
+          if (!seen[c.id]) {
+            unreadCount++;
+          } 
+          // If the last message ID is greater than what we've seen, it's unread
+          else if (c.last_message_id > seen[c.id]) {
+            unreadCount++;
+          }
+        }
+      }
+      
+      setUnreadCount(unreadCount);
+    } catch {}
+  }
     // Find this existing useEffect in App:
 useEffect(() => {
   recomputeUnread();
