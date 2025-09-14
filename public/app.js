@@ -1435,127 +1435,229 @@ async function submit(e){
   }
 
   // --- Listing Card ---
-  function ListingCard({ item, canEdit, onEdit, onDelete, user, onMessage, onAdminDelete, showDistance = false }) {
+  function ListingCard({ 
+  item, 
+  canEdit, 
+  onEdit, 
+  onDelete, 
+  user, 
+  onMessage, 
+  onAdminDelete, 
+  onViewSeller,  // Add this prop
+  showDistance = false 
+}) {
 
-    const [open, setOpen] = useState(false);
-    const [images, setImages] = useState(null);
-    const [idx, setIdx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [images, setImages] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const [derivedMeters, setDerivedMeters] = React.useState(null);
 
-    const [derivedMeters, setDerivedMeters] = React.useState(null);
-
-    React.useEffect(() => {
-      if (!showDistance) { setDerivedMeters(null); return; }
-      let fromServer = null;
-      if (Number.isFinite(item?.distance_m)) fromServer = item.distance_m;
-      if (Number.isFinite(item?.distance_ft)) fromServer = item.distance_ft / 3.28084;
-      if (fromServer != null) { setDerivedMeters(fromServer); return; }
-
-      if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
-        getUserCoordsOnce().then(coords => {
-          if (!coords) return;
-          const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
-          setDerivedMeters(m);
-        });
-      } else {
-        setDerivedMeters(null);
-      }
-    }, [showDistance, item?.id, item?.lat, item?.lon]);
-
-    React.useEffect(() => {
-      if (!open || !Array.isArray(images)) return;
-      if (idx < 0 || idx >= images.length) setIdx(0);
-    }, [open, images, idx]);
-
-    async function openModal(start=0){
-      if(!images){ try { const arr = await api.getListingImages(item.id); setImages(arr && arr.length ? arr : [item.image_data]); } catch { setImages([item.image_data]); } }
-      setIdx(start); setOpen(true);
+  React.useEffect(() => {
+    if (!showDistance) { 
+      setDerivedMeters(null); 
+      return; 
+    }
+    let fromServer = null;
+    if (Number.isFinite(item?.distance_m)) fromServer = item.distance_m;
+    if (Number.isFinite(item?.distance_ft)) fromServer = item.distance_ft / 3.28084;
+    if (fromServer != null) { 
+      setDerivedMeters(fromServer); 
+      return; 
     }
 
-    const isFree = Number(item?.price ?? 0) === 0;
+    if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
+      getUserCoordsOnce().then(coords => {
+        if (!coords) return;
+        const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
+        setDerivedMeters(m);
+      });
+    } else {
+      setDerivedMeters(null);
+    }
+  }, [showDistance, item?.id, item?.lat, item?.lon]);
 
-    const controls = [];
-    if (!user || user.id !== item.user_id) {
-      controls.push(H('button', { key:'m', className:'btn primary', onClick:()=>onMessage?.(item) }, 'Message seller'));
-    }
-    if (canEdit) {
-      controls.push(H('button', { key:'e', className:'btn', onClick:()=>onEdit?.(item) }, 'Edit'));
-      controls.push(H('button', { key:'d', className:'btn danger', onClick:()=>onDelete?.(item) }, 'Remove Listing'));
-    }
-    if (user?.is_admin) {
-      controls.push(H('button', {
-        key:'admin-del',
-        className:'btn danger',
-        onClick: async () => {
-          if (!confirm('Admin: Delete this listing?')) return;
-          await api.adminDeleteListing(item.id);
-          onAdminDelete?.(item.id);
-        }
-      }, 'Admin Delete'));
-    }
+  React.useEffect(() => {
+    if (!open || !Array.isArray(images)) return;
+    if (idx < 0 || idx >= images.length) setIdx(0);
+  }, [open, images, idx]);
 
-    return H('div', { className:'card' },
-      H('div', {
-        className:'aspect',
-        onClick:(e)=>{ e.stopPropagation(); openModal(0); },
-        style:{ cursor:'zoom-in' }
-      }, H('img', { src:item.image_data || (images && images[0]), loading:'lazy', decoding:'async' })),
-      H('div', { style:{ padding:16 } },
-        H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'start' } },
-          H('div', null,
-            H('div', { style:{ fontWeight:800 } }, item.title || 'Item for sale'),
-            H('div', { className:'muted' }, item.description)
-          ),
-          H('div', { style:{ fontWeight:800, textAlign:'right', color: isFree ? '#16a34a' : '#111' } }, price(item.price))
-        ),
-        H('div', { className:'muted' }, item.location),
-        (showDistance && derivedMeters != null) && H('div', { className:'distance' }, fmtDistance(derivedMeters) + ' away'),
-      H('div', { className:'muted' }, 
-        'Seller: ',
-        item.owner_username 
-          ? H('button', {
-              onClick: () => onViewSeller?.(item.user_id, item.owner_username),
-              style: {
-                background: 'none',
-                border: 'none',
-                color: '#111',
-                fontWeight: 600,
-                textDecoration: 'underline',
-                cursor: 'pointer',
-                padding: 0,
-                font: 'inherit'
-              }
-            }, `@${item.owner_username}`)
-          : '—'
-      ),        H('div', { className:'row', style:{ marginTop:8, justifyContent:'flex-start', gap:8 } }, ...controls)
-      ),
-      H(Lightbox, { open, images: images || [item.image_data], index: idx, onClose:()=>setOpen(false), onIndex:setIdx })
-    );
+  async function openModal(start = 0) {
+    if (!images) { 
+      try { 
+        const arr = await api.getListingImages(item.id); 
+        setImages(arr && arr.length ? arr : [item.image_data]); 
+      } catch { 
+        setImages([item.image_data]); 
+      } 
+    }
+    setIdx(start); 
+    setOpen(true);
   }
+
+  const isFree = Number(item?.price ?? 0) === 0;
+
+  const controls = [];
+  if (!user || user.id !== item.user_id) {
+    controls.push(H('button', { 
+      key: 'm', 
+      className: 'btn primary', 
+      onClick: () => onMessage?.(item) 
+    }, 'Message seller'));
+  }
+  if (canEdit) {
+    controls.push(H('button', { 
+      key: 'e', 
+      className: 'btn', 
+      onClick: () => onEdit?.(item) 
+    }, 'Edit'));
+    controls.push(H('button', { 
+      key: 'd', 
+      className: 'btn danger', 
+      onClick: () => onDelete?.(item) 
+    }, 'Remove Listing'));
+  }
+  if (user?.is_admin) {
+    controls.push(H('button', {
+      key: 'admin-del',
+      className: 'btn danger',
+      onClick: async () => {
+        if (!confirm('Admin: Delete this listing?')) return;
+        await api.adminDeleteListing(item.id);
+        onAdminDelete?.(item.id);
+      }
+    }, 'Admin Delete'));
+  }
+
+  // Render seller info - either as clickable button or plain text
+  const renderSellerInfo = () => {
+    if (!item.owner_username) {
+      return '—';
+    }
+    
+    if (onViewSeller) {
+      return H('button', {
+        onClick: () => onViewSeller(item.user_id, item.owner_username),
+        style: {
+          background: 'none',
+          border: 'none',
+          color: '#111',
+          fontWeight: 600,
+          textDecoration: 'underline',
+          cursor: 'pointer',
+          padding: 0,
+          font: 'inherit'
+        }
+      }, `@${item.owner_username}`);
+    }
+    
+    return H('span', null, `@${item.owner_username}`);
+  };
+
+  return H('div', { className: 'card' },
+    H('div', {
+      className: 'aspect',
+      onClick: (e) => { 
+        e.stopPropagation(); 
+        openModal(0); 
+      },
+      style: { cursor: 'zoom-in' }
+    }, H('img', { 
+      src: item.image_data || (images && images[0]), 
+      loading: 'lazy', 
+      decoding: 'async' 
+    })),
+    
+    H('div', { style: { padding: 16 } },
+      H('div', { 
+        className: 'row', 
+        style: { justifyContent: 'space-between', alignItems: 'start' } 
+      },
+        H('div', null,
+          H('div', { style: { fontWeight: 800 } }, item.title || 'Item for sale'),
+          H('div', { className: 'muted' }, item.description)
+        ),
+        H('div', { 
+          style: { 
+            fontWeight: 800, 
+            textAlign: 'right', 
+            color: isFree ? '#16a34a' : '#111' 
+          } 
+        }, price(item.price))
+      ),
+      
+      H('div', { className: 'muted' }, item.location),
+      
+      (showDistance && derivedMeters != null) && 
+        H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
+      
+      H('div', { className: 'muted' }, 
+        'Seller: ',
+        renderSellerInfo()
+      ),
+      
+      H('div', { 
+        className: 'row', 
+        style: { marginTop: 8, justifyContent: 'flex-start', gap: 8 } 
+      }, ...controls)
+    ),
+    
+    H(Lightbox, { 
+      open, 
+      images: images || [item.image_data], 
+      index: idx, 
+      onClose: () => setOpen(false), 
+      onIndex: setIdx 
+    })
+  );
+}
 
 // NEW: Seller Profile Component
 function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState(null);
-
+  const [error, setError] = useState(null);
   useEffect(() => {
-    async function fetchSellerListings() {
-      try {
-        setLoading(true);
-        const items = await api.listByUser(sellerId);
+  let mounted = true;
+  
+  async function fetchSellerListings() {
+    try {
+      setLoading(true);
+      const items = await api.listByUser(sellerId);
+      if (mounted) {
         setListings(asArray(items));
-      } catch (e) {
-        console.error('Failed to fetch seller listings:', e);
-        setListings([]);
-      } finally {
+      }
+    } catch (e) {
+  if (mounted) {
+    console.error('Failed to fetch seller listings:', e);
+    
+    // Check if it's a 404 (user not found)
+    if (e.message === 'User not found' || e.message === 'Not found') {
+      setError('User not found');
+    } else {
+      setError('Failed to load listings');
+    }
+    setListings([]);
+  }
+} finally {
+      if (mounted) {
         setLoading(false);
       }
     }
-    
-    if (sellerId) {
-      fetchSellerListings();
-    }
-  }, [sellerId]);
+  }
+  if (error) {
+  return H('div', { style: { padding: '24px', textAlign: 'center' } },
+    H('div', { className: 'muted' }, error),
+    H('button', { className: 'btn', onClick: onBack }, '← Back')
+  );
+}
+  
+  if (sellerId) {
+    fetchSellerListings();
+  }
+  
+  return () => { mounted = false; };
+}, [sellerId]);
 
   useEffect(() => {
     if (!selectedListing) return;
@@ -2161,7 +2263,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             onDelete,
             onMessage,
             onAdminDelete,
-            showDistance: true
+            showDistance: true,
+            onViewSeller
           })
         )
       )
@@ -2439,6 +2542,12 @@ function App(){
     const [showForm, setShowForm] = useState(false);
     const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
     
+
+   const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setViewingSeller(null); // Clear seller view when switching tabs
+  };
+
     // NEW: Seller profile state
     const [viewingSeller, setViewingSeller] = useState(null);
     
@@ -2805,8 +2914,7 @@ function App(){
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
-      H(Header, { user, setUser, onNav:setTab, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),
-      H(GlobalLoader, { active: loadingCount > 0 }),
+    H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),      H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
         // NEW: Show seller profile if viewing
@@ -2940,6 +3048,7 @@ function App(){
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
             onMessage: startMessage,
             onAdminDelete: handleAdminDelete,
+            onViewSeller: handleViewSeller,
             setTab
           }),
 
