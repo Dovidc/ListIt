@@ -2411,7 +2411,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                   canEdit: true,
                   onEdit,
                   onDelete,
-                  onAdminDelete
+                  onAdminDelete,
+                  onViewSeller: null // Add this line to explicitly pass null
                 })
               )
             : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
