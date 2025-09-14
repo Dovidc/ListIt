@@ -1632,9 +1632,9 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       fetchMsgs();
       // Reduce polling frequency since we have WebSocket for real-time updates
       // Keep some polling as fallback in case WebSocket connection fails
-      if(pollRef.current) clearInterval(pollRef.current);
-      if(activeId){ pollRef.current = setInterval(fetchMsgs, 10000); } // Poll every 10s instead of 2.5s
-      return ()=> pollRef.current && clearInterval(pollRef.current);
+      //if(pollRef.current) clearInterval(pollRef.current);
+      //if(activeId){ pollRef.current = setInterval(fetchMsgs, 10000); } // Poll every 10s instead of 2.5s
+      //return ()=> pollRef.current && clearInterval(pollRef.current);
     }, [activeId]);
 
     async function send(){
@@ -2314,8 +2314,8 @@ async function reload(){
     }
     useEffect(() => {
       recomputeUnread();
-      const t = setInterval(recomputeUnread, 3000);
-      return () => clearInterval(t);
+      //const t = setInterval(recomputeUnread, 3000);
+      //return () => clearInterval(t);
     }, [user?.id]);
 
     useEffect(() => {
