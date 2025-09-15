@@ -186,9 +186,14 @@ async function initializeSchema() {
         tags TEXT,
         lat REAL,
         lon REAL,
-        enable_nearby INTEGER DEFAULT 0
+        enable_nearby INTEGER DEFAULT 0,
+        sold INTEGER DEFAULT 0
       );
     `);
+
+    try {
+      await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0');
+    } catch {}
 
     // Updated schema: image_data can be NULL since we're using S3
     await db.exec(`
@@ -250,6 +255,7 @@ async function initializeSchema() {
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_price_asc ON listings(price ASC, id DESC);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_enable_nearby_lat_lon ON listings(enable_nearby, lat, lon, id DESC);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_location_lower ON listings(LOWER(location));');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_sold ON listings(sold, id DESC);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);');
 
@@ -587,12 +593,13 @@ app.get('/api/listings', async (req, res) => {
     const FIELDS_PUBLIC = `
       l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
       l.title, l.description, l.location, l.price, l.created_at,
+      l.sold,
       u.username as owner_username
     `;
     const FIELDS_MINE = `
       l.id, l.user_id, ${noimg ? '' : 'l.image_data,'}
       l.title, l.description, l.location, l.price, l.created_at,
-      l.tags, l.lat, l.lon, l.enable_nearby, u.username as owner_username
+      l.tags, l.lat, l.lon, l.enable_nearby, l.sold, u.username as owner_username
     `;
 
     let orderSQL = 'ORDER BY l.id DESC';
@@ -676,7 +683,7 @@ app.get('/api/listings', async (req, res) => {
 
     if (!mine) {
       const fields = FIELDS_PUBLIC.trim();
-      const where = [];
+      const where = ['l.sold = 0'];
       const params = {};
       
       if (qRaw) {
@@ -847,6 +854,7 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
       SELECT 
         l.id, l.user_id, l.image_data,
         l.title, l.description, l.location, l.price, l.created_at,
+        l.sold,
         u.username as owner_username
       FROM listings l
       JOIN users u ON u.id = l.user_id
@@ -934,6 +942,11 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       await db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(req.body.enable_nearby ? 1 : 0, id);
     }
 
+    if (typeof req.body.sold !== 'undefined') {
+      const soldVal = req.body.sold ? 1 : 0;
+      await db.prepare('UPDATE listings SET sold=? WHERE id=?').run(soldVal, id);
+    }
+
     const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
     res.json(row);
   } catch (e) {
@@ -997,10 +1010,12 @@ app.get('/api/listings/nearby', async (req, res) => {
     const rows = await db.prepare(`
       SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location,
              l.price, l.created_at, l.lat, l.lon,
-             u.username as owner_username
+             u.username as owner_username,
+             l.sold
       FROM listings l
       JOIN users u ON u.id = l.user_id
       WHERE l.enable_nearby = 1
+        AND l.sold = 0
         AND l.lat IS NOT NULL AND l.lon IS NOT NULL
         AND l.lat BETWEEN @minLat AND @maxLat
         AND l.lon BETWEEN @minLon AND @maxLon

@@ -384,6 +384,9 @@ register(payload, meta) {
     updateListing(id, payload, meta) {
       return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
     },
+    markListingSold(id, sold, meta) {
+      return this.updateListing(id, { sold: !!sold }, meta);
+    },
     deleteListing(id, meta) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }, meta); },
 
     adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
@@ -1421,6 +1424,7 @@ async function submit(e){
   onMessage, 
   onAdminDelete, 
   onViewSeller,  // Add this prop
+  onToggleSold,
   showDistance = false 
 }) {
 
@@ -1472,6 +1476,7 @@ async function submit(e){
   }
 
   const isFree = Number(item?.price ?? 0) === 0;
+  const [soldBusy, setSoldBusy] = useState(false);
 
   const controls = [];
   if (!user || user.id !== item.user_id) {
@@ -1487,6 +1492,28 @@ async function submit(e){
       className: 'btn', 
       onClick: () => onEdit?.(item) 
     }, 'Edit'));
+    if (onToggleSold) {
+      const isSold = !!item?.sold;
+      controls.push(H('button', {
+        key: 'sold-toggle',
+        className: 'btn',
+        onClick: async () => {
+          if (soldBusy) return;
+          try {
+            setSoldBusy(true);
+            await onToggleSold(item, !isSold);
+          } finally {
+            setSoldBusy(false);
+          }
+        },
+        disabled: soldBusy,
+        style: {
+          background: isSold ? '#D1FAE5' : '#059669',
+          color: isSold ? '#047857' : '#fff',
+          borderColor: '#059669'
+        }
+      }, isSold ? 'Mark as unsold' : 'Mark as sold'));
+    }
     controls.push(H('button', { 
       key: 'd', 
       className: 'btn danger', 
@@ -1530,6 +1557,8 @@ async function submit(e){
     return H('span', null, `@${item.owner_username}`);
   };
 
+  const coverSrc = item.image_data || (images && images[0]) || '';
+
   return H('div', { className: 'card' },
     H('div', {
       className: 'aspect',
@@ -1537,12 +1566,41 @@ async function submit(e){
         e.stopPropagation(); 
         openModal(0); 
       },
-      style: { cursor: 'zoom-in' }
-    }, H('img', { 
-      src: item.image_data || (images && images[0]), 
-      loading: 'lazy', 
-      decoding: 'async' 
-    })),
+      style: { cursor: 'zoom-in', position: 'relative', overflow: 'hidden', borderRadius: 8 }
+    },
+      coverSrc
+        ? H('img', { 
+            src: coverSrc, 
+            loading: 'lazy', 
+            decoding: 'async',
+            style: { width: '100%', height: '100%', objectFit: 'cover' }
+          })
+        : H('div', {
+            style: {
+              width: '100%',
+              height: '100%',
+              background: '#f3f4f6',
+              display: 'grid',
+              placeItems: 'center',
+              color: '#6b7280',
+              fontWeight: 600
+            }
+          }, 'No image'),
+      item.sold ? H('div', {
+        style: {
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          background: 'rgba(5, 150, 105, 0.9)',
+          color: '#fff',
+          padding: '4px 10px',
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: 0.3
+        }
+      }, 'Sold') : null
+    ),
     
     H('div', { style: { padding: 16 } },
       H('div', { 
@@ -1594,6 +1652,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState(null);
   const [error, setError] = useState(null);
+  const [tab, setTab] = useState('active');
   useEffect(() => {
   let mounted = true;
   
@@ -1643,6 +1702,8 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
     return () => window.removeEventListener('keydown', esc);
   }, [selectedListing]);
 
+  useEffect(() => { setTab('active'); }, [sellerId]);
+
   if (loading) {
     return H('div', { style: { padding: '24px', textAlign: 'center' } },
       H('div', { className: 'spinner' }),
@@ -1650,19 +1711,36 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
     );
   }
 
+  const activeListings = listings.filter(l => !l?.sold);
+  const soldListings = listings.filter(l => !!l?.sold);
+  const shownListings = tab === 'sold' ? soldListings : activeListings;
+
   return H('div', null,
     H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
       H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
         H('div', null,
           H('div', { style: { fontWeight: 800, fontSize: '20px' } }, `@${sellerUsername}'s Listings`),
-          H('div', { className: 'muted' }, `${listings.length} active listing${listings.length !== 1 ? 's' : ''}`)
+          H('div', { className: 'muted' }, `Active ${activeListings.length} • Sold ${soldListings.length}`)
         ),
         H('button', { className: 'btn', onClick: onBack }, '← Back')
       )
     ),
 
-    listings.length === 0 
-      ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings from this seller.')
+    H('div', { className:'row', style:{ gap:8, margin:'0 0 16px' } },
+      H('button', {
+        className: `btn ${tab === 'active' ? 'primary' : ''}`,
+        type: 'button',
+        onClick: () => setTab('active')
+      }, 'Active listings'),
+      H('button', {
+        className: `btn ${tab === 'sold' ? 'primary' : ''}`,
+        type: 'button',
+        onClick: () => setTab('sold')
+      }, 'Sold listings')
+    ),
+
+    shownListings.length === 0 
+      ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, tab === 'sold' ? 'No sold listings yet.' : 'No listings from this seller.')
       : (() => {
           const isMobile = isMobileDevice();
           const COLS = isMobile ? 3 : 4;
@@ -1675,7 +1753,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
               gap: GAP
             }
           },
-            listings.map(it => {
+            shownListings.map(it => {
               const src = it.image_data || '';
               
               return H('div', { 
@@ -1707,7 +1785,21 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       cursor: 'pointer' 
                     },
                     onClick: () => setSelectedListing({ ...it, image_data: src })
-                  })
+                  }),
+                  it.sold ? H('div', {
+                    style: {
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      background: 'rgba(5, 150, 105, 0.9)',
+                      color: '#fff',
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      letterSpacing: 0.3
+                    }
+                  }, 'Sold') : null
                 )
               );
             })
@@ -2126,7 +2218,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 }
 
   // --- Nearby Panel (unchanged) ---
-  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab, onViewSeller }) {
+  function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab, onViewSeller, onToggleSold }) {
     const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
@@ -2238,7 +2330,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             onMessage,
             onAdminDelete,
             showDistance: true,
-            onViewSeller
+            onViewSeller,
+            onToggleSold
           })
         )
       )
@@ -2380,9 +2473,11 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     autoListEnabled, setAutoListEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
     isMobile,
-    onViewSeller // ADD THIS PARAMETER
+    onViewSeller, // ADD THIS PARAMETER
+    onToggleSold
   }) {
     const [showHelp, setShowHelp] = useState(false);
+    const [profileTab, setProfileTab] = useState('active');
 
     const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
     async function savePaypal() {
@@ -2400,6 +2495,10 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         H('div', { className: 'muted' }, 'Please log in to view your profile.')
       );
     }
+
+    const activeItems = asArray(items).filter(it => !it?.sold);
+    const soldItems = asArray(items).filter(it => !!it?.sold);
+    const shownItems = profileTab === 'sold' ? soldItems : activeItems;
 
     return H(React.Fragment, null,
       H('section', { className:'card', style:{ padding:16, margin:'12px 0 16px' } },
@@ -2477,11 +2576,24 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             )
           ),
 
-          H('div', { style:{ fontWeight:800 } }, `Your listings (${items.length})`)
+          H('div', { style:{ fontWeight:800 } }, `Your listings`),
+          H('div', { className:'muted' }, `Active ${activeItems.length} • Sold ${soldItems.length}`)
+        ),
+        H('div', { className:'row', style:{ gap:8, margin:'0 0 16px' } },
+          H('button', {
+            className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setProfileTab('active')
+          }, 'Active listings'),
+          H('button', {
+            className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setProfileTab('sold')
+          }, 'Sold listings')
         ),
         H('section', { className:'grid' },
-          (items.length
-            ? items.map(item =>
+          (shownItems.length
+            ? shownItems.map(item =>
                 H(ListingCard, {
                   key:item.id,
                   item,
@@ -2490,10 +2602,15 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                   onEdit,
                   onDelete,
                   onAdminDelete,
-                  onViewSeller
+                  onViewSeller,
+                  onToggleSold
                 })
               )
-            : [H('p', { key:'empty', className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet. Create your first one!')]
+            : [H('p', {
+                key:'empty',
+                className:'muted',
+                style:{ textAlign:'center', margin:'28px 0' }
+              }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')]
           )
         )
       ),
@@ -3218,6 +3335,29 @@ function App(){
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
+    const toggleSold = useCallback(async (listing, makeSold) => {
+      try {
+        await api.markListingSold(listing.id, makeSold);
+        try {
+          const mineRes = await api.listMine({ silent: true });
+          setMine(asArray(mineRes) || []);
+        } catch {}
+        setSelectedListing(prev => {
+          if (prev && prev.id === listing.id) {
+            return { ...prev, sold: makeSold ? 1 : 0 };
+          }
+          return prev;
+        });
+        if (makeSold) {
+          setAll(prev => Array.isArray(prev) ? prev.filter(it => it.id !== listing.id) : prev);
+        }
+        await refreshListings();
+      } catch (e) {
+        console.error('toggle sold failed', e);
+        alert('Failed to update sold status. Please try again.');
+      }
+    }, [refreshListings]);
+
     // Unread poll
     async function recomputeUnread() {
       try {
@@ -3572,7 +3712,8 @@ function App(){
                 onMessage: startMessage,
                 onAdminDelete: handleAdminDelete,
                 showDistance: false,
-                onViewSeller: handleViewSeller // NEW: Pass the handler
+                onViewSeller: handleViewSeller, // NEW: Pass the handler
+                onToggleSold: mineById[selectedListing.id] ? toggleSold : undefined
               })
             )
           )
@@ -3592,6 +3733,7 @@ function App(){
             onMessage: startMessage,
             onAdminDelete: handleAdminDelete,
             onViewSeller: handleViewSeller,
+            onToggleSold: toggleSold,
             setTab
           }),
 
@@ -3620,7 +3762,8 @@ function App(){
             setAutoListEnabled,
             autoPostNearbyEnabled,
             setAutoPostNearbyEnabled,
-            onViewSeller: handleViewSeller // ADD THIS LINE
+            onViewSeller: handleViewSeller, // ADD THIS LINE
+            onToggleSold: toggleSold
           })
       ),
 
