@@ -449,7 +449,7 @@ async function maybeCreateAdmin() {
     console.error('Admin creation failed:', e);
   }
 }
-
+const userListingsLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
 /* ------------------------------------------------------------------ */
 /* Auth routes                                                         */
 /* ------------------------------------------------------------------ */
@@ -825,7 +825,7 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Get listings by specific user                                      */
 /* ------------------------------------------------------------------ */
-app.get('/api/users/:userId/listings', async (req, res) => {
+app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => {
   try {
     const userId = Number(req.params.userId);
     if (!Number.isFinite(userId)) {

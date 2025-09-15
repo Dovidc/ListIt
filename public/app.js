@@ -319,14 +319,7 @@ login(email, password, meta) {
     method:'POST', 
     headers:{'Content-Type':'application/json'}, 
     body:JSON.stringify({ email, password }) 
-  }, meta).then(user => {
-    // ADD THIS:
-    if (user && user.token) {
-      console.log('Storing WebSocket token');
-      sessionStorage.setItem('wsToken', user.token);
-    }
-    return user;
-  });
+  }, meta);
 },
 
 register(payload, meta) { 
@@ -334,22 +327,12 @@ register(payload, meta) {
     method:'POST', 
     headers:{'Content-Type':'application/json'}, 
     body:JSON.stringify(payload) 
-  }, meta).then(user => {
-    // ADD THIS:
-    if (user && user.token) {
-      console.log('Storing WebSocket token');
-      sessionStorage.setItem('wsToken', user.token);
-    }
-    return user;
-  });
+  }, meta);
 },
   
   async logout(meta) {
     try { 
       await this._fetch('/api/logout', { method:'POST' }, meta); 
-      // ADD THESE LINES:
-      sessionStorage.removeItem('wsToken');
-      localStorage.removeItem('wsToken');
     } catch {}
   },
 
@@ -704,12 +687,6 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       } else {
         user = await api.register({ username, email, password });
       }
-      
-      // ADD THESE 3 LINES HERE:
-      if (user.token) {
-        sessionStorage.setItem('wsToken', user.token);
-      }
-      
       onSuccess(user);
       onClose();
     } catch (err) {
@@ -1811,22 +1788,12 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!user) return;
     
     function connectWebSocket() {
-      // Get auth token from cookie
-      const token = sessionStorage.getItem('wsToken') || 
-                  localStorage.getItem('wsToken') ||
-                  document.cookie.match(/token=([^;]+)/)?.[1];
-
-      if (!token) {
-        console.error('No token available for WebSocket');
-        return;
-      }
-      
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;  
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
       console.log('Connecting to WebSocket:', wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
-      
+
       ws.onopen = () => {
         console.log('WebSocket connected');
         clearTimeout(reconnectTimeoutRef.current);
@@ -1864,14 +1831,17 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         console.error('WebSocket error:', error);
       };
       
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected', event?.code);
         wsRef.current = null;
-        
-        // Reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (user) connectWebSocket();
-        }, 3000);
+
+        // Avoid reconnect loops on policy violations (e.g., missing auth cookie)
+        if (event?.code !== 1008) {
+          // Reconnect after 3 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (user) connectWebSocket();
+          }, 3000);
+        }
       };
       
       // Send ping every 25 seconds to keep connection alive
@@ -3231,20 +3201,11 @@ function App(){
       let reconnectTimeout = null;
       
       function connectWebSocket() {
-        const token = sessionStorage.getItem('wsToken') || 
-                    localStorage.getItem('wsToken') ||
-                    document.cookie.match(/token=([^;]+)/)?.[1];
-
-        if (!token) {
-          console.error('No token available for WebSocket (App level)');
-          return;
-        }
-        
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
-        
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+
         ws = new WebSocket(wsUrl);
-        
+
         ws.onopen = () => {
           console.log('WebSocket connected (App level)');
           clearTimeout(reconnectTimeout);
@@ -3267,14 +3228,16 @@ function App(){
           console.error('WebSocket error (App level):', error);
         };
         
-        ws.onclose = () => {
-          console.log('WebSocket disconnected (App level)');
+        ws.onclose = (event) => {
+          console.log('WebSocket disconnected (App level)', event?.code);
           ws = null;
-          
-          // Reconnect after 3 seconds
-          reconnectTimeout = setTimeout(() => {
-            if (user) connectWebSocket();
-          }, 3000);
+
+          if (event?.code !== 1008) {
+            // Reconnect after 3 seconds
+            reconnectTimeout = setTimeout(() => {
+              if (user) connectWebSocket();
+            }, 3000);
+          }
         };
         
         // Send ping every 25 seconds to keep connection alive
@@ -3364,8 +3327,6 @@ function App(){
 
     async function logoutFromProfile(){
       await api.logout();
-      sessionStorage.removeItem('wsToken');
-      localStorage.removeItem('wsToken');
       setUser(null);
       setTab('browse');
     }
