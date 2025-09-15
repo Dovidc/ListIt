@@ -2537,11 +2537,12 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
+// --- Listing Form Modal ---
 function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
   if (!isOpen) return null;
   
   const isMobile = isMobileDevice();
-  const [showTags, setShowTags] = useState(false); // Collapsible tags section
+  const [showTags, setShowTags] = useState(false); // Collapsible tags section for mobile
 
   const modal = H('div', { 
     className: 'modal open', 
@@ -2623,19 +2624,233 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
   return ReactDOM.createPortal(modal, document.body);
 }
 
+// --- Compact Listing Form for Mobile ---
 function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
-  // Same state as regular ListingForm...
+  const [files, setFiles] = useState([]);
+  const [existingUrls, setExistingUrls] = useState([]);
+  const [originalUrls, setOriginalUrls] = useState([]);
   
+  const [title, setTitle] = useState(draft?.title || '');
+  const [description, setDescription] = useState(draft?.description || '');
+  const [location, setLocation] = useState(draft?.location || '');
+  const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+  const [tags, setTags] = useState(() => {
+    if (!draft?.tags) return '';
+    if (Array.isArray(draft.tags)) return draft.tags.join(', ');
+    return String(draft.tags);
+  });
+  
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState('');
+  const autoRunning = useRef(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  
+  const hasFixedGps = !!draft?.lat;
+  const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoErr, setGeoErr] = useState('');
+  const [lat, setLat] = useState(draft?.lat ?? null);
+  const [lon, setLon] = useState(draft?.lon ?? null);
+
+  // Load current images
+  useEffect(() => {
+    (async () => {
+      if (draft?.id) {
+        try { 
+          const arr = await api.getListingImages(draft.id); 
+          setExistingUrls(arr || []);
+          setOriginalUrls(arr || []);
+        }
+        catch { 
+          setExistingUrls([]); 
+          setOriginalUrls([]);
+        }
+      } else {
+        setExistingUrls([]);
+        setOriginalUrls([]);
+      }
+    })();
+  }, [draft?.id]);
+
+  async function runAI(){
+    setAiErr(''); setAiBusy(true);
+    try {
+      let dataUrls = [];
+      
+      if (files.length) {
+        const newDataUrls = await filesToDataUrls(files);
+        dataUrls.push(...newDataUrls);
+      }
+      
+      if (!files.length && existingUrls.length) {
+        for (const url of existingUrls.slice(0, 3)) {
+          if (url.startsWith('http')) {
+            const dataUrl = await urlToDataUrl(url);
+            if (dataUrl) dataUrls.push(dataUrl);
+          } else if (url.startsWith('data:')) {
+            dataUrls.push(url);
+          }
+        }
+      }
+      
+      if (!dataUrls.length) {
+        alert('No images available for AI analysis.');
+        return;
+      }
+      
+      const res = await api.aiAnalyze({ 
+        images: dataUrls, 
+        hint: `${title} ${description}`.trim() 
+      });
+      
+      if (res.title) setTitle(res.title);
+      if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+      if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+        setPriceVal(String(res.suggested_price));
+      }
+    } catch (e) { 
+      setAiErr(e.message || 'AI failed'); 
+    } finally { 
+      setAiBusy(false); 
+    }
+  }
+
+  async function useMyLocation() {
+    setGeoErr('');
+    if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+    setGeoBusy(true);
+    try {
+      const coords = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+          err => rej(err),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        )
+      );
+      const r = await api.reverseGeocode(coords.lat, coords.lon);
+      setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+      setLat(r?.lat ?? coords.lat);
+      setLon(r?.lon ?? coords.lon);
+    } catch { setGeoErr('Could not get your location'); }
+    finally { setGeoBusy(false); }
+  }
+
+  // Auto-list effect
+  useEffect(() => {
+    if (!autoListEnabled) return;
+    if (draft) return;
+    if (!files || files.length === 0) return;
+    if (autoRunning.current) return;
+
+    (async () => {
+      autoRunning.current = true;
+      setAutoBusy(true);
+      try {
+        let ai = {};
+        try {
+          const dataUrls = await filesToDataUrls(files);
+          ai = await api.aiAnalyze({ images: dataUrls, hint: '' }, { silent:true }) || {};
+        } catch (_) {}
+
+        const parsedPrice = Number(ai.suggested_price);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+        if (autoPostNearbyEnabled) {
+          try {
+            const c = await fetchCoordsAndReverse();
+            enableNearbyAuto = 1;
+            latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+          } catch (_) {
+            enableNearbyAuto = 0;
+          }
+        }
+
+        const payload = {
+          title: (ai.title || 'Item for sale').toString().slice(0, 80),
+          description: 'No description',
+          location: locAuto || 'No location',
+          price: safePrice,
+          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+          enable_nearby: enableNearbyAuto
+        };
+        if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+        const created = await api.createListing(payload);
+        if (!created?.id) throw new Error('Create failed');
+        await uploadFilesForListing(created.id, files);
+
+        onSaved?.();
+      } catch (err) {
+        console.error('Auto-list failed:', err);
+        alert(`Auto-list failed: ${err?.message || err}`);
+      } finally {
+        setAutoBusy(false);
+      }
+    })();
+  }, [autoListEnabled, autoPostNearbyEnabled, draft, files]);
+
+  async function submit(e){
+    e.preventDefault();
+    try {
+      const totalImages = existingUrls.length + files.length;
+      if (totalImages === 0) {
+        alert('Please add at least one image.');
+        return;
+      }
+
+      const parsedPrice = Number(priceVal);
+      const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+      const payload = {
+        title: String(title || '').trim(),
+        description: String(description || 'No description').trim(),
+        location: String(location || 'No location').trim(),
+        price: safePrice,
+        tags: String(tags || '').trim(),
+        enable_nearby: enableNearby ? 1 : 0,
+      };
+      
+      if (enableNearby && !hasFixedGps) { 
+        payload.lat = lat; 
+        payload.lon = lon; 
+      }
+      
+      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+        alert('Enable Nearby requires using your location.');
+        return;
+      }
+
+      if (draft) {
+        const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+        if (deletedImages.length > 0) {
+          payload.deletedImages = deletedImages;
+        }
+        await api.updateListing(draft.id, payload);
+        if (files.length) await uploadFilesForListing(draft.id, files);
+      } else {
+        const created = await api.createListing(payload);
+        if (!created?.id) { throw new Error('Create failed'); }
+        if (files.length) await uploadFilesForListing(created.id, files);
+      }
+      onSaved?.();
+    } catch (err) {
+      console.error('Create/save failed:', err);
+      alert(`Create/save failed: ${err?.message || err}`);
+    }
+  }
+
+  const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+
   return H('form', { 
     onSubmit: submit, 
     className:'row', 
     style:{
       flexDirection:'column', 
-      gap: 8, // Smaller gap
+      gap: 8,
       position:'relative'
     }
   },
-    // Auto-list overlay (same as before)
     autoBusy && H('div', {
       style:{
         position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
@@ -2643,10 +2858,8 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       }
     }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
 
-    // File picker - more compact
     H(MultiFilePicker, { files, onChange:setFiles }),
 
-    // Existing images - smaller thumbnails
     (existingUrls.length > 0) && H('div', null,
       H('div', { className:'muted', style:{ marginBottom:4, fontSize:12 } }, 'Existing:'),
       H('div', { className:'row', style:{ gap:4, flexWrap:'wrap' } },
@@ -2668,7 +2881,6 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       )
     ),
 
-    // AI button - full width
     H('button', { 
       type:'button', 
       className:`btn ${aiBusy?'':'primary'}`, 
@@ -2679,13 +2891,12 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
     
     aiErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:12 } }, aiErr),
 
-    // Compact fields
     H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Title (optional)' }),
     
     H('textarea', { 
       value:description, 
       maxLength:400, 
-      rows: 2, // Smaller default
+      rows: 2,
       onChange:e=>setDescription(e.target.value), 
       placeholder:'Description (optional)' 
     }),
@@ -2695,8 +2906,8 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
     H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy, style: { width: '100%' } }, 
       geoBusy ? 'Locating…' : 'Use my location'
     ),
+    geoErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:12 } }, geoErr),
     
-    // Nearby checkbox - more compact
     H('label', { style:{ display:'flex', alignItems:'center', gap:6, fontSize:13, padding:'8px 0' } },
       H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
         const checked = e.target.checked;
@@ -2706,15 +2917,14 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       'Enable Nearby searches'
     ),
     
-    // Price input
     H('input', {
       value:priceVal,
       inputMode:'decimal',
       onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
       placeholder:'Price (leave empty for $0.00)'
     }),
+    isFree && H('span', { style:{ fontSize:12, color:'#16a34a', fontWeight:700 } }, price(0)),
     
-    // Collapsible tags section
     H('button', {
       type: 'button',
       onClick: () => setShowTags(!showTags),
@@ -2736,7 +2946,6 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       style: { fontSize: 13 }
     }),
 
-    // Action buttons
     H('div', { className:'row', style: { gap: 8, marginTop: 8 } },
       H('button', { className:'btn primary', type:'submit', disabled:autoBusy, style: { flex: 1 } }, 
         draft ? 'Save' : 'Create'
