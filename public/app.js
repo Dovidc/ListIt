@@ -2539,6 +2539,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 // --- Listing Form Modal ---
 function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
   if (!isOpen) return null;
+  
+  const isMobile = isMobileDevice();
 
   const modal = H('div', { 
     className: 'modal open', 
@@ -2546,17 +2548,39 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
   },
     H('div', { 
       className: 'modal-inner', 
-      style: { 
-        width: 'min(680px, 92vw)', 
-        background: '#fff', 
-        borderRadius: 24, 
+      style: isMobile ? {
+        // Mobile: Full screen
+        width: '100vw',
+        height: '100vh',
+        maxHeight: '100vh',
+        background: '#fff',
+        borderRadius: 0,
+        overflow: 'auto',
+        margin: 0,
+        position: 'fixed',
+        top: 0,
+        left: 0
+      } : {
+        // Desktop: Centered modal
+        width: 'min(680px, 92vw)',
+        background: '#fff',
+        borderRadius: 24,
         overflow: 'auto',
         maxHeight: '90vh',
         marginTop: '5vh',
         marginBottom: '5vh'
       }
     },
-      H('button', { className: 'close', onClick: onClose }, '✕'),
+      H('button', { 
+        className: 'close', 
+        onClick: onClose,
+        style: isMobile ? {
+          position: 'fixed',
+          top: '10px',
+          right: '10px',
+          zIndex: 10
+        } : {}
+      }, '✕'),
       H('div', { style: { padding: 16 } },
         H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 
           draft ? 'Edit Listing' : 'New Listing'
