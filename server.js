@@ -246,6 +246,10 @@ async function initializeSchema() {
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id, id);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(id DESC);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_price_desc ON listings(price DESC, id DESC);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_price_asc ON listings(price ASC, id DESC);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_enable_nearby_lat_lon ON listings(enable_nearby, lat, lon, id DESC);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_location_lower ON listings(LOWER(location));');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);');
 

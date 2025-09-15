@@ -19,7 +19,7 @@
 //   * Client guards against array OR {rows, hasNext, total, page} responses.
 
 (() => {
-  const { useEffect, useMemo, useRef, useState } = React;
+  const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
   // Device detection
   // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
@@ -3040,9 +3040,12 @@ function App(){
     // NEW: Seller profile state
     const [viewingSeller, setViewingSeller] = useState(null);
     
-    // Pagination
-    const [page, setPage] = useState(1);
+    // Pagination / infinite scroll
     const [hasNext, setHasNext] = useState(false);
+    const [isFetchingListings, setIsFetchingListings] = useState(false);
+    const sentinelRef = useRef(null);
+    const loadingListingsRef = useRef(false);
+    const nextPageRef = useRef(1);
 
     // Modal selection for full listing card
     const [selectedListing, setSelectedListing] = useState(null);
@@ -3111,9 +3114,6 @@ function App(){
       return () => clearTimeout(t);
     }, [locationQuery]);
 
-    // Reset to page 1 when filters/sort change
-    useEffect(() => { setPage(1); }, [debouncedQuery, debouncedLocation, sort]);
-
     // Reload helpers
     async function reloadMineOnly(){
       if (!user) { setMine([]); return; }
@@ -3122,42 +3122,99 @@ function App(){
     }
 
     const reloadReqRef = useRef(0);
-    async function reload(){
+
+    const loadListings = useCallback(async ({ page = 1, replace = false } = {}) => {
       const req = ++reloadReqRef.current;
+      loadingListingsRef.current = true;
+      setIsFetchingListings(true);
       try {
-        // Load listings for ALL users (authenticated or not)
-        const res = await api.listAll({ q: debouncedQuery.trim() || '', loc: debouncedLocation.trim() || '', page, limit: PAGE_SIZE, sort });
+        const res = await api.listAll({
+          q: debouncedQuery.trim() || '',
+          loc: debouncedLocation.trim() || '',
+          page,
+          limit: PAGE_SIZE,
+          sort
+        });
 
         if (req !== reloadReqRef.current) return;
 
         const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
-        setAll(rows || []);
+        const newRows = rows || [];
         setHasNext(!!hasNext);
 
-        // Only load user's own listings if authenticated
-        if (user) {
-          try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
-        } else {
-          setMine([]);
+        setAll(prev => {
+          if (replace || page === 1) return newRows;
+          if (!prev || !prev.length) return newRows;
+          const existing = new Set(prev.map(r => r.id));
+          const appended = newRows.filter(r => !existing.has(r.id));
+          return appended.length ? [...prev, ...appended] : prev;
+        });
+
+        if (page === 1) {
+          if (user) {
+            try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
+          } else {
+            setMine([]);
+          }
         }
 
-        // Prewarm a bunch of covers (works for all users)
-        try {
-          const ids = (rows || []).slice(0, 24).map(r => r.id);
-          const covers = await api.getCoversBatch(ids, { silent: true });
-          if (Array.isArray(covers) && covers.length) {
-            const patch = {};
-            covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
-            setCoverById(prev => ({ ...prev, ...patch }));
-          }
-        } catch {}
-      } catch (e) {
-        console.error('reload failed', e);
-        setAll([]); setHasNext(false);
-      }
-    }
+        if (newRows.length) {
+          try {
+            const ids = (page === 1 ? newRows.slice(0, 24) : newRows).map(r => r.id);
+            if (ids.length) {
+              const covers = await api.getCoversBatch(ids, { silent: true });
+              if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
+                const patch = {};
+                covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
+                setCoverById(prev => ({ ...prev, ...patch }));
+              }
+            }
+          } catch {}
+        }
 
-    useEffect(() => { reload(); }, [user?.id, debouncedQuery, debouncedLocation, page, sort]);
+        nextPageRef.current = hasNext ? page + 1 : page;
+      } catch (e) {
+        if (req === reloadReqRef.current) {
+          console.error('load listings failed', e);
+          if (replace || page === 1) setAll([]);
+          setHasNext(false);
+          if (page === 1 && !user) setMine([]);
+        }
+      } finally {
+        if (req === reloadReqRef.current) {
+          loadingListingsRef.current = false;
+          setIsFetchingListings(false);
+        }
+      }
+    }, [debouncedQuery, debouncedLocation, sort, user?.id]);
+
+    useEffect(() => {
+      nextPageRef.current = 1;
+      setAll([]);
+      setHasNext(false);
+      loadListings({ page: 1, replace: true });
+    }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
+
+    const refreshListings = useCallback(async () => {
+      nextPageRef.current = 1;
+      setAll([]);
+      setHasNext(false);
+      await loadListings({ page: 1, replace: true });
+    }, [loadListings]);
+
+    useEffect(() => {
+      if (tab !== 'browse') return;
+      const el = sentinelRef.current;
+      if (!el) return;
+      const observer = new IntersectionObserver(entries => {
+        const entry = entries[0];
+        if (!entry || !entry.isIntersecting) return;
+        if (!hasNext || loadingListingsRef.current) return;
+        loadListings({ page: nextPageRef.current, replace: false });
+      }, { rootMargin: '200px' });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, [hasNext, loadListings, tab]);
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
 
@@ -3321,7 +3378,7 @@ function App(){
     function handleAuthSuccess(newUser) {
       setUser(newUser);
       // Reload data after successful auth
-      reload();
+      refreshListings();
       reloadMineOnly();
     }
 
@@ -3465,12 +3522,24 @@ function App(){
             );
           })(),
 
-          // Pagination controls
-          H('div', { className:'row', style:{ justifyContent:'center', gap:8, margin:'16px 0' } },
-            H('button', { className:'btn', disabled: page<=1, onClick:()=>{ setPage(p=>Math.max(1, p-1)); window.scrollTo(0, 0); } }, '← Prev'),
-            H('div', { className:'muted', style:{ padding:'6px 10px' } }, `Page ${page}`),
-            H('button', { className:'btn', disabled: !hasNext, onClick:()=>{ setPage(p=>p+1); window.scrollTo(0, 0); } }, 'Next →')
+          // Infinite scroll status
+          H('div', {
+            style: {
+              display: 'flex',
+              justifyContent: 'center',
+              padding: '16px 0',
+              minHeight: 40
+            }
+          },
+            isFetchingListings
+              ? H('span', { className: 'muted' }, 'Loading listings…')
+              : (!hasNext && items.length
+                  ? H('span', { className: 'muted' }, 'No more results')
+                  : null)
           ),
+
+          // Sentinel element for intersection observer
+          H('div', { ref: sentinelRef, style: { width: '100%', height: 1 } }),
 
           // Empty state
           !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
@@ -3497,7 +3566,7 @@ function App(){
                   if (confirm('Remove this listing? (Your past messages will remain)')) {
                     await api.deleteListing(it.id);
                     setSelectedListing(null);
-                    await reload();
+                    await refreshListings();
                   }
                 },
                 onMessage: startMessage,
@@ -3519,7 +3588,7 @@ function App(){
               setShowForm(true);
               // REMOVED window.scrollTo
             },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await refreshListings(); } },
             onMessage: startMessage,
             onAdminDelete: handleAdminDelete,
             onViewSeller: handleViewSeller,
@@ -3544,7 +3613,7 @@ function App(){
               setTab('browse');
               // REMOVED window.scrollTo
             },
-            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
+            onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await refreshListings(); } },
             onLogout: logoutFromProfile,
             onAdminDelete: handleAdminDelete,
             autoListEnabled,
@@ -3559,7 +3628,7 @@ function App(){
       showMassList && H(MassListModal, {
         onClose: () => setShowMassList(false),
         onDone: () => {},
-        reloadAll: reload,
+        reloadAll: refreshListings,
         reloadMine: reloadMineOnly,
         user,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
@@ -3570,7 +3639,7 @@ function App(){
         isOpen: showForm,
         draft: editing,
         onClose: () => { setShowForm(false); setEditing(null); },
-        onSaved: async () => { await reload(); },
+        onSaved: async () => { await refreshListings(); },
         autoListEnabled,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       }),
