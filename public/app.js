@@ -2541,6 +2541,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
   if (!isOpen) return null;
   
   const isMobile = isMobileDevice();
+  const [showTags, setShowTags] = useState(false); // Collapsible tags section
 
   const modal = H('div', { 
     className: 'modal open', 
@@ -2549,7 +2550,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
     H('div', { 
       className: 'modal-inner', 
       style: isMobile ? {
-        // Mobile: Full screen
+        // Mobile: Full screen but with smaller font/padding
         width: '100vw',
         height: '100vh',
         maxHeight: '100vh',
@@ -2559,9 +2560,10 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
         margin: 0,
         position: 'fixed',
         top: 0,
-        left: 0
+        left: 0,
+        fontSize: '14px' // Smaller base font
       } : {
-        // Desktop: Centered modal
+        // Desktop: unchanged
         width: 'min(680px, 92vw)',
         background: '#fff',
         borderRadius: 24,
@@ -2576,19 +2578,38 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
         onClick: onClose,
         style: isMobile ? {
           position: 'fixed',
-          top: '10px',
-          right: '10px',
-          zIndex: 10
+          top: '8px',
+          right: '8px',
+          zIndex: 10,
+          padding: '4px 8px',
+          fontSize: '16px'
         } : {}
       }, '✕'),
-      H('div', { style: { padding: 16 } },
-        H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 
+      
+      H('div', { style: { padding: isMobile ? 10 : 16 } }, // Smaller padding on mobile
+        H('div', { style: { 
+          fontWeight: 800, 
+          fontSize: isMobile ? 16 : 18, 
+          marginBottom: 4 
+        } }, 
           draft ? 'Edit Listing' : 'New Listing'
         ),
-        H('div', { className: 'muted', style: { marginBottom: 12 } }, 
+        
+        // Shorter helper text on mobile
+        !isMobile && H('div', { className: 'muted', style: { marginBottom: 12 } }, 
           'Add photos and details for your listing. Only images are required - AI can suggest the rest.'
         ),
-        H(ListingForm, { 
+        
+        // For mobile, we need a custom form layout
+        isMobile ? H(CompactListingForm, { 
+          draft, 
+          onCancel: onClose, 
+          onSaved: () => { onSaved?.(); onClose(); },
+          autoListEnabled,
+          autoPostNearbyEnabled,
+          showTags,
+          setShowTags
+        }) : H(ListingForm, { 
           draft, 
           onCancel: onClose, 
           onSaved: () => { onSaved?.(); onClose(); },
@@ -2600,6 +2621,131 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
   );
 
   return ReactDOM.createPortal(modal, document.body);
+}
+
+function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
+  // Same state as regular ListingForm...
+  
+  return H('form', { 
+    onSubmit: submit, 
+    className:'row', 
+    style:{
+      flexDirection:'column', 
+      gap: 8, // Smaller gap
+      position:'relative'
+    }
+  },
+    // Auto-list overlay (same as before)
+    autoBusy && H('div', {
+      style:{
+        position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+        display:'grid', placeItems:'center', zIndex:5, borderRadius:12
+      }
+    }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
+
+    // File picker - more compact
+    H(MultiFilePicker, { files, onChange:setFiles }),
+
+    // Existing images - smaller thumbnails
+    (existingUrls.length > 0) && H('div', null,
+      H('div', { className:'muted', style:{ marginBottom:4, fontSize:12 } }, 'Existing:'),
+      H('div', { className:'row', style:{ gap:4, flexWrap:'wrap' } },
+        ...existingUrls.map((src, i) =>
+          H('div', { key:i, style:{ position:'relative' } },
+            H('img', { src, style:{ width:60, height:60, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
+            H('button', { 
+              className:'btn danger', 
+              type:'button', 
+              style:{ position:'absolute', top:2, right:2, padding:'2px 4px', fontSize:10 }, 
+              onClick:() => {
+                const next = [...existingUrls];
+                next.splice(i, 1);
+                setExistingUrls(next);
+              }
+            }, '×')
+          )
+        )
+      )
+    ),
+
+    // AI button - full width
+    H('button', { 
+      type:'button', 
+      className:`btn ${aiBusy?'':'primary'}`, 
+      disabled:aiBusy, 
+      onClick:runAI,
+      style: { width: '100%', padding: '10px' }
+    }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+    
+    aiErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:12 } }, aiErr),
+
+    // Compact fields
+    H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Title (optional)' }),
+    
+    H('textarea', { 
+      value:description, 
+      maxLength:400, 
+      rows: 2, // Smaller default
+      onChange:e=>setDescription(e.target.value), 
+      placeholder:'Description (optional)' 
+    }),
+    
+    H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Location (optional)' }),
+    
+    H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy, style: { width: '100%' } }, 
+      geoBusy ? 'Locating…' : 'Use my location'
+    ),
+    
+    // Nearby checkbox - more compact
+    H('label', { style:{ display:'flex', alignItems:'center', gap:6, fontSize:13, padding:'8px 0' } },
+      H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
+        const checked = e.target.checked;
+        setEnableNearby(checked);
+        if (checked && !hasFixedGps) useMyLocation();
+      }}),
+      'Enable Nearby searches'
+    ),
+    
+    // Price input
+    H('input', {
+      value:priceVal,
+      inputMode:'decimal',
+      onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+      placeholder:'Price (leave empty for $0.00)'
+    }),
+    
+    // Collapsible tags section
+    H('button', {
+      type: 'button',
+      onClick: () => setShowTags(!showTags),
+      style: {
+        width: '100%',
+        padding: '8px',
+        background: '#f5f5f5',
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+        textAlign: 'left',
+        fontSize: 13
+      }
+    }, showTags ? '▼ Hide search tags' : '▶ Show search tags (optional)'),
+    
+    showTags && H('input', { 
+      placeholder:'e.g. car, suv, 4x4', 
+      value:tags, 
+      onChange:e=>setTags(e.target.value),
+      style: { fontSize: 13 }
+    }),
+
+    // Action buttons
+    H('div', { className:'row', style: { gap: 8, marginTop: 8 } },
+      H('button', { className:'btn primary', type:'submit', disabled:autoBusy, style: { flex: 1 } }, 
+        draft ? 'Save' : 'Create'
+      ),
+      H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy, style: { flex: 1 } }, 
+        'Cancel'
+      )
+    )
+  );
 }
 
 // Then your existing ListingForm component stays the same...
