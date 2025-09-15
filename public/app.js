@@ -2550,7 +2550,10 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
         width: 'min(680px, 92vw)', 
         background: '#fff', 
         borderRadius: 24, 
-        overflow: 'hidden' 
+        overflow: 'auto',
+        maxHeight: '90vh',
+        marginTop: '5vh',
+        marginBottom: '5vh'
       }
     },
       H('button', { className: 'close', onClick: onClose }, '✕'),
