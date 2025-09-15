@@ -1589,17 +1589,28 @@ async function submit(e){
       item.sold ? H('div', {
         style: {
           position: 'absolute',
-          top: 10,
-          left: 10,
-          background: 'rgba(5, 150, 105, 0.9)',
-          color: '#fff',
-          padding: '4px 10px',
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 600,
-          letterSpacing: 0.3
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none'
         }
-      }, 'Sold') : null
+      },
+        H('div', {
+          style: {
+            transform: 'rotate(-18deg)',
+            padding: '6px 18px',
+            textTransform: 'uppercase',
+            letterSpacing: '6px',
+            fontWeight: 800,
+            fontSize: 26,
+            color: 'rgba(4, 120, 87, 0.85)',
+            border: '3px solid rgba(16, 185, 129, 0.55)',
+            background: 'rgba(229, 255, 244, 0.82)',
+            borderRadius: 999
+          }
+        }, 'Sold')
+      ) : null
     ),
     
     H('div', { style: { padding: 16 } },
@@ -1789,17 +1800,28 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                   it.sold ? H('div', {
                     style: {
                       position: 'absolute',
-                      top: 10,
-                      left: 10,
-                      background: 'rgba(5, 150, 105, 0.9)',
-                      color: '#fff',
-                      padding: '4px 10px',
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      letterSpacing: 0.3
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      pointerEvents: 'none'
                     }
-                  }, 'Sold') : null
+                  },
+                    H('div', {
+                      style: {
+                        transform: 'rotate(-18deg)',
+                        padding: '4px 14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '6px',
+                        fontWeight: 800,
+                        fontSize: 22,
+                        color: 'rgba(4, 120, 87, 0.85)',
+                        border: '3px solid rgba(16, 185, 129, 0.55)',
+                        background: 'rgba(229, 255, 244, 0.82)',
+                        borderRadius: 999
+                      }
+                    }, 'Sold')
+                  ) : null
                 )
               );
             })
