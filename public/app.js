@@ -2542,7 +2542,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
   if (!isOpen) return null;
   
   const isMobile = isMobileDevice();
-  const [showTags, setShowTags] = useState(false); // Collapsible tags section for mobile
+  const [showTags, setShowTags] = useState(false);
 
   const modal = H('div', { 
     className: 'modal open', 
@@ -2551,18 +2551,15 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
     H('div', { 
       className: 'modal-inner', 
       style: isMobile ? {
-        // Mobile: Full screen but with smaller font/padding
-        width: '100vw',
-        height: '100vh',
-        maxHeight: '100vh',
+        // Mobile: Compact centered modal
+        width: '90vw',
+        maxWidth: '380px',
+        maxHeight: '80vh',
         background: '#fff',
-        borderRadius: 0,
+        borderRadius: 16,
         overflow: 'auto',
-        margin: 0,
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        fontSize: '14px' // Smaller base font
+        margin: 'auto',
+        position: 'relative'
       } : {
         // Desktop: unchanged
         width: 'min(680px, 92vw)',
@@ -2578,30 +2575,35 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
         className: 'close', 
         onClick: onClose,
         style: isMobile ? {
-          position: 'fixed',
-          top: '8px',
-          right: '8px',
+          position: 'absolute',
+          top: '6px',
+          right: '6px',
           zIndex: 10,
-          padding: '4px 8px',
-          fontSize: '16px'
+          width: '26px',
+          height: '26px',
+          padding: '0',
+          fontSize: '16px',
+          lineHeight: '24px',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'rgba(255,255,255,0.9)',
+          borderRadius: '13px'
         } : {}
       }, '✕'),
       
-      H('div', { style: { padding: isMobile ? 10 : 16 } }, // Smaller padding on mobile
+      H('div', { style: { padding: isMobile ? '10px' : '16px' } },
         H('div', { style: { 
           fontWeight: 800, 
-          fontSize: isMobile ? 16 : 18, 
-          marginBottom: 4 
+          fontSize: isMobile ? 15 : 18, 
+          marginBottom: isMobile ? 6 : 12
         } }, 
           draft ? 'Edit Listing' : 'New Listing'
         ),
         
-        // Shorter helper text on mobile
         !isMobile && H('div', { className: 'muted', style: { marginBottom: 12 } }, 
           'Add photos and details for your listing. Only images are required - AI can suggest the rest.'
         ),
         
-        // For mobile, we need a custom form layout
         isMobile ? H(CompactListingForm, { 
           draft, 
           onCancel: onClose, 
@@ -2626,6 +2628,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
 
 // --- Compact Listing Form for Mobile ---
 function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
+  const fileRef = useRef();
   const [files, setFiles] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
   const [originalUrls, setOriginalUrls] = useState([]);
@@ -2651,6 +2654,26 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
   const [geoErr, setGeoErr] = useState('');
   const [lat, setLat] = useState(draft?.lat ?? null);
   const [lon, setLon] = useState(draft?.lon ?? null);
+
+  // File picker handler
+  function pickFiles(e) {
+    const MAX_MB = 20;
+    const selected = Array.from(e.target.files || []);
+    const next = [...files];
+    for (const f of selected) {
+      if (f.size > MAX_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
+      if (!f.type.startsWith('image/')) { alert('Only images are allowed'); continue; }
+      next.push(f);
+    }
+    setFiles(next);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function removeFile(i) {
+    const next = [...files];
+    next.splice(i, 1);
+    setFiles(next);
+  }
 
   // Load current images
   useEffect(() => {
@@ -2847,7 +2870,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
     className:'row', 
     style:{
       flexDirection:'column', 
-      gap: 8,
+      gap: 5,
       position:'relative'
     }
   },
@@ -2858,18 +2881,47 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       }
     }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
 
-    H(MultiFilePicker, { files, onChange:setFiles }),
-
-    (existingUrls.length > 0) && H('div', null,
-      H('div', { className:'muted', style:{ marginBottom:4, fontSize:12 } }, 'Existing:'),
-      H('div', { className:'row', style:{ gap:4, flexWrap:'wrap' } },
-        ...existingUrls.map((src, i) =>
+    // Compact file picker
+    H('div', null,
+      H('input', { 
+        type:'file', 
+        accept:'image/*', 
+        multiple:true, 
+        ref:fileRef, 
+        onChange: pickFiles,
+        style: { fontSize: '13px' }
+      }),
+      files.length > 0 && H('div', { 
+        className:'row', 
+        style:{ gap:3, flexWrap:'wrap', marginTop:3 } 
+      },
+        ...files.map((f,i) =>
           H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src, style:{ width:60, height:60, objectFit:'cover', borderRadius:8, border:'1px solid #ddd' } }),
+            H('img', { 
+              src: URL.createObjectURL(f), 
+              style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } 
+            }),
             H('button', { 
               className:'btn danger', 
               type:'button', 
-              style:{ position:'absolute', top:2, right:2, padding:'2px 4px', fontSize:10 }, 
+              style:{ position:'absolute', top:-2, right:-2, padding:'0px 3px', fontSize:9, lineHeight:'12px' }, 
+              onClick:()=>removeFile(i) 
+            }, '×')
+          )
+        )
+      )
+    ),
+
+    (existingUrls.length > 0) && H('div', null,
+      H('div', { className:'muted', style:{ fontSize:11, marginBottom:2 } }, 'Current:'),
+      H('div', { className:'row', style:{ gap:3, flexWrap:'wrap' } },
+        ...existingUrls.map((src, i) =>
+          H('div', { key:i, style:{ position:'relative' } },
+            H('img', { src, style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } }),
+            H('button', { 
+              className:'btn danger', 
+              type:'button', 
+              style:{ position:'absolute', top:-2, right:-2, padding:'0px 3px', fontSize:9, lineHeight:'12px' }, 
               onClick:() => {
                 const next = [...existingUrls];
                 next.splice(i, 1);
@@ -2886,56 +2938,84 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       className:`btn ${aiBusy?'':'primary'}`, 
       disabled:aiBusy, 
       onClick:runAI,
-      style: { width: '100%', padding: '10px' }
+      style: { width: '100%', padding: '8px', fontSize: '13px' }
     }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
     
-    aiErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:12 } }, aiErr),
+    aiErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:11 } }, aiErr),
 
-    H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Title (optional)' }),
+    H('input', { 
+      value:title, 
+      maxLength:80, 
+      onChange:e=>setTitle(e.target.value), 
+      placeholder:'Title (optional)',
+      style: { fontSize: '13px', padding: '7px' }
+    }),
     
     H('textarea', { 
       value:description, 
       maxLength:400, 
       rows: 2,
       onChange:e=>setDescription(e.target.value), 
-      placeholder:'Description (optional)' 
+      placeholder:'Description (optional)',
+      style: { fontSize: '13px', padding: '7px', resize: 'none' }
     }),
     
-    H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Location (optional)' }),
+    H('input', { 
+      value:location, 
+      maxLength:80, 
+      onChange:e=>setLocation(e.target.value), 
+      placeholder:'Location (optional)',
+      style: { fontSize: '13px', padding: '7px' }
+    }),
     
-    H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy, style: { width: '100%' } }, 
+    H('button', { 
+      type:'button', 
+      className:'btn', 
+      onClick:useMyLocation, 
+      disabled:geoBusy, 
+      style: { width: '100%', padding: '7px', fontSize: '13px' } 
+    }, 
       geoBusy ? 'Locating…' : 'Use my location'
     ),
-    geoErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:12 } }, geoErr),
+    geoErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:11 } }, geoErr),
     
-    H('label', { style:{ display:'flex', alignItems:'center', gap:6, fontSize:13, padding:'8px 0' } },
-      H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
-        const checked = e.target.checked;
-        setEnableNearby(checked);
-        if (checked && !hasFixedGps) useMyLocation();
-      }}),
+    H('label', { style:{ display:'flex', alignItems:'center', gap:5, fontSize:12, padding:'3px 0' } },
+      H('input', { 
+        type:'checkbox', 
+        checked:enableNearby, 
+        onChange:e=>{
+          const checked = e.target.checked;
+          setEnableNearby(checked);
+          if (checked && !hasFixedGps) useMyLocation();
+        },
+        style: { width: 16, height: 16 }
+      }),
       'Enable Nearby searches'
     ),
     
-    H('input', {
-      value:priceVal,
-      inputMode:'decimal',
-      onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
-      placeholder:'Price (leave empty for $0.00)'
-    }),
-    isFree && H('span', { style:{ fontSize:12, color:'#16a34a', fontWeight:700 } }, price(0)),
+    H('div', { className:'row', style: { alignItems: 'center', gap: 6 } },
+      H('input', {
+        value:priceVal,
+        inputMode:'decimal',
+        onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+        placeholder:'Price (empty = $0.00)',
+        style: { fontSize: '13px', padding: '7px', flex: 1 }
+      }),
+      isFree && H('span', { style:{ fontSize:11, color:'#16a34a', fontWeight:700 } }, price(0))
+    ),
     
     H('button', {
       type: 'button',
       onClick: () => setShowTags(!showTags),
       style: {
         width: '100%',
-        padding: '8px',
-        background: '#f5f5f5',
+        padding: '6px',
+        background: '#f9f9f9',
         border: '1px solid #e5e7eb',
-        borderRadius: 8,
+        borderRadius: 6,
         textAlign: 'left',
-        fontSize: 13
+        fontSize: 11,
+        color: '#6b7280'
       }
     }, showTags ? '▼ Hide search tags' : '▶ Show search tags (optional)'),
     
@@ -2943,14 +3023,25 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       placeholder:'e.g. car, suv, 4x4', 
       value:tags, 
       onChange:e=>setTags(e.target.value),
-      style: { fontSize: 13 }
+      style: { fontSize: '13px', padding: '7px' }
     }),
 
-    H('div', { className:'row', style: { gap: 8, marginTop: 8 } },
-      H('button', { className:'btn primary', type:'submit', disabled:autoBusy, style: { flex: 1 } }, 
+    H('div', { className:'row', style: { gap: 6, marginTop: 6 } },
+      H('button', { 
+        className:'btn primary', 
+        type:'submit', 
+        disabled:autoBusy, 
+        style: { flex: 1, padding: '9px', fontSize: '13px', fontWeight: 600 } 
+      }, 
         draft ? 'Save' : 'Create'
       ),
-      H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy, style: { flex: 1 } }, 
+      H('button', { 
+        className:'btn', 
+        type:'button', 
+        onClick:onCancel, 
+        disabled:autoBusy, 
+        style: { flex: 1, padding: '9px', fontSize: '13px' } 
+      }, 
         'Cancel'
       )
     )
