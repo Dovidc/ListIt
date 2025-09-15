@@ -2535,6 +2535,48 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   // ---------- App ----------
   const PAGE_SIZE = 75;
 
+// Add this new component BEFORE the ListingForm component definition
+// --- Listing Form Modal ---
+function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
+  if (!isOpen) return null;
+
+  const modal = H('div', { 
+    className: 'modal open', 
+    onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
+  },
+    H('div', { 
+      className: 'modal-inner', 
+      style: { 
+        width: 'min(680px, 92vw)', 
+        background: '#fff', 
+        borderRadius: 24, 
+        overflow: 'hidden' 
+      }
+    },
+      H('button', { className: 'close', onClick: onClose }, '✕'),
+      H('div', { style: { padding: 16 } },
+        H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 
+          draft ? 'Edit Listing' : 'New Listing'
+        ),
+        H('div', { className: 'muted', style: { marginBottom: 12 } }, 
+          'Add photos and details for your listing. Only images are required - AI can suggest the rest.'
+        ),
+        H(ListingForm, { 
+          draft, 
+          onCancel: onClose, 
+          onSaved: () => { onSaved?.(); onClose(); },
+          autoListEnabled,
+          autoPostNearbyEnabled
+        })
+      )
+    )
+  );
+
+  return ReactDOM.createPortal(modal, document.body);
+}
+
+// Then your existing ListingForm component stays the same...
+
 function App(){
     const { user, setUser } = useAuth();
     const [tab, setTab] = useState('browse');
@@ -2972,15 +3014,7 @@ function App(){
             )
           ),
 
-          showForm && H('section', { className:'card', style:{ padding:16, marginBottom:16 } },
-            H(ListingForm, {
-              draft: editing,
-              onCancel:()=>setShowForm(false),
-              onSaved: async ()=>{ setShowForm(false); setEditing(null); await reload(); },
-              autoListEnabled,
-              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
-            })
-          ),
+          // REMOVED THE INLINE FORM SECTION HERE
 
           // Grid: 4 across desktop, 3 across mobile
           (() => {
@@ -3023,7 +3057,7 @@ function App(){
                   setEditing(rich);
                   setShowForm(true);
                   setSelectedListing(null);
-                  window.scrollTo({ top:0, behavior:'smooth' });
+                  // REMOVED window.scrollTo
                 },
                 onDelete: async(it)=>{
                   if (confirm('Remove this listing? (Your past messages will remain)')) {
@@ -3049,7 +3083,7 @@ function App(){
               const rich = mineById[it.id] || it;
               setEditing(rich);
               setShowForm(true);
-              window.scrollTo({ top:0, behavior:'smooth' });
+              // REMOVED window.scrollTo
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reload(); } },
             onMessage: startMessage,
@@ -3074,7 +3108,7 @@ function App(){
               setEditing(rich);
               setShowForm(true);
               setTab('browse');
-              window.scrollTo({ top:0, behavior:'smooth' });
+              // REMOVED window.scrollTo
             },
             onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await reload(); } },
             onLogout: logoutFromProfile,
@@ -3094,6 +3128,16 @@ function App(){
         reloadAll: reload,
         reloadMine: reloadMineOnly,
         user,
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+      }),
+
+      // NEW: Listing Form modal
+      showForm && H(ListingFormModal, {
+        isOpen: showForm,
+        draft: editing,
+        onClose: () => { setShowForm(false); setEditing(null); },
+        onSaved: async () => { await reload(); },
+        autoListEnabled,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       }),
 
