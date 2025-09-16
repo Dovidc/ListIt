@@ -68,6 +68,42 @@ if (IS_PROD && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev_jwt_c
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 20);
 const B64_SLOP = 1.6;
 
+const NEARBY_MAX_RADIUS_M = Number(process.env.NEARBY_MAX_RADIUS_M || 1609);
+const NEARBY_RESULT_LIMIT = Number(process.env.NEARBY_RESULT_LIMIT || 120);
+const NEARBY_CACHE_TTL_MS = Number(process.env.NEARBY_CACHE_TTL_MS || 20000);
+const NEARBY_CACHE_MAX = Number(process.env.NEARBY_CACHE_MAX || 200);
+const nearbyCache = new Map();
+
+function quantizeCoord(value, precision) {
+  return Math.round(value * precision) / precision;
+}
+function makeNearbyCacheKey(lat, lon, radius) {
+  const precision = 5000; // ~22m increments
+  const latKey = quantizeCoord(lat, precision).toFixed(4);
+  const lonKey = quantizeCoord(lon, precision).toFixed(4);
+  const radiusBucket = Math.max(1, Math.round(radius / 25));
+  return `${latKey}|${lonKey}|${radiusBucket}`;
+}
+function getNearbyCache(key) {
+  const entry = nearbyCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    nearbyCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+function setNearbyCache(key, value) {
+  nearbyCache.set(key, { value, expires: Date.now() + NEARBY_CACHE_TTL_MS });
+  if (nearbyCache.size > NEARBY_CACHE_MAX) {
+    const oldestKey = nearbyCache.keys().next().value;
+    if (oldestKey) nearbyCache.delete(oldestKey);
+  }
+}
+function invalidateNearbyCache() {
+  if (nearbyCache.size) nearbyCache.clear();
+}
+
 /* ------------------------------------------------------------------ */
 /* Core parsers                                                        */
 /* ------------------------------------------------------------------ */
@@ -846,6 +882,7 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
     // NOTE: Images are NOT inserted here anymore - they come via S3 upload flow
     
     const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
+    invalidateNearbyCache();
     return res.json(row);
   } catch (e) {
     const msg = String(e && e.message || e || 'db_error');
@@ -979,6 +1016,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       }
     } catch {}
 
+    invalidateNearbyCache();
     res.json(row);
   } catch (e) {
     console.error('Update listing failed:', e);
@@ -999,6 +1037,7 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
     await db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
     await db.prepare('DELETE FROM listings WHERE id = ?').run(id);
     try { await decrementCityCount(existing.location); } catch {}
+    invalidateNearbyCache();
     res.json({ ok: true });
   } catch (e) {
     console.error('Delete listing failed:', e);
@@ -1028,22 +1067,34 @@ app.get('/api/listings/nearby', async (req, res) => {
     const lat0 = Number(req.query.lat);
     const lon0 = Number(req.query.lon);
     let radius = Number(req.query.radius_m);
-    
-    if (!Number.isFinite(radius) || radius <= 0) radius = 150;
+
     if (!Number.isFinite(lat0) || !Number.isFinite(lon0)) {
       return res.status(400).json({ error: 'lat/lon required' });
     }
+    if (!Number.isFinite(radius) || radius <= 0) radius = 150;
+    radius = Math.max(50, Math.min(radius, NEARBY_MAX_RADIUS_M));
+
+    const cacheKey = makeNearbyCacheKey(lat0, lon0, radius);
+    const cached = getNearbyCache(cacheKey);
+    if (cached) {
+      res.set('X-Nearby-Cache', 'HIT');
+      return res.json(cached);
+    }
 
     const degLat = radius / 111320;
-    const degLon = radius / (111320 * Math.cos((lat0 * Math.PI) / 180));
+    const cosLat = Math.cos((lat0 * Math.PI) / 180);
+    const safeCos = Math.max(Math.abs(cosLat), 1e-4);
+    const degLon = radius / (111320 * safeCos);
     const minLat = lat0 - degLat, maxLat = lat0 + degLat;
     const minLon = lon0 - degLon, maxLon = lon0 + degLon;
+    const lonScale = safeCos * safeCos;
+    const preLimit = Math.min(NEARBY_RESULT_LIMIT * 2, 400);
 
     const rows = await db.prepare(`
       SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location,
              l.price, l.created_at, l.lat, l.lon,
              u.username as owner_username,
-             l.sold
+             ((l.lat - @lat0)*(l.lat - @lat0) + (l.lon - @lon0)*(l.lon - @lon0) * @lonScale) AS approx_dist_sq
       FROM listings l
       JOIN users u ON u.id = l.user_id
       WHERE l.enable_nearby = 1
@@ -1051,25 +1102,33 @@ app.get('/api/listings/nearby', async (req, res) => {
         AND l.lat IS NOT NULL AND l.lon IS NOT NULL
         AND l.lat BETWEEN @minLat AND @maxLat
         AND l.lon BETWEEN @minLon AND @maxLon
-      ORDER BY l.id DESC
-    `).all({ minLat, maxLat, minLon, maxLon });
+      ORDER BY approx_dist_sq ASC, l.id DESC
+      LIMIT @limit
+    `).all({ minLat, maxLat, minLon, maxLon, lat0, lon0, lonScale, limit: preLimit });
 
-    const toRad = d => (d * Math.PI) / 180;
+    const toRad = (d) => (d * Math.PI) / 180;
     const haversineMeters = (lat1, lon1, lat2, lon2) => {
       const R = 6371000;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) ** 2;
       return 2 * R * Math.asin(Math.sqrt(a));
     };
 
     const out = [];
-    for (const r of rows) {
-      const d = haversineMeters(lat0, lon0, r.lat, r.lon);
-      if (d <= radius) out.push({ ...r, distance_m: Math.round(d) });
+    for (const row of rows) {
+      const d = haversineMeters(lat0, lon0, row.lat, row.lon);
+      if (d <= radius) {
+        out.push({ ...row, distance_m: Math.round(d) });
+        if (out.length >= NEARBY_RESULT_LIMIT) break;
+      }
     }
-    out.sort((a,b) => (a.distance_m||1e12) - (b.distance_m||1e12));
-    res.json(out);
+
+    setNearbyCache(cacheKey, out);
+    res.set('X-Nearby-Cache', 'MISS');
+    return res.json(out);
   } catch (e) {
     console.error('Nearby listings failed:', e);
     return res.status(500).json({ error: 'fetch_failed' });
@@ -1542,6 +1601,7 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     await db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
     const info = await db.prepare('DELETE FROM listings WHERE id = ?').run(id);
+    invalidateNearbyCache();
     res.json({ ok: true, deleted: info.changes });
   } catch (e) {
     console.error('Admin delete listing failed:', e);
@@ -1552,6 +1612,7 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, async (req, res) => {
 app.delete('/api/admin/listings', auth, requireAdmin, async (_req, res) => {
   try {
     await db.exec('DELETE FROM listing_images; DELETE FROM listings;');
+    invalidateNearbyCache();
     res.json({ ok: true });
   } catch (e) {
     console.error('Admin delete all failed:', e);

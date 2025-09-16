@@ -1,4 +1,4 @@
-// public/app.js
+﻿// public/app.js
 //
 // S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images → S3 URLs (kept!)
@@ -2257,6 +2257,25 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [items, setItems] = useState([]);
     const [busy, setBusy] = useState(false);
     const [selected, setSelected] = useState(null);
+    const [errorMsg, setErrorMsg] = useState('');
+    const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
+    const storedCoords = useMemo(() => {
+      try {
+        const raw = localStorage.getItem('listit_nearby_coords');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const lat = Number(parsed?.lat);
+        const lon = Number(parsed?.lon);
+        const ts = Number(parsed?.ts) || 0;
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          return { lat, lon, ts };
+        }
+      } catch {}
+      return null;
+    }, []);
+    const coordsRef = useRef(storedCoords ? { lat: storedCoords.lat, lon: storedCoords.lon } : null);
+    const coordsTsRef = useRef(storedCoords?.ts || 0);
+    const abortRef = useRef(null);
 
     // NEW: masonry container ref + live column-count
     const masonRef = useRef(null);
@@ -2289,23 +2308,82 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       return out;
     }, [items, nearbyCols]);
 
-    async function load() {
-      if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-      setBusy(true);
-      try {
-        const { coords } = await new Promise((res, rej)=>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-        );
-        const res = await api.listNearby(coords.latitude, coords.longitude, radius, { silent:true });
-        setItems(res || []);
-      } catch (e) {
-        alert('Could not load nearby listings');
-      } finally {
-        setBusy(false);
+    const ensureCoords = useCallback(async (force = false) => {
+      const cached = coordsRef.current;
+      const now = Date.now();
+      if (!force && cached && (now - coordsTsRef.current) < 120000) {
+        return cached;
       }
-    }
+      if (!('geolocation' in navigator)) {
+        if (cached) return cached;
+        throw new Error('geolocation_unsupported');
+      }
+      try {
+        const position = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy:true,
+            timeout:8000,
+            maximumAge:60000
+          })
+        );
+        const out = { lat: position.coords.latitude, lon: position.coords.longitude };
+        coordsRef.current = out;
+        coordsTsRef.current = Date.now();
+        try { localStorage.setItem('listit_nearby_coords', JSON.stringify({ ...out, ts: coordsTsRef.current })); } catch {}
+        return out;
+      } catch (err) {
+        if (!force && cached) return cached;
+        throw err;
+      }
+    }, []);
 
-    useEffect(() => { load(); }, [radius]);
+    const load = useCallback(async (forceLocation = false) => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setBusy(true);
+      setErrorMsg('');
+      try {
+        const coords = await ensureCoords(forceLocation);
+        if (!coords) throw new Error('location_unavailable');
+        const res = await api.listNearby(coords.lat, coords.lon, radius, { silent:true, signal: controller.signal });
+        if (abortRef.current !== controller) return;
+        setItems(Array.isArray(res) ? res : []);
+        setLastUpdatedLabel(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('Nearby load failed:', err);
+        let message = 'Could not load nearby listings.';
+        if (err?.message === 'geolocation_unsupported') {
+          message = 'Geolocation not supported in this browser.';
+        } else if (typeof err?.code === 'number') {
+          if (err.code === 1) message = 'Location permission denied.';
+          else if (err.code === 2) message = 'Unable to determine your location.';
+          else if (err.code === 3) message = 'Location lookup timed out.';
+        } else if (err?.message === 'location_unavailable') {
+          message = 'Location unavailable.';
+        }
+        if (abortRef.current === controller) {
+          setItems([]);
+          setErrorMsg(message);
+          setLastUpdatedLabel('');
+        }
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setBusy(false);
+        }
+      }
+    }, [ensureCoords, radius]);
+
+    useEffect(() => {
+      load(false);
+      return () => {
+        if (abortRef.current) abortRef.current.abort();
+      };
+    }, [load]);
 
     const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
     useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
@@ -2319,21 +2397,23 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
         H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
-          H('label', { htmlFor:'radius' }, 'Filter radius:'),
-          H('select', {
-            id:'radius',
-            value: radius,
-            onChange: e => setRadius(Number(e.target.value)),
-            style:{ width:'auto' }
-          },
-            H('option', { value:150 },  '≈500 ft'),
-            H('option', { value:402 },  '¼ mi'),
-            H('option', { value:805 },  '½ mi'),
-            H('option', { value:1609 }, '1 mi')
-          ),
-          H('button', { className:'btn', onClick:load, disabled:busy }, busy ? 'Finding nearby…' : 'Reload')
-        )
+        H('label', { htmlFor:'radius' }, 'Filter radius:'),
+        H('select', {
+          id:'radius',
+          value: radius,
+          onChange: e => setRadius(Number(e.target.value)),
+          style:{ width:'auto' }
+        },
+          H('option', { value:150 }, '~500 ft'),
+          H('option', { value:402 }, '0.25 mi'),
+          H('option', { value:805 }, '0.5 mi'),
+          H('option', { value:1609 }, '1 mi')
+        ),
+        H('button', { className:'btn', onClick: () => load(true), disabled:busy }, busy ? 'Refreshing...' : 'Reload'),
+        lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
       ),
+
+      errorMsg && H('div', { className:'muted', style:{ color:'#b91c1c', marginTop:8, fontSize:12 } }, errorMsg),
 
       // NOTE: add ref so we can read computed column-count
       H('section', { className:'masonry', ref: masonRef },
@@ -2350,7 +2430,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         )
       ),
 
-      (!items.length && !busy) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
+      (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
 
       selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
         H('div', { className:'modal-inner listing-modal' },
@@ -2368,6 +2448,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             onToggleSold
           })
         )
+      )
       )
     );
   }
