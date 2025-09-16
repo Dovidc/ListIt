@@ -625,24 +625,13 @@ app.get('/api/listings', async (req, res) => {
         where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(COALESCE(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
       }
 
-      let locClause = '';
       const locParams = {};
       if (locRaw) {
-        const distinct = await db.prepare('SELECT DISTINCT location FROM listings').all();
-        const allCities = distinct.map(r => r.location).filter(Boolean).map(cityOf).filter(Boolean);
-        const matches = pickMatchingCities(allCities, locRaw);
-        if (matches.size === 0) {
-          return withPagination
-            ? { items: [], page: page, limit, has_more: false, next_cursor: null }
-            : [];
+        const locCity = (cityOf(locRaw) || locRaw || '').toString().trim().toLowerCase();
+        if (locCity) {
+          locParams.loc = `${locCity.replace(/%/g, '')}%`;
+          where.push('LOWER(l.location) LIKE @loc');
         }
-        const patterns = Array.from(matches).slice(0, 30).map((c, i) => {
-          const k = `loc${i}`;
-          locParams[k] = `${c}%`;
-          return `l.location LIKE @${k}`;
-        });
-        locClause = '(' + patterns.join(' OR ') + ')';
-        where.push(locClause);
       }
 
       const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
@@ -691,22 +680,13 @@ app.get('/api/listings', async (req, res) => {
         where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(COALESCE(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
       }
 
-      let locClause = '';
       const locParams = {};
       if (locRaw) {
-        const distinct = await db.prepare('SELECT DISTINCT location FROM listings').all();
-        const allCities = distinct.map(r => r.location).filter(Boolean).map(cityOf).filter(Boolean);
-        const matches = pickMatchingCities(allCities, locRaw);
-        if (matches.size === 0) {
-          return res.json({ items: [], page: page, limit, has_more: false, next_cursor: null });
+        const locCity = (cityOf(locRaw) || locRaw || '').toString().trim().toLowerCase();
+        if (locCity) {
+          locParams.loc = `${locCity.replace(/%/g, '')}%`;
+          where.push('LOWER(l.location) LIKE @loc');
         }
-        const patterns = Array.from(matches).slice(0, 30).map((c, i) => {
-          const k = `loc${i}`;
-          locParams[k] = `${c}%`;
-          return `l.location LIKE @${k}`;
-        });
-        locClause = '(' + patterns.join(' OR ') + ')';
-        where.push(locClause);
       }
 
       if (hasCursor) {
@@ -716,7 +696,6 @@ app.get('/api/listings', async (req, res) => {
 
       const whereSQL = where.length ? ('WHERE ' + where.join(' AND ')) : '';
       const lim = limit + 1;
-      const off = hasPage ? offset : 0;
 
       const sql = `
         SELECT ${fields}
@@ -724,10 +703,10 @@ app.get('/api/listings', async (req, res) => {
         JOIN users u ON u.id = l.user_id
         ${whereSQL}
         ${orderSQL}
-        LIMIT @lim ${hasPage ? 'OFFSET @off' : ''}
+        LIMIT @lim
       `;
 
-      const rows = await db.prepare(sql).all({ ...params, ...locParams, lim, off });
+      const rows = await db.prepare(sql).all({ ...params, ...locParams, lim });
       const has_more = rows.length > limit;
       const items = has_more ? rows.slice(0, limit) : rows;
       const next_cursor = items.length ? items[items.length - 1].id : null;

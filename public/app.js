@@ -183,6 +183,7 @@
       else if (Array.isArray(res.data)) rows = res.data;
     }
     let hasNext = false;
+    let nextCursor = null;
     if (res && typeof res === 'object') {
       if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
       else if (typeof res.next === 'boolean') hasNext = res.next;
@@ -192,10 +193,12 @@
       } else {
         hasNext = rows.length === limit;
       }
+      if (res.next_cursor != null) nextCursor = res.next_cursor;
+      else if (res.cursor != null) nextCursor = res.cursor;
     } else {
       hasNext = rows.length === limit;
     }
-    return { rows, hasNext };
+    return { rows, hasNext, nextCursor };
   }
   const asArray = (x) =>
     Array.isArray(x) ? x
@@ -346,13 +349,14 @@ register(payload, meta) {
 
     // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit, sort }
     listAll(a, b, meta) {
-      let q, loc, page, limit, sort;
+      let q, loc, page, limit, sort, cursor;
       if (typeof a === 'object' && a !== null) {
         q = a.q || '';
         loc = a.loc || '';
         page = a.page || 1;
         limit = a.limit || 75;
         sort = a.sort || 'new';
+        cursor = a.cursor || null;
         meta = b || {};
       } else {
         q = a || '';
@@ -365,7 +369,8 @@ register(payload, meta) {
       if (q)   params.set('q', q);
       if (loc) params.set('loc', loc);
       params.set('noimg', '1'); // thin-fetch
-      params.set('page', String(page));
+      if (cursor != null) params.set('cursor', String(cursor));
+      else params.set('page', String(page));
       params.set('limit', String(limit));
       params.set('sort', sort);
       const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
@@ -3184,7 +3189,7 @@ function App(){
     const [isFetchingListings, setIsFetchingListings] = useState(false);
     const sentinelRef = useRef(null);
     const loadingListingsRef = useRef(false);
-    const nextPageRef = useRef(1);
+    const nextCursorRef = useRef(null);
 
     // Modal selection for full listing card
     const [selectedListing, setSelectedListing] = useState(null);
@@ -3262,7 +3267,7 @@ function App(){
 
     const reloadReqRef = useRef(0);
 
-    const loadListings = useCallback(async ({ page = 1, replace = false } = {}) => {
+    const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
       const req = ++reloadReqRef.current;
       loadingListingsRef.current = true;
       setIsFetchingListings(true);
@@ -3270,26 +3275,26 @@ function App(){
         const res = await api.listAll({
           q: debouncedQuery.trim() || '',
           loc: debouncedLocation.trim() || '',
-          page,
+          cursor,
           limit: PAGE_SIZE,
           sort
         });
 
         if (req !== reloadReqRef.current) return;
 
-        const { rows, hasNext } = normalizeListingsResponse(res, PAGE_SIZE);
+        const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, PAGE_SIZE);
         const newRows = rows || [];
         setHasNext(!!hasNext);
 
         setAll(prev => {
-          if (replace || page === 1) return newRows;
+          if (replace || cursor == null) return newRows;
           if (!prev || !prev.length) return newRows;
           const existing = new Set(prev.map(r => r.id));
           const appended = newRows.filter(r => !existing.has(r.id));
           return appended.length ? [...prev, ...appended] : prev;
         });
 
-        if (page === 1) {
+        if (cursor == null) {
           if (user) {
             try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
           } else {
@@ -3299,7 +3304,7 @@ function App(){
 
         if (newRows.length) {
           try {
-            const ids = (page === 1 ? newRows.slice(0, 24) : newRows).map(r => r.id);
+            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
             if (ids.length) {
               const covers = await api.getCoversBatch(ids, { silent: true });
               if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
@@ -3311,13 +3316,13 @@ function App(){
           } catch {}
         }
 
-        nextPageRef.current = hasNext ? page + 1 : page;
+        nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
       } catch (e) {
         if (req === reloadReqRef.current) {
           console.error('load listings failed', e);
-          if (replace || page === 1) setAll([]);
+          if (replace || cursor == null) setAll([]);
           setHasNext(false);
-          if (page === 1 && !user) setMine([]);
+          if (cursor == null && !user) setMine([]);
         }
       } finally {
         if (req === reloadReqRef.current) {
@@ -3328,17 +3333,17 @@ function App(){
     }, [debouncedQuery, debouncedLocation, sort, user?.id]);
 
     useEffect(() => {
-      nextPageRef.current = 1;
+      nextCursorRef.current = null;
       setAll([]);
       setHasNext(false);
-      loadListings({ page: 1, replace: true });
+      loadListings({ cursor: null, replace: true });
     }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
 
     const refreshListings = useCallback(async () => {
-      nextPageRef.current = 1;
+      nextCursorRef.current = null;
       setAll([]);
       setHasNext(false);
-      await loadListings({ page: 1, replace: true });
+      await loadListings({ cursor: null, replace: true });
     }, [loadListings]);
 
     useEffect(() => {
@@ -3349,7 +3354,8 @@ function App(){
         const entry = entries[0];
         if (!entry || !entry.isIntersecting) return;
         if (!hasNext || loadingListingsRef.current) return;
-        loadListings({ page: nextPageRef.current, replace: false });
+        if (!nextCursorRef.current) return;
+        loadListings({ cursor: nextCursorRef.current, replace: false });
       }, { rootMargin: '200px' });
       observer.observe(el);
       return () => observer.disconnect();
