@@ -397,6 +397,13 @@ register(payload, meta) {
     adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
     adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
 
+    searchCities(q, meta) {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      const url = '/api/cities' + (params.toString() ? `?${params.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, { ...(meta || {}), silent: true });
+    },
+
     ensureConversation({ with_user_id, listing_id }, meta) {
       return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) }, meta);
     },
@@ -3498,18 +3505,22 @@ function App(){
     const feed = all; // Sorting is now handled server-side
 
     // City options
-    const cityOptions = useMemo(() => {
-      const set = new Set();
-      asArray(all).forEach(l => {
-        const raw = (l.location || '').trim();
-        if (!raw) return;
-        const city = raw.split(',')[0].trim();
-        if (!city) return;
-        if (city.toLowerCase() === 'no location') return;
-        set.add(city);
-      });
-      return Array.from(set).sort((a,b)=> a.localeCompare(b));
-    }, [all]);
+    const [cityOptions, setCityOptions] = useState([]);
+
+    useEffect(() => {
+      let alive = true;
+      const term = locationQuery.split(',')[0].trim();
+      const timer = setTimeout(async () => {
+        try {
+          const res = await api.searchCities(term);
+          if (!alive) return;
+          setCityOptions(Array.isArray(res) ? res : []);
+        } catch {
+          if (alive) setCityOptions([]);
+        }
+      }, 150);
+      return () => { alive = false; clearTimeout(timer); };
+    }, [locationQuery]);
 
     async function startMessage(item){
       if(!user){ alert('Log in to message a seller.'); return; }

@@ -247,6 +247,23 @@ async function initializeSchema() {
       );
     `);
 
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS listing_cities (
+        city TEXT PRIMARY KEY,
+        slug TEXT UNIQUE,
+        count INTEGER DEFAULT 0
+      );
+    `);
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_cities_slug ON listing_cities(slug);');
+
+    const cityIndexCount = await db.prepare('SELECT COUNT(*) AS c FROM listing_cities').get();
+    if (!Number.isFinite(cityIndexCount?.c) || cityIndexCount.c === 0) {
+      const existingLocations = await db.prepare("SELECT location FROM listings WHERE location IS NOT NULL AND TRIM(location) <> ''").all();
+      for (const row of existingLocations) {
+        try { await incrementCityCount(row.location); } catch {}
+      }
+    }
+
     // Create indexes
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id, id);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(id DESC);');
@@ -311,6 +328,9 @@ function fallbackTagsFromTitleDesc(title, desc) {
 
 function normLetters(s) { return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
 function cityOf(location) { return String(location||'').split(',')[0].trim(); }
+function normalizeCitySlug(city) {
+  return normLetters(String(city || '').toLowerCase()).replace(/[^a-z0-9]/g, '');
+}
 
 function levenshtein(a,b) {
   a = String(a); b = String(b);
@@ -344,6 +364,26 @@ function pickMatchingCities(allCities, query) {
     if (d <= 2) { out.add(c); continue; }
   }
   return out;
+}
+
+async function incrementCityCount(cityRaw) {
+  const city = cityOf(cityRaw);
+  const slug = normalizeCitySlug(city);
+  if (!city || !slug) return;
+  await db.prepare(`
+    INSERT INTO listing_cities (city, slug, count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(city)
+    DO UPDATE SET count = listing_cities.count + 1, slug = excluded.slug
+  `).run(city, slug);
+}
+
+async function decrementCityCount(cityRaw) {
+  const city = cityOf(cityRaw);
+  const slug = normalizeCitySlug(city);
+  if (!city || !slug) return;
+  await db.prepare('UPDATE listing_cities SET count = CASE WHEN count > 0 THEN count - 1 ELSE 0 END WHERE city = ?').run(city);
+  await db.prepare('DELETE FROM listing_cities WHERE city = ? AND count <= 0').run(city);
 }
 
 function isAllowedPublicUrl(u) {
@@ -801,6 +841,8 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
     const listingId = info.lastInsertRowid;
 
+    try { await incrementCityCount(locStr); } catch {}
+
     // NOTE: Images are NOT inserted here anymore - they come via S3 upload flow
     
     const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
@@ -927,6 +969,16 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
     }
 
     const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
+
+    try {
+      const prevCity = cityOf(existing.location);
+      const nextCity = cityOf(newLoc);
+      if (prevCity.toLowerCase() !== nextCity.toLowerCase()) {
+        await decrementCityCount(existing.location);
+        await incrementCityCount(newLoc);
+      }
+    } catch {}
+
     res.json(row);
   } catch (e) {
     console.error('Update listing failed:', e);
@@ -946,6 +998,7 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
     
     await db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
     await db.prepare('DELETE FROM listings WHERE id = ?').run(id);
+    try { await decrementCityCount(existing.location); } catch {}
     res.json({ ok: true });
   } catch (e) {
     console.error('Delete listing failed:', e);
@@ -1020,6 +1073,37 @@ app.get('/api/listings/nearby', async (req, res) => {
   } catch (e) {
     console.error('Nearby listings failed:', e);
     return res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
+app.get('/api/cities', async (req, res) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 20);
+    const slug = normalizeCitySlug(raw);
+    const like = raw.toLowerCase().replace(/%/g, '') + '%';
+    let rows;
+    if (!raw) {
+      rows = await db.prepare(`
+        SELECT city, count
+          FROM listing_cities
+         ORDER BY count DESC, city ASC
+         LIMIT @limit
+      `).all({ limit });
+    } else {
+      rows = await db.prepare(`
+        SELECT city, count
+          FROM listing_cities
+         WHERE (slug LIKE @slug || '%')
+            OR (LOWER(city) LIKE @like)
+         ORDER BY count DESC, city ASC
+         LIMIT @limit
+      `).all({ slug, like, limit });
+    }
+    res.json(rows.map(r => r.city));
+  } catch (e) {
+    console.error('City search failed:', e);
+    res.status(500).json({ error: 'fetch_failed' });
   }
 });
 
