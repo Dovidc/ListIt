@@ -3504,7 +3504,9 @@ function App(){
         const raw = (l.location || '').trim();
         if (!raw) return;
         const city = raw.split(',')[0].trim();
-        if (city) set.add(city);
+        if (!city) return;
+        if (city.toLowerCase() === 'no location') return;
+        set.add(city);
       });
       return Array.from(set).sort((a,b)=> a.localeCompare(b));
     }, [all]);
