@@ -628,7 +628,7 @@ app.get('/api/listings', async (req, res) => {
       const locParams = {};
       if (locRaw) {
         const locCity = (cityOf(locRaw) || locRaw || '').toString().trim().toLowerCase();
-        if (locCity) {
+        if (locCity && locCity !== 'no location') {
           locParams.loc = `${locCity.replace(/%/g, '')}%`;
           where.push('LOWER(l.location) LIKE @loc');
         }
@@ -683,7 +683,7 @@ app.get('/api/listings', async (req, res) => {
       const locParams = {};
       if (locRaw) {
         const locCity = (cityOf(locRaw) || locRaw || '').toString().trim().toLowerCase();
-        if (locCity) {
+        if (locCity && locCity !== 'no location') {
           locParams.loc = `${locCity.replace(/%/g, '')}%`;
           where.push('LOWER(l.location) LIKE @loc');
         }
