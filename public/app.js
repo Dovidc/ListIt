@@ -3518,7 +3518,7 @@ function App(){
         } catch {
           if (alive) setCityOptions([]);
         }
-      }, 150);
+      }, 2000);
       return () => { alive = false; clearTimeout(timer); };
     }, [locationQuery]);
 
