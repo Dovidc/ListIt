@@ -2919,6 +2919,13 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   // Add scroll tracking state
   const msgsContainerRef = useRef(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const formatMessageTimestamp = (value) => {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (!Number.isFinite(dt.getTime())) return value;
+    return dt.toLocaleString();
+  };
+
   
   // Add ref to track current scroll position to avoid stale closures
   const isAtBottomRef = useRef(isAtBottom);
@@ -3223,16 +3230,20 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         style:{ flex:1, overflow:'auto', padding:4 },
         onScroll: checkIfAtBottom
       },
-        msgs.map(m => H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
-          m.body && H('div', null, m.body),
-          Array.isArray(m.images) && m.images.length > 0 &&
-            H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
-              ...m.images.map((src, i) =>
-                H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
-                  onClick:()=>openLightbox(m.images, i) })
-              )
-            )
-        ))
+        msgs.map(m => {
+          const ts = formatMessageTimestamp(m.created_at || m.updated_at);
+          return H('div', { key:m.id, className:`message ${m.sender_id===user.id?'mine':'their'}` },
+            m.body && H('div', null, m.body),
+            Array.isArray(m.images) && m.images.length > 0 &&
+              H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
+                ...m.images.map((src, i) =>
+                  H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
+                    onClick:()=>openLightbox(m.images, i) })
+                )
+              ),
+            ts && H('div', { className:'muted', style:{ fontSize:11, marginTop:6, textAlign: m.sender_id===user.id ? 'right' : 'left' } }, ts)
+          );
+        })
       ),
 
       (activeId && imgFiles.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
