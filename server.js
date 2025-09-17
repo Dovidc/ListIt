@@ -2075,7 +2075,7 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
              MAX(r.created_at) AS last_report_at
         FROM seller_reports r
         JOIN users u ON u.id = r.reported_user_id
-       GROUP BY r.reported_user_id
+       GROUP BY r.reported_user_id, u.username, u.email, COALESCE(u.account_status, 'active')
        ORDER BY total_reports DESC, last_report_at DESC
        LIMIT @limit
     `).all({ since, limit });
