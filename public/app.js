@@ -41,7 +41,7 @@
   }
 
   // small bridge so api can redirect UI on 401s + track global loading
-  const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {} };
+  const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
@@ -303,9 +303,16 @@ const api = {
         AppNav.setTab('browse');
         throw new Error('auth');
       }
+      if (res.status === 423) {
+        try { await res.json(); } catch {}
+        AppNav.notifyLocked();
+        throw new Error('account_locked');
+      }
       if (!res.ok) {
-        let msg = 'request_failed';
-        try { msg = (await res.json()).error || msg; } catch {}
+        let payload = null;
+        try { payload = await res.json(); } catch {}
+        const msg = (payload?.error) || 'request_failed';
+        if (msg === 'account_locked') AppNav.notifyLocked();
         throw new Error(msg);
       }
       try { return await res.json(); } catch { return null; }
@@ -2973,7 +2980,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   }
 
   // --- MassList Modal (fixed) ---
-  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled }) {
+  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, onLockedAction }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -2996,7 +3003,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
     async function runMassList(){
       if (!user) { alert('Log in to create listings.'); return; }
-      if (user.account_status === 'locked') { alert('Your account is locked. Please contact support to regain posting access.'); return; }
+      if (user.account_status === 'locked') { onLockedAction?.(); return; }
       if (!files.length) { alert('Pick at least one image.'); return; }
       setBusy(true);
       setProgress({ done: 0, total: files.length, failed: 0 });
@@ -3882,9 +3889,15 @@ function App(){
     const [sort, setSort] = useState('new'); // default: Newest
     const [showForm, setShowForm] = useState(false);
     const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
-    
+    const [banner, setBanner] = useState(null);
 
-   const handleTabChange = (newTab) => {
+    const showLockedBanner = useCallback(() => {
+      setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
+    }, []);
+
+    const dismissBanner = useCallback(() => setBanner(null), []);
+
+    const handleTabChange = (newTab) => {
     if (newTab === 'admin' && !user?.is_admin) {
       return;
     }
@@ -3935,7 +3948,16 @@ function App(){
 
     const isMobile = isMobileDevice();
 
-    useEffect(() => { AppNav.setUser = setUser; AppNav.setTab = setTab; }, [setUser, setTab]);
+    useEffect(() => {
+      AppNav.setUser = setUser;
+      AppNav.setTab = setTab;
+      AppNav.notifyLocked = showLockedBanner;
+      return () => {
+        AppNav.setUser = () => {};
+        AppNav.setTab = () => {};
+        AppNav.notifyLocked = () => {};
+      };
+    }, [setUser, setTab, showLockedBanner]);
     useEffect(() => {
       AppNav.incLoad = () => setLoadingCount(c => c + 1);
       AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
@@ -4371,7 +4393,17 @@ function App(){
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
-    H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),      H(GlobalLoader, { active: loadingCount > 0 }),
+      H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
+      banner && H('div', { className:'global-banner', role:'status' },
+        H('span', { className:'banner-text' }, banner.message),
+        H('button', {
+          type:'button',
+          className:'banner-dismiss',
+          onClick: dismissBanner,
+          'aria-label': 'Dismiss locked account notice'
+        }, 'Dismiss')
+      ),
+      H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
         // NEW: Show seller profile if viewing
@@ -4420,13 +4452,13 @@ function App(){
             H('div', { className:'row', style:{ gap:8 } },
               H('button', { className:'btn primary', onClick:()=>{
                 if(!user){ alert('Log in to create a listing.'); return; }
-                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+                if(user.account_status === 'locked'){ showLockedBanner(); return; }
                 setEditing(null);
                 setShowForm(true);
               } }, 'New listing'),
               H('button', { className:'btn', onClick:()=>{
                 if(!user){ alert('Log in to create listings.'); return; }
-                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+                if(user.account_status === 'locked'){ showLockedBanner(); return; }
                 setShowMassList(true);
               } }, 'MassList')
             )
@@ -4483,7 +4515,7 @@ function App(){
                 user,
                 canEdit: !!mineById[selectedListing.id],
                 onEdit:(it)=>{
-                  if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+                  if(user?.account_status === 'locked'){ showLockedBanner(); return; }
                   const rich = mineById[it.id] || it;
                   setEditing(rich);
                   setShowForm(true);
@@ -4512,7 +4544,7 @@ function App(){
             user,
             mineById,
             onEdit:(it)=>{
-              if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+              if(user?.account_status === 'locked'){ showLockedBanner(); return; }
               const rich = mineById[it.id] || it;
               setEditing(rich);
               setShowForm(true);
@@ -4538,13 +4570,13 @@ function App(){
             items: mine,
             onNewListing: () => {
               if(!user){ alert('Log in to create a listing.'); return; }
-              if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+              if(user.account_status === 'locked'){ showLockedBanner(); return; }
               setEditing(null);
               setShowForm(true);
               setTab('browse');
             },
             onEdit:(it)=>{
-              if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+              if(user?.account_status === 'locked'){ showLockedBanner(); return; }
               const rich = mineById[it.id] || it;
               setEditing(rich);
               setShowForm(true);
@@ -4575,6 +4607,7 @@ function App(){
         reloadAll: refreshListings,
         reloadMine: reloadMineOnly,
         user,
+        onLockedAction: showLockedBanner,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       }),
 
