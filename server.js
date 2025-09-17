@@ -74,6 +74,8 @@ const NEARBY_CACHE_TTL_MS = Number(process.env.NEARBY_CACHE_TTL_MS || 20000);
 const NEARBY_CACHE_MAX = Number(process.env.NEARBY_CACHE_MAX || 200);
 const nearbyCache = new Map();
 
+const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
+
 function quantizeCoord(value, precision) {
   return Math.round(value * precision) / precision;
 }
@@ -325,11 +327,17 @@ async function initializeSchema() {
         captcha_question TEXT,
         created_at TEXT NOT NULL,
         status TEXT DEFAULT 'open',
-        admin_note TEXT
+        admin_note TEXT,
+        resolved_at TEXT,
+        resolved_by INTEGER REFERENCES users(id),
+        resolved_note TEXT
       );
     `);
     await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_reported ON seller_reports(reported_user_id, status);');
     await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_created ON seller_reports(created_at DESC);');
+    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_at TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_by INTEGER"); } catch {}
+    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_note TEXT"); } catch {}
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS listing_cities (
@@ -2127,7 +2135,7 @@ app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
                u.status_updated_at,
                u.last_login_at,
                (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count
           FROM users u
          WHERE u.id = ?
       `).all(numeric);
@@ -2140,7 +2148,7 @@ app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
                u.status_updated_at,
                u.last_login_at,
                (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count
           FROM users u
          WHERE LOWER(u.email) LIKE @like
             OR LOWER(u.username) LIKE @like
@@ -2185,7 +2193,7 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
              u.paypal_email,
              u.is_admin,
              (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count,
+             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count,
              (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status = 'open') AS open_report_count
         FROM users u
        WHERE u.id = ?
@@ -2199,6 +2207,7 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
       SELECT created_at
         FROM seller_reports
        WHERE reported_user_id = ?
+         AND status != 'cleared'
        ORDER BY created_at DESC
        LIMIT 1
     `).get(userId);
@@ -2235,6 +2244,7 @@ app.get('/api/admin/users/:id/reports', auth, requireAdmin, async (req, res) => 
 
     const rows = await db.prepare(`
       SELECT r.id, r.listing_id, r.reasons, r.details, r.created_at, r.status, r.admin_note,
+             r.resolved_at, r.resolved_by, r.resolved_note,
              r.reporter_user_id,
              reporter.username AS reporter_username,
              reporter.email AS reporter_email
@@ -2261,6 +2271,9 @@ app.get('/api/admin/users/:id/reports', auth, requireAdmin, async (req, res) => 
         created_at: row.created_at,
         status: row.status,
         admin_note: row.admin_note,
+        resolved_at: row.resolved_at || null,
+        resolved_by: row.resolved_by || null,
+        resolved_note: row.resolved_note || null,
         reporter: {
           id: row.reporter_user_id,
           username: row.reporter_username,
@@ -2273,6 +2286,40 @@ app.get('/api/admin/users/:id/reports', auth, requireAdmin, async (req, res) => 
   } catch (e) {
     console.error('Admin report list failed:', e);
     return res.status(500).json({ error: 'admin_reports_failed' });
+  }
+});
+
+app.post('/api/admin/users/:id/reports/clear', auth, requireAdmin, async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'invalid_user' });
+    }
+
+    const existing = await db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    if (!existing) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    const noteRaw = (req.body?.note ?? '').toString().trim();
+    const note = noteRaw.length ? noteRaw.slice(0, 500) : '';
+    const now = nowIso();
+    const adminId = Number.isFinite(Number(req.user?.id)) ? Number(req.user.id) : null;
+
+    const info = await db.prepare(`
+      UPDATE seller_reports
+         SET status = 'cleared',
+             resolved_at = @now,
+             resolved_by = @adminId,
+             resolved_note = CASE WHEN @note != '' THEN @note ELSE resolved_note END
+       WHERE reported_user_id = @userId
+         AND status != 'cleared'
+    `).run({ now, adminId, note, userId });
+
+    return res.json({ ok: true, cleared: info.changes || 0 });
+  } catch (e) {
+    console.error('Admin clear reports failed:', e);
+    return res.status(500).json({ error: 'admin_clear_failed' });
   }
 });
 
@@ -2334,6 +2381,8 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
     const daysParam = Number(req.query.days);
     const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 7;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const minParam = Number(req.query.min ?? req.query.min_reports);
+    const minReports = Math.max(1, Number.isFinite(minParam) && minParam > 0 ? minParam : ADMIN_REPORT_MIN);
 
     const rows = await db.prepare(`
       SELECT r.reported_user_id AS user_id,
@@ -2346,10 +2395,12 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
              MAX(r.created_at) AS last_report_at
         FROM seller_reports r
         JOIN users u ON u.id = r.reported_user_id
+       WHERE r.status != 'cleared'
        GROUP BY r.reported_user_id, u.username, u.email, COALESCE(u.account_status, 'active')
+      HAVING total_reports >= @minReports
        ORDER BY total_reports DESC, last_report_at DESC
        LIMIT @limit
-    `).all({ since, limit });
+    `).all({ since, limit, minReports });
 
     const payload = rows.map(row => ({
       user_id: row.user_id,
@@ -2362,7 +2413,7 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
       last_report_at: row.last_report_at
     }));
 
-    return res.json({ items: payload, days });
+    return res.json({ items: payload, days, min_reports: minReports });
   } catch (e) {
     console.error('Admin top reports failed:', e);
     return res.status(500).json({ error: 'admin_reports_failed' });

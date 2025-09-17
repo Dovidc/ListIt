@@ -557,10 +557,20 @@ register(payload, meta) {
 
     adminTopReports(params = {}, meta) {
       const searchParams = new URLSearchParams();
-      if (params.limit) searchParams.set('limit', String(params.limit));
-      if (params.days) searchParams.set('days', String(params.days));
+      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));
+      if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));
+      if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));
       const url = '/api/admin/reports/top' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
       return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminClearUserReports(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/reports/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload || {})
+      }, meta);
     },
 
     // --- S3 upload helpers ---
@@ -1994,9 +2004,11 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState('');
   const [topReports, setTopReports] = useState([]);
+  const [clearingUserId, setClearingUserId] = useState(null);
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState('');
   const [topDays, setTopDays] = useState(7);
+  const [topMin, setTopMin] = useState(1);
 
   const [adsList, setAdsList] = useState([]);
   const [adsLoading, setAdsLoading] = useState(false);
@@ -2008,7 +2020,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const searchTimer = useRef(null);
 
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
-  useEffect(() => { loadTopReports(topDays); }, [topDays]);
+  useEffect(() => { loadTopReports(topDays, topMin); }, [topDays, topMin]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -2114,11 +2126,11 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     }
   }
 
-  async function loadTopReports(days) {
+  async function loadTopReports(daysValue = topDays, minValue = topMin) {
     setTopLoading(true);
     setTopError('');
     try {
-      const payload = await api.adminTopReports({ limit: 20, days });
+      const payload = await api.adminTopReports({ limit: 20, days: daysValue, min: minValue });
       const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
       setTopReports(items);
     } catch (err) {
@@ -2143,7 +2155,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     try {
       await api.adminUpdateUserStatus(selectedUser.id, { status, note: note.trim() });
       await loadUser(selectedUser.id);
-      await loadTopReports(topDays);
+      await loadTopReports(topDays, topMin);
       if (searchTerm.trim()) await fetchSearch(searchTerm.trim());
     } catch (err) {
       alert(err.message || 'Failed to update status');
@@ -2153,6 +2165,27 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   function handleViewUserFromTop(userId) {
     setTab('users');
     loadUser(userId);
+  }
+
+  async function handleClearReportsForUser(user) {
+    if (!user || !Number.isFinite(Number(user.user_id))) return;
+    const name = user.username || 'this user';
+    if (!window.confirm(`Clear reports for ${name}?`)) return;
+    const noteInput = window.prompt('Optional note for this action:', '') || '';
+    try {
+      setClearingUserId(Number(user.user_id));
+      const payload = noteInput.trim() ? { note: noteInput.trim() } : {};
+      await api.adminClearUserReports(Number(user.user_id), payload);
+      if (selectedUser?.id === Number(user.user_id)) {
+        await loadUser(Number(user.user_id));
+      }
+      await loadTopReports(topDays, topMin);
+      if (searchTerm.trim()) await fetchSearch(searchTerm.trim());
+    } catch (err) {
+      alert(err.message || 'Failed to clear reports');
+    } finally {
+      setClearingUserId(null);
+    }
   }
 
   function buildAdPayload(source) {
@@ -2317,6 +2350,11 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
           ),
           H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
             statusBadge(item.account_status || 'active'),
+            H('button', {
+              className: 'btn danger',
+              onClick: () => handleClearReportsForUser(item),
+              disabled: clearingUserId === Number(item.user_id)
+            }, clearingUserId === Number(item.user_id) ? 'Clearing...' : 'Clear'),
             H('button', { className: 'btn', onClick: () => handleViewUserFromTop(item.user_id) }, 'View')
           )
         ))
@@ -2379,7 +2417,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     tab === 'reports' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
       H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
         H('h3', { style: { margin: 0, fontSize: 18 } }, 'Most reported accounts'),
-        H('div', { className: 'row', style: { gap: 8 } },
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
           H('label', { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 } },
             'Window:',
             H('select', {
@@ -2392,7 +2430,17 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
               H('option', { value: 90 }, '90 days')
             )
           ),
-          H('button', { className: 'btn', onClick: () => loadTopReports(topDays) }, 'Refresh')
+          H('label', { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 } },
+            'Min reports:',
+            H('input', {
+              type: 'number',
+              min: 1,
+              value: String(topMin),
+              onChange: (e) => setTopMin(Math.max(1, Number(e.target.value) || 1)),
+              style: { width: 72, padding: 6 }
+            })
+          ),
+          H('button', { className: 'btn', onClick: () => loadTopReports(topDays, topMin) }, 'Refresh')
         )
       ),
       topLoading && !topReports.length ? H('div', { className: 'muted' }, 'Loading...') : null,
