@@ -1607,7 +1607,8 @@ app.get('/api/conversations', auth, async (req, res) => {
         (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_at,
         (SELECT body       FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
         (SELECT sender_id  FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,
-        (SELECT id         FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_id
+        (SELECT id         FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_id,
+        (SELECT is_admin   FROM users    WHERE id = (SELECT sender_id FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1)) AS last_message_is_admin
       FROM conversations c
       JOIN users u
         ON u.id = CASE WHEN c.a_user_id = @me THEN c.b_user_id ELSE c.a_user_id END

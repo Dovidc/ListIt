@@ -649,7 +649,7 @@ register(payload, meta) {
 
   // --- Header (profile tab shows @username) ---
   // --- Header (simplified for modal auth) ---
-function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick }) {
+function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick, hasAdminUnread }) {
   // If user not logged in, show Register/Login buttons
   if (!user) {
     return H('header', null,
@@ -682,6 +682,8 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
       )
     : null;
 
+  const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
+
   const messagesBtn = H('button', {
     className: `btn ${active==='messages'?'primary':''}`,
     style: { position: 'relative' },
@@ -691,7 +693,7 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
     }
   }, 'Messages',
     (unreadCount > 0) &&
-      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: '#ef4444' } })
+      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: unreadDotColor } })
   );
 
   return H('header', null,
@@ -1882,7 +1884,7 @@ async function submit(e){
   );
 }
 
-function AdminDashboard() {
+function AdminDashboard({ onViewSeller, onMessageUser }) {
   const [tab, setTab] = useState('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -2039,13 +2041,31 @@ function AdminDashboard() {
     H('div', { className: 'muted', style: { fontSize: 13 } }, `Last login: ${formatDateTime(selectedUser.last_login_at)}`),
     H('div', { className: 'muted', style: { fontSize: 13 } }, `Listings: ${Number(selectedUser.listing_count || 0)} | Reports: ${Number(selectedUser.report_count || 0)} | Open reports: ${Number(selectedUser.open_report_count || 0)}`),
     selectedUser.status_note && H('div', { style: { fontSize: 13, background: '#fef3c7', padding: 8, borderRadius: 8, color: '#92400e' } }, `Note: ${selectedUser.status_note}`),
-    H('div', { className: 'row', style: { gap: 8, marginTop: 8 } },
+    H('div', { className: 'row', style: { gap: 8, marginTop: 8, flexWrap: 'wrap' } },
+      onViewSeller && H('button', { className: 'btn', onClick: handleViewProfile }, 'View profile'),
+      onMessageUser && H('button', { className: 'btn', onClick: handleMessageUser }, 'Message user'),
       H('button', { className: 'btn', onClick: () => handleStatusChange('locked') }, 'Lock account'),
       H('button', { className: 'btn danger', onClick: () => handleStatusChange('banned') }, 'Ban account'),
       H('button', { className: 'btn', onClick: () => handleStatusChange('active') }, 'Restore account'),
       H('button', { className: 'btn', onClick: () => loadUser(selectedUser.id) }, 'Refresh')
     )
   ) : H('div', { className: 'muted' }, userError || 'Select a user to view details.');
+
+
+  function handleViewProfile() {
+    if (!selectedUser || !onViewSeller) return;
+    const label = selectedUser.username || selectedUser.email || `User #${selectedUser.id}`;
+    onViewSeller(selectedUser.id, label);
+  }
+
+  async function handleMessageUser() {
+    if (!selectedUser || !onMessageUser) return;
+    try {
+      await onMessageUser(selectedUser.id);
+    } catch (err) {
+      alert(err?.message || 'Failed to open conversation.');
+    }
+  }
 
   const reportsList = userReports.length
     ? H('div', { style: { display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto', marginTop: 12 } },
@@ -2616,7 +2636,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         c.last_message_sender_id !== user.id &&
         (!seenMap[c.id] || seenMap[c.id] < c.last_message_id)
       );
-      return { ...c, _unread: unread };
+      const unreadFromAdmin = unread && !!c.last_message_is_admin;
+      return { ...c, _unread: unread, _unreadAdmin: unreadFromAdmin };
     })
     .sort((a,b) => {
       const ua = a._unread ? 1 : 0, ub = b._unread ? 1 : 0;
@@ -2657,7 +2678,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
         c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
         c._unread && H('span', {
-          style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background:'#ef4444' }
+          style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background: c._unreadAdmin ? '#111' : '#ef4444' }
         }),
         H('button', {
           title:'Delete conversation',
@@ -3888,6 +3909,7 @@ function App(){
     const [editing, setEditing] = useState(null);
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [hasAdminUnread, setHasAdminUnread] = useState(false);
     const [loadingCount, setLoadingCount] = useState(0);
 
     // MassList modal
@@ -4080,29 +4102,39 @@ function App(){
     // Unread poll
     async function recomputeUnread() {
       try {
-        if (!user) { setUnreadCount(0); return; }
+        if (!user) {
+          setUnreadCount(0);
+          setHasAdminUnread(false);
+          return;
+        }
         const convos = await api.listConversations({ silent:true });
         const seen = loadSeen(user.id);
-        
+
         let unreadCount = 0;
+        let adminUnread = false;
+
         for (const c of convos) {
-          // Check if there's a new message we haven't seen
-          if (c.last_message_id && 
-              c.last_message_sender_id && 
-              c.last_message_sender_id !== user.id) {
-            
-            // If we've never seen any messages in this conversation, it's unread
-            if (!seen[c.id]) {
-              unreadCount++;
-            } 
-            // If the last message ID is greater than what we've seen, it's unread
-            else if (c.last_message_id > seen[c.id]) {
-              unreadCount++;
+          const lastId = c.last_message_id;
+          const lastSender = c.last_message_sender_id;
+          const seenValue = seen[c.id] || 0;
+          let isUnread = false;
+
+          if (lastId && lastSender && lastSender !== user.id) {
+            if (!seenValue || lastId > seenValue) {
+              isUnread = true;
+            }
+          }
+
+          if (isUnread) {
+            unreadCount++;
+            if (c.last_message_is_admin) {
+              adminUnread = true;
             }
           }
         }
-        
+
         setUnreadCount(unreadCount);
+        setHasAdminUnread(adminUnread);
       } catch {}
     }
 
@@ -4216,6 +4248,22 @@ function App(){
       setTab('messages');
     }
 
+    async function startDirectMessage(userId){
+      if (!user) { alert('Log in to message users.'); return; }
+      const targetId = Number(userId);
+      if (!Number.isFinite(targetId) || targetId <= 0) return;
+      if (targetId === user.id) return;
+      try {
+        setViewingSeller(null);
+        const convo = await api.ensureConversation({ with_user_id: targetId });
+        setActiveConvoId(convo.id);
+        setTab('messages');
+      } catch (err) {
+        alert(err?.message || 'Failed to open conversation.');
+      }
+    }
+
+
     function handleSeen(convoId, lastMsgId){
       if (!user || !convoId || !lastMsgId) return;
       const map = loadSeen(user.id);
@@ -4318,7 +4366,7 @@ function App(){
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
-    H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),      H(GlobalLoader, { active: loadingCount > 0 }),
+    H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile,  onAuthClick: handleAuthClick }),      H(GlobalLoader, { active: loadingCount > 0 }),
 
       H('main', { className:'container' },
         // NEW: Show seller profile if viewing
@@ -4493,7 +4541,7 @@ function App(){
 
         !viewingSeller && (tab==='admin') &&
           (user?.is_admin
-            ? H(AdminDashboard, {})
+            ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage })
             : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
       ),
 

@@ -105,5 +105,19 @@ describe('Admin reports dashboard', () => {
     expect(target.total_reports).toBe(1);
     expect(target.open_reports).toBe(1);
     expect(target.recent_reports).toBe(1);
+
+    const convoRes = await admin.post('/api/conversations').send({ with_user_id: sellerId });
+    expect(convoRes.status).toBe(200);
+    const adminConvoId = convoRes.body.id;
+
+    const warnRes = await admin.post(`/api/conversations/${adminConvoId}/messages`).send({ body: 'Please follow the guidelines.' });
+    expect(warnRes.status).toBe(200);
+
+    const sellerConvos = await seller.get('/api/conversations');
+    expect(sellerConvos.status).toBe(200);
+    const sellerConvo = sellerConvos.body.find(c => c.id === adminConvoId);
+    expect(sellerConvo).toBeTruthy();
+    expect(sellerConvo.last_message_sender_id).toBe(adminId);
+    expect(Boolean(sellerConvo.last_message_is_admin)).toBe(true);
   });
 });
