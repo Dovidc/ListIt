@@ -2031,6 +2031,10 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
     loadUser(userId);
   }
 
+  const lockToggleLabel = selectedUser?.account_status === 'locked' ? 'Unlock account' : 'Lock account';
+  const lockToggleTarget = selectedUser?.account_status === 'locked' ? 'active' : 'locked';
+  const showRestore = selectedUser?.account_status === 'banned';
+
   const userSummary = selectedUser ? H('div', { style: { display: 'grid', gap: 8 } },
     H('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
       H('div', { style: { fontSize: 20, fontWeight: 700 } }, selectedUser.username || '(no username)'),
@@ -2044,9 +2048,9 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
     H('div', { className: 'row', style: { gap: 8, marginTop: 8, flexWrap: 'wrap' } },
       onViewSeller && H('button', { className: 'btn', onClick: handleViewProfile }, 'View profile'),
       onMessageUser && H('button', { className: 'btn', onClick: handleMessageUser }, 'Message user'),
-      H('button', { className: 'btn', onClick: () => handleStatusChange('locked') }, 'Lock account'),
+      H('button', { className: 'btn', onClick: () => handleStatusChange(lockToggleTarget) }, lockToggleLabel),
       H('button', { className: 'btn danger', onClick: () => handleStatusChange('banned') }, 'Ban account'),
-      H('button', { className: 'btn', onClick: () => handleStatusChange('active') }, 'Restore account'),
+      showRestore && H('button', { className: 'btn', onClick: () => handleStatusChange('active') }, 'Restore account'),
       H('button', { className: 'btn', onClick: () => loadUser(selectedUser.id) }, 'Refresh')
     )
   ) : H('div', { className: 'muted' }, userError || 'Select a user to view details.');
