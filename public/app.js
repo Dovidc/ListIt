@@ -1,14 +1,14 @@
 // public/app.js
 //
-// S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
-// Messages: paste/drag/attach images → S3 URLs (kept!)
-// Conversations list: red "×" delete button (kept!)
+// S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
+// Messages: paste/drag/attach images -> S3 URLs (kept!)
+// Conversations list: red "x" delete button (kept!)
 // CHANGE: All listing fields optional EXCEPT at least one image.
 //         If price field empty/invalid, default to $0.00 and render the price in green.
-// NEW: MassList — pick multiple photos → AI per image → create multiple listings with uploads.
+// NEW: MassList -- pick multiple photos -> AI per image -> create multiple listings with uploads.
 // NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
 //      will AI-analyze and immediately create the listing + upload photos automatically.
-//      Includes "？" help modal with high-contrast text.
+//      Includes "?" help modal with high-contrast text.
 // NEW: Auto-list sub-toggle: "Also post to Nearby." When Auto-list is ON and this is enabled,
 //      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
 //
@@ -101,7 +101,7 @@
     return _coordsPromise;
   }
 
-  // Arrange items so rows read left→right in a CSS multi-column layout
+  // Arrange items so rows read left->right in a CSS multi-column layout
   function interleaveByColumns(arr, cols) {
     if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
     const out = [];
@@ -287,7 +287,7 @@
     if (!active) return null;
     return H('div', { className: 'global-loader' },
       H('div', { className: 'spinner' }),
-      H('div', { className: 'loader-text' }, 'Loading…')
+      H('div', { className: 'loader-text' }, 'Loading...')
     );
   }
 
@@ -619,7 +619,7 @@ register(payload, meta) {
 
     return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
       H('input', {
-        placeholder:'City…',
+        placeholder:'City...',
         value: value,
         onChange: e => { onChange(e.target.value); setOpen(true); },
         onKeyDown, onFocus, onBlur,
@@ -793,7 +793,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
     },
       H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px', background: '#fff', color: '#111' } },
-        H('button', { className: 'close', onClick: onClose }, '✕'),
+        H('button', { className: 'close', onClick: onClose }, 'x'),
         H('h2', { style: { margin: '0 0 24px', fontSize: '28px', color: '#111' } }, 
           mode === 'login' ? 'Welcome Back' : 'Create Account'),
         
@@ -828,7 +828,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
               type: 'password',
               value: password,
               onChange: e => setPassword(e.target.value),
-              placeholder: '••••••••',
+              placeholder: '--------',
               required: true,
               disabled: loading
             })
@@ -901,7 +901,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
             src: URL.createObjectURL(f),
             style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
           }),
-          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
+          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
         ))
       )
     );
@@ -967,7 +967,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
                 display: 'grid', placeItems: 'center',
                 fontSize: 16, lineHeight: '26px'
               }
-            }, '✕')
+            }, 'x')
           ),
 
           // intro
@@ -1163,7 +1163,7 @@ async function submit(e){
   }
 }
 
-    // Auto-list: when ON, creating a brand-new listing & user added photos → AI + create + upload
+    // Auto-list: when ON, creating a brand-new listing & user added photos -> AI + create + upload
     useEffect(() => {
       if (!autoListEnabled) return;
       if (draft) return;            // only for new listings
@@ -1288,7 +1288,7 @@ async function submit(e){
           position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
           display:'grid', placeItems:'center', zIndex:5, borderRadius:12
         }
-      }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
+      }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing...'))),
 
       // New uploads (go to S3)
       H(MultiFilePicker, { files, onChange:setFiles }),
@@ -1309,14 +1309,14 @@ async function submit(e){
                   next.splice(i, 1);
                   setExistingUrls(next);
                 }
-              }, '×')
+              }, 'x')
             )
           )
         )
       ),
 
       H('div', { className:'row', style:{ gap:8 } },
-        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
         aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
         H('span', { className:'muted' }, 'Only images are required. AI can suggest title/tags/price.')
       ),
@@ -1330,7 +1330,7 @@ async function submit(e){
       H('label', null, 'Location (optional)'),
       H('div', { className:'row', style:{ gap:8 } },
         H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Optional (City, State)' }),
-        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating…' : 'Use my location'),
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
       ),
 
@@ -1384,10 +1384,10 @@ async function submit(e){
       onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); }
     },
       H('div', { className:'modal-inner' },
-        H('button', { className:'close', onClick:onClose }, '✕'),
-        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+len)%len) }, '◀'),
+        H('button', { className:'close', onClick:onClose }, 'x'),
+        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+len)%len) }, '<'),
         H('img', { src: images[index] }),
-        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%len) }, '▶'),
+        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%len) }, '>'),
         H('div', { className:'thumbs' },
           ...(images||[]).map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
         )
@@ -1756,7 +1756,7 @@ async function submit(e){
   // Render seller info - either as clickable button or plain text
   const renderSellerInfo = () => {
     if (!item.owner_username) {
-      return '—';
+      return '--';
     }
     
     if (onViewSeller) {
@@ -2225,7 +2225,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
   if (error) {
   return H('div', { style: { padding: '24px', textAlign: 'center' } },
     H('div', { className: 'muted' }, error),
-    H('button', { className: 'btn', onClick: onBack }, '← Back')
+    H('button', { className: 'btn', onClick: onBack }, '<- Back')
   );
 }
   
@@ -2261,9 +2261,9 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
       H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
         H('div', null,
           H('div', { style: { fontWeight: 800, fontSize: '20px' } }, `@${sellerUsername}'s Listings`),
-          H('div', { className: 'muted' }, `Active ${activeListings.length} • Sold ${soldListings.length}`)
+          H('div', { className: 'muted' }, `Active ${activeListings.length} - Sold ${soldListings.length}`)
         ),
-        H('button', { className: 'btn', onClick: onBack }, '← Back')
+        H('button', { className: 'btn', onClick: onBack }, '<- Back')
       )
     ),
 
@@ -2364,7 +2364,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
       onClick: (e) => { if (e.target.classList.contains('modal')) setSelectedListing(null); }
     },
       H('div', { className: 'modal-inner listing-modal' },
-        H('button', { className: 'close', onClick: () => setSelectedListing(null) }, '✕'),
+        H('button', { className: 'close', onClick: () => setSelectedListing(null) }, 'x'),
         H(ListingCard, {
           item: selectedListing,
           user,
@@ -2680,7 +2680,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           onClick:()=>setActiveId(c.id)
         },
         H('div', { style:{ fontWeight:600 } }, c.other_user_username ? '@'+c.other_user_username : 'Unknown'),
-        c.listing_title ? H('div', { className:'muted' }, ` • ${c.listing_title?.slice?.(0,24)}`) : null,
+        c.listing_title ? H('div', { className:'muted' }, ` - ${c.listing_title?.slice?.(0,24)}`) : null,
         c._unread && H('span', {
           style:{ marginLeft:'auto', width:8, height:8, borderRadius:8, background: c._unreadAdmin ? '#111' : '#ef4444' }
         }),
@@ -2701,7 +2701,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             placeItems:'center',
             cursor:'pointer'
           }
-        }, '×')
+        }, 'x')
       )) : [H('div', { key:'empty', className:'muted' }, 'No conversations yet')])
     ),
 
@@ -2729,7 +2729,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         ...imgFiles.map((f,i) =>
           H('div', { key:i, style:{ position:'relative' } },
             H('img', { src: URL.createObjectURL(f), style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
-            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, '×')
+            H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, 'x')
           )
         )
       ),
@@ -2747,7 +2747,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         }),
         H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
         H('textarea', {
-          placeholder:'Type a message…  (Tip: paste or drag images)',
+          placeholder:'Type a message...  (Tip: paste or drag images)',
           value:input,
           rows:2,
           onPaste:onComposerPaste,
@@ -2953,7 +2953,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
         H('div', { className:'modal-inner listing-modal' },
-          H('button', { className:'close', onClick:()=>setSelected(null) }, '✕'),
+          H('button', { className:'close', onClick:()=>setSelected(null) }, 'x'),
           H(ListingCard, {
             item: selected,
             user,
@@ -3057,7 +3057,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
     const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
       H('div', { className:'modal-inner', style:{ width:'min(680px, 92vw)', background:'#fff', borderRadius:24, overflow:'hidden' } },
-        H('button', { className:'close', onClick:onClose }, '✕'),
+        H('button', { className:'close', onClick:onClose }, 'x'),
         H('div', { style:{ padding:16 } },
           H('div', { style:{ fontWeight:800, fontSize:18, marginBottom:6 } }, 'MassList'),
           H('div', { className:'muted', style:{ marginBottom:12 } }, 'Pick multiple photos from your gallery. We will create one listing per photo using AI for title, tags, and price (you can edit later).'),
@@ -3071,14 +3071,14 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             ...files.map((f,i) =>
               H('div', { key:i, style:{ position:'relative' } },
                 H('img', { src: URL.createObjectURL(f), style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
-                H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, '×')
+                H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
               )
             )
           ),
 
           H('div', { className:'row', style:{ marginTop:16 } },
             H('button', { className:'btn', onClick:onClose, disabled:busy }, 'Cancel'),
-            H('button', { className:`btn primary`, onClick:runMassList, disabled:busy || files.length===0 }, busy ? 'Working…' : 'Confirm MassList')
+            H('button', { className:`btn primary`, onClick:runMassList, disabled:busy || files.length===0 }, busy ? 'Working...' : 'Confirm MassList')
           )
         ),
 
@@ -3091,7 +3091,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         },
           H('div', null,
             H('div', { className:'spinner' }),
-            H('div', { style:{ fontWeight:800, marginTop:6 } }, 'MassList in progress…'),
+            H('div', { style:{ fontWeight:800, marginTop:6 } }, 'MassList in progress...'),
             H('div', { className:'muted', style:{ marginTop:4 } }, `${progress.done}/${progress.total} completed`),
             progress.failed>0 && H('div', { className:'muted', style:{ marginTop:2, color:'#b91c1c' } }, `${progress.failed} failed`)
           )
@@ -3165,7 +3165,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             H('div', { style:{ fontWeight:800, fontSize:18 } }, user.username ? `@${user.username}` : user.email),
             H('div', { className:'muted' }, 'Your account')
           ),
-          // Right controls: Auto-list toggle • New listing • Log out
+          // Right controls: Auto-list toggle - New listing - Log out
           H('div', { className:'row', style:{ gap:12, alignItems:'center', flexWrap:'wrap' } },
             H('label', { className:'row', style:{ gap:8, alignItems:'center', padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:12 } },
               H('input', {
@@ -3235,7 +3235,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           ),
 
           H('div', { style:{ fontWeight:800 } }, `Your listings`),
-          H('div', { className:'muted' }, `Active ${activeItems.length} • Sold ${soldItems.length}`)
+          H('div', { className:'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
         ),
         H('div', { className:'row', style:{ gap:8, margin:'0 0 16px' } },
           H('button', {
@@ -3337,7 +3337,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         onClick: (e) => { if (e.target.classList.contains('modal')) setProfileSelected(null); }
       },
         H('div', { className: 'modal-inner listing-modal' },
-          H('button', { className: 'close', onClick: () => setProfileSelected(null) }, '✕'),
+          H('button', { className: 'close', onClick: () => setProfileSelected(null) }, 'x'),
           H(ListingCard, {
             item: profileSelected,
             user,
@@ -3411,7 +3411,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
           background: 'rgba(255,255,255,0.9)',
           borderRadius: '13px'
         } : {}
-      }, '✕'),
+      }, 'x'),
       
       H('div', { style: { padding: isMobile ? '10px' : '16px' } },
         H('div', { style: { 
@@ -3701,7 +3701,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
         display:'grid', placeItems:'center', zIndex:5, borderRadius:12
       }
-    }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing…'))),
+    }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing...'))),
 
     // Compact file picker
     H('div', null,
@@ -3728,7 +3728,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
               type:'button', 
               style:{ position:'absolute', top:-2, right:-2, padding:'0px 3px', fontSize:9, lineHeight:'12px' }, 
               onClick:()=>removeFile(i) 
-            }, '×')
+            }, 'x')
           )
         )
       )
@@ -3749,7 +3749,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
                 next.splice(i, 1);
                 setExistingUrls(next);
               }
-            }, '×')
+            }, 'x')
           )
         )
       )
@@ -3761,7 +3761,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       disabled:aiBusy, 
       onClick:runAI,
       style: { width: '100%', padding: '8px', fontSize: '13px' }
-    }, aiBusy ? 'Analyzing…' : 'Run AI analysis'),
+    }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
     
     aiErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:11 } }, aiErr),
 
@@ -3797,7 +3797,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       disabled:geoBusy, 
       style: { width: '100%', padding: '7px', fontSize: '13px' } 
     }, 
-      geoBusy ? 'Locating…' : 'Use my location'
+      geoBusy ? 'Locating...' : 'Use my location'
     ),
     geoErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:11 } }, geoErr),
     
@@ -3839,7 +3839,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         fontSize: 11,
         color: '#6b7280'
       }
-    }, showTags ? '▼ Hide search tags' : '▶ Show search tags (optional)'),
+    }, showTags ? 'v Hide search tags' : '> Show search tags (optional)'),
     
     showTags && H('input', { 
       placeholder:'e.g. car, suv, 4x4', 
@@ -4389,7 +4389,7 @@ function App(){
           H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
             H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
               H('input', {
-                placeholder:'Search title, description, tags…',
+                placeholder:'Search title, description, tags...',
                 value:query,
                 onChange:e=>setQuery(e.target.value),
                 style:{ maxWidth:360 }
@@ -4412,14 +4412,23 @@ function App(){
               }),
               H('select', { value:sort, onChange:e=>setSort(e.target.value) },
                 H('option', { value:'new' }, 'Newest'),
-                H('option', { value:'price_asc' }, 'Price: Low → High'),
-                H('option', { value:'price_desc' }, 'Price: High → Low'),
-                H('option', { value:'city' }, 'City (A → Z)')
+                H('option', { value:'price_asc' }, 'Price: Low -> High'),
+                H('option', { value:'price_desc' }, 'Price: High -> Low'),
+                H('option', { value:'city' }, 'City (A -> Z)')
               )
             ),
             H('div', { className:'row', style:{ gap:8 } },
-              H('button', { className:'btn primary', onClick:()=>{\r\n                if(!user){ alert('Log in to create a listing.'); return; }\r\n                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n                setEditing(null);\r\n                setShowForm(true);\r\n              } }, 'New listing'),
-              H('button', { className:'btn', onClick:()=>{\r\n                if(!user){ alert('Log in to create listings.'); return; }\r\n                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n                setShowMassList(true);\r\n              } }, 'MassList')
+              H('button', { className:'btn primary', onClick:()=>{
+                if(!user){ alert('Log in to create a listing.'); return; }
+                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+                setEditing(null);
+                setShowForm(true);
+              } }, 'New listing'),
+              H('button', { className:'btn', onClick:()=>{
+                if(!user){ alert('Log in to create listings.'); return; }
+                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+                setShowMassList(true);
+              } }, 'MassList')
             )
           ),
 
@@ -4450,7 +4459,7 @@ function App(){
             }
           },
             isFetchingListings
-              ? H('span', { className: 'muted' }, 'Loading listings…')
+              ? H('span', { className: 'muted' }, 'Loading listings...')
               : (!hasNext && items.length
                   ? H('span', { className: 'muted' }, 'No more results')
                   : null)
@@ -4468,7 +4477,7 @@ function App(){
             onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
           },
             H('div', { className:'modal-inner listing-modal' },
-              H('button', { className:'close', onClick:()=>setSelectedListing(null) }, '✕'),
+              H('button', { className:'close', onClick:()=>setSelectedListing(null) }, 'x'),
               H(ListingCard, {
                 item: selectedListing,
                 user,
@@ -4527,7 +4536,13 @@ function App(){
           H(ProfilePanel, { isMobile,
             user,
             items: mine,
-            onNewListing: () => {\r\n              if(!user){ alert('Log in to create a listing.'); return; }\r\n              if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n              setEditing(null);\r\n              setShowForm(true);\r\n              setTab('browse');\r\n            },
+            onNewListing: () => {
+              if(!user){ alert('Log in to create a listing.'); return; }
+              if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
+              setEditing(null);
+              setShowForm(true);
+              setTab('browse');
+            },
             onEdit:(it)=>{
               if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
               const rich = mineById[it.id] || it;
