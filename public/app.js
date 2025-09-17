@@ -444,6 +444,54 @@ register(payload, meta) {
       return this._fetch(url, { method:'GET' }, meta);
     },
 
+    reportSeller(payload, meta) {
+      return this._fetch('/api/reports', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminSearchUsers(params = {}, meta) {
+      const q = params.q ?? params.query ?? '';
+      const limit = params.limit;
+      const searchParams = new URLSearchParams();
+      if (q) searchParams.set('q', q);
+      if (limit) searchParams.set('limit', String(limit));
+      const url = '/api/admin/users/search' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminGetUser(id, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}`, { method:'GET' }, meta);
+    },
+
+    adminGetUserReports(id, params = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      const searchParams = new URLSearchParams();
+      if (params.limit) searchParams.set('limit', String(params.limit));
+      const url = `/api/admin/users/${id}/reports` + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminUpdateUserStatus(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/status`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminTopReports(params = {}, meta) {
+      const searchParams = new URLSearchParams();
+      if (params.limit) searchParams.set('limit', String(params.limit));
+      if (params.days) searchParams.set('days', String(params.days));
+      const url = '/api/admin/reports/top' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
     // --- S3 upload helpers ---
     signUpload({ filename, contentType, bytes }, meta) {
       return this._fetch('/api/uploads/sign', {
@@ -656,7 +704,8 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
         H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
         isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
         messagesBtn,
-        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel)
+        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel),
+        user?.is_admin && H('button', { className: `btn ${active==='admin'?'primary':''}`, onClick: () => onNav('admin') }, 'Admin')
       ),
       authArea
     )
@@ -1426,6 +1475,156 @@ async function submit(e){
     );
   }
 
+  const REPORT_REASON_OPTIONS = [
+    { value: 'fraud', label: 'Fraud or scam' },
+    { value: 'spam', label: 'Spam or advertising' },
+    { value: 'inappropriate', label: 'Inappropriate content' },
+    { value: 'harassment', label: 'Harassment or abusive behavior' },
+    { value: 'other', label: 'Other' }
+  ];
+
+  function makeReportCaptcha() {
+    return {
+      a: 2 + Math.floor(Math.random() * 7),
+      b: 2 + Math.floor(Math.random() * 7)
+    };
+  }
+
+  function ReportSellerModal({ open, listing, onClose, onReported }) {
+    const [selected, setSelected] = useState(() => new Set());
+    const [details, setDetails] = useState('');
+    const [captcha, setCaptcha] = useState(() => makeReportCaptcha());
+    const [answer, setAnswer] = useState('');
+    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+
+    useEffect(() => {
+      if (!open) return;
+      setSelected(new Set());
+      setDetails('');
+      setCaptcha(makeReportCaptcha());
+      setAnswer('');
+      setError('');
+      setSubmitted(false);
+    }, [open, listing?.id]);
+
+    useEffect(() => {
+      if (!open) return;
+      const onKey = (ev) => { if (ev.key === 'Escape') onClose?.(); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [open, onClose]);
+
+    const toggleReason = (value) => {
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(value)) next.delete(value);
+        else next.add(value);
+        return next;
+      });
+    };
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (submitting || submitted) return;
+      setError('');
+      const reasons = Array.from(selected);
+      if (!reasons.length) {
+        setError('Select at least one reason.');
+        return;
+      }
+      if (reasons.includes('other') && !details.trim()) {
+        setError('Please include details for "Other".');
+        return;
+      }
+      const expected = captcha.a + captcha.b;
+      if (Number(answer) !== expected) {
+        setError('Captcha answer is incorrect.');
+        setCaptcha(makeReportCaptcha());
+        setAnswer('');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await api.reportSeller({
+          reported_user_id: listing?.user_id,
+          listing_id: listing?.id,
+          reasons,
+          details: details.trim() || undefined,
+          captcha: { a: captcha.a, b: captcha.b, answer: Number(answer) }
+        });
+        setSubmitted(true);
+        onReported?.();
+      } catch (err) {
+        setError(err.message || 'Unable to submit report.');
+        setCaptcha(makeReportCaptcha());
+        setAnswer('');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    if (!open) return null;
+
+    const sellerName = listing?.owner_username ? `@${listing.owner_username}` : 'this seller';
+
+    const modal = H('div', {
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); }
+    },
+      H('div', { className: 'modal-inner', style: { maxWidth: '520px', padding: '24px', background: '#fff', color: '#111' } },
+        H('button', { className: 'close', onClick: onClose, disabled: submitting && !submitted }, 'X'),
+        H('h2', { style: { margin: '0 0 16px', fontSize: 24, fontWeight: 700 } }, `Report ${sellerName}`),
+        submitted ?
+          H('div', { className: 'muted', style: { marginBottom: 16 } }, 'Thank you. We will review this report shortly.') :
+          H('form', { onSubmit: handleSubmit, style: { display: 'grid', gap: 12 } },
+            H('div', { style: { fontWeight: 600 } }, 'Why are you reporting this seller?'),
+            REPORT_REASON_OPTIONS.map(opt => H('label', {
+              key: opt.value,
+              style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }
+            },
+              H('input', {
+                type: 'checkbox',
+                checked: selected.has(opt.value),
+                disabled: submitting,
+                onChange: () => toggleReason(opt.value)
+              }),
+              opt.label
+            )),
+            H('textarea', {
+              placeholder: 'Additional details (optional)',
+              value: details,
+              onChange: (e) => setDetails(e.target.value),
+              disabled: submitting,
+              rows: 3,
+              style: { width: '100%', fontSize: 13, padding: 8 }
+            }),
+            H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              H('span', null, `What is ${captcha.a} + ${captcha.b}?`),
+              H('input', {
+                type: 'number',
+                value: answer,
+                onChange: (e) => setAnswer(e.target.value),
+                disabled: submitting,
+                style: { width: 80 }
+              })
+            ),
+            error && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, error),
+            H('div', { className: 'row', style: { gap: 8, marginTop: 4 } },
+              H('button', { className: 'btn primary', type: 'submit', disabled: submitting, style: { flex: 1 } }, submitting ? 'Submitting...' : 'Submit report'),
+              H('button', { className: 'btn', type: 'button', onClick: onClose, disabled: submitting, style: { flex: 1 } }, 'Cancel')
+            )
+          ),
+        submitted && H('div', { style: { marginTop: 16 } },
+          H('button', { className: 'btn primary', onClick: onClose }, 'Close')
+        )
+      )
+    );
+
+    return ReactDOM.createPortal(modal, document.body);
+  }
+
   // --- Listing Card ---
   function ListingCard({ 
   item, 
@@ -1443,6 +1642,7 @@ async function submit(e){
   const [open, setOpen] = useState(false);
   const [images, setImages] = useState(null);
   const [idx, setIdx] = useState(0);
+  const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
 
   React.useEffect(() => {
@@ -1497,6 +1697,13 @@ async function submit(e){
       className: 'btn primary', 
       onClick: () => onMessage?.(item) 
     }, 'Message seller'));
+  }
+  if (user && user.id !== item.user_id) {
+    controls.push(H('button', {
+      key: 'report',
+      className: 'btn',
+      onClick: () => setShowReport(true)
+    }, 'Report seller'));
   }
   if (canEdit) {
     controls.push(H('button', { 
@@ -1659,6 +1866,12 @@ async function submit(e){
       }, ...controls)
     ),
     
+    showReport && H(ReportSellerModal, {
+      open: showReport,
+      listing: item,
+      onClose: () => setShowReport(false)
+    }),
+
     H(Lightbox, { 
       open, 
       images: images || [item.image_data], 
@@ -1666,6 +1879,287 @@ async function submit(e){
       onClose: () => setOpen(false), 
       onIndex: setIdx 
     })
+  );
+}
+
+function AdminDashboard() {
+  const [tab, setTab] = useState('users');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userLoading, setUserLoading] = useState(false);
+  const [userError, setUserError] = useState('');
+  const [userReports, setUserReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState('');
+  const [topReports, setTopReports] = useState([]);
+  const [topLoading, setTopLoading] = useState(false);
+  const [topError, setTopError] = useState('');
+  const [topDays, setTopDays] = useState(7);
+  const searchTimer = useRef(null);
+
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
+  useEffect(() => { loadTopReports(topDays); }, [topDays]);
+
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const term = searchTerm.trim();
+    if (!term) {
+      setSearchResults([]);
+      setSearchError('');
+      return;
+    }
+    searchTimer.current = setTimeout(() => { fetchSearch(term); }, 300);
+  }, [searchTerm]);
+
+  function formatDate(value) {
+    if (!value) return '--';
+    const dt = new Date(value);
+    return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : value;
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '--';
+    const dt = new Date(value);
+    return Number.isFinite(dt.getTime()) ? dt.toLocaleString() : value;
+  }
+
+  function statusBadge(status) {
+    const color = status === 'banned' ? '#fee2e2' : status === 'locked' ? '#fef3c7' : '#d1fae5';
+    const textColor = status === 'banned' ? '#b91c1c' : status === 'locked' ? '#92400e' : '#047857';
+    return H('span', {
+      style: {
+        padding: '3px 10px',
+        borderRadius: 999,
+        background: color,
+        color: textColor,
+        fontSize: 12,
+        fontWeight: 600,
+        textTransform: 'uppercase'
+      }
+    }, status || 'active');
+  }
+
+  async function fetchSearch(term) {
+    setSearchLoading(true);
+    setSearchError('');
+    try {
+      const results = await api.adminSearchUsers({ q: term, limit: 25 });
+      setSearchResults(Array.isArray(results) ? results : []);
+    } catch (err) {
+      setSearchError(err.message || 'Search failed');
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  async function loadUser(userId) {
+    setSelectedUserId(userId);
+    setUserLoading(true);
+    setUserError('');
+    try {
+      const data = await api.adminGetUser(userId);
+      setSelectedUser(data || null);
+      await loadUserReports(userId);
+    } catch (err) {
+      setUserError(err.message || 'Failed to load user');
+      setSelectedUser(null);
+      setUserReports([]);
+    } finally {
+      setUserLoading(false);
+    }
+  }
+
+  async function loadUserReports(userId, limit = 50) {
+    setReportsLoading(true);
+    setReportsError('');
+    try {
+      const items = await api.adminGetUserReports(userId, { limit });
+      setUserReports(Array.isArray(items) ? items : []);
+    } catch (err) {
+      setReportsError(err.message || 'Failed to load reports');
+      setUserReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  }
+
+  async function loadTopReports(days) {
+    setTopLoading(true);
+    setTopError('');
+    try {
+      const payload = await api.adminTopReports({ limit: 20, days });
+      const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
+      setTopReports(items);
+    } catch (err) {
+      setTopError(err.message || 'Failed to load report summary');
+      setTopReports([]);
+    } finally {
+      setTopLoading(false);
+    }
+  }
+
+  async function handleStatusChange(status) {
+    if (!selectedUser) return;
+    if (status === selectedUser.account_status) return;
+    const confirmMsg = status === 'active' ? 'Restore account access?' : status === 'locked' ? 'Lock this account?' : 'Ban this account?';
+    if (!window.confirm(confirmMsg)) return;
+    let note = '';
+    if (status !== 'active') {
+      note = window.prompt('Add an optional note for this action:', selectedUser.status_note || '') || '';
+    } else if (selectedUser.status_note) {
+      note = window.prompt('Update note (leave blank to clear):', selectedUser.status_note || '') || '';
+    }
+    try {
+      await api.adminUpdateUserStatus(selectedUser.id, { status, note: note.trim() });
+      await loadUser(selectedUser.id);
+      await loadTopReports(topDays);
+      if (searchTerm.trim()) await fetchSearch(searchTerm.trim());
+    } catch (err) {
+      alert(err.message || 'Failed to update status');
+    }
+  }
+
+  function handleViewUserFromTop(userId) {
+    setTab('users');
+    loadUser(userId);
+  }
+
+  const userSummary = selectedUser ? H('div', { style: { display: 'grid', gap: 8 } },
+    H('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+      H('div', { style: { fontSize: 20, fontWeight: 700 } }, selectedUser.username || '(no username)'),
+      statusBadge(selectedUser.account_status || 'active')
+    ),
+    H('div', { className: 'muted' }, selectedUser.email || 'No email on file'),
+    H('div', { className: 'muted', style: { fontSize: 13 } }, `Joined: ${formatDate(selectedUser.created_at)}`),
+    H('div', { className: 'muted', style: { fontSize: 13 } }, `Last login: ${formatDateTime(selectedUser.last_login_at)}`),
+    H('div', { className: 'muted', style: { fontSize: 13 } }, `Listings: ${Number(selectedUser.listing_count || 0)} | Reports: ${Number(selectedUser.report_count || 0)} | Open reports: ${Number(selectedUser.open_report_count || 0)}`),
+    selectedUser.status_note && H('div', { style: { fontSize: 13, background: '#fef3c7', padding: 8, borderRadius: 8, color: '#92400e' } }, `Note: ${selectedUser.status_note}`),
+    H('div', { className: 'row', style: { gap: 8, marginTop: 8 } },
+      H('button', { className: 'btn', onClick: () => handleStatusChange('locked') }, 'Lock account'),
+      H('button', { className: 'btn danger', onClick: () => handleStatusChange('banned') }, 'Ban account'),
+      H('button', { className: 'btn', onClick: () => handleStatusChange('active') }, 'Restore account'),
+      H('button', { className: 'btn', onClick: () => loadUser(selectedUser.id) }, 'Refresh')
+    )
+  ) : H('div', { className: 'muted' }, userError || 'Select a user to view details.');
+
+  const reportsList = userReports.length
+    ? H('div', { style: { display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto', marginTop: 12 } },
+        userReports.map(r => H('div', {
+          key: r.id,
+          className: 'card',
+          style: { padding: 12, border: '1px solid #e5e7eb' }
+        },
+          H('div', { style: { fontSize: 13, fontWeight: 600 } }, `Report #${r.id}`),
+          H('div', { className: 'muted', style: { fontSize: 12 } }, `Filed: ${formatDateTime(r.created_at)}`),
+          H('div', { className: 'muted', style: { fontSize: 12 } }, `Reporter: ${r.reporter?.username || 'anonymous'} (${r.reporter?.email || 'no email'})`),
+          Array.isArray(r.reasons) && r.reasons.length
+            ? H('div', { style: { fontSize: 12, marginTop: 4 } }, `Reasons: ${r.reasons.join(', ')}`)
+            : null,
+          r.details && H('div', { style: { fontSize: 12, marginTop: 4 } }, r.details)
+        ))
+      )
+    : H('div', { className: 'muted', style: { marginTop: 12 } }, reportsError || (reportsLoading ? 'Loading reports...' : 'No reports for this user.'));
+
+  const topList = topReports.length
+    ? H('div', { style: { display: 'grid', gap: 8, marginTop: 12 } },
+        topReports.map(item => H('div', {
+          key: item.user_id,
+          className: 'card',
+          style: { padding: 12, border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }
+        },
+          H('div', { style: { display: 'grid', gap: 4 } },
+            H('div', { style: { fontWeight: 600 } }, item.username || '(no username)'),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, item.email || 'No email'),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, `Reports: ${Number(item.total_reports || 0)} | Open: ${Number(item.open_reports || 0)} | Recent: ${Number(item.recent_reports || 0)}`),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, `Last report: ${formatDateTime(item.last_report_at)}`)
+          ),
+          H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
+            statusBadge(item.account_status || 'active'),
+            H('button', { className: 'btn', onClick: () => handleViewUserFromTop(item.user_id) }, 'View')
+          )
+        ))
+      )
+    : H('div', { className: 'muted', style: { marginTop: 12 } }, topError || (topLoading ? 'Loading...' : 'No reported accounts yet.'));
+
+  return H('div', { className: 'admin-dashboard', style: { display: 'grid', gap: 16 } },
+    H('div', { className: 'row', style: { gap: 8 } },
+      H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
+      H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports')
+    ),
+
+    tab === 'users' && H('div', { style: { display: 'grid', gap: 16 } },
+      H('section', { className: 'card', style: { padding: 16 } },
+        H('h3', { style: { margin: '0 0 12px', fontSize: 18 } }, 'Search users'),
+        H('div', { className: 'row', style: { gap: 8, marginBottom: 8 } },
+          H('input', {
+            value: searchTerm,
+            onChange: (e) => setSearchTerm(e.target.value),
+            placeholder: 'Search by email or username',
+            style: { flex: 1, padding: 8, fontSize: 14 },
+            disabled: searchLoading
+          }),
+          searchTerm && H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: () => setSearchTerm(''),
+            disabled: searchLoading
+          }, 'Clear')
+        ),
+        searchError && H('div', { style: { color: '#b91c1c', fontSize: 13, marginBottom: 8 } }, searchError),
+        searchLoading && !searchTerm.trim() ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading...') : null,
+        H('div', { style: { maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 } },
+          searchResults.map(item => H('button', {
+            key: item.id,
+            className: 'card',
+            onClick: () => loadUser(item.id),
+            style: {
+              padding: 12,
+              textAlign: 'left',
+              border: selectedUserId === item.id ? '2px solid #2563eb' : '1px solid #e5e7eb',
+              background: '#fff',
+              cursor: 'pointer'
+            }
+          },
+            H('div', { style: { fontWeight: 600 } }, item.username || '(no username)'),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, item.email || 'No email'),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, `Status: ${item.account_status || 'active'} | Reports: ${Number(item.report_count || 0)}`)
+          ))
+        )
+      ),
+
+      H('section', { className: 'card', style: { padding: 16 } },
+        userLoading ? H('div', { className: 'muted' }, 'Loading user...') : userSummary,
+        (reportsLoading && !userReports.length) ? H('div', { className: 'muted', style: { marginTop: 12 } }, 'Loading reports...') : reportsList
+      )
+    ),
+
+    tab === 'reports' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
+        H('h3', { style: { margin: 0, fontSize: 18 } }, 'Most reported accounts'),
+        H('div', { className: 'row', style: { gap: 8 } },
+          H('label', { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 } },
+            'Window:',
+            H('select', {
+              value: topDays,
+              onChange: (e) => setTopDays(Number(e.target.value)),
+              style: { padding: 6 }
+            },
+              H('option', { value: 7 }, '7 days'),
+              H('option', { value: 30 }, '30 days'),
+              H('option', { value: 90 }, '90 days')
+            )
+          ),
+          H('button', { className: 'btn', onClick: () => loadTopReports(topDays) }, 'Refresh')
+        )
+      ),
+      topLoading && !topReports.length ? H('div', { className: 'muted' }, 'Loading...') : null,
+      topList
+    )
   );
 }
 
@@ -3365,6 +3859,9 @@ function App(){
     
 
    const handleTabChange = (newTab) => {
+    if (newTab === 'admin' && !user?.is_admin) {
+      return;
+    }
     setTab(newTab);
     setViewingSeller(null); // Clear seller view when switching tabs
   };
@@ -3416,6 +3913,12 @@ function App(){
       AppNav.incLoad = () => setLoadingCount(c => c + 1);
       AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
     }, []);
+
+    useEffect(() => {
+      if (!user?.is_admin && tab === 'admin') {
+        setTab('browse');
+      }
+    }, [user, tab]);
 
     const mineById = useMemo(() => {
       const map = Object.create(null);
@@ -3986,7 +4489,12 @@ function App(){
             setAutoPostNearbyEnabled,
             onViewSeller: handleViewSeller, // ADD THIS LINE
             onToggleSold: toggleSold
-          })
+          }),
+
+        !viewingSeller && (tab==='admin') &&
+          (user?.is_admin
+            ? H(AdminDashboard, {})
+            : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
       ),
 
       // MassList modal

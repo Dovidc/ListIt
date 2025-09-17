@@ -205,9 +205,19 @@ async function initializeSchema() {
         created_at TEXT NOT NULL,
         username TEXT UNIQUE,
         is_admin INTEGER DEFAULT 0,
-        paypal_email TEXT
+        paypal_email TEXT,
+        account_status TEXT DEFAULT 'active',
+        status_note TEXT,
+        status_updated_at TEXT,
+        last_login_at TEXT
       );
     `);
+    try { await db.exec("ALTER TABLE users ADD COLUMN account_status TEXT DEFAULT 'active'"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN status_note TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN status_updated_at TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN last_login_at TEXT"); } catch {}
+    try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
+
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS listings (
@@ -282,6 +292,23 @@ async function initializeSchema() {
         created_at INTEGER DEFAULT 0
       );
     `);
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS seller_reports (
+        id SERIAL PRIMARY KEY,
+        reporter_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reported_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+        reasons TEXT NOT NULL,
+        details TEXT,
+        captcha_question TEXT,
+        created_at TEXT NOT NULL,
+        status TEXT DEFAULT 'open',
+        admin_note TEXT
+      );
+    `);
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_reported ON seller_reports(reported_user_id, status);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_created ON seller_reports(created_at DESC);');
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS listing_cities (
@@ -489,11 +516,59 @@ function authFromReq(req) {
   try { return jwt.verify(t, JWT_SECRET); } catch { return null; }
 }
 
-function auth(req, res, next) {
-  const user = authFromReq(req);
-  if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  req.user = user;
-  next();
+async function getUserWithStatus(userId) {
+  if (!Number.isFinite(Number(userId))) return null;
+  try {
+    return await db.prepare(`
+      SELECT id, email, username, is_admin,
+             COALESCE(account_status, 'active') AS account_status,
+             status_note,
+             status_updated_at,
+             created_at,
+             last_login_at
+        FROM users
+       WHERE id = ?
+    `).get(Number(userId));
+  } catch (err) {
+    console.error('getUserWithStatus failed:', err);
+    return null;
+  }
+}
+
+async function auth(req, res, next) {
+  const session = authFromReq(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const row = await getUserWithStatus(session.id);
+    if (!row) {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (row.account_status === 'banned') {
+      clearAuthCookie(res);
+      return res.status(403).json({ error: 'account_banned' });
+    }
+    if (row.account_status === 'locked') {
+      return res.status(423).json({ error: 'account_locked' });
+    }
+
+    req.user = {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      is_admin: !!row.is_admin,
+      account_status: row.account_status,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      created_at: row.created_at,
+      last_login_at: row.last_login_at
+    };
+    next();
+  } catch (err) {
+    console.error('Auth middleware failed:', err);
+    return res.status(500).json({ error: 'auth_failed' });
+  }
 }
 
 function requireAdmin(req, res, next) {
@@ -511,6 +586,14 @@ const loginLimiter = mkLimiter({ windowMs: 15*60*1000, max: 20 });
 const writeLimiter = mkLimiter({ windowMs: 60*1000, max: 60 });
 const uploadLimiter = mkLimiter({ windowMs: 10*60*1000, max: 120 });
 const geocodeLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
+
+const REPORT_REASON_CODES = new Set([
+  'fraud',
+  'spam',
+  'inappropriate',
+  'harassment',
+  'other'
+]);
 
 /* ------------------------------------------------------------------ */
 /* Optional admin bootstrap                                           */
@@ -556,11 +639,22 @@ app.post('/api/register', writeLimiter, async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
+    const createdAt = nowIso();
     const info = await db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
-      .run(email, username, hash, nowIso());
+      .run(email, username, hash, createdAt);
     
-    const user = { id: info.lastInsertRowid, email, username, is_admin: false };
-    const token = setAuthCookie(res, user);
+    const user = {
+      id: info.lastInsertRowid,
+      email,
+      username,
+      is_admin: false,
+      account_status: 'active',
+      created_at: createdAt,
+      status_note: null,
+      status_updated_at: null,
+      last_login_at: null
+    };
+    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: false, account_status: 'active' });
     return res.json({ ...user, token });
   } catch (e) {
     const msg = String(e);
@@ -584,14 +678,40 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!row || !row.password_hash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
-    const user = { id: row.id, email: row.email, username: row.username, is_admin: !!row.is_admin };
-    const token = setAuthCookie(res, user);
+
+    const accountStatus = row.account_status || 'active';
+    if (accountStatus === 'banned') {
+      clearAuthCookie(res);
+      return res.status(403).json({ error: 'account_banned' });
+    }
+    if (accountStatus === 'locked') {
+      return res.status(423).json({ error: 'account_locked' });
+    }
+
+    const now = nowIso();
+    try {
+      await db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, row.id);
+    } catch (err) {
+      console.error('Failed to update last_login_at:', err);
+    }
+
+    const user = {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      is_admin: !!row.is_admin,
+      account_status: accountStatus,
+      created_at: row.created_at,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      last_login_at: now
+    };
+    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
     return res.json({ ...user, token });
   } catch (e) {
     console.error('Login error:', e);
@@ -611,7 +731,12 @@ app.get('/api/me', async (req, res) => {
 
     const row = await db.prepare(`
       SELECT id, email, username, is_admin,
-             COALESCE(paypal_email, '') AS paypal_email
+             COALESCE(paypal_email, '') AS paypal_email,
+             created_at,
+             COALESCE(account_status, 'active') AS account_status,
+             status_note,
+             status_updated_at,
+             last_login_at
       FROM users
       WHERE id = ?
     `).get(u.id);
@@ -623,7 +748,12 @@ app.get('/api/me', async (req, res) => {
       email: row.email,
       username: row.username,
       is_admin: !!row.is_admin,
-      paypal_email: row.paypal_email
+      paypal_email: row.paypal_email,
+      account_status: row.account_status,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      created_at: row.created_at,
+      last_login_at: row.last_login_at
     });
   } catch (e) {
     console.error('GET /api/me failed:', e);
@@ -790,16 +920,29 @@ app.get('/api/listings', async (req, res) => {
       return res.json({ items, page, limit, has_more, next_cursor });
     }
 
-    const user = authFromReq(req);
-    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    const session = authFromReq(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
+    const userRow = await getUserWithStatus(session.id);
+    if (!userRow) {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (userRow.account_status === 'banned') {
+      clearAuthCookie(res);
+      return res.status(403).json({ error: 'account_banned' });
+    }
+    if (userRow.account_status === 'locked') {
+      return res.status(423).json({ error: 'account_locked' });
+    }
 
     const wantsPagination = hasCursor || hasPage || Number.isFinite(limitParam);
     if (!wantsPagination) {
-      const arr = await itemsForUser(user.id, false);
+      const arr = await itemsForUser(userRow.id, false);
       return res.json(arr);
     }
 
-    const paged = await itemsForUser(user.id, true);
+    const paged = await itemsForUser(userRow.id, true);
     return res.json(paged);
   } catch (e) {
     console.error('GET /api/listings failed:', e);
@@ -836,7 +979,91 @@ app.get('/api/listings/covers', async (req, res) => {
   } catch (e) {
     console.error('GET /api/listings/covers failed:', e);
     return res.status(500).json({ error: 'fetch_failed' });
+  }app.post('/api/reports', auth, writeLimiter, async (req, res) => {
+  try {
+    const reporterId = req.user.id;
+    const reportedRaw = req.body?.reported_user_id ?? req.body?.reportedUserId;
+    const reportedUserId = Number(reportedRaw);
+    const listingRaw = req.body?.listing_id ?? req.body?.listingId;
+    const listingId = listingRaw === undefined || listingRaw === null || listingRaw === '' ? null : Number(listingRaw);
+    let reasons = req.body?.reasons;
+    if (!Array.isArray(reasons)) reasons = [];
+
+    const normalizedReasons = [];
+    const seen = new Set();
+    for (const code of reasons) {
+      if (normalizedReasons.length >= 5) break;
+      const val = String(code || '').toLowerCase().trim();
+      if (!val) continue;
+      if (!REPORT_REASON_CODES.has(val)) continue;
+      if (seen.has(val)) continue;
+      normalizedReasons.push(val);
+      seen.add(val);
+    }
+
+    if (!Number.isFinite(reportedUserId) || reportedUserId <= 0) {
+      return res.status(400).json({ error: 'invalid_reported_user' });
+    }
+    if (reportedUserId === reporterId) {
+      return res.status(400).json({ error: 'cannot_report_self' });
+    }
+    if (!normalizedReasons.length) {
+      return res.status(400).json({ error: 'invalid_reasons' });
+    }
+
+    const detailsRaw = (req.body?.details || '').toString().trim();
+    const details = detailsRaw ? detailsRaw.slice(0, 500) : null;
+
+    const captcha = req.body?.captcha || {};
+    const a = Number(captcha?.a);
+    const b = Number(captcha?.b);
+    const answer = Number(captcha?.answer);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(answer) || a + b !== answer) {
+      return res.status(400).json({ error: 'captcha_invalid' });
+    }
+    const captchaQuestion = `${a}+${b}`;
+
+    const target = await db.prepare('SELECT id FROM users WHERE id = ?').get(reportedUserId);
+    if (!target) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    let finalListingId = null;
+    if (listingId !== null) {
+      if (!Number.isFinite(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: 'invalid_listing' });
+      }
+      const listing = await db.prepare('SELECT id, user_id FROM listings WHERE id = ?').get(listingId);
+      if (!listing) {
+        return res.status(404).json({ error: 'listing_not_found' });
+      }
+      if (listing.user_id !== reportedUserId) {
+        return res.status(400).json({ error: 'listing_owner_mismatch' });
+      }
+      finalListingId = listing.id;
+    }
+
+    await db.prepare(`
+      INSERT INTO seller_reports (reporter_user_id, reported_user_id, listing_id, reasons, details, captcha_question, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      reporterId,
+      reportedUserId,
+      finalListingId,
+      JSON.stringify(normalizedReasons),
+      details || null,
+      captchaQuestion,
+      nowIso()
+    );
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Submit report failed:', e);
+    return res.status(500).json({ error: 'report_failed' });
   }
+});
+
+
 });
 
 app.post('/api/listings', auth, writeLimiter, async (req, res) => {
@@ -1606,6 +1833,265 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, async (req, res) => {
   } catch (e) {
     console.error('Admin delete listing failed:', e);
     return res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+
+app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
+  try {
+    const qRaw = String(req.query.q || '').trim();
+    if (!qRaw) return res.json([]);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+
+    let rows = [];
+    const numeric = Number(qRaw);
+    if (Number.isFinite(numeric)) {
+      rows = await db.prepare(`
+        SELECT u.id, u.email, u.username, u.created_at,
+               COALESCE(u.account_status, 'active') AS account_status,
+               u.status_note,
+               u.status_updated_at,
+               u.last_login_at,
+               (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count
+          FROM users u
+         WHERE u.id = ?
+      `).all(numeric);
+    } else {
+      const like = `%${qRaw.toLowerCase().replace(/%/g, '')}%`;
+      rows = await db.prepare(`
+        SELECT u.id, u.email, u.username, u.created_at,
+               COALESCE(u.account_status, 'active') AS account_status,
+               u.status_note,
+               u.status_updated_at,
+               u.last_login_at,
+               (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count
+          FROM users u
+         WHERE LOWER(u.email) LIKE @like
+            OR LOWER(u.username) LIKE @like
+         ORDER BY u.username ASC, u.id ASC
+         LIMIT @limit
+      `).all({ like, limit });
+    }
+
+    const result = rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      created_at: row.created_at,
+      account_status: row.account_status,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      last_login_at: row.last_login_at,
+      listing_count: Number(row.listing_count || 0),
+      report_count: Number(row.report_count || 0)
+    }));
+
+    return res.json(result);
+  } catch (e) {
+    console.error('Admin user search failed:', e);
+    return res.status(500).json({ error: 'admin_search_failed' });
+  }
+});
+
+app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'invalid_user' });
+    }
+
+    const row = await db.prepare(`
+      SELECT u.id, u.email, u.username, u.created_at,
+             COALESCE(u.account_status, 'active') AS account_status,
+             u.status_note,
+             u.status_updated_at,
+             u.last_login_at,
+             u.paypal_email,
+             u.is_admin,
+             (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
+             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count,
+             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status = 'open') AS open_report_count
+        FROM users u
+       WHERE u.id = ?
+    `).get(userId);
+
+    if (!row) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    const recentReport = await db.prepare(`
+      SELECT created_at
+        FROM seller_reports
+       WHERE reported_user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 1
+    `).get(userId);
+
+    return res.json({
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      created_at: row.created_at,
+      account_status: row.account_status,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      last_login_at: row.last_login_at,
+      paypal_email: row.paypal_email || '',
+      is_admin: !!row.is_admin,
+      listing_count: Number(row.listing_count || 0),
+      report_count: Number(row.report_count || 0),
+      open_report_count: Number(row.open_report_count || 0),
+      last_report_at: recentReport?.created_at || null
+    });
+  } catch (e) {
+    console.error('Admin user detail failed:', e);
+    return res.status(500).json({ error: 'admin_user_failed' });
+  }
+});
+
+app.get('/api/admin/users/:id/reports', auth, requireAdmin, async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'invalid_user' });
+    }
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+    const rows = await db.prepare(`
+      SELECT r.id, r.listing_id, r.reasons, r.details, r.created_at, r.status, r.admin_note,
+             r.reporter_user_id,
+             reporter.username AS reporter_username,
+             reporter.email AS reporter_email
+        FROM seller_reports r
+        JOIN users reporter ON reporter.id = r.reporter_user_id
+       WHERE r.reported_user_id = ?
+       ORDER BY r.created_at DESC
+       LIMIT ?
+    `).all(userId, limit);
+
+    const parsed = rows.map(row => {
+      let reasons;
+      try {
+        reasons = Array.isArray(row.reasons) ? row.reasons : JSON.parse(row.reasons || '[]');
+        if (!Array.isArray(reasons)) reasons = [];
+      } catch {
+        reasons = [];
+      }
+      return {
+        id: row.id,
+        listing_id: row.listing_id,
+        reasons,
+        details: row.details,
+        created_at: row.created_at,
+        status: row.status,
+        admin_note: row.admin_note,
+        reporter: {
+          id: row.reporter_user_id,
+          username: row.reporter_username,
+          email: row.reporter_email
+        }
+      };
+    });
+
+    return res.json(parsed);
+  } catch (e) {
+    console.error('Admin report list failed:', e);
+    return res.status(500).json({ error: 'admin_reports_failed' });
+  }
+});
+
+app.post('/api/admin/users/:id/status', auth, requireAdmin, async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'invalid_user' });
+    }
+
+    const statusRaw = String(req.body?.status || '').trim().toLowerCase();
+    const allowed = new Set(['active', 'locked', 'banned']);
+    if (!allowed.has(statusRaw)) {
+      return res.status(400).json({ error: 'invalid_status' });
+    }
+
+    let note = (req.body?.note || '').toString().trim();
+    if (note) note = note.slice(0, 500);
+    if (statusRaw === 'active' && !note) note = null;
+
+    const now = nowIso();
+    const info = await db.prepare(`
+      UPDATE users
+         SET account_status = ?,
+             status_note = ?,
+             status_updated_at = ?
+       WHERE id = ?
+    `).run(statusRaw, note || null, now, userId);
+
+    if (!info.changes) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    const updated = await getUserWithStatus(userId);
+    if (!updated) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    return res.json({
+      id: updated.id,
+      email: updated.email,
+      username: updated.username,
+      account_status: updated.account_status,
+      status_note: updated.status_note,
+      status_updated_at: updated.status_updated_at,
+      created_at: updated.created_at,
+      last_login_at: updated.last_login_at,
+      is_admin: updated.is_admin
+    });
+  } catch (e) {
+    console.error('Admin user status update failed:', e);
+    return res.status(500).json({ error: 'status_update_failed' });
+  }
+});
+
+app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const daysParam = Number(req.query.days);
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const rows = await db.prepare(`
+      SELECT r.reported_user_id AS user_id,
+             u.username,
+             u.email,
+             COALESCE(u.account_status, 'active') AS account_status,
+             COUNT(*) AS total_reports,
+             SUM(CASE WHEN r.status = 'open' THEN 1 ELSE 0 END) AS open_reports,
+             SUM(CASE WHEN r.created_at >= @since THEN 1 ELSE 0 END) AS recent_reports,
+             MAX(r.created_at) AS last_report_at
+        FROM seller_reports r
+        JOIN users u ON u.id = r.reported_user_id
+       GROUP BY r.reported_user_id
+       ORDER BY total_reports DESC, last_report_at DESC
+       LIMIT @limit
+    `).all({ since, limit });
+
+    const payload = rows.map(row => ({
+      user_id: row.user_id,
+      username: row.username,
+      email: row.email,
+      account_status: row.account_status,
+      total_reports: Number(row.total_reports || 0),
+      open_reports: Number(row.open_reports || 0),
+      recent_reports: Number(row.recent_reports || 0),
+      last_report_at: row.last_report_at
+    }));
+
+    return res.json({ items: payload, days });
+  } catch (e) {
+    console.error('Admin top reports failed:', e);
+    return res.status(500).json({ error: 'admin_reports_failed' });
   }
 });
 
