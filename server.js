@@ -297,6 +297,24 @@ async function initializeSchema() {
     `);
 
     await db.exec(`
+      CREATE TABLE IF NOT EXISTS ads (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        target_url TEXT NOT NULL,
+        image_url TEXT,
+        cta_label TEXT,
+        background TEXT,
+        is_active INTEGER DEFAULT 1,
+        position INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_ads_active ON ads(is_active, position DESC, id DESC);');
+
+
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS seller_reports (
         id SERIAL PRIMARY KEY,
         reporter_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -484,6 +502,41 @@ function validateMsgImages(images) {
   }
   return null;
 }
+
+function normalizeHttpUrl(input, { allowEmpty = false } = {}) {
+  let str = (input ?? '').toString().trim();
+  if (!str) {
+    return allowEmpty ? '' : null;
+  }
+  if (!/^https?:\/\//i.test(str)) {
+    str = `https://${str}`;
+  }
+  try {
+    const url = new URL(str);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function formatAdRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title || '',
+    subtitle: row.subtitle || '',
+    target_url: row.target_url || '',
+    image_url: row.image_url || '',
+    cta_label: row.cta_label || '',
+    background: row.background || '',
+    is_active: row.is_active ? 1 : 0,
+    position: Number.isFinite(Number(row.position)) ? Number(row.position) : 0,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
+  };
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Auth helpers                                                        */
@@ -1844,6 +1897,165 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
   } catch (e) {
     console.error('Delete conversation failed:', e);
     return res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Ads                                                                */
+/* ------------------------------------------------------------------ */
+app.get('/api/ads', async (_req, res) => {
+  try {
+    const rows = await db.prepare(`
+      SELECT *
+        FROM ads
+       WHERE is_active = 1
+       ORDER BY position DESC, updated_at DESC, id DESC
+    `).all();
+    return res.json(rows.map(formatAdRow));
+  } catch (e) {
+    console.error('Public ads fetch failed:', e);
+    return res.status(500).json({ error: 'ads_fetch_failed' });
+  }
+});
+
+app.get('/api/admin/ads', auth, requireAdmin, async (_req, res) => {
+  try {
+    const rows = await db.prepare('SELECT * FROM ads ORDER BY position DESC, updated_at DESC, id DESC').all();
+    return res.json(rows.map(formatAdRow));
+  } catch (e) {
+    console.error('Admin ads list failed:', e);
+    return res.status(500).json({ error: 'admin_ads_failed' });
+  }
+});
+
+app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
+  try {
+    const { title, subtitle, target_url, image_url, cta_label, background, position, is_active } = req.body || {};
+    const safeTitle = String(title || '').trim().slice(0, 120);
+    if (!safeTitle) {
+      return res.status(400).json({ error: 'title_required' });
+    }
+    const safeSubtitle = String(subtitle || '').trim().slice(0, 200) || null;
+    const safeCta = String(cta_label || '').trim().slice(0, 40) || null;
+    const safeBackground = String(background || '').trim().slice(0, 160) || null;
+    let safePosition = Number.isFinite(Number(position)) ? Math.round(Number(position)) : 0;
+    if (safePosition > 9999) safePosition = 9999;
+    if (safePosition < -9999) safePosition = -9999;
+    const normalizedTarget = normalizeHttpUrl(target_url);
+    if (!normalizedTarget) {
+      return res.status(400).json({ error: 'invalid_target_url' });
+    }
+    let normalizedImage = '';
+    if (image_url) {
+      normalizedImage = normalizeHttpUrl(image_url, { allowEmpty: true }) || '';
+      if (image_url && !normalizedImage) {
+        return res.status(400).json({ error: 'invalid_image_url' });
+      }
+    }
+    const activeFlag = Number(is_active) === 0 ? 0 : 1;
+    const now = nowIso();
+    const info = await db.prepare(`
+      INSERT INTO ads (title, subtitle, target_url, image_url, cta_label, background, is_active, position, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      safeTitle,
+      safeSubtitle,
+      normalizedTarget,
+      normalizedImage || null,
+      safeCta,
+      safeBackground,
+      activeFlag,
+      safePosition,
+      now,
+      now
+    );
+    const row = await db.prepare('SELECT * FROM ads WHERE id = ?').get(info.lastInsertRowid);
+    return res.json(formatAdRow(row));
+  } catch (e) {
+    console.error('Admin ad create failed:', e);
+    return res.status(500).json({ error: 'admin_ad_create_failed' });
+  }
+});
+
+app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    const adId = Number(req.params.id);
+    if (!Number.isFinite(adId)) {
+      return res.status(400).json({ error: 'invalid_ad' });
+    }
+    const { title, subtitle, target_url, image_url, cta_label, background, position, is_active } = req.body || {};
+    const safeTitle = String(title || '').trim().slice(0, 120);
+    if (!safeTitle) {
+      return res.status(400).json({ error: 'title_required' });
+    }
+    const safeSubtitle = String(subtitle || '').trim().slice(0, 200) || null;
+    const safeCta = String(cta_label || '').trim().slice(0, 40) || null;
+    const safeBackground = String(background || '').trim().slice(0, 160) || null;
+    let safePosition = Number.isFinite(Number(position)) ? Math.round(Number(position)) : 0;
+    if (safePosition > 9999) safePosition = 9999;
+    if (safePosition < -9999) safePosition = -9999;
+    const normalizedTarget = normalizeHttpUrl(target_url);
+    if (!normalizedTarget) {
+      return res.status(400).json({ error: 'invalid_target_url' });
+    }
+    let normalizedImage = '';
+    if (image_url) {
+      normalizedImage = normalizeHttpUrl(image_url, { allowEmpty: true }) || '';
+      if (image_url && !normalizedImage) {
+        return res.status(400).json({ error: 'invalid_image_url' });
+      }
+    }
+    const activeFlag = Number(is_active) === 0 ? 0 : 1;
+    const now = nowIso();
+    const info = await db.prepare(`
+      UPDATE ads
+         SET title = ?,
+             subtitle = ?,
+             target_url = ?,
+             image_url = ?,
+             cta_label = ?,
+             background = ?,
+             is_active = ?,
+             position = ?,
+             updated_at = ?
+       WHERE id = ?
+    `).run(
+      safeTitle,
+      safeSubtitle,
+      normalizedTarget,
+      normalizedImage || null,
+      safeCta,
+      safeBackground,
+      activeFlag,
+      safePosition,
+      now,
+      adId
+    );
+    if (!info.changes) {
+      return res.status(404).json({ error: 'ad_not_found' });
+    }
+    const row = await db.prepare('SELECT * FROM ads WHERE id = ?').get(adId);
+    return res.json(formatAdRow(row));
+  } catch (e) {
+    console.error('Admin ad update failed:', e);
+    return res.status(500).json({ error: 'admin_ad_update_failed' });
+  }
+});
+
+app.delete('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    const adId = Number(req.params.id);
+    if (!Number.isFinite(adId)) {
+      return res.status(400).json({ error: 'invalid_ad' });
+    }
+    const info = await db.prepare('DELETE FROM ads WHERE id = ?').run(adId);
+    if (!info.changes) {
+      return res.status(404).json({ error: 'ad_not_found' });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Admin ad delete failed:', e);
+    return res.status(500).json({ error: 'admin_ad_delete_failed' });
   }
 });
 

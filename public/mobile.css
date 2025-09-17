@@ -1,3 +1,13 @@
+/* Ads */
+.ad-card {
+  grid-template-columns: 1fr;
+  padding: 20px;
+}
+
+.ad-card__art img {
+  max-height: 140px;
+}
+
 /* Brand header tweaks */
 .brand-badge {
   width: 40px;

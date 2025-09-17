@@ -291,6 +291,50 @@
     );
   }
 
+  function AdTile({ ad, cols = 4, className, preview = false }) {
+    if (!ad) return null;
+    const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
+    const hasImage = !!ad.image_url;
+    const href = ad.target_url || '#';
+    const ctaLabel = (ad.cta_label || 'Visit site').slice(0, 40);
+    const style = { gridColumn: `span ${spanCols}` };
+    if (ad.background) style.background = ad.background;
+    if (preview) style.cursor = 'default';
+    const cardClass = `card ad-card${hasImage ? '' : ' no-art'}${className ? ` ${className}` : ''}`;
+    const anchorProps = {
+      className: cardClass,
+      href,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      style
+    };
+    if (preview) {
+      anchorProps.onClick = (e) => e.preventDefault();
+      anchorProps.target = '_self';
+      anchorProps.rel = 'noopener';
+      anchorProps.tabIndex = -1;
+    }
+    return H('a', anchorProps,
+      H('div', { className: 'ad-card__content' },
+        H('span', { className: 'ad-card__tag' }, 'Sponsored'),
+        H('div', { className: 'ad-card__title' }, ad.title || 'Advertisement'),
+        ad.subtitle && H('div', { className: 'ad-card__subtitle' }, ad.subtitle),
+        H('div', { className: 'ad-card__ctaRow' },
+          H('span', { className: 'ad-card__cta' }, ctaLabel),
+          H('span', { className: 'ad-card__arrow' }, '>')
+        )
+      ),
+      hasImage && H('div', { className: 'ad-card__art' },
+        H('img', {
+          src: ad.image_url,
+          alt: ad.title ? `${ad.title} artwork` : 'Advertisement art',
+          loading: 'lazy',
+          decoding: 'async'
+        })
+      )
+    );
+  }
+
   // --- API ---
 const api = {
   async _fetch(url, opts = {}, meta = {}) {
@@ -403,6 +447,26 @@ register(payload, meta) {
 
     adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
     adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
+
+    listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
+    adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
+    adminCreateAd(payload, meta) {
+      return this._fetch('/api/admin/ads', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminUpdateAd(id, payload, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminDeleteAd(id, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, { method:'DELETE' }, meta);
+    },
 
     searchCities(q, meta) {
       const params = new URLSearchParams();
@@ -1903,7 +1967,20 @@ async function submit(e){
   );
 }
 
-function AdminDashboard({ onViewSeller, onMessageUser }) {
+function createEmptyAdForm() {
+  return {
+    title: '',
+    subtitle: '',
+    target_url: '',
+    image_url: '',
+    cta_label: '',
+    background: '',
+    position: 0,
+    is_active: true
+  };
+}
+
+function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [tab, setTab] = useState('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -1920,6 +1997,14 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState('');
   const [topDays, setTopDays] = useState(7);
+
+  const [adsList, setAdsList] = useState([]);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsError, setAdsError] = useState('');
+  const [adSaving, setAdSaving] = useState(false);
+  const [editingAdId, setEditingAdId] = useState(null);
+  const [adForm, setAdForm] = useState(() => createEmptyAdForm());
+
   const searchTimer = useRef(null);
 
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
@@ -1935,6 +2020,26 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
     }
     searchTimer.current = setTimeout(() => { fetchSearch(term); }, 300);
   }, [searchTerm]);
+
+  const loadAds = useCallback(async () => {
+    setAdsLoading(true);
+    setAdsError('');
+    try {
+      const rows = await api.adminListAds({ silent: true });
+      setAdsList(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setAdsError(err?.message || 'Failed to load ads');
+      setAdsList([]);
+    } finally {
+      setAdsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'ads') {
+      loadAds();
+    }
+  }, [tab, loadAds]);
 
   function formatDate(value) {
     if (!value) return '--';
@@ -2050,6 +2155,95 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
     loadUser(userId);
   }
 
+  function buildAdPayload(source) {
+    const payload = {
+      title: String(source.title || '').trim(),
+      subtitle: String(source.subtitle || '').trim(),
+      target_url: String(source.target_url || '').trim(),
+      image_url: String(source.image_url || '').trim(),
+      cta_label: String(source.cta_label || '').trim(),
+      background: String(source.background || '').trim(),
+      position: Number.isFinite(Number(source.position)) ? Math.round(Number(source.position)) : 0,
+      is_active: source.is_active ? 1 : 0
+    };
+    if (payload.position > 9999) payload.position = 9999;
+    if (payload.position < -9999) payload.position = -9999;
+    return payload;
+  }
+
+  function resetAdForm() {
+    setEditingAdId(null);
+    setAdForm(createEmptyAdForm());
+    setAdsError('');
+  }
+
+  function handleEditAd(ad) {
+    if (!ad) return;
+    setAdsError('');
+    setEditingAdId(ad.id);
+    setAdForm({
+      title: ad.title || '',
+      subtitle: ad.subtitle || '',
+      target_url: ad.target_url || '',
+      image_url: ad.image_url || '',
+      cta_label: ad.cta_label || '',
+      background: ad.background || '',
+      position: Number.isFinite(Number(ad.position)) ? Number(ad.position) : 0,
+      is_active: !!ad.is_active
+    });
+  }
+
+  async function handleAdSubmit(e) {
+    e.preventDefault();
+    setAdSaving(true);
+    setAdsError('');
+    try {
+      const payload = buildAdPayload(adForm);
+      if (!payload.title || !payload.target_url) {
+        setAdsError('Title and target URL are required.');
+        setAdSaving(false);
+        return;
+      }
+      if (editingAdId) {
+        await api.adminUpdateAd(editingAdId, payload);
+      } else {
+        await api.adminCreateAd(payload);
+      }
+      await loadAds();
+      resetAdForm();
+      onAdsUpdated?.();
+    } catch (err) {
+      setAdsError(err?.message || 'Failed to save ad');
+    } finally {
+      setAdSaving(false);
+    }
+  }
+
+  async function handleDeleteAd(id) {
+    if (!Number.isFinite(Number(id))) return;
+    if (!window.confirm('Delete this ad?')) return;
+    try {
+      await api.adminDeleteAd(id);
+      if (editingAdId === id) resetAdForm();
+      await loadAds();
+      onAdsUpdated?.();
+    } catch (err) {
+      alert(err?.message || 'Failed to delete ad');
+    }
+  }
+
+  async function handleToggleAdActive(ad) {
+    if (!ad) return;
+    try {
+      const payload = buildAdPayload({ ...ad, is_active: ad.is_active ? 0 : 1 });
+      await api.adminUpdateAd(ad.id, payload);
+      await loadAds();
+      onAdsUpdated?.();
+    } catch (err) {
+      alert(err?.message || 'Failed to update ad');
+    }
+  }
+
   const lockToggleLabel = selectedUser?.account_status === 'locked' ? 'Unlock account' : 'Lock account';
   const lockToggleTarget = selectedUser?.account_status === 'locked' ? 'active' : 'locked';
   const showRestore = selectedUser?.account_status === 'banned';
@@ -2132,7 +2326,8 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
   return H('div', { className: 'admin-dashboard', style: { display: 'grid', gap: 16 } },
     H('div', { className: 'row', style: { gap: 8 } },
       H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
-      H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports')
+      H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
+      H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads')
     ),
 
     tab === 'users' && H('div', { style: { display: 'grid', gap: 16 } },
@@ -2202,6 +2397,254 @@ function AdminDashboard({ onViewSeller, onMessageUser }) {
       ),
       topLoading && !topReports.length ? H('div', { className: 'muted' }, 'Loading...') : null,
       topList
+    ),
+
+
+
+    tab === 'ads' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 16 } },
+
+      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
+
+        H('h3', { style: { margin: 0, fontSize: 18 } }, editingAdId ? 'Edit advertisement' : 'Create advertisement'),
+
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+
+          H('button', { className: 'btn', type: 'button', onClick: loadAds, disabled: adsLoading }, 'Refresh'),
+
+          editingAdId && H('button', { className: 'btn', type: 'button', onClick: resetAdForm, disabled: adSaving }, 'New ad')
+
+        )
+
+      ),
+
+      adsError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, adsError),
+
+      H('form', { onSubmit: handleAdSubmit, style: { display: 'grid', gap: 12 } },
+
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+
+          H('label', { style: { display: 'grid', gap: 4, flex: '1 1 260px' } },
+
+            'Title',
+
+            H('input', {
+
+              value: adForm.title,
+
+              onChange: (e) => setAdForm(f => ({ ...f, title: e.target.value })),
+
+              placeholder: 'Headline',
+
+              disabled: adSaving,
+
+              required: true
+
+            })
+
+          ),
+
+          H('label', { style: { display: 'grid', gap: 4, flex: '1 1 260px' } },
+
+            'Target URL',
+
+            H('input', {
+
+              value: adForm.target_url,
+
+              onChange: (e) => setAdForm(f => ({ ...f, target_url: e.target.value })),
+
+              placeholder: 'https://example.com',
+
+              disabled: adSaving,
+
+              required: true
+
+            })
+
+          )
+
+        ),
+
+        H('label', { style: { display: 'grid', gap: 4 } },
+
+          'Subtitle',
+
+          H('input', {
+
+            value: adForm.subtitle,
+
+            onChange: (e) => setAdForm(f => ({ ...f, subtitle: e.target.value })),
+
+            placeholder: 'Short supporting copy',
+
+            disabled: adSaving
+
+          })
+
+        ),
+
+        H('label', { style: { display: 'grid', gap: 4 } },
+
+          'Image URL',
+
+          H('input', {
+
+            value: adForm.image_url,
+
+            onChange: (e) => setAdForm(f => ({ ...f, image_url: e.target.value })),
+
+            placeholder: 'https://cdn.example.com/banner.jpg',
+
+            disabled: adSaving
+
+          })
+
+        ),
+
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+
+          H('label', { style: { display: 'grid', gap: 4, flex: '1 1 200px' } },
+
+            'CTA label',
+
+            H('input', {
+
+              value: adForm.cta_label,
+
+              onChange: (e) => setAdForm(f => ({ ...f, cta_label: e.target.value })),
+
+              placeholder: 'Learn more',
+
+              disabled: adSaving
+
+            })
+
+          ),
+
+          H('label', { style: { display: 'grid', gap: 4, flex: '1 1 240px' } },
+
+            'Background',
+
+            H('input', {
+
+              value: adForm.background,
+
+              onChange: (e) => setAdForm(f => ({ ...f, background: e.target.value })),
+
+              placeholder: 'e.g. linear-gradient(...)',
+
+              disabled: adSaving
+
+            })
+
+          ),
+
+          H('label', { style: { display: 'grid', gap: 4, width: 140 } },
+
+            'Position',
+
+            H('input', {
+
+              type: 'number',
+
+              value: adForm.position,
+
+              onChange: (e) => setAdForm(f => ({ ...f, position: e.target.value })),
+
+              disabled: adSaving
+
+            })
+
+          ),
+
+          H('label', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+
+            H('input', {
+
+              type: 'checkbox',
+
+              checked: !!adForm.is_active,
+
+              onChange: (e) => setAdForm(f => ({ ...f, is_active: e.target.checked })),
+
+              disabled: adSaving
+
+            }),
+
+            'Active'
+
+          )
+
+        ),
+
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+
+          H('button', { className: 'btn primary', type: 'submit', disabled: adSaving }, editingAdId ? 'Update ad' : 'Create ad'),
+
+          H('button', { className: 'btn', type: 'button', onClick: resetAdForm, disabled: adSaving }, 'Reset')
+
+        ),
+
+        H('div', { style: { display: 'grid', gap: 8 } },
+
+          H('div', { className: 'muted', style: { fontSize: 12 } }, 'Preview'),
+
+          H('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 } },
+
+            H(AdTile, { ad: { ...adForm }, cols: 3, preview: true, className: 'ad-preview' })
+
+          )
+
+        )
+
+      ),
+
+      adsLoading ? H('div', { className: 'muted' }, 'Loading ads...') :
+
+        (adsList.length
+
+          ? H('div', { style: { display: 'grid', gap: 12 } }, adsList.map(ad =>
+
+              H('div', { key: ad.id, className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+
+                H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+
+                  H('div', { style: { display: 'grid', gap: 4 } },
+
+                    H('div', { style: { fontWeight: 600 } }, ad.title || '(no title)'),
+
+                    H('div', { className: 'muted', style: { fontSize: 12 } }, ad.target_url),
+
+                    H('div', { className: 'muted', style: { fontSize: 12 } }, `Position: ${Number(ad.position || 0)} | ${ad.is_active ? 'Active' : 'Inactive'}`)
+
+                  ),
+
+                  H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+
+                    H('button', { className: 'btn', onClick: () => handleEditAd(ad) }, 'Edit'),
+
+                    H('button', { className: 'btn', onClick: () => handleToggleAdActive(ad) }, ad.is_active ? 'Deactivate' : 'Activate'),
+
+                    H('button', { className: 'btn danger', onClick: () => handleDeleteAd(ad.id) }, 'Delete')
+
+                  )
+
+                ),
+
+                H('div', { style: { display: 'grid', gap: 8 } },
+
+                  H(AdTile, { ad, cols: 3, preview: true })
+
+                )
+
+              )
+
+            ))
+
+          : H('div', { className: 'muted' }, 'No ads yet.')
+
+        )
+
     )
   );
 }
@@ -3902,6 +4345,7 @@ function App(){
     const [showForm, setShowForm] = useState(false);
     const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
     const [banner, setBanner] = useState(null);
+    const [ads, setAds] = useState([]);
 
     const showLockedBanner = useCallback(() => {
       setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
@@ -3959,6 +4403,18 @@ function App(){
     useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
     const isMobile = isMobileDevice();
+
+    const refreshAds = useCallback(async () => {
+      try {
+        const rows = await api.listAds({ silent: true });
+        setAds(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        console.error('Failed to load ads', err);
+        setAds([]);
+      }
+    }, []);
+
+    useEffect(() => { refreshAds(); }, [refreshAds]);
 
     useEffect(() => {
       AppNav.setUser = setUser;
@@ -4370,6 +4826,34 @@ function App(){
       });
     }, [feed, coverById]);
 
+    const adsForGrid = useMemo(() => {
+      if (!Array.isArray(ads) || !ads.length) return [];
+      return ads.map(ad => ({
+        ...ad,
+        position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
+      }));
+    }, [ads]);
+
+    const gridEntries = useMemo(() => {
+      const base = (items || []).map(it => ({ type: 'listing', data: it }));
+      if (!adsForGrid.length) return base;
+      const result = [...base];
+      const sortedAds = [...adsForGrid].sort((a, b) => {
+        const posDiff = (Number(b.position) || 0) - (Number(a.position) || 0);
+        if (posDiff !== 0) return posDiff;
+        const timeA = a.updated_at || a.created_at || '';
+        const timeB = b.updated_at || b.created_at || '';
+        if (timeA !== timeB) return timeB.localeCompare(timeA);
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+      sortedAds.forEach(ad => {
+        const pos = Number.isFinite(ad.position) ? ad.position : 0;
+        const idx = Math.min(Math.max(pos, 0), result.length);
+        result.splice(idx, 0, { type: 'ad', data: ad });
+      });
+      return result;
+    }, [items, adsForGrid]);
+
     // Grid tile (square)
     function GridTile({ it }) {
       const ref = useRef(null);
@@ -4489,7 +4973,12 @@ function App(){
                 gap: GAP
               }
             },
-              items.map(it => H(GridTile, { key: it.id, it }))
+              gridEntries.map(entry => {
+                if (entry.type === 'ad') {
+                  return H(AdTile, { key: `ad-${entry.data.id}`, ad: entry.data, cols: COLS });
+                }
+                return H(GridTile, { key: `listing-${entry.data.id}`, it: entry.data });
+              })
             );
           })(),
 
@@ -4608,7 +5097,7 @@ function App(){
 
         !viewingSeller && (tab==='admin') &&
           (user?.is_admin
-            ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage })
+            ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage, onAdsUpdated: refreshAds })
             : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
       ),
 
