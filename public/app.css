@@ -1,3 +1,96 @@
+/* Modern button system */
+:root {
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --accent-contrast: #f8fafc;
+  --btn-radius: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.2rem;
+  border-radius: var(--btn-radius);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  min-height: 0;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.14);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.btn:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 3px;
+  box-shadow: 0 18px 34px rgba(37, 99, 235, 0.28);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #2563eb 0%, #4338ca 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.32);
+}
+
+.btn.primary:hover:not(:disabled) {
+  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.36);
+}
+
+.btn.primary:focus-visible {
+  outline-color: rgba(99, 102, 241, 0.55);
+}
+
+.btn.primary:disabled {
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: none;
+}
+
+.btn.danger {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(248, 113, 113, 0.28);
+}
+
+.btn.danger:hover:not(:disabled) {
+  box-shadow: 0 18px 36px rgba(248, 113, 113, 0.32);
+}
+
+.btn.danger:focus-visible {
+  outline-color: rgba(239, 68, 68, 0.55);
+}
+
+.btn.danger:disabled {
+  background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: none;
+}
+
 /* Global status banner */
 .global-banner {
   background: #fef2f2;
