@@ -212,6 +212,9 @@ async function initializeSchema() {
         last_login_at TEXT
       );
     `);
+    try { await db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"); } catch {}
+    try { await db.exec("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN paypal_email TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN account_status TEXT DEFAULT 'active'"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN status_note TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN status_updated_at TEXT"); } catch {}
@@ -2106,6 +2109,43 @@ app.delete('/api/admin/listings', auth, requireAdmin, async (_req, res) => {
   }
 });
 
+if (IS_TEST) {
+  app.post('/__test/reset', async (_req, res) => {
+    try {
+      await initializeSchema();
+      const tables = [
+        'message_images',
+        'messages',
+        'conversations',
+        'listing_images',
+        'seller_reports',
+        'listings',
+        'listing_cities',
+        'users'
+      ];
+      for (const name of tables) {
+        try {
+          await db.exec(`DELETE FROM ${name};`);
+        } catch (err) {
+          console.error('Reset delete failed for', name, err);
+        }
+      }
+      if (!process.env.DATABASE_URL) {
+        try {
+          await db.exec("DELETE FROM sqlite_sequence WHERE name IN ('message_images','messages','conversations','listing_images','seller_reports','listings','listing_cities','users')");
+        } catch (err) {
+          // ignore
+        }
+      }
+      invalidateNearbyCache();
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('Test reset failed:', e);
+      res.status(500).json({ error: 'reset_failed' });
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Health & Error handling                                            */
 /* ------------------------------------------------------------------ */
@@ -2128,6 +2168,11 @@ async function startServer() {
     console.log('WebSocket server ready');
   });
 }
+
+app._initializeSchema = initializeSchema;
+app._maybeCreateAdmin = maybeCreateAdmin;
+app._startServer = startServer;
+app._db = db;
 
 // ADD THIS:
 if (require.main === module) {

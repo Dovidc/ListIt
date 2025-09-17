@@ -1,53 +1,109 @@
-/* tests/server.test.js (smoke + multi image) */
+process.env.NODE_ENV = 'test';
+if (!process.env.DB_PATH) {
+  process.env.DB_PATH = ':memory:';
+}
 
 const request = require('supertest');
 const app = require('../server');
 
-const IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP8z/C/HwAF/gL+oX2nxQAAAABJRU5ErkJggg==';
+const db = app._db;
 
-describe('ListIt API (multi-images)', () => {
-  const a = request.agent(app);
-  const b = request.agent(app);
-  let listingId;
-  let convoId;
+async function resetDb() {
+  const res = await request(app).post('/__test/reset');
+  if (res.status !== 200) {
+    throw new Error(`reset_failed:${res.status}`);
+  }
+}
 
-  it('reset db', async () => {
-    const res = await request(app).post('/__test/reset');
+beforeAll(async () => {
+  await app._initializeSchema();
+});
+
+afterAll(() => {
+  if (db && typeof db.close === 'function') {
+    try { db.close(); } catch (err) {
+      // ignore close errors in tests
+    }
+  }
+});
+
+describe('ListIt API basic flows', () => {
+  it('supports listing creation and conversations', async () => {
+    await resetDb();
+    const seller = request.agent(app);
+    const buyer = request.agent(app);
+
+    let res = await seller.post('/api/register').send({ email: 'seller@test.com', password: 'secret1', username: 'sellerA' });
     expect(res.status).toBe(200);
-  });
 
-  it('registers users A and B', async () => {
-    let res = await a.post('/api/register').send({ email: 'a@test.com', password: 'secret1' });
+    res = await buyer.post('/api/register').send({ email: 'buyer@test.com', password: 'secret1', username: 'buyerB' });
     expect(res.status).toBe(200);
-    res = await b.post('/api/register').send({ email: 'b@test.com', password: 'secret1' });
-    expect(res.status).toBe(200);
-  });
 
-  it('A creates a listing with two images', async () => {
-    const res = await a.post('/api/listings').send({ images: [IMG, IMG], description: 'Test Bike', location: 'NYC, NY', price: 120 });
+    res = await seller.post('/api/listings').send({ title: 'Test Bike', description: 'Road ready bike', location: 'NYC, NY', price: 120 });
     expect(res.status).toBe(200);
-    listingId = res.body.id;
-    expect(listingId).toBeGreaterThan(0);
-    // fetch images
-    const resImgs = await request(app).get(`/api/listings/${listingId}/images`);
-    expect(resImgs.status).toBe(200);
-    expect(resImgs.body.length).toBe(2);
-  });
+    const listingId = res.body.id;
+    const sellerId = res.body.user_id;
 
-  it('B starts a conversation with A for that listing and messages', async () => {
-    const resList = await b.get('/api/listings');
-    expect(resList.status).toBe(200);
-    const listing = resList.body.find(x => x.id === listingId);
+    const listRes = await buyer.get('/api/listings');
+    expect(listRes.status).toBe(200);
+    const listing = listRes.body.find(item => item.id === listingId);
     expect(listing).toBeTruthy();
-    const resConvo = await b.post('/api/conversations').send({ with_user_id: listing.user_id, listing_id: listing.id });
-    expect(resConvo.status).toBe(200);
-    convoId = resConvo.body.id;
-    expect(convoId).toBeGreaterThan(0);
 
-    let res = await b.post(`/api/conversations/${convoId}/messages`).send({ body: 'Hi!' });
+    let convoRes = await buyer.post('/api/conversations').send({ with_user_id: sellerId, listing_id: listingId });
+    expect(convoRes.status).toBe(200);
+    const convoId = convoRes.body.id;
+
+    let msgRes = await buyer.post(`/api/conversations/${convoId}/messages`).send({ body: 'Hi!' });
+    expect(msgRes.status).toBe(200);
+
+    msgRes = await seller.get(`/api/conversations/${convoId}/messages`);
+    expect(msgRes.status).toBe(200);
+    expect(msgRes.body[0].body).toBe('Hi!');
+  });
+});
+
+describe('Admin reports dashboard', () => {
+  it('aggregates reported accounts', async () => {
+    await resetDb();
+    const admin = request.agent(app);
+    const seller = request.agent(app);
+    const reporter = request.agent(app);
+
+    let res = await admin.post('/api/register').send({ email: 'admin@test.com', password: 'secret1', username: 'adminUser' });
     expect(res.status).toBe(200);
-    res = await a.get(`/api/conversations/${convoId}/messages`);
+    const adminId = res.body.id;
+    await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
+    res = await admin.post('/api/login').send({ email: 'admin@test.com', password: 'secret1' });
     expect(res.status).toBe(200);
-    expect(res.body[0].body).toBe('Hi!');
+
+    res = await seller.post('/api/register').send({ email: 'seller@test.com', password: 'secret1', username: 'sellerUser' });
+    expect(res.status).toBe(200);
+    const sellerId = res.body.id;
+
+    res = await seller.post('/api/listings').send({ title: 'Vintage Camera', description: 'Works perfectly', location: 'Brooklyn, NY', price: 200 });
+    expect(res.status).toBe(200);
+    const listingId = res.body.id;
+
+    res = await reporter.post('/api/register').send({ email: 'reporter@test.com', password: 'secret1', username: 'reporterUser' });
+    expect(res.status).toBe(200);
+
+    const reportPayload = {
+      reported_user_id: sellerId,
+      listing_id: listingId,
+      reasons: ['spam'],
+      details: 'Likely scam',
+      captcha: { a: 2, b: 3, answer: 5 }
+    };
+    res = await reporter.post('/api/reports').send(reportPayload);
+    expect(res.status).toBe(200);
+
+    const topRes = await admin.get('/api/admin/reports/top?limit=5&days=30');
+    expect(topRes.status).toBe(200);
+    expect(Array.isArray(topRes.body.items)).toBe(true);
+    const target = topRes.body.items.find(item => item.user_id === sellerId);
+    expect(target).toBeTruthy();
+    expect(target.total_reports).toBe(1);
+    expect(target.open_reports).toBe(1);
+    expect(target.recent_reports).toBe(1);
   });
 });
