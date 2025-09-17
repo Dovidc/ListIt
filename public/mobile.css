@@ -1,3 +1,18 @@
+/* Brand header tweaks */
+.brand-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+}
+
+.brand-title {
+  font-size: 0.95rem;
+}
+
+.brand-tagline {
+  font-size: 0.7rem;
+}
+
 /* public/mobile.css */
 /* Mobile-only tweaks. Desktop stays unchanged. */
 

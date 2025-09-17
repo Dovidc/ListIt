@@ -661,9 +661,15 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
   if (!user) {
     return H('header', null,
       H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 12 } },
-          H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#0aaa3aff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'CL'),
-          H('div', null, H('div', { style: { fontWeight: 800 } }, 'Creegslist'), H('div', { className: 'muted' }, 'Sell on the spot'))
+        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
+          H('div', { className: 'brand-badge' },
+            H('div', { className: 'brand-ring' }),
+            H('div', { className: 'brand-initials' }, 'CL')
+          ),
+          H('div', { className: 'brand-copy' },
+            H('div', { className: 'brand-title' }, 'Creegslist'),
+            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+          )
         ),
         H('div', { className: 'row', style: { gap: 8 } },
           H('button', { className: 'btn', onClick: () => onAuthClick('register') }, 'Register'),
@@ -705,10 +711,16 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
 
   return H('header', null,
     H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-      H('div', { className: 'row', style: { gap: 12 } },
-        H('div', { style: { width: 36, height: 36, borderRadius: 12, background: '#111', color: '#0aaa3aff', display: 'grid', placeItems: 'center', fontWeight: 800 } }, 'CL'),
-        H('div', null, H('div', { style: { fontWeight: 800 } }, 'Creegslist'), H('div', { className: 'muted' }, 'Sell on the spot'))
-      ),
+        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
+          H('div', { className: 'brand-badge' },
+            H('div', { className: 'brand-ring' }),
+            H('div', { className: 'brand-initials' }, 'CL')
+          ),
+          H('div', { className: 'brand-copy' },
+            H('div', { className: 'brand-title' }, 'Creegslist'),
+            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+          )
+        ),
       H('nav', { className: 'row' },
         H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
         isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
