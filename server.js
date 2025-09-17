@@ -538,6 +538,25 @@ async function getUserWithStatus(userId) {
   }
 }
 
+function isLockedAccount(user) {
+  return !!user && user.account_status === 'locked';
+}
+
+async function isAdminUserId(userId) {
+  if (!Number.isFinite(Number(userId))) return false;
+  try {
+    const row = await db.prepare('SELECT is_admin FROM users WHERE id = ?').get(Number(userId));
+    return !!(row && row.is_admin);
+  } catch (err) {
+    console.error('isAdminUserId failed:', err);
+    return false;
+  }
+}
+
+function respondLocked(res) {
+  return res.status(423).json({ error: 'account_locked' });
+}
+
 async function auth(req, res, next) {
   const session = authFromReq(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated' });
@@ -551,9 +570,6 @@ async function auth(req, res, next) {
     if (row.account_status === 'banned') {
       clearAuthCookie(res);
       return res.status(403).json({ error: 'account_banned' });
-    }
-    if (row.account_status === 'locked') {
-      return res.status(423).json({ error: 'account_locked' });
     }
 
     req.user = {
@@ -691,9 +707,6 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (accountStatus === 'banned') {
       clearAuthCookie(res);
       return res.status(403).json({ error: 'account_banned' });
-    }
-    if (accountStatus === 'locked') {
-      return res.status(423).json({ error: 'account_locked' });
     }
 
     const now = nowIso();
@@ -1071,6 +1084,7 @@ app.get('/api/listings/covers', async (req, res) => {
 
 app.post('/api/listings', auth, writeLimiter, async (req, res) => {
   try {
+    if (isLockedAccount(req.user)) return respondLocked(res);
     const { title, description, location, price, tags, enable_nearby } = req.body || {};
     
     // Since we're using S3 only, we don't handle images here
@@ -1160,6 +1174,7 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
 app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
   try {
+    if (isLockedAccount(req.user)) return respondLocked(res);
     const id = Number(req.params.id);
     const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
     
@@ -1256,6 +1271,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
 app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
   try {
+    if (isLockedAccount(req.user)) return respondLocked(res);
     const id = Number(req.params.id);
     const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
     
@@ -1455,6 +1471,7 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 // New endpoint to delete a specific image
 app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async (req, res) => {
   try {
+    if (isLockedAccount(req.user)) return respondLocked(res);
     const listingId = Number(req.params.listingId);
     const imageId = Number(req.params.imageId);
     
@@ -1487,6 +1504,7 @@ app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async
 /* ------------------------------------------------------------------ */
 app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
   try {
+    if (isLockedAccount(req.user)) return respondLocked(res);
     const images = Array.isArray(req.body.images) ? req.body.images.slice(0, 3) : [];
     const hint = String(req.body.hint || '').slice(0, 200);
     if (!images.length) return res.status(400).json({ error: 'No images provided' });
@@ -1573,6 +1591,15 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
     }
     
     with_user_id = Number(with_user_id);
+    if (!Number.isFinite(with_user_id)) {
+      return res.status(400).json({ error: 'invalid_user' });
+    }
+    if (isLockedAccount(req.user)) {
+      const target = await getUserWithStatus(with_user_id);
+      if (!target?.is_admin) {
+        return respondLocked(res);
+      }
+    }
     if (with_user_id === req.user.id) {
       return res.status(400).json({ error: 'Cannot message yourself' });
     }
@@ -1666,6 +1693,14 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
     const convo = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
     if (!convo) return res.status(404).json({ error: 'Not found' });
     if (!isMember(convo, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+
+    const otherUserId = convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id;
+    if (isLockedAccount(req.user)) {
+      const targetIsAdmin = await isAdminUserId(otherUserId);
+      if (!targetIsAdmin) {
+        return respondLocked(res);
+      }
+    }
 
     const err = validateMsgImages(images);
     if (err) return res.status(400).json({ error: err });

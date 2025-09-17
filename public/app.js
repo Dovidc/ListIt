@@ -1,4 +1,4 @@
-﻿// public/app.js
+// public/app.js
 //
 // S3-first uploads (presign → PUT → finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images → S3 URLs (kept!)
@@ -2996,6 +2996,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
     async function runMassList(){
       if (!user) { alert('Log in to create listings.'); return; }
+      if (user.account_status === 'locked') { alert('Your account is locked. Please contact support to regain posting access.'); return; }
       if (!files.length) { alert('Pick at least one image.'); return; }
       setBusy(true);
       setProgress({ done: 0, total: files.length, failed: 0 });
@@ -4417,8 +4418,8 @@ function App(){
               )
             ),
             H('div', { className:'row', style:{ gap:8 } },
-              H('button', { className:'btn primary', onClick:()=>{ if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); } }, 'New listing'),
-              H('button', { className:'btn', onClick:()=>{ if(!user){ alert('Log in to create listings.'); return; } setShowMassList(true); } }, 'MassList')
+              H('button', { className:'btn primary', onClick:()=>{\r\n                if(!user){ alert('Log in to create a listing.'); return; }\r\n                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n                setEditing(null);\r\n                setShowForm(true);\r\n              } }, 'New listing'),
+              H('button', { className:'btn', onClick:()=>{\r\n                if(!user){ alert('Log in to create listings.'); return; }\r\n                if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n                setShowMassList(true);\r\n              } }, 'MassList')
             )
           ),
 
@@ -4473,6 +4474,7 @@ function App(){
                 user,
                 canEdit: !!mineById[selectedListing.id],
                 onEdit:(it)=>{
+                  if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
                   const rich = mineById[it.id] || it;
                   setEditing(rich);
                   setShowForm(true);
@@ -4501,6 +4503,7 @@ function App(){
             user,
             mineById,
             onEdit:(it)=>{
+              if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
               const rich = mineById[it.id] || it;
               setEditing(rich);
               setShowForm(true);
@@ -4524,8 +4527,9 @@ function App(){
           H(ProfilePanel, { isMobile,
             user,
             items: mine,
-            onNewListing: () => { if(!user){ alert('Log in to create a listing.'); return; } setEditing(null); setShowForm(true); setTab('browse'); },
+            onNewListing: () => {\r\n              if(!user){ alert('Log in to create a listing.'); return; }\r\n              if(user.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }\r\n              setEditing(null);\r\n              setShowForm(true);\r\n              setTab('browse');\r\n            },
             onEdit:(it)=>{
+              if(user?.account_status === 'locked'){ alert('Your account is locked. Please contact support to regain posting access.'); return; }
               const rich = mineById[it.id] || it;
               setEditing(rich);
               setShowForm(true);

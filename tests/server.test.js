@@ -121,3 +121,70 @@ describe('Admin reports dashboard', () => {
     expect(Boolean(sellerConvo.last_message_is_admin)).toBe(true);
   });
 });
+
+describe('Locked account restrictions', () => {
+  it('restricts selling actions but allows messaging admins', async () => {
+    await resetDb();
+
+    const admin = request.agent(app);
+    const seller = request.agent(app);
+    const buyer = request.agent(app);
+
+    let res = await admin.post('/api/register').send({ email: 'admin2@test.com', password: 'secret1', username: 'superAdmin' });
+    expect(res.status).toBe(200);
+    const adminId = res.body.id;
+    await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
+    await admin.post('/api/login').send({ email: 'admin2@test.com', password: 'secret1' });
+
+    res = await seller.post('/api/register').send({ email: 'seller2@test.com', password: 'secret1', username: 'lockableSeller' });
+    expect(res.status).toBe(200);
+    const sellerId = res.body.id;
+    await seller.post('/api/login').send({ email: 'seller2@test.com', password: 'secret1' });
+
+    res = await buyer.post('/api/register').send({ email: 'buyer2@test.com', password: 'secret1', username: 'regularBuyer' });
+    expect(res.status).toBe(200);
+    const buyerId = res.body.id;
+
+    const listingPayload = { title: 'Road Bike', description: 'Great condition', location: 'NYC, NY', price: 250 };
+    res = await seller.post('/api/listings').send(listingPayload);
+    expect(res.status).toBe(200);
+    const listingId = res.body.id;
+
+    res = await seller.post('/api/conversations').send({ with_user_id: buyerId, listing_id: listingId });
+    expect(res.status).toBe(200);
+    const convoId = res.body.id;
+    res = await seller.post(`/api/conversations/${convoId}/messages`).send({ body: 'Hello there' });
+    expect(res.status).toBe(200);
+
+    await db.prepare('UPDATE users SET account_status = ? WHERE id = ?').run('locked', sellerId);
+
+    res = await seller.post('/api/login').send({ email: 'seller2@test.com', password: 'secret1' });
+    expect(res.status).toBe(200);
+    expect(res.body.account_status).toBe('locked');
+
+    res = await seller.get('/api/listings');
+    expect(res.status).toBe(200);
+
+    res = await seller.post('/api/listings').send({ title: 'Another', description: 'Nope', location: 'NYC, NY', price: 10 });
+    expect(res.status).toBe(423);
+
+    res = await seller.put(`/api/listings/${listingId}`).send({ title: 'Updated' });
+    expect(res.status).toBe(423);
+
+    res = await seller.delete(`/api/listings/${listingId}`);
+    expect(res.status).toBe(423);
+
+    res = await seller.post(`/api/conversations/${convoId}/messages`).send({ body: 'Are you there?' });
+    expect(res.status).toBe(423);
+
+    res = await seller.post('/api/conversations').send({ with_user_id: buyerId });
+    expect(res.status).toBe(423);
+
+    res = await seller.post('/api/conversations').send({ with_user_id: adminId });
+    expect(res.status).toBe(200);
+    const adminConvoId = res.body.id;
+
+    res = await seller.post(`/api/conversations/${adminConvoId}/messages`).send({ body: 'Need assistance' });
+    expect(res.status).toBe(200);
+  });
+});
