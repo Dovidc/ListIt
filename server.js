@@ -1594,17 +1594,40 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
     if (!Number.isFinite(with_user_id)) {
       return res.status(400).json({ error: 'invalid_user' });
     }
-    if (isLockedAccount(req.user)) {
-      const target = await getUserWithStatus(with_user_id);
-      if (!target?.is_admin) {
-        return respondLocked(res);
-      }
+
+    const target = await getUserWithStatus(with_user_id);
+    if (!target) {
+      return res.status(404).json({ error: 'user_not_found' });
     }
+
+    if (isLockedAccount(req.user) && !target.is_admin) {
+      return respondLocked(res);
+    }
+
     if (with_user_id === req.user.id) {
       return res.status(400).json({ error: 'Cannot message yourself' });
     }
 
     const { a, b } = normalizePair(req.user.id, with_user_id);
+
+    const shareInbox = !!req.user.is_admin || !!target.is_admin;
+    if (shareInbox) {
+      const existing = await db.prepare(`
+        SELECT *
+          FROM conversations
+         WHERE a_user_id = ? AND b_user_id = ?
+         ORDER BY (listing_id IS NULL) DESC, id ASC
+         LIMIT 1
+      `).get(a, b);
+      if (existing) {
+        if (existing.listing_id != null) {
+          await db.prepare('UPDATE conversations SET listing_id = NULL WHERE id = ?').run(existing.id);
+          existing.listing_id = null;
+        }
+        return res.json(existing);
+      }
+      listing_id = null;
+    }
     
     try {
       const info = await db.prepare('INSERT INTO conversations (a_user_id, b_user_id, listing_id, created_at) VALUES (?, ?, ?, ?)')
