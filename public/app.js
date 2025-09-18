@@ -1081,6 +1081,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   function MultiFilePicker({ files, onChange }) {
     const ref = useRef();
     const MAX_MB = 20;
+    const previews = useFilePreviews(files);
 
     function pick(e) {
       const selected = Array.from(e.target.files || []);
@@ -1102,18 +1103,18 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
 
     return H('div', null,
       H('div', { className:'row' },
-        H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
-        H('span', { className:'muted' }, `${(files||[]).length} file(s)`)
-      ),
-      H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
-        ...(files||[]).map((f,i)=> H('div', { key:i, style:{ position:'relative' } },
-          H('img', {
-            src: URL.createObjectURL(f),
-            style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
-          }),
-          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
-        ))
-      )
+      H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
+      H('span', { className:'muted' }, `${(files||[]).length} file(s)`)
+    ),
+    H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
+      ...previews.map(({ url }, i)=> H('div', { key:i, style:{ position:'relative' } },
+        H('img', {
+          src: url,
+          style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
+        }),
+        H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
+      ))
+    )
     );
   }
 
@@ -1131,6 +1132,28 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   async function fileToDataUrl(file) {
     const arr = await filesToDataUrls([file]);
     return arr && arr[0];
+  }
+
+  function useFilePreviews(files = []) {
+    const [previews, setPreviews] = useState([]);
+
+    useEffect(() => {
+      if (!files || files.length === 0) {
+        setPreviews([]);
+        return;
+      }
+
+      const entries = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+      setPreviews(entries);
+
+      return () => {
+        for (const entry of entries) {
+          try { URL.revokeObjectURL(entry.url); } catch (_) {}
+        }
+      };
+    }, [files]);
+
+    return previews;
   }
 
   // --- Auto-list help modal (clean single-column layout) ---
@@ -3078,6 +3101,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState('');
   const [imgFiles, setImgFiles] = useState([]); // attachments (File[] for S3 upload)
+  const imgPreviews = useFilePreviews(imgFiles);
   const fileRef = useRef();
   const [lb, setLb] = useState({ open:false, images:[], index:0 });
   const pollRef = useRef(null);
@@ -3415,10 +3439,10 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         })
       ),
 
-      (activeId && imgFiles.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
-        ...imgFiles.map((f,i) =>
+      (activeId && imgPreviews.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
+        ...imgPreviews.map(({ url },i) =>
           H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src: URL.createObjectURL(f), style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
+            H('img', { src: url, style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
             H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, 'x')
           )
         )
@@ -3667,6 +3691,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+    const filePreviews = useFilePreviews(files);
 
     const fileRef = useRef();
 
@@ -3776,10 +3801,10 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             H('span', { className:'muted' }, `${files.length} selected`)
           ),
 
-          files.length > 0 && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap', marginTop:12 } },
-            ...files.map((f,i) =>
+          filePreviews.length > 0 && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap', marginTop:12 } },
+            ...filePreviews.map(({ url },i) =>
               H('div', { key:i, style:{ position:'relative' } },
-                H('img', { src: URL.createObjectURL(f), style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
+                H('img', { src: url, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
                 H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
               )
             )
@@ -4163,6 +4188,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
   const [files, setFiles] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
   const [originalUrls, setOriginalUrls] = useState([]);
+  const filePreviews = useFilePreviews(files);
   
   const [title, setTitle] = useState(draft?.title || '');
   const [description, setDescription] = useState(draft?.description || '');
@@ -4451,14 +4477,14 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         onChange: pickFiles,
         style: { fontSize: '13px' }
       }),
-      files.length > 0 && H('div', { 
+      filePreviews.length > 0 && H('div', { 
         className:'row', 
         style:{ gap:3, flexWrap:'wrap', marginTop:3 } 
       },
-        ...files.map((f,i) =>
+        ...filePreviews.map(({ url },i) =>
           H('div', { key:i, style:{ position:'relative' } },
             H('img', { 
-              src: URL.createObjectURL(f), 
+              src: url, 
               style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } 
             }),
             H('button', { 
