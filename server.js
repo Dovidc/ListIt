@@ -3959,6 +3959,36 @@ app.get('/api/conversations', auth, async (req, res) => {
 
     const rows = await db.prepare(`
 
+      WITH last_messages AS (
+
+        SELECT m.conversation_id,
+
+               m.id,
+
+               m.body,
+
+               m.sender_id,
+
+               m.created_at
+
+          FROM messages m
+
+          JOIN (
+
+            SELECT conversation_id, MAX(id) AS max_id
+
+              FROM messages
+
+             GROUP BY conversation_id
+
+          ) latest
+
+            ON latest.conversation_id = m.conversation_id
+
+           AND latest.max_id = m.id
+
+      )
+
       SELECT
 
         c.id,
@@ -3973,15 +4003,17 @@ app.get('/api/conversations', auth, async (req, res) => {
 
         l.user_id AS listing_owner_id,
 
-        (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_at,
+        l.image_data,
 
-        (SELECT body       FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_body,
+        lm.created_at AS last_message_at,
 
-        (SELECT sender_id  FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_sender_id,
+        lm.body AS last_message_body,
 
-        (SELECT id         FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) AS last_message_id,
+        lm.sender_id AS last_message_sender_id,
 
-        (SELECT is_admin   FROM users    WHERE id = (SELECT sender_id FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1)) AS last_message_is_admin
+        lm.id AS last_message_id,
+
+        sender.is_admin AS last_message_is_admin
 
       FROM conversations c
 
@@ -3992,6 +4024,14 @@ app.get('/api/conversations', auth, async (req, res) => {
       LEFT JOIN listings l
 
         ON l.id = c.listing_id
+
+      LEFT JOIN last_messages lm
+
+        ON lm.conversation_id = c.id
+
+      LEFT JOIN users sender
+
+        ON sender.id = lm.sender_id
 
       WHERE c.a_user_id = @me OR c.b_user_id = @me
 
