@@ -714,18 +714,19 @@ register(payload, meta) {
 
   async function fetchListingImagesCached(listingId) {
     if (!Number.isFinite(Number(listingId))) return [];
-    if (listingImageCache.has(listingId)) {
-      return listingImageCache.get(listingId);
-    }
     if (listingImageInFlight.has(listingId)) {
       return listingImageInFlight.get(listingId);
+    }
+    if (listingImageCache.has(listingId)) {
+      return listingImageCache.get(listingId);
     }
     const promise = (async () => {
       try {
         const arr = await api.getListingImages(listingId);
-        const safe = Array.isArray(arr) ? arr : [];
-        listingImageCache.set(listingId, safe);
-        return safe;
+        const safe = Array.isArray(arr) ? arr.filter(Boolean) : [];
+        const deduped = Array.from(new Set(safe));
+        listingImageCache.set(listingId, deduped);
+        return deduped;
       } catch {
         return [];
       } finally {
@@ -2049,9 +2050,6 @@ async function submit(e){
 
       if (item.image_data) {
         setImages([item.image_data]);
-        if (item.id && !listingImageCache.has(item.id)) {
-          listingImageCache.set(item.id, [item.image_data]);
-        }
       }
 
       const fetched = await fetchListingImagesCached(item.id);
@@ -5555,3 +5553,4 @@ function App(){
   }
 
 })();
+
