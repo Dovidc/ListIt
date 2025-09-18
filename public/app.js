@@ -2055,12 +2055,26 @@ async function submit(e){
   const [images, setImages] = useState(() => {
     const cached = item?.id ? listingImageCache.get(item.id) : null;
     if (Array.isArray(cached) && cached.length) return cached;
-    return item?.image_data ? [item.image_data] : null;
+    const inline = Array.isArray(item?.images) ? dedupeImageUrls(item.images) : [];
+    if (inline.length) return inline;
+    const fallback = dedupeImageUrls([item?.image_data, item?.__cover, item?.thumb_url]);
+    return fallback.length ? fallback : null;
   });
   const [loadingImages, setLoadingImages] = useState(false);
+  const fallbackImages = useMemo(() => dedupeImageUrls([item?.image_data, item?.__cover, item?.thumb_url]), [item?.image_data, item?.__cover, item?.thumb_url]);
   const [idx, setIdx] = useState(0);
   const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
+
+  const sameList = useCallback((a, b) => {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }, []);
 
   const prefetchImages = useCallback(() => {
     if (!item?.id) return;
@@ -2069,8 +2083,13 @@ async function submit(e){
   }, [item?.id]);
 
   React.useEffect(() => {
+    const inline = Array.isArray(item?.images) ? dedupeImageUrls(item.images) : [];
     if (!item?.id) {
-      setImages(item?.image_data ? [item.image_data] : null);
+      if (inline.length) {
+        setImages(inline);
+        return;
+      }
+      setImages(fallbackImages.length ? fallbackImages : null);
       return;
     }
     const cached = listingImageCache.get(item.id);
@@ -2078,17 +2097,16 @@ async function submit(e){
       setImages(prev => (prev === cached ? prev : cached));
       return;
     }
-    if (item.image_data) {
-      setImages(prev => {
-        if (Array.isArray(prev) && prev.length === 1 && prev[0] === item.image_data) {
-          return prev;
-        }
-        return [item.image_data];
-      });
+    if (inline.length) {
+      setImages(prev => (sameList(prev, inline) ? prev : inline));
+      return;
+    }
+    if (fallbackImages.length) {
+      setImages(prev => (sameList(prev, fallbackImages) ? prev : fallbackImages));
     } else {
       setImages(null);
     }
-  }, [item?.id, item?.image_data]);
+  }, [item?.id, item?.images, fallbackImages, sameList]);
 
   React.useEffect(() => {
     if (!showDistance) { 
@@ -2123,7 +2141,12 @@ async function submit(e){
     setIdx(start);
     setOpen(true);
 
-    if (!item?.id) return;
+    if (!item?.id) {
+      if (!Array.isArray(images) || !images.length) {
+        setImages(fallbackImages.length ? fallbackImages : null);
+      }
+      return;
+    }
 
     const cached = listingImageCache.get(item.id);
     if (Array.isArray(cached) && cached.length) {
@@ -2131,9 +2154,13 @@ async function submit(e){
       return;
     }
 
-    const hasGallery = Array.isArray(images) && images.length > 0 && !(images.length === 1 && images[0] === item.image_data);
+    if (!Array.isArray(images) || !images.length) {
+      if (fallbackImages.length) {
+        setImages(prev => (sameList(prev, fallbackImages) ? prev : fallbackImages));
+      }
+    }
 
-    if (hasGallery || loadingImages) {
+    if (loadingImages) {
       return;
     }
 
@@ -2142,11 +2169,10 @@ async function submit(e){
       const fetched = await fetchListingImagesCached(item.id);
       if (Array.isArray(fetched) && fetched.length) {
         setImages(fetched);
+      } else if (fallbackImages.length) {
+        setImages(prev => (Array.isArray(prev) && prev.length ? prev : fallbackImages));
       } else {
-        setImages(prev => {
-          if (Array.isArray(prev) && prev.length) return prev;
-          return item.image_data ? [item.image_data] : null;
-        });
+        setImages(prev => (Array.isArray(prev) && prev.length ? prev : null));
       }
     } finally {
       setLoadingImages(false);
@@ -2159,28 +2185,26 @@ async function submit(e){
       const cached = listingImageCache.get(item.id);
       if (Array.isArray(cached) && cached.length) {
         setImages(cached);
-      } else if (item.image_data) {
-        setImages([item.image_data]);
+      } else if (fallbackImages.length) {
+        setImages(fallbackImages);
       } else {
         setImages(null);
       }
     } else {
-      setImages(item?.image_data ? [item.image_data] : null);
+      setImages(fallbackImages.length ? fallbackImages : null);
     }
     setIdx(0);
-  }, [item?.id, item?.image_data]);
+  }, [fallbackImages, item?.id]);
 
   useEffect(() => {
     if (!item?.id) return;
     if (!Array.isArray(images) || !images.length) return;
-    const fallbackOnly = images.length === 1 && images[0] === item.image_data;
-    if (fallbackOnly) return;
+    if (fallbackImages.length && sameList(images, fallbackImages)) return;
     listingImageCache.set(item.id, images);
-  }, [images, item?.id, item?.image_data]);
+  }, [images, item?.id, fallbackImages, sameList]);
 
   const isFree = Number(item?.price ?? 0) === 0;
   const [soldBusy, setSoldBusy] = useState(false);
-  const fallbackImages = useMemo(() => item?.image_data ? [item.image_data] : [], [item?.image_data]);
 
   const controls = [];
   if (!user || user.id !== item.user_id) {
