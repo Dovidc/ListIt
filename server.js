@@ -572,6 +572,10 @@ async function initializeSchema() {
 
 
 
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);`);
+
+
+
     await db.exec(`
 
       CREATE TABLE IF NOT EXISTS listing_upload_drafts (
@@ -3190,97 +3194,96 @@ app.get('/api/listings/nearby', async (req, res) => {
 
 
 
-    const degLat = radius / 111320;
+    const earthRadius = 6371000;
 
-    const cosLat = Math.cos((lat0 * Math.PI) / 180);
+    const deg2rad = Math.PI / 180;
+
+    const lat0Rad = lat0 * deg2rad;
+
+    const metersPerDegLat = 111320;
+
+    const degLat = radius / metersPerDegLat;
+
+    const cosLat = Math.cos(lat0Rad);
 
     const safeCos = Math.max(Math.abs(cosLat), 1e-4);
 
-    const degLon = radius / (111320 * safeCos);
+    const degLon = radius / (metersPerDegLat * safeCos);
 
-    const minLat = lat0 - degLat, maxLat = lat0 + degLat;
+    const minLat = Math.max(-90, lat0 - degLat);
 
-    const minLon = lon0 - degLon, maxLon = lon0 + degLon;
+    const maxLat = Math.min(90, lat0 + degLat);
 
-    const lonScale = safeCos * safeCos;
+    const minLon = Math.max(-180, lon0 - degLon);
 
-    const preLimit = Math.min(NEARBY_RESULT_LIMIT * 2, 400);
+    const maxLon = Math.min(180, lon0 + degLon);
+
+    const limit = Math.min(NEARBY_RESULT_LIMIT, 200);
 
 
 
-    const rows = await db.prepare(`
+    const sinHalfChordExpr = `SQRT(
+      POWER(SIN(((@deg2rad * (l.lat - @lat0)) / 2)), 2) +
+      COS(@lat0_rad) * COS(l.lat * @deg2rad) *
+      POWER(SIN(((@deg2rad * (l.lon - @lon0)) / 2)), 2)
+    )`;
 
+    const distanceExpr = `(2 * @earthRadius * ASIN(
+      CASE
+        WHEN ${sinHalfChordExpr} > 1 THEN 1
+        WHEN ${sinHalfChordExpr} < -1 THEN -1
+        ELSE ${sinHalfChordExpr}
+      END
+    ))`;
+
+    const sql = `
       SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location,
-
              l.price, l.created_at, l.lat, l.lon,
-
              u.username as owner_username,
+             ${distanceExpr} AS distance_m
+        FROM listings l
+        JOIN users u ON u.id = l.user_id
+       WHERE l.enable_nearby = 1
+         AND l.sold = 0
+         AND l.lat IS NOT NULL AND l.lon IS NOT NULL
+         AND l.lat BETWEEN @minLat AND @maxLat
+         AND l.lon BETWEEN @minLon AND @maxLon
+         AND ${distanceExpr} <= @radius
+       ORDER BY distance_m ASC, l.id DESC
+       LIMIT @limit
+    `;
 
-             ((l.lat - @lat0)*(l.lat - @lat0) + (l.lon - @lon0)*(l.lon - @lon0) * @lonScale) AS approx_dist_sq
-
-      FROM listings l
-
-      JOIN users u ON u.id = l.user_id
-
-      WHERE l.enable_nearby = 1
-
-        AND l.sold = 0
-
-        AND l.lat IS NOT NULL AND l.lon IS NOT NULL
-
-        AND l.lat BETWEEN @minLat AND @maxLat
-
-        AND l.lon BETWEEN @minLon AND @maxLon
-
-      ORDER BY approx_dist_sq ASC, l.id DESC
-
-      LIMIT @limit
-
-    `).all({ minLat, maxLat, minLon, maxLon, lat0, lon0, lonScale, limit: preLimit });
-
-
-
-    const toRad = (d) => (d * Math.PI) / 180;
-
-    const haversineMeters = (lat1, lon1, lat2, lon2) => {
-
-      const R = 6371000;
-
-      const dLat = toRad(lat2 - lat1);
-
-      const dLon = toRad(lon2 - lon1);
-
-      const a = Math.sin(dLat / 2) ** 2 +
-
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-
-                Math.sin(dLon / 2) ** 2;
-
-      return 2 * R * Math.asin(Math.sqrt(a));
-
-    };
+    const rows = await db.prepare(sql).all({
+      lat0,
+      lon0,
+      radius,
+      earthRadius,
+      deg2rad,
+      lat0_rad: lat0Rad,
+      minLat,
+      maxLat,
+      minLon,
+      maxLon,
+      limit
+    });
 
 
 
-    const out = [];
+    const out = rows.map((row) => {
 
-    for (const row of rows) {
+      const distance = Number.isFinite(row.distance_m) ? Math.round(row.distance_m) : null;
 
-      const d = haversineMeters(lat0, lon0, row.lat, row.lon);
+      return {
 
-      if (d <= radius) {
+        ...row,
 
-        const item = { ...row, distance_m: Math.round(d) };
+        distance_m: distance,
 
-        item.image_data = canonicalAssetUrl(item.image_data);
+        image_data: canonicalAssetUrl(row.image_data)
 
-        out.push(item);
+      };
 
-        if (out.length >= NEARBY_RESULT_LIMIT) break;
-
-      }
-
-    }
+    });
 
 
 
