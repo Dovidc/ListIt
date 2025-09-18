@@ -2025,6 +2025,12 @@ async function submit(e){
     }
   }
 
+  const closeModal = useCallback(() => {
+    setOpen(false);
+    setImages(null);
+    setIdx(0);
+  }, []);
+
   const isFree = Number(item?.price ?? 0) === 0;
   const [soldBusy, setSoldBusy] = useState(false);
 
@@ -2219,7 +2225,7 @@ async function submit(e){
       open, 
       images: images || [item.image_data], 
       index: idx, 
-      onClose: () => setOpen(false), 
+      onClose: closeModal, 
       onIndex: setIdx 
     })
   );
