@@ -3639,7 +3639,9 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
     if (isLockedAccount(req.user)) return respondLocked(res);
 
-    const images = Array.isArray(req.body.images) ? req.body.images.slice(0, 3) : [];
+    const MAX_AI_IMAGES = 8;
+
+    const images = Array.isArray(req.body.images) ? req.body.images.slice(0, MAX_AI_IMAGES) : [];
 
     const hint = String(req.body.hint || '').slice(0, 200);
 

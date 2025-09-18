@@ -1118,12 +1118,14 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   }
 
   // Helper: convert File[] to dataURLs for AI analysis only
+  const AI_IMAGE_LIMIT = 8;
+
   async function filesToDataUrls(files = []) {
     async function toB64(file) {
       return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
     }
     const out = [];
-    for (const f of files.slice(0,3)) out.push(await toB64(f));
+    for (const f of files.slice(0, AI_IMAGE_LIMIT)) out.push(await toB64(f));
     return out;
   }
   async function fileToDataUrl(file) {
@@ -1265,7 +1267,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
 
         if (files.length) {
           for (const file of files) {
-            if (sources.length >= 3) break;
+            if (sources.length >= AI_IMAGE_LIMIT) break;
             try {
               const upload = await uploadFileDraft(file);
               if (upload?.publicUrl) sources.push(upload.publicUrl);
@@ -1275,9 +1277,9 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
           }
         }
 
-        if (sources.length < 3 && existingUrls.length) {
-          for (const url of existingUrls) {
-            if (sources.length >= 3) break;
+        if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
+         for (const url of existingUrls) {
+            if (sources.length >= AI_IMAGE_LIMIT) break;
             if (typeof url === 'string' && url.trim()) {
               sources.push(url);
             }
@@ -1290,7 +1292,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
         }
 
         const res = await api.aiAnalyze({
-          images: sources.slice(0, 3),
+          images: sources.slice(0, AI_IMAGE_LIMIT),
           hint: `${title} ${description}`.trim()
         });
 
@@ -1393,7 +1395,7 @@ async function submit(e){
 
           let ai = {};
           try {
-            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, 3);
+            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
             if (aiSources.length) {
               ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
             }
@@ -4191,7 +4193,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
 
       if (files.length) {
         for (const file of files) {
-          if (sources.length >= 3) break;
+          if (sources.length >= AI_IMAGE_LIMIT) break;
           try {
             const upload = await uploadFileDraft(file);
             if (upload?.publicUrl) sources.push(upload.publicUrl);
@@ -4201,9 +4203,9 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         }
       }
 
-      if (sources.length < 3 && existingUrls.length) {
+      if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
         for (const url of existingUrls) {
-          if (sources.length >= 3) break;
+          if (sources.length >= AI_IMAGE_LIMIT) break;
           if (typeof url === 'string' && url.trim()) {
             sources.push(url);
           }
@@ -4216,7 +4218,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       }
 
       const res = await api.aiAnalyze({
-        images: sources.slice(0, 3),
+        images: sources.slice(0, AI_IMAGE_LIMIT),
         hint: `${title} ${description}`.trim()
       });
 
@@ -4268,7 +4270,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
 
         let ai = {};
         try {
-          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, 3);
+          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
           if (aiSources.length) {
             ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
           }
