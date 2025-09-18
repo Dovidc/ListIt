@@ -1678,7 +1678,6 @@ async function submit(e){
   function Lightbox({ open, images, fallback, index, onClose, onIndex, loading = false }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
     React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open, onClose]);
-    if(!open) return null;
 
     const display = Array.isArray(images) && images.length ? images : (Array.isArray(fallback) ? fallback : []);
     const len = display.length;
@@ -1723,6 +1722,8 @@ async function submit(e){
           }))
         )
       : null;
+
+    if (!open) return null;
 
     const modal = H('div', {
       className:'modal open lightbox',
