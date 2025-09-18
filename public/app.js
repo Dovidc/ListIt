@@ -1301,6 +1301,9 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
         if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
           setPriceVal(String(res.suggested_price));
         }
+        if (typeof res.description === 'string' && res.description.trim()) {
+          setDescription(res.description.trim().slice(0, 400));
+        }
       } catch (e) {
         setAiErr(e.message || 'AI failed');
       } finally {
@@ -1394,6 +1397,7 @@ async function submit(e){
           if (!uploads.length) throw new Error('No images to upload');
 
           let ai = {};
+          let aiDescription = '';
           try {
             const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
             if (aiSources.length) {
@@ -1403,6 +1407,10 @@ async function submit(e){
 
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+          if (typeof ai.description === 'string' && ai.description.trim()) {
+            aiDescription = ai.description.trim().slice(0, 400);
+          }
 
           // Nearby preference (sub-toggle)
           let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
@@ -1418,7 +1426,7 @@ async function submit(e){
 
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: 'No description',
+            description: aiDescription || 'No description',
             location: locAuto || '',
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
@@ -3678,6 +3686,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           const upload = await uploadFileDraft(f);
 
           let ai = {};
+          let aiDescription = '';
           try {
             ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent:true }) || {};
           } catch (_) {
@@ -3685,9 +3694,12 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           }
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
+          if (typeof ai.description === 'string' && ai.description.trim()) {
+            aiDescription = ai.description.trim().slice(0, 400);
+          }
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: 'No description',
+            description: aiDescription || 'No description',
             location: sharedNearby.ok ? sharedNearby.display : '',
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
@@ -4227,10 +4239,13 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
         setPriceVal(String(res.suggested_price));
       }
-    } catch (e) {
-      setAiErr(e.message || 'AI failed');
-    } finally {
-      setAiBusy(false);
+      if (typeof res.description === 'string' && res.description.trim()) {
+        setDescription(res.description.trim().slice(0, 400));
+      }
+    } catch (e) { 
+      setAiErr(e.message || 'AI failed'); 
+    } finally { 
+      setAiBusy(false); 
     }
   }
 
@@ -4269,6 +4284,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         if (!uploads.length) throw new Error('No images to upload');
 
         let ai = {};
+        let aiDescription = '';
         try {
           const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
           if (aiSources.length) {
@@ -4278,6 +4294,10 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
 
         const parsedPrice = Number(ai.suggested_price);
         const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        if (typeof ai.description === 'string' && ai.description.trim()) {
+          aiDescription = ai.description.trim().slice(0, 400);
+        }
 
         let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
         if (autoPostNearbyEnabled) {
@@ -4292,7 +4312,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
 
         const payload = {
           title: (ai.title || 'Item for sale').toString().slice(0, 80),
-          description: 'No description',
+          description: aiDescription || 'No description',
           location: locAuto || '',
           price: safePrice,
           tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',

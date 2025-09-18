@@ -908,6 +908,22 @@ function fallbackTagsFromTitleDesc(title, desc) {
 
 }
 
+function synthesizeListingDescription(title, hint) {
+
+  const cleanHint = (hint || '').toString().trim().replace(/\s+/g, ' ');
+
+  if (cleanHint) {
+
+    return cleanHint.slice(0, 200);
+
+  }
+
+  const base = shortTitle(title || 'Item for sale');
+
+  return `${base}. Condition unclear; please verify details.`.slice(0, 200);
+
+}
+
 
 
 function normLetters(s) { return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
@@ -3669,9 +3685,15 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
           '"title": concise <=80 chars, no emojis;',
 
+          '"description": <=200 chars, buyer-focused summary noting condition, notable damage, wear, included accessories;',
+
           '"tags": array of 12-24 short, lowercase search terms;',
 
           '"price_usd": fair used-market price in USD as a number;',
+
+          'When damage, wear, or missing parts are visible, explicitly mention it in the description.',
+
+          'If condition is unclear, say "Condition unclear" rather than guessing.',
 
           'Return ONLY JSON.'
 
@@ -3713,6 +3735,10 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
       let priceNum = Number(parsed.price_usd);
 
+      let description = (parsed.description || '').toString().trim();
+
+      if (description.length > 400) description = description.slice(0, 400);
+
 
 
       const tagStr = normalizeTags(tags);
@@ -3720,6 +3746,12 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
       const outTags = tagStr ? tagStr.split(',') : [];
 
       if (!title) title = 'Item for sale';
+
+      if (!description) {
+
+        description = synthesizeListingDescription(title, hint);
+
+      }
 
 
 
@@ -3741,13 +3773,13 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
         const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0,20);
 
-        return res.json({ title, tags: merged, suggested_price });
+        return res.json({ title, description, tags: merged, suggested_price });
 
       }
 
 
 
-      return res.json({ title, tags: outTags.slice(0, 24), suggested_price });
+      return res.json({ title, description, tags: outTags.slice(0, 24), suggested_price });
 
     }
 
@@ -3757,7 +3789,9 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
     const tags = normalizeTags(fallbackTagsFromTitleDesc(title, hint)).split(',').filter(Boolean);
 
-    return res.json({ title, tags: tags.slice(0, 20) });
+    const description = synthesizeListingDescription(title, hint);
+
+    return res.json({ title, description, tags: tags.slice(0, 20) });
 
   } catch (e) {
 
