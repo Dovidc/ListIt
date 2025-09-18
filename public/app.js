@@ -661,6 +661,40 @@ register(payload, meta) {
     return out;
   }
 
+  function collectListingImages(listing, primarySrc, options = {}) {
+    const { includeDataFallback = true, includeListingFallbackFields = true, extra = [] } = options;
+    const remote = [];
+    let dataFallback = null;
+
+    function push(url) {
+      if (!url || typeof url !== 'string') return;
+      const trimmed = url.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+        if (includeDataFallback && !dataFallback) dataFallback = trimmed;
+      } else {
+        remote.push(trimmed);
+      }
+    }
+
+    const extras = Array.isArray(extra) ? extra : [extra];
+    extras.forEach(push);
+    push(primarySrc);
+
+    if (listing) {
+      if (Array.isArray(listing.images)) listing.images.forEach(push);
+      if (includeListingFallbackFields) {
+        push(listing.image_data);
+        push(listing.thumb_url);
+      }
+    }
+
+    const dedupedRemote = dedupeImageUrls(remote);
+    if (dedupedRemote.length) return dedupedRemote;
+    if (includeDataFallback && dataFallback) return [dataFallback];
+    return [];
+  }
+
   async function measureImageFile(file) {
     if (!(file instanceof File)) {
       return { width: null, height: null };
@@ -2052,16 +2086,13 @@ async function submit(e){
 }) {
 
   const [open, setOpen] = useState(false);
+  const fallbackImages = useMemo(() => collectListingImages(item, item?.__cover), [item, item?.__cover]);
   const [images, setImages] = useState(() => {
     const cached = item?.id ? listingImageCache.get(item.id) : null;
     if (Array.isArray(cached) && cached.length) return cached;
-    const inline = Array.isArray(item?.images) ? dedupeImageUrls(item.images) : [];
-    if (inline.length) return inline;
-    const fallback = dedupeImageUrls([item?.image_data, item?.__cover, item?.thumb_url]);
-    return fallback.length ? fallback : null;
+    return fallbackImages.length ? fallbackImages : null;
   });
   const [loadingImages, setLoadingImages] = useState(false);
-  const fallbackImages = useMemo(() => dedupeImageUrls([item?.image_data, item?.__cover, item?.thumb_url]), [item?.image_data, item?.__cover, item?.thumb_url]);
   const [idx, setIdx] = useState(0);
   const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
@@ -2083,7 +2114,13 @@ async function submit(e){
   }, [item?.id]);
 
   React.useEffect(() => {
-    const inline = Array.isArray(item?.images) ? dedupeImageUrls(item.images) : [];
+    const inline = Array.isArray(item?.images)
+      ? dedupeImageUrls(item.images.filter(url => {
+          if (typeof url !== 'string') return false;
+          const trimmed = url.trim();
+          return trimmed && !trimmed.startsWith('data:') && !trimmed.startsWith('blob:');
+        }))
+      : [];
     if (!item?.id) {
       if (inline.length) {
         setImages(inline);
@@ -3264,23 +3301,18 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       cursor: 'pointer' 
                     },
                     onClick: () => {
-                      const inlineImages = dedupeImageUrls([
-                        ...(Array.isArray(it.images) ? it.images : []),
-                        it.image_data,
-                        src,
-                        it.thumb_url
-                      ]);
+                      const inlineImages = collectListingImages(it, src);
                       const payload = { ...it, image_data: src };
                       if (inlineImages.length) payload.images = inlineImages;
                       if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
                       setSelectedListing(payload);
                       if (it.id) {
-                      fetchListingImagesCached(it.id).then(arr => {
-                        if (Array.isArray(arr) && arr.length) {
-                          listingImageCache.set(it.id, arr);
-                        }
-                      }).catch(() => {});
-                    }
+                        fetchListingImagesCached(it.id).then(arr => {
+                          if (Array.isArray(arr) && arr.length) {
+                            listingImageCache.set(it.id, arr);
+                          }
+                        }).catch(() => {});
+                      }
                     }
                   }),
                   it.sold ? H('div', {
@@ -5440,23 +5472,18 @@ function App(){
             fetchPriority:'low',
             style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
             onClick: () => {
-              const inlineImages = dedupeImageUrls([
-                ...(Array.isArray(it.images) ? it.images : []),
-                it.image_data,
-                src,
-                it.thumb_url
-              ]);
+              const inlineImages = collectListingImages(it, src);
               const payload = { ...it, image_data: src };
               if (inlineImages.length) payload.images = inlineImages;
               if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
               setSelectedListing(payload);
               if (it.id) {
-                      fetchListingImagesCached(it.id).then(arr => {
-                        if (Array.isArray(arr) && arr.length) {
-                          listingImageCache.set(it.id, arr);
-                        }
-                      }).catch(() => {});
-                    }
+                fetchListingImagesCached(it.id).then(arr => {
+                  if (Array.isArray(arr) && arr.length) {
+                    listingImageCache.set(it.id, arr);
+                  }
+                }).catch(() => {});
+              }
             }
           })
         )
