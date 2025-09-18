@@ -645,6 +645,22 @@ register(payload, meta) {
   const listingImageCache = new Map();
   const listingImageInFlight = new Map();
 
+  function dedupeImageUrls(input) {
+    if (!Array.isArray(input)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of input) {
+      if (typeof raw !== 'string') continue;
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const key = trimmed.split('?')[0];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+    }
+    return out;
+  }
+
   async function measureImageFile(file) {
     if (!(file instanceof File)) {
       return { width: null, height: null };
@@ -724,10 +740,15 @@ register(payload, meta) {
       try {
         const arr = await api.getListingImages(listingId);
         const safe = Array.isArray(arr) ? arr.filter(Boolean) : [];
-        const deduped = Array.from(new Set(safe));
-        listingImageCache.set(listingId, deduped);
+        const deduped = dedupeImageUrls(safe);
+        if (deduped.length) {
+          listingImageCache.set(listingId, deduped);
+        } else {
+          listingImageCache.delete(listingId);
+        }
         return deduped;
       } catch {
+        listingImageCache.delete(listingId);
         return [];
       } finally {
         listingImageInFlight.delete(listingId);
@@ -1654,12 +1675,54 @@ async function submit(e){
   }
 
   // --- Lightbox ---
-  function Lightbox({ open, images, index, onClose, onIndex }) {
+  function Lightbox({ open, images, fallback, index, onClose, onIndex, loading = false }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
-    React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open]);
+    React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open, onClose]);
     if(!open) return null;
 
-    const len = Math.max(1, (images && images.length) || 0);
+    const display = Array.isArray(images) && images.length ? images : (Array.isArray(fallback) ? fallback : []);
+    const len = display.length;
+    const safeIndex = len ? Math.min(Math.max(index, 0), len - 1) : 0;
+    const canNavigate = len > 1 && typeof onIndex === 'function';
+
+    React.useEffect(() => {
+      if (!open || !len) return;
+      if (index < 0 || index >= len) onIndex?.(0);
+    }, [open, len, index, onIndex]);
+
+    const mainContent = len
+      ? H(ResponsiveImage, {
+          src: display[safeIndex] || display[0],
+          alt: 'Image ' + (safeIndex + 1),
+          widths: [480, 720, 1080, 1440],
+          sizes: '90vw',
+          loading: 'eager',
+          fetchPriority: 'high',
+          style: { maxHeight: '80vh', width: 'auto', objectFit: 'contain' }
+        })
+      : H('div', {
+          style: {
+            minHeight: 200,
+            minWidth: 220,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 24,
+            color: '#4b5563',
+            fontSize: 15,
+            textAlign: 'center'
+          }
+        }, loading ? 'Loading images...' : 'No images available');
+
+    const thumbs = len && typeof onIndex === 'function'
+      ? H('div', { className:'thumbs' },
+          ...display.map((img, i) => H('img', {
+            key:i,
+            src:img,
+            className: i===safeIndex?'active':'',
+            onClick:()=>onIndex(i)
+          }))
+        )
+      : null;
 
     const modal = H('div', {
       className:'modal open lightbox',
@@ -1667,20 +1730,11 @@ async function submit(e){
     },
       H('div', { className:'modal-inner' },
         H('button', { className:'close', onClick:onClose }, 'x'),
-        H('button', { className:'arrow left', onClick:()=>onIndex((index-1+len)%len) }, '<'),
-        H(ResponsiveImage, {
-          src: images[index],
-          alt: `Image ${index + 1}`,
-          widths: [480, 720, 1080, 1440],
-          sizes: '90vw',
-          loading: 'eager',
-          fetchPriority: 'high',
-          style: { maxHeight: '80vh', width: 'auto', objectFit: 'contain' }
-        }),
-        H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%len) }, '>'),
-        H('div', { className:'thumbs' },
-          ...(images||[]).map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
-        )
+        canNavigate ? H('button', { className:'arrow left', onClick:()=>onIndex((safeIndex-1+len)%len) }, '<') : null,
+        mainContent,
+        canNavigate ? H('button', { className:'arrow right', onClick:()=>onIndex((safeIndex+1)%len) }, '>') : null,
+        thumbs,
+        loading && len ? H('div', { style: { marginTop: 12, textAlign: 'center', fontSize: 12, color: '#6b7280' } }, 'Loading...') : null
       )
     );
 
@@ -1997,16 +2051,43 @@ async function submit(e){
 }) {
 
   const [open, setOpen] = useState(false);
-  const [images, setImages] = useState(null);
+  const [images, setImages] = useState(() => {
+    const cached = item?.id ? listingImageCache.get(item.id) : null;
+    if (Array.isArray(cached) && cached.length) return cached;
+    return item?.image_data ? [item.image_data] : null;
+  });
+  const [loadingImages, setLoadingImages] = useState(false);
   const [idx, setIdx] = useState(0);
   const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
 
   const prefetchImages = useCallback(() => {
-    if (listingImageCache.has(item.id) || listingImageInFlight.has(item.id)) return;
     if (!item?.id) return;
+    if (listingImageCache.has(item.id) || listingImageInFlight.has(item.id)) return;
     fetchListingImagesCached(item.id);
   }, [item?.id]);
+
+  React.useEffect(() => {
+    if (!item?.id) {
+      setImages(item?.image_data ? [item.image_data] : null);
+      return;
+    }
+    const cached = listingImageCache.get(item.id);
+    if (Array.isArray(cached) && cached.length) {
+      setImages(prev => (prev === cached ? prev : cached));
+      return;
+    }
+    if (item.image_data) {
+      setImages(prev => {
+        if (Array.isArray(prev) && prev.length === 1 && prev[0] === item.image_data) {
+          return prev;
+        }
+        return [item.image_data];
+      });
+    } else {
+      setImages(null);
+    }
+  }, [item?.id, item?.image_data]);
 
   React.useEffect(() => {
     if (!showDistance) { 
@@ -2041,39 +2122,64 @@ async function submit(e){
     setIdx(start);
     setOpen(true);
 
-    if (!images) {
-      const cached = listingImageCache.get(item.id);
-      if (cached?.length) {
-        setImages(cached);
-        return;
-      }
+    if (!item?.id) return;
 
-      if (item.image_data) {
-        setImages([item.image_data]);
-      }
+    const cached = listingImageCache.get(item.id);
+    if (Array.isArray(cached) && cached.length) {
+      setImages(prev => (prev === cached ? prev : cached));
+      return;
+    }
 
+    const hasGallery = Array.isArray(images) && images.length > 0 && !(images.length === 1 && images[0] === item.image_data);
+
+    if (hasGallery || loadingImages) {
+      return;
+    }
+
+    setLoadingImages(true);
+    try {
       const fetched = await fetchListingImagesCached(item.id);
-      if (fetched.length) {
+      if (Array.isArray(fetched) && fetched.length) {
         setImages(fetched);
+      } else {
+        setImages(prev => {
+          if (Array.isArray(prev) && prev.length) return prev;
+          return item.image_data ? [item.image_data] : null;
+        });
       }
+    } finally {
+      setLoadingImages(false);
     }
   }
 
   const closeModal = useCallback(() => {
     setOpen(false);
-    const cached = listingImageCache.get(item.id) || null;
-    setImages(cached);
+    if (item?.id) {
+      const cached = listingImageCache.get(item.id);
+      if (Array.isArray(cached) && cached.length) {
+        setImages(cached);
+      } else if (item.image_data) {
+        setImages([item.image_data]);
+      } else {
+        setImages(null);
+      }
+    } else {
+      setImages(item?.image_data ? [item.image_data] : null);
+    }
     setIdx(0);
-  }, [item.id]);
+  }, [item?.id, item?.image_data]);
 
   useEffect(() => {
-    if (Array.isArray(images) && images.length && item?.id) {
-      listingImageCache.set(item.id, images);
-    }
-  }, [images, item?.id]);
+    if (!item?.id) return;
+    if (!Array.isArray(images) || !images.length) return;
+    const fallbackOnly = images.length === 1 && images[0] === item.image_data;
+    if (fallbackOnly) return;
+    listingImageCache.set(item.id, images);
+  }, [images, item?.id, item?.image_data]);
 
   const isFree = Number(item?.price ?? 0) === 0;
   const [soldBusy, setSoldBusy] = useState(false);
+  const fallbackImages = useMemo(() => item?.image_data ? [item.image_data] : [], [item?.image_data]);
 
   const controls = [];
   if (!user || user.id !== item.user_id) {
@@ -2163,7 +2269,7 @@ async function submit(e){
 
   const coverSrc = item.image_data || (images && images[0]) || '';
 
-  return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, tabIndex: -1 },
+  return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, onPointerDown: prefetchImages, onTouchStart: prefetchImages, tabIndex: -1 },
     H('div', {
       className: 'aspect',
       onClick: (e) => {
@@ -2264,7 +2370,9 @@ async function submit(e){
 
     H(Lightbox, { 
       open, 
-      images: images || [item.image_data], 
+      images, 
+      fallback: fallbackImages, 
+      loading: loadingImages, 
       index: idx, 
       onClose: closeModal, 
       onIndex: setIdx 
@@ -3579,6 +3687,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       H(Lightbox, {
         open: lb.open,
         images: lb.images,
+        fallback: lb.images,
+        loading: false,
         index: lb.index,
         onClose: ()=> setLb({ open:false, images:[], index:0 }),
         onIndex: (i)=> setLb(s=>({ ...s, index:i }))
