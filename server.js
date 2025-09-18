@@ -924,6 +924,90 @@ function synthesizeListingDescription(title, hint) {
 
 }
 
+function tokenizeSearchInput(str) {
+
+  if (!str) return [];
+
+  const rawTokens = String(str)
+
+    .toLowerCase()
+
+    .split(/[^a-z0-9]+/)
+
+    .map((tok) => tok.trim())
+
+    .filter(Boolean);
+
+  const tokens = [];
+
+  for (const tok of rawTokens) {
+
+    if (tok.length === 1 && !/[0-9]/.test(tok)) continue;
+
+    tokens.push(tok);
+
+    if (tokens.length >= 6) break;
+
+  }
+
+  return Array.from(new Set(tokens));
+
+}
+
+function stemSearchToken(token) {
+
+  if (!token || token.length < 3) return token;
+
+  if (token.endsWith('ies') && token.length > 4) return token.slice(0, -3) + 'y';
+
+  if (token.endsWith('ves') && token.length > 4) return token.slice(0, -3) + 'f';
+
+  if (token.endsWith('ses') && token.length > 4) return token.slice(0, -2);
+
+  if (token.endsWith('es') && token.length > 3) return token.slice(0, -2);
+
+  if (token.endsWith('s') && token.length > 3 && !token.endsWith('ss')) return token.slice(0, -1);
+
+  return token;
+
+}
+
+function applyListingSearchTokens(where, params, tokens, alias = 'l') {
+
+  if (!Array.isArray(tokens) || tokens.length === 0) return;
+
+  tokens.forEach((token, idx) => {
+
+    const variants = new Set([token]);
+
+    const stem = stemSearchToken(token);
+
+    if (stem && stem !== token) variants.add(stem);
+
+    const likeClauses = [];
+
+    Array.from(variants).forEach((variant, vIdx) => {
+
+      const param = `q_${idx}_${vIdx}`;
+
+      params[param] = `%${variant}%`;
+
+      likeClauses.push(`LOWER(${alias}.title) LIKE @${param}`);
+
+      likeClauses.push(`LOWER(${alias}.description) LIKE @${param}`);
+
+      likeClauses.push(`LOWER(COALESCE(${alias}.tags, '')) LIKE @${param}`);
+
+      likeClauses.push(`LOWER(${alias}.location) LIKE @${param}`);
+
+    });
+
+    where.push(`(${likeClauses.join(' OR ')})`);
+
+  });
+
+}
+
 
 
 function normLetters(s) { return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
@@ -1928,7 +2012,9 @@ app.get('/api/listings', async (req, res) => {
 
   try {
 
-    const qRaw = (req.query.q || '').toString().trim().toLowerCase();
+    const qRaw = (req.query.q || '').toString().trim();
+    const searchTokens = tokenizeSearchInput(qRaw);
+    const hasSearch = searchTokens.length > 0;
 
     const locRaw = (req.query.loc || '').toString().trim();
 
@@ -2020,11 +2106,9 @@ app.get('/api/listings', async (req, res) => {
 
       
 
-      if (qRaw) {
+      if (hasSearch) {
 
-        params.q = `%${qRaw}%`;
-
-        where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(COALESCE(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
+        applyListingSearchTokens(where, params, searchTokens);
 
       }
 
@@ -2146,11 +2230,9 @@ app.get('/api/listings', async (req, res) => {
 
       
 
-      if (qRaw) {
+      if (hasSearch) {
 
-        params.q = `%${qRaw}%`;
-
-        where.push(`(LOWER(l.title) LIKE @q OR LOWER(l.description) LIKE @q OR LOWER(COALESCE(l.tags,'')) LIKE @q OR LOWER(l.location) LIKE @q)`);
+        applyListingSearchTokens(where, params, searchTokens);
 
       }
 
