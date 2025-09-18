@@ -572,10 +572,6 @@ async function initializeSchema() {
 
 
 
-    await db.exec(`CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);`);
-
-
-
     await db.exec(`
 
       CREATE TABLE IF NOT EXISTS listing_upload_drafts (
@@ -807,6 +803,52 @@ async function initializeSchema() {
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);');
 
     await db.exec('CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);');
+
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_conversations_a_user ON conversations(a_user_id, id DESC);');
+
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_conversations_b_user ON conversations(b_user_id, id DESC);');
+
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id DESC);');
+
+    if (process.env.DATABASE_URL) {
+
+      try {
+
+        await db.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+
+      } catch (extErr) {
+
+        console.warn('[pg] pg_trgm extension unavailable:', extErr?.message || extErr);
+
+      }
+
+      const trigramIndexes = [
+
+        "CREATE INDEX IF NOT EXISTS idx_listings_title_trgm ON listings USING gin (LOWER(title) gin_trgm_ops)",
+
+        "CREATE INDEX IF NOT EXISTS idx_listings_description_trgm ON listings USING gin (LOWER(description) gin_trgm_ops)",
+
+        "CREATE INDEX IF NOT EXISTS idx_listings_tags_trgm ON listings USING gin (LOWER(COALESCE(tags, '')) gin_trgm_ops)",
+
+        "CREATE INDEX IF NOT EXISTS idx_listings_location_trgm ON listings USING gin (LOWER(location) gin_trgm_ops)"
+
+      ];
+
+      for (const sql of trigramIndexes) {
+
+        try {
+
+          await db.exec(sql);
+
+        } catch (idxErr) {
+
+          console.warn('[pg] trigram index skipped:', idxErr?.message || idxErr);
+
+        }
+
+      }
+
+    }
 
 
 
