@@ -1641,7 +1641,15 @@ async function submit(e){
       H('div', { className:'modal-inner' },
         H('button', { className:'close', onClick:onClose }, 'x'),
         H('button', { className:'arrow left', onClick:()=>onIndex((index-1+len)%len) }, '<'),
-        H('img', { src: images[index] }),
+        H(ResponsiveImage, {
+          src: images[index],
+          alt: `Image ${index + 1}`,
+          widths: [480, 720, 1080, 1440],
+          sizes: '90vw',
+          loading: 'eager',
+          fetchPriority: 'high',
+          style: { maxHeight: '80vh', width: 'auto', objectFit: 'contain' }
+        }),
         H('button', { className:'arrow right', onClick:()=>onIndex((index+1)%len) }, '>'),
         H('div', { className:'thumbs' },
           ...(images||[]).map((img,i)=> H('img', { key:i, src:img, className: i===index?'active':'', onClick:()=>onIndex(i) }))
@@ -1748,6 +1756,53 @@ async function submit(e){
         onClick
       })
     );
+  }
+
+  const RESPONSIVE_WIDTHS = [320, 480, 640, 960, 1280];
+
+  function buildSizedUrl(src, width) {
+    if (!src || typeof src !== 'string') return src;
+    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
+    try {
+      const url = new URL(src);
+      if (width && Number.isFinite(width)) url.searchParams.set('w', String(width));
+      if (!url.searchParams.has('auto')) url.searchParams.set('auto', 'compress');
+      return url.toString();
+    } catch (_) {
+      return src;
+    }
+  }
+
+  function ResponsiveImage({
+    src,
+    alt = '',
+    widths = RESPONSIVE_WIDTHS,
+    sizes = '(min-width: 1024px) 280px, (min-width: 640px) 50vw, 90vw',
+    loading = 'lazy',
+    decoding = 'async',
+    fetchPriority = 'auto',
+    style,
+    className,
+    onClick
+  }) {
+    const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
+    const srcSet = hasResponsive
+      ? widths.map((w) => `${buildSizedUrl(src, w)} ${w}w`).join(', ')
+      : undefined;
+    const defaultSrc = hasResponsive ? buildSizedUrl(src, widths[widths.length - 1]) : src;
+
+    return H('img', {
+      src: defaultSrc || src,
+      srcSet,
+      sizes: srcSet ? sizes : undefined,
+      alt,
+      loading,
+      decoding,
+      fetchpriority: fetchPriority,
+      style,
+      className,
+      onClick
+    });
   }
 
   const REPORT_REASON_OPTIONS = [
@@ -2068,11 +2123,11 @@ async function submit(e){
       }
     },
       coverSrc
-        ? H('img', {
+        ? H(ResponsiveImage, {
             src: coverSrc,
-            loading: 'lazy',
-            decoding: 'async',
-            style: { width: '100%', height: '100%', objectFit: 'cover' }
+            alt: item.title || 'Listing image',
+            style: { width: '100%', height: '100%', objectFit: 'cover' },
+            sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw'
           })
         : H('div', {
             style: {
