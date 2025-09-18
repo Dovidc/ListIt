@@ -2005,16 +2005,24 @@ async function submit(e){
   }, [open, images, idx]);
 
   async function openModal(start = 0) {
-    if (!images) { 
-      try { 
-        const arr = await api.getListingImages(item.id); 
-        setImages(arr && arr.length ? arr : [item.image_data]); 
-      } catch { 
-        setImages([item.image_data]); 
-      } 
-    }
-    setIdx(start); 
+    setIdx(start);
     setOpen(true);
+
+    if (!images) {
+      if (item.image_data) {
+        setImages([item.image_data]);
+      }
+      try {
+        const arr = await api.getListingImages(item.id);
+        if (Array.isArray(arr) && arr.length) {
+          setImages(arr);
+        } else if (!item.image_data) {
+          setImages([]);
+        }
+      } catch {
+        if (!item.image_data) setImages([]);
+      }
+    }
   }
 
   const isFree = Number(item?.price ?? 0) === 0;
