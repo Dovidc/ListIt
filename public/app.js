@@ -642,6 +642,8 @@ register(payload, meta) {
 
   const uploadDraftCache = new WeakMap();
   const s3UploadLimiter = createConcurrencyLimiter(3);
+  const listingImageCache = new Map();
+  const listingImageInFlight = new Map();
 
   async function measureImageFile(file) {
     if (!(file instanceof File)) {
@@ -708,6 +710,30 @@ register(payload, meta) {
     }
 
     return uploadDraftCache.get(file);
+  }
+
+  async function fetchListingImagesCached(listingId) {
+    if (!Number.isFinite(Number(listingId))) return [];
+    if (listingImageCache.has(listingId)) {
+      return listingImageCache.get(listingId);
+    }
+    if (listingImageInFlight.has(listingId)) {
+      return listingImageInFlight.get(listingId);
+    }
+    const promise = (async () => {
+      try {
+        const arr = await api.getListingImages(listingId);
+        const safe = Array.isArray(arr) ? arr : [];
+        listingImageCache.set(listingId, safe);
+        return safe;
+      } catch {
+        return [];
+      } finally {
+        listingImageInFlight.delete(listingId);
+      }
+    })();
+    listingImageInFlight.set(listingId, promise);
+    return promise;
   }
 
   // Upload a single file to S3 then finalize in DB (for listings)
@@ -1975,6 +2001,12 @@ async function submit(e){
   const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
 
+  const prefetchImages = useCallback(() => {
+    if (listingImageCache.has(item.id) || listingImageInFlight.has(item.id)) return;
+    if (!item?.id) return;
+    fetchListingImagesCached(item.id);
+  }, [item?.id]);
+
   React.useEffect(() => {
     if (!showDistance) { 
       setDerivedMeters(null); 
@@ -2009,27 +2041,38 @@ async function submit(e){
     setOpen(true);
 
     if (!images) {
+      const cached = listingImageCache.get(item.id);
+      if (cached?.length) {
+        setImages(cached);
+        return;
+      }
+
       if (item.image_data) {
         setImages([item.image_data]);
-      }
-      try {
-        const arr = await api.getListingImages(item.id);
-        if (Array.isArray(arr) && arr.length) {
-          setImages(arr);
-        } else if (!item.image_data) {
-          setImages([]);
+        if (item.id && !listingImageCache.has(item.id)) {
+          listingImageCache.set(item.id, [item.image_data]);
         }
-      } catch {
-        if (!item.image_data) setImages([]);
+      }
+
+      const fetched = await fetchListingImagesCached(item.id);
+      if (fetched.length) {
+        setImages(fetched);
       }
     }
   }
 
   const closeModal = useCallback(() => {
     setOpen(false);
-    setImages(null);
+    const cached = listingImageCache.get(item.id) || null;
+    setImages(cached);
     setIdx(0);
-  }, []);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (Array.isArray(images) && images.length && item?.id) {
+      listingImageCache.set(item.id, images);
+    }
+  }, [images, item?.id]);
 
   const isFree = Number(item?.price ?? 0) === 0;
   const [soldBusy, setSoldBusy] = useState(false);
@@ -2122,7 +2165,7 @@ async function submit(e){
 
   const coverSrc = item.image_data || (images && images[0]) || '';
 
-  return H('div', { className: 'card' },
+  return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, tabIndex: -1 },
     H('div', {
       className: 'aspect',
       onClick: (e) => {
