@@ -582,36 +582,150 @@ register(payload, meta) {
       }, meta);
     },
     finalizeUpload({ listingId, key, url, width, height, bytes }, meta) {
+      const payload = {};
+      if (listingId != null) payload.listingId = listingId;
+      if (key != null) payload.key = key;
+      if (url != null) payload.url = url;
+      if (width != null) payload.width = width;
+      if (height != null) payload.height = height;
+      if (bytes != null) payload.bytes = bytes;
       return this._fetch('/api/uploads/finalize', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ listingId, key, url, width, height, bytes })
+        body: JSON.stringify(payload)
       }, meta);
     }
   };
 
+  function createConcurrencyLimiter(maxConcurrent = 3) {
+    let active = 0;
+    const queue = [];
+
+    const next = () => {
+      if (active >= maxConcurrent || queue.length === 0) return;
+      const { fn, resolve, reject } = queue.shift();
+      active += 1;
+
+      let finished = false;
+      const finalize = () => {
+        if (!finished) {
+          finished = true;
+          active -= 1;
+          next();
+        }
+      };
+
+      try {
+        Promise.resolve(fn()).then(
+          (value) => {
+            finalize();
+            resolve(value);
+          },
+          (err) => {
+            finalize();
+            reject(err);
+          }
+        );
+      } catch (err) {
+        finalize();
+        reject(err);
+      }
+    };
+
+    return function schedule(fn) {
+      return new Promise((resolve, reject) => {
+        queue.push({ fn, resolve, reject });
+        next();
+      });
+    };
+  }
+
+  const uploadDraftCache = new WeakMap();
+  const s3UploadLimiter = createConcurrencyLimiter(3);
+
+  async function measureImageFile(file) {
+    if (!(file instanceof File)) {
+      return { width: null, height: null };
+    }
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const dims = { width: img.naturalWidth || null, height: img.naturalHeight || null };
+        URL.revokeObjectURL(objectUrl);
+        resolve(dims);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: null, height: null });
+      };
+      img.src = objectUrl;
+    });
+  }
+
+  function clearDraftCacheForFile(file) {
+    if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
+  }
+
+  async function uploadFileDraft(file) {
+    if (!file) throw new Error('file_required');
+
+    if (!uploadDraftCache.has(file)) {
+      const uploadPromise = s3UploadLimiter(async () => {
+        const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+        if (sig?.error) throw new Error(sig.error);
+        if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
+
+        const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+        if (!putRes.ok) throw new Error('s3_put_failed');
+
+        const dims = await measureImageFile(file);
+
+        const finalizeRes = await api.finalizeUpload({
+          key: sig.Key,
+          url: sig.publicUrl,
+          width: dims.width,
+          height: dims.height,
+          bytes: file.size
+        }, { silent: true });
+
+        if (finalizeRes?.error) throw new Error(finalizeRes.error);
+        if (!finalizeRes?.uploadToken) throw new Error('missing_upload_token');
+
+        return {
+          uploadToken: finalizeRes.uploadToken,
+          publicUrl: finalizeRes.url || sig.publicUrl,
+          width: finalizeRes.width ?? dims.width ?? null,
+          height: finalizeRes.height ?? dims.height ?? null,
+          bytes: finalizeRes.bytes ?? file.size
+        };
+      }).catch((err) => {
+        clearDraftCacheForFile(file);
+        throw err;
+      });
+
+      uploadDraftCache.set(file, uploadPromise);
+    }
+
+    return uploadDraftCache.get(file);
+  }
+
   // Upload a single file to S3 then finalize in DB (for listings)
   async function uploadOneImage(listingId, file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-    if (sig.error) throw new Error(sig.error);
-
-    // PUT bytes to S3
+    if (sig?.error) throw new Error(sig.error);
     const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
     if (!putRes.ok) throw new Error('s3_put_failed');
 
-    // measure image dims
-    const dims = await new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-      img.onerror = () => resolve({ w: null, h: null });
-      img.src = URL.createObjectURL(file);
-    });
+    const dims = await measureImageFile(file);
 
     await api.finalizeUpload({
       listingId,
       key: sig.Key,
       url: sig.publicUrl,
-      width: dims.w, height: dims.h, bytes: file.size
+      width: dims.width,
+      height: dims.height,
+      bytes: file.size
     });
 
     return sig.publicUrl;
@@ -980,7 +1094,10 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       if (ref.current) ref.current.value = '';
     }
     function removeAt(i) {
-      const next = [...files]; next.splice(i,1); onChange(next);
+      const next = [...files];
+      const [removed] = next.splice(i,1);
+      if (removed) clearDraftCacheForFile(removed);
+      onChange(next);
     }
 
     return H('div', null,
@@ -1141,47 +1258,51 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
 
     // UPDATED: AI analysis that works with both new files and S3 URLs
     async function runAI(){
-      setAiErr(''); setAiBusy(true);
+      setAiErr('');
+      setAiBusy(true);
       try {
-        let dataUrls = [];
-        
-        // Convert new files to data URLs
+        const sources = [];
+
         if (files.length) {
-          const newDataUrls = await filesToDataUrls(files);
-          dataUrls.push(...newDataUrls);
-        }
-        
-        // Convert existing S3 URLs to data URLs
-        if (!files.length && existingUrls.length) {
-          for (const url of existingUrls.slice(0, 3)) { // Max 3 for AI
-            if (url.startsWith('http')) {
-              const dataUrl = await urlToDataUrl(url);
-              if (dataUrl) dataUrls.push(dataUrl);
-            } else if (url.startsWith('data:')) {
-              dataUrls.push(url);
+          for (const file of files) {
+            if (sources.length >= 3) break;
+            try {
+              const upload = await uploadFileDraft(file);
+              if (upload?.publicUrl) sources.push(upload.publicUrl);
+            } catch (err) {
+              console.error('AI draft upload failed:', err);
             }
           }
         }
-        
-        if (!dataUrls.length) {
+
+        if (sources.length < 3 && existingUrls.length) {
+          for (const url of existingUrls) {
+            if (sources.length >= 3) break;
+            if (typeof url === 'string' && url.trim()) {
+              sources.push(url);
+            }
+          }
+        }
+
+        if (!sources.length) {
           alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
           return;
         }
-        
-        const res = await api.aiAnalyze({ 
-          images: dataUrls, 
-          hint: `${title} ${description}`.trim() 
+
+        const res = await api.aiAnalyze({
+          images: sources.slice(0, 3),
+          hint: `${title} ${description}`.trim()
         });
-        
+
         if (res.title) setTitle(res.title);
         if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
         if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
           setPriceVal(String(res.suggested_price));
         }
-      } catch (e) { 
-        setAiErr(e.message || 'AI failed'); 
-      } finally { 
-        setAiBusy(false); 
+      } catch (e) {
+        setAiErr(e.message || 'AI failed');
+      } finally {
+        setAiBusy(false);
       }
     }
 
@@ -1267,11 +1388,15 @@ async function submit(e){
         autoRunning.current = true;
         setAutoBusy(true);
         try {
-          // AI best-effort
+          const uploads = await Promise.all(files.map(uploadFileDraft));
+          if (!uploads.length) throw new Error('No images to upload');
+
           let ai = {};
           try {
-            const dataUrls = await filesToDataUrls(files);
-            ai = await api.aiAnalyze({ images: dataUrls, hint: '' }, { silent:true }) || {};
+            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, 3);
+            if (aiSources.length) {
+              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+            }
           } catch (_) {}
 
           const parsedPrice = Number(ai.suggested_price);
@@ -1291,17 +1416,17 @@ async function submit(e){
 
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: 'No description',  // Provide default
-          location: locAuto || '',  // Provide default
+            description: 'No description',
+            location: locAuto || '',
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: enableNearbyAuto
+            enable_nearby: enableNearbyAuto,
+            upload_tokens: uploads.map((u) => u.uploadToken)
           };
           if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('Create failed');
-          await uploadFilesForListing(created.id, files);
 
           onSaved?.();
         } catch (err) {
@@ -1318,14 +1443,12 @@ async function submit(e){
 async function submit(e){
   e.preventDefault();
   try {
-    // Check total images (existing + new)
     const totalImages = existingUrls.length + files.length;
     if (totalImages === 0) {
       alert('Please add at least one image.');
       return;
     }
 
-    // Default price to $0.00 if empty/invalid
     const parsedPrice = Number(priceVal);
     const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
@@ -1335,34 +1458,40 @@ async function submit(e){
       location: String(location || '').trim(),
       price: safePrice,
       tags: String(tags || '').trim(),
-      enable_nearby: enableNearby ? 1 : 0,
+      enable_nearby: enableNearby ? 1 : 0
     };
-    
-    if (enableNearby && !hasFixedGps) { 
-      payload.lat = lat; 
-      payload.lon = lon; 
+
+    if (enableNearby && !hasFixedGps) {
+      payload.lat = lat;
+      payload.lon = lon;
     }
-    
+
     if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
       alert('Enable Nearby requires using your location.');
       return;
     }
 
     if (draft) {
-      // Determine which images were deleted
       const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
-      
-      // Include deleted images in the payload
       if (deletedImages.length > 0) {
         payload.deletedImages = deletedImages;
       }
-      
+
       await api.updateListing(draft.id, payload);
       if (files.length) await uploadFilesForListing(draft.id, files);
     } else {
+      let uploads = [];
+      if (files.length) {
+        uploads = await Promise.all(files.map(uploadFileDraft));
+        const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+        if (!tokens.length) {
+          throw new Error('Image upload failed');
+        }
+        payload.upload_tokens = tokens;
+      }
+
       const created = await api.createListing(payload);
       if (!created?.id) { throw new Error('Create failed'); }
-      if (files.length) await uploadFilesForListing(created.id, files);
     }
     onSaved?.();
   } catch (err) {
@@ -3513,7 +3642,12 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       setFiles(next);
       if (fileRef.current) fileRef.current.value = '';
     }
-    function removeAt(i){ const next=[...files]; next.splice(i,1); setFiles(next); }
+    function removeAt(i){
+      const next=[...files];
+      const [removed] = next.splice(i,1);
+      if (removed) clearDraftCacheForFile(removed);
+      setFiles(next);
+    }
 
     async function runMassList(){
       if (!user) { alert('Log in to create listings.'); return; }
@@ -3524,24 +3658,29 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       let failed = 0;
 
-      // Try to get coords ONCE if auto-post-nearby is enabled
       let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
       if (autoPostNearbyEnabled) {
         try {
           const c = await fetchCoordsAndReverse();
           sharedNearby = { ok:true, lat:c.lat, lon:c.lon, display:c.display };
-        } catch (_) { sharedNearby = { ok:false, lat:null, lon:null, display:'' }; }
+        } catch (_) {
+          sharedNearby = { ok:false, lat:null, lon:null, display:'' };
+        }
       }
 
-      for (let i=0; i<files.length; i++){
-        const f = files[i];
+      const limiter = createConcurrencyLimiter(3);
+
+      const jobs = files.map((f) => limiter(async () => {
+        let encounteredError = false;
         try {
-          // AI analysis per image (best effort)
+          const upload = await uploadFileDraft(f);
+
           let ai = {};
           try {
-            const b64 = await fileToDataUrl(f);
-            ai = await api.aiAnalyze({ images: [b64], hint: '' }, { silent:true }) || {};
-          } catch (_) { /* ignore AI failure; fallback below */ }
+            ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent:true }) || {};
+          } catch (_) {
+            /* ignore AI failure; fallback below */
+          }
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
           const payload = {
@@ -3551,20 +3690,25 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             price: safePrice,
             tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
             enable_nearby: sharedNearby.ok ? 1 : 0,
-            image_data: await fileToDataUrl(f) // Add base64 image for creation
+            upload_tokens: [upload.uploadToken]
           };
           if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('create_failed');
 
-          await uploadOneImage(created.id, f);
-        } catch (e) {
+        } catch (err) {
+          encounteredError = true;
           failed += 1;
+          console.error('MassList failed:', err);
         } finally {
-          setProgress(p => ({ ...p, done: p.done + 1, failed }));
+          setProgress((p) => ({ ...p, done: p.done + 1, failed }));
         }
-      }
+
+        return !encounteredError;
+      }));
+
+      await Promise.allSettled(jobs);
 
       try { await reloadMine(); } catch {}
       try { await reloadAll(); } catch {}
@@ -4014,7 +4158,8 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
 
   function removeFile(i) {
     const next = [...files];
-    next.splice(i, 1);
+    const [removed] = next.splice(i, 1);
+    if (removed) clearDraftCacheForFile(removed);
     setFiles(next);
   }
 
@@ -4039,45 +4184,51 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
   }, [draft?.id]);
 
   async function runAI(){
-    setAiErr(''); setAiBusy(true);
+    setAiErr('');
+    setAiBusy(true);
     try {
-      let dataUrls = [];
-      
+      const sources = [];
+
       if (files.length) {
-        const newDataUrls = await filesToDataUrls(files);
-        dataUrls.push(...newDataUrls);
-      }
-      
-      if (!files.length && existingUrls.length) {
-        for (const url of existingUrls.slice(0, 3)) {
-          if (url.startsWith('http')) {
-            const dataUrl = await urlToDataUrl(url);
-            if (dataUrl) dataUrls.push(dataUrl);
-          } else if (url.startsWith('data:')) {
-            dataUrls.push(url);
+        for (const file of files) {
+          if (sources.length >= 3) break;
+          try {
+            const upload = await uploadFileDraft(file);
+            if (upload?.publicUrl) sources.push(upload.publicUrl);
+          } catch (err) {
+            console.error('AI draft upload failed:', err);
           }
         }
       }
-      
-      if (!dataUrls.length) {
+
+      if (sources.length < 3 && existingUrls.length) {
+        for (const url of existingUrls) {
+          if (sources.length >= 3) break;
+          if (typeof url === 'string' && url.trim()) {
+            sources.push(url);
+          }
+        }
+      }
+
+      if (!sources.length) {
         alert('No images available for AI analysis.');
         return;
       }
-      
-      const res = await api.aiAnalyze({ 
-        images: dataUrls, 
-        hint: `${title} ${description}`.trim() 
+
+      const res = await api.aiAnalyze({
+        images: sources.slice(0, 3),
+        hint: `${title} ${description}`.trim()
       });
-      
+
       if (res.title) setTitle(res.title);
       if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
       if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
         setPriceVal(String(res.suggested_price));
       }
-    } catch (e) { 
-      setAiErr(e.message || 'AI failed'); 
-    } finally { 
-      setAiBusy(false); 
+    } catch (e) {
+      setAiErr(e.message || 'AI failed');
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -4112,10 +4263,15 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       autoRunning.current = true;
       setAutoBusy(true);
       try {
+        const uploads = await Promise.all(files.map(uploadFileDraft));
+        if (!uploads.length) throw new Error('No images to upload');
+
         let ai = {};
         try {
-          const dataUrls = await filesToDataUrls(files);
-          ai = await api.aiAnalyze({ images: dataUrls, hint: '' }, { silent:true }) || {};
+          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, 3);
+          if (aiSources.length) {
+            ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+          }
         } catch (_) {}
 
         const parsedPrice = Number(ai.suggested_price);
@@ -4138,13 +4294,13 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
           location: locAuto || '',
           price: safePrice,
           tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-          enable_nearby: enableNearbyAuto
+          enable_nearby: enableNearbyAuto,
+          upload_tokens: uploads.map((u) => u.uploadToken)
         };
         if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
 
         const created = await api.createListing(payload);
         if (!created?.id) throw new Error('Create failed');
-        await uploadFilesForListing(created.id, files);
 
         onSaved?.();
       } catch (err) {
@@ -4195,9 +4351,18 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         await api.updateListing(draft.id, payload);
         if (files.length) await uploadFilesForListing(draft.id, files);
       } else {
+        let uploads = [];
+        if (files.length) {
+          uploads = await Promise.all(files.map(uploadFileDraft));
+          const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+          if (!tokens.length) {
+            throw new Error('Image upload failed');
+          }
+          payload.upload_tokens = tokens;
+        }
+
         const created = await api.createListing(payload);
         if (!created?.id) { throw new Error('Create failed'); }
-        if (files.length) await uploadFilesForListing(created.id, files);
       }
       onSaved?.();
     } catch (err) {

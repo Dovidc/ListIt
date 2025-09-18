@@ -8,6 +8,8 @@ const fs = require('fs');
 
 const path = require('path');
 
+const crypto = require('crypto');
+
 const db = require('./db-wrapper');
 
 const bcrypt = require('bcryptjs');
@@ -567,6 +569,38 @@ async function initializeSchema() {
       );
 
     `);
+
+
+
+    await db.exec(`
+
+      CREATE TABLE IF NOT EXISTS listing_upload_drafts (
+
+        id SERIAL PRIMARY KEY,
+
+        user_id INTEGER NOT NULL REFERENCES users(id),
+
+        token TEXT NOT NULL UNIQUE,
+
+        key TEXT NOT NULL,
+
+        url TEXT NOT NULL,
+
+        width INTEGER,
+
+        height INTEGER,
+
+        bytes INTEGER,
+
+        created_at INTEGER NOT NULL
+
+      );
+
+    `);
+
+
+
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_listing_upload_drafts_user ON listing_upload_drafts(user_id);`);
 
 
 
@@ -2514,6 +2548,22 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
     const safeTitle = shortTitle(title) || shortTitle(description);
 
+    const uploadTokensRaw = Array.isArray(req.body.upload_tokens)
+
+      ? req.body.upload_tokens
+
+      : (Array.isArray(req.body.uploadTokens) ? req.body.uploadTokens : []);
+
+    const uploadTokens = Array.from(new Set(
+
+      uploadTokensRaw
+
+        .map((token) => typeof token === 'string' ? token.trim() : '')
+
+        .filter(Boolean)
+
+    )).slice(0, 12);
+
 
 
     let lat = Number(req.body.lat);
@@ -2561,6 +2611,138 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
 
     const listingId = info.lastInsertRowid;
+
+
+
+    if (uploadTokens.length) {
+
+      const tokenParams = { userId: req.user.id };
+
+      const placeholders = uploadTokens.map((_, idx) => {
+
+        const key = `t${idx}`;
+
+        tokenParams[key] = uploadTokens[idx];
+
+        return `@${key}`;
+
+      }).join(', ');
+
+      const rows = placeholders
+
+        ? await db.prepare(`
+
+            SELECT token, key, url, width, height, bytes, created_at
+
+              FROM listing_upload_drafts
+
+             WHERE user_id = @userId
+
+               AND token IN (${placeholders})
+
+          `).all(tokenParams)
+
+        : [];
+
+      const rowByToken = new Map((rows || []).map((r) => [r.token, r]));
+
+      const orderedRows = uploadTokens.map((token) => rowByToken.get(token)).filter(Boolean);
+
+      if (orderedRows.length) {
+
+        const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(listingId);
+
+        let pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+
+        let coverUrl = null;
+
+        for (const r of orderedRows) {
+
+          const safeWidth = Number(r?.width);
+
+          const safeHeight = Number(r?.height);
+
+          const safeBytes = Number(r?.bytes);
+
+          const createdAt = Number.isFinite(Number(r?.created_at)) ? Number(r.created_at) : Math.floor(Date.now() / 1000);
+
+          const url = canonicalAssetUrl(String(r?.url || ''));
+
+          await db.prepare(`
+
+            INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
+
+          `).run(
+
+            listingId,
+
+            pos,
+
+            String(r?.key || ''),
+
+            url,
+
+            Number.isFinite(safeWidth) ? safeWidth : null,
+
+            Number.isFinite(safeHeight) ? safeHeight : null,
+
+            Number.isFinite(safeBytes) ? safeBytes : null,
+
+            createdAt
+
+          );
+
+          if (!coverUrl) coverUrl = url;
+
+          pos += 1;
+
+        }
+
+        if (coverUrl) {
+
+          await db.prepare(`
+
+            UPDATE listings
+
+               SET image_data = COALESCE(NULLIF(image_data, ''), @url)
+
+             WHERE id = @listingId
+
+          `).run({ listingId, url: coverUrl });
+
+        }
+
+        const deleteParams = { userId: req.user.id };
+
+        const deletePlaceholders = orderedRows.map((row, idx) => {
+
+          const key = `d${idx}`;
+
+          deleteParams[key] = row.token;
+
+          return `@${key}`;
+
+        }).join(', ');
+
+        if (deletePlaceholders) {
+
+          await db.prepare(`
+
+            DELETE FROM listing_upload_drafts
+
+             WHERE user_id = @userId
+
+               AND token IN (${deletePlaceholders})
+
+          `).run(deleteParams);
+
+        }
+
+      }
+
+    }
 
 
 
@@ -3222,9 +3404,9 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
     const rawUrl = typeof url === 'string' ? url : '';
 
-    if (!listingId || !key || !rawUrl) {
+    if (!key || !rawUrl) {
 
-      return res.status(400).json({ error: 'listingId, key, url required' });
+      return res.status(400).json({ error: 'key_and_url_required' });
 
     }
 
@@ -3236,55 +3418,121 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
     const safeUrl = canonicalAssetUrl(rawUrl);
 
+    const safeWidth = Number(width);
 
+    const safeHeight = Number(height);
 
-    const lid = Number(listingId);
+    const safeBytes = Number(bytes);
 
-    const owner = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
+    const sanitized = {
 
-    if (!owner) return res.status(404).json({ error: 'Listing not found' });
+      key: String(key),
 
-    if (!req.user?.is_admin && owner.user_id !== req.user.id) {
+      url: safeUrl,
 
-      return res.status(403).json({ error: 'Not your listing' });
+      width: Number.isFinite(safeWidth) ? safeWidth : null,
+
+      height: Number.isFinite(safeHeight) ? safeHeight : null,
+
+      bytes: Number.isFinite(safeBytes) ? safeBytes : null
+
+    };
+
+    const now = Math.floor(Date.now() / 1000);
+
+    if (listingId) {
+
+      const lid = Number(listingId);
+
+      if (!Number.isFinite(lid)) {
+
+        return res.status(400).json({ error: 'invalid_listing' });
+
+      }
+
+      const owner = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
+
+      if (!owner) return res.status(404).json({ error: 'Listing not found' });
+
+      if (!req.user?.is_admin && owner.user_id !== req.user.id) {
+
+        return res.status(403).json({ error: 'Not your listing' });
+
+      }
+
+      const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(lid);
+
+      const pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+
+      await db.prepare(`
+
+        INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+
+        VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
+
+      `).run(lid, pos, sanitized.key, sanitized.url, sanitized.width, sanitized.height, sanitized.bytes, now);
+
+      await db.prepare(`
+
+        UPDATE listings
+
+           SET image_data = COALESCE(NULLIF(image_data, ''), @url)
+
+         WHERE id = @listingId
+
+      `).run({ listingId: lid, url: sanitized.url });
+
+      return res.json({ ok: true, position: pos });
 
     }
 
+    if (!req.user?.id) {
 
+      return res.status(403).json({ error: 'auth_required' });
 
-    const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(lid);
+    }
 
-    const pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+    let token;
 
+    for (let attempt = 0; attempt < 3; attempt += 1) {
 
+      token = crypto.randomBytes(24).toString('hex');
 
-    // Use NULL for image_data since we're using S3
+      try {
 
-    await db.prepare(`
+        await db.prepare(`
 
-      INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+          INSERT INTO listing_upload_drafts (user_id, token, key, url, width, height, bytes, created_at)
 
-      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 
-    `).run(lid, pos, String(key), safeUrl, width || null, height || null, bytes || null, Math.floor(Date.now() / 1000));
+        `).run(req.user.id, token, sanitized.key, sanitized.url, sanitized.width, sanitized.height, sanitized.bytes, now);
 
+        break;
 
+      } catch (err) {
 
-    // Update listing cover image if it doesn't have one
+        const msg = String(err && err.message || '');
 
-    await db.prepare(`
+        if (msg.includes('UNIQUE') && attempt < 2) {
 
-      UPDATE listings
+          continue;
 
-         SET image_data = COALESCE(NULLIF(image_data, ''), @url)
+        }
 
-       WHERE id = @listingId
+        throw err;
 
-    `).run({ listingId: lid, url: safeUrl });
+      }
 
+    }
 
+    if (!token) {
 
-    res.json({ ok: true, position: pos });
+      return res.status(500).json({ error: 'token_generation_failed' });
+
+    }
+
+    return res.json({ ok: true, uploadToken: token, url: sanitized.url, width: sanitized.width, height: sanitized.height, bytes: sanitized.bytes });
 
   } catch (e) {
 
