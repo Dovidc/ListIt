@@ -1636,14 +1636,16 @@ async function submit(e){
     br = 8,
     onClick,
     dropFar = true,
-    initialAR = 4/3,
-    lockAR = true
+    initialAR = 4 / 3,
+    lockAR = true,
+    fetchPriority = 'auto'
   }) {
     const wrapRef = React.useRef(null);
     const imgRef  = React.useRef(null);
 
     const [activeSrc, setActiveSrc] = React.useState('');
     const [ratio, setRatio]         = React.useState(initialAR);
+    const [loaded, setLoaded]       = React.useState(false);
 
     React.useEffect(() => {
       const el = wrapRef.current; if (!el) return;
@@ -1669,7 +1671,12 @@ async function submit(e){
       return () => { clearTimeout(clearTo); io.disconnect(); };
     }, [src, dropFar]);
 
+    React.useEffect(() => {
+      setLoaded(false);
+    }, [activeSrc]);
+
     function onLoad(e) {
+      setLoaded(true);
       if (lockAR) return;
       const w = e.currentTarget.naturalWidth || 0;
       const h = e.currentTarget.naturalHeight || 0;
@@ -1687,13 +1694,22 @@ async function submit(e){
         background: '#f3f4f6'
       }
     },
+      !loaded && activeSrc && H('div', {
+        style: {
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(120deg, #f3f4f6 15%, #e5e7eb 35%, #f3f4f6 55%)',
+          backgroundSize: '200% 200%',
+          animation: 'img-shimmer 1s ease-in-out infinite'
+        }
+      }),
       activeSrc && H('img', {
         ref: imgRef,
         src: activeSrc,
         alt,
         loading: 'lazy',
         decoding: 'async',
-        fetchpriority: 'low',
+        fetchpriority: fetchPriority,
         onLoad,
         style: {
           position: 'absolute',
@@ -1702,7 +1718,9 @@ async function submit(e){
           height: '100%',
           objectFit: 'cover',
           display: 'block',
-          cursor: onClick ? 'pointer' : 'default'
+          cursor: onClick ? 'pointer' : 'default',
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 180ms ease'
         },
         onClick
       })
@@ -2015,23 +2033,35 @@ async function submit(e){
   return H('div', { className: 'card' },
     H('div', {
       className: 'aspect',
-      onClick: (e) => { 
-        e.stopPropagation(); 
-        openModal(0); 
+      onClick: (e) => {
+        e.stopPropagation();
+        openModal(0);
       },
-      style: { cursor: 'zoom-in', position: 'relative', overflow: 'hidden', borderRadius: 8 }
+      style: {
+        cursor: coverSrc ? 'zoom-in' : 'default',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: 8
+      }
     },
       coverSrc
-        ? H('img', { 
-            src: coverSrc, 
-            loading: 'lazy', 
-            decoding: 'async',
-            style: { width: '100%', height: '100%', objectFit: 'cover' }
+        ? H(SmartImage, {
+            src: coverSrc,
+            alt: item.title || 'Listing image',
+            br: 8,
+            dropFar: false,
+            lockAR: false,
+            fetchPriority: 'auto',
+            onClick: (ev) => {
+              ev.stopPropagation();
+              openModal(0);
+            }
           })
         : H('div', {
             style: {
               width: '100%',
               height: '100%',
+              minHeight: 180,
               background: '#f3f4f6',
               display: 'grid',
               placeItems: 'center',
