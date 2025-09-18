@@ -2061,30 +2061,23 @@ async function submit(e){
         openModal(0);
       },
       style: {
-        cursor: coverSrc ? 'zoom-in' : 'default',
+        cursor: 'zoom-in',
         position: 'relative',
         overflow: 'hidden',
         borderRadius: 8
       }
     },
       coverSrc
-        ? H(SmartImage, {
+        ? H('img', {
             src: coverSrc,
-            alt: item.title || 'Listing image',
-            br: 8,
-            dropFar: false,
-            lockAR: false,
-            fetchPriority: 'auto',
-            onClick: (ev) => {
-              ev.stopPropagation();
-              openModal(0);
-            }
+            loading: 'lazy',
+            decoding: 'async',
+            style: { width: '100%', height: '100%', objectFit: 'cover' }
           })
         : H('div', {
             style: {
               width: '100%',
               height: '100%',
-              minHeight: 180,
               background: '#f3f4f6',
               display: 'grid',
               placeItems: 'center',
