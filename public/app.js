@@ -3272,7 +3272,16 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       ]);
                       const payload = { ...it, image_data: src };
                       if (inlineImages.length) payload.images = inlineImages;
+                      if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
                       setSelectedListing(payload);
+                      if (it.id) {
+                        fetchListingImagesCached(it.id).then(arr => {
+                          if (Array.isArray(arr) && arr.length) {
+                            listingImageCache.set(it.id, arr);
+                            setSelectedListing(prev => prev && prev.id === it.id ? { ...prev, images: arr } : prev);
+                          }
+                        }).catch(() => {});
+                      }
                     }
                   }),
                   it.sold ? H('div', {
@@ -5440,7 +5449,16 @@ function App(){
               ]);
               const payload = { ...it, image_data: src };
               if (inlineImages.length) payload.images = inlineImages;
+              if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
               setSelectedListing(payload);
+              if (it.id) {
+                fetchListingImagesCached(it.id).then(arr => {
+                  if (Array.isArray(arr) && arr.length) {
+                    listingImageCache.set(it.id, arr);
+                    setSelectedListing(prev => prev && prev.id === it.id ? { ...prev, images: arr } : prev);
+                  }
+                }).catch(() => {});
+              }
             }
           })
         )
