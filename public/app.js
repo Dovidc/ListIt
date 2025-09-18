@@ -3275,13 +3275,12 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
                       setSelectedListing(payload);
                       if (it.id) {
-                        fetchListingImagesCached(it.id).then(arr => {
-                          if (Array.isArray(arr) && arr.length) {
-                            listingImageCache.set(it.id, arr);
-                            setSelectedListing(prev => prev && prev.id === it.id ? { ...prev, images: arr } : prev);
-                          }
-                        }).catch(() => {});
-                      }
+                      fetchListingImagesCached(it.id).then(arr => {
+                        if (Array.isArray(arr) && arr.length) {
+                          listingImageCache.set(it.id, arr);
+                        }
+                      }).catch(() => {});
+                    }
                     }
                   }),
                   it.sold ? H('div', {
@@ -5452,13 +5451,12 @@ function App(){
               if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
               setSelectedListing(payload);
               if (it.id) {
-                fetchListingImagesCached(it.id).then(arr => {
-                  if (Array.isArray(arr) && arr.length) {
-                    listingImageCache.set(it.id, arr);
-                    setSelectedListing(prev => prev && prev.id === it.id ? { ...prev, images: arr } : prev);
-                  }
-                }).catch(() => {});
-              }
+                      fetchListingImagesCached(it.id).then(arr => {
+                        if (Array.isArray(arr) && arr.length) {
+                          listingImageCache.set(it.id, arr);
+                        }
+                      }).catch(() => {});
+                    }
             }
           })
         )
