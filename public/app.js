@@ -1724,7 +1724,7 @@ async function submit(e){
     }, [open, len, index, onIndex]);
 
     const mainContent = len
-      ? H('div', { style: { width: '100%', display: 'flex', justifyContent: 'center' } },
+      ? H('div', { className: 'lightbox-main' },
           H(ResponsiveImage, {
             src: display[safeIndex] || display[0],
             alt: 'Image ' + (safeIndex + 1),
@@ -1732,35 +1732,19 @@ async function submit(e){
             sizes: '100vw',
             loading: 'eager',
             fetchPriority: 'high',
-            style: {
-              maxHeight: '80vh',
-              maxWidth: '100vw',
-              width: '100%',
-              height: 'auto',
-              objectFit: 'contain',
-              display: 'block'
-            }
+            className: 'lightbox-img'
           })
         )
       : H('div', {
-          style: {
-            minHeight: 200,
-            minWidth: 220,
-            display: 'grid',
-            placeItems: 'center',
-            padding: 24,
-            color: '#4b5563',
-            fontSize: 15,
-            textAlign: 'center'
-          }
+          className: 'lightbox-empty'
         }, loading ? 'Loading images...' : 'No images available');
 
     const thumbs = len && typeof onIndex === 'function'
-      ? H('div', { className:'thumbs' },
+      ? H('div', { className:'lightbox-thumbs' },
           ...display.map((img, i) => H('img', {
             key:i,
             src:img,
-            className: i===safeIndex?'active':'',
+            className: i===safeIndex ? 'active' : '',
             onClick:()=>onIndex(i)
           }))
         )
@@ -1769,16 +1753,18 @@ async function submit(e){
     if (!open) return null;
 
     const modal = H('div', {
-      className:'modal open lightbox',
-      onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); }
+      className: 'lightbox-overlay',
+      onClick:(e)=>{ if (e.target === e.currentTarget) onClose(); }
     },
-      H('div', { className:'modal-inner' },
-        H('button', { className:'close', onClick:onClose }, 'x'),
-        canNavigate ? H('button', { className:'arrow left', onClick:()=>onIndex((safeIndex-1+len)%len) }, '<') : null,
-        mainContent,
-        canNavigate ? H('button', { className:'arrow right', onClick:()=>onIndex((safeIndex+1)%len) }, '>') : null,
+      H('div', { className:'lightbox-content', role:'dialog', 'aria-modal': true },
+        H('button', { className:'lightbox-close', onClick:onClose, 'aria-label':'Close image' }, 'X'),
+        H('div', { className:'lightbox-stage' },
+          canNavigate ? H('button', { className:'lightbox-arrow left', onClick:()=>onIndex((safeIndex-1+len)%len), 'aria-label':'Previous image' }, '<') : null,
+          mainContent,
+          canNavigate ? H('button', { className:'lightbox-arrow right', onClick:()=>onIndex((safeIndex+1)%len), 'aria-label':'Next image' }, '>') : null
+        ),
         thumbs,
-        loading && len ? H('div', { style: { marginTop: 12, textAlign: 'center', fontSize: 12, color: '#6b7280' } }, 'Loading...') : null
+        loading && len ? H('div', { className:'lightbox-info' }, 'Loading...') : null
       )
     );
 
