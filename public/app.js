@@ -2130,7 +2130,7 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
         }))
       )
     : H('div', { className: 'lightbox-thumbs empty' },
-        H('span', null, galleryLoading ? 'Loading photos...' : (len ? 'Only one photo for this listing' : 'No photos yet'))
+        H('span', null, loading ? 'Loading photos...' : (len ? 'Only one photo for this listing' : 'No photos yet'))
       );
 
   const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
