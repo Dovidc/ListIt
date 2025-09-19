@@ -2439,6 +2439,9 @@ function ListingCard({
   const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
 
   const openGalleryFromEvent = useCallback((evt) => {
+    if (evt && typeof evt.preventDefault === 'function') {
+      evt.preventDefault();
+    }
     if (evt && typeof evt.stopPropagation === 'function') {
       evt.stopPropagation();
     }
@@ -3338,6 +3341,16 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
     }
   }, [setSelectedListing]);
 
+  const handleSelectListingFromEvent = useCallback((evt, listing, coverSrc) => {
+    if (evt && typeof evt.preventDefault === 'function') {
+      evt.preventDefault();
+    }
+    if (evt && typeof evt.stopPropagation === 'function') {
+      evt.stopPropagation();
+    }
+    handleSelectListing(listing, coverSrc);
+  }, [handleSelectListing]);
+
   if (loading) {
     return H('div', { style: { padding: '24px', textAlign: 'center' } },
       H('div', { className: 'spinner' }),
@@ -3418,7 +3431,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       display: 'block',
                       cursor: 'pointer'
                     },
-                    onClick: () => handleSelectListing(it, src)
+                    onClick: (evt) => handleSelectListingFromEvent(evt, it, src)
                   }),
                   it.sold ? H('div', {
                     style: {
@@ -4029,6 +4042,16 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       }
     }, [setSelected]);
 
+    const handleSelectListingFromEvent = useCallback((evt, listing, coverSrc) => {
+      if (evt && typeof evt.preventDefault === 'function') {
+        evt.preventDefault();
+      }
+      if (evt && typeof evt.stopPropagation === 'function') {
+        evt.stopPropagation();
+      }
+      handleSelectListing(listing, coverSrc);
+    }, [handleSelectListing]);
+
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
         H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
@@ -4058,7 +4081,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               src: item.image_data,
               loading:'lazy',
               decoding:'async',
-              onClick: () => handleSelectListing(item),
+              onClick: (evt) => handleSelectListingFromEvent(evt, item),
               style: { cursor: 'pointer' }
             })
           )
@@ -5567,6 +5590,16 @@ function App(){
       }
     }, [setSelectedListing]);
 
+    const handleListingTileEvent = useCallback((evt, listing, coverSrc) => {
+      if (evt && typeof evt.preventDefault === 'function') {
+        evt.preventDefault();
+      }
+      if (evt && typeof evt.stopPropagation === 'function') {
+        evt.stopPropagation();
+      }
+      openListingModal(listing, coverSrc);
+    }, [openListingModal]);
+
     // Grid tile (square)
     function GridTile({ it }) {
       const ref = useRef(null);
@@ -5594,7 +5627,7 @@ function App(){
             decoding:'async',
             fetchPriority:'low',
             style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-            onClick: () => openListingModal(it, src)
+            onClick: (evt) => handleListingTileEvent(evt, it, src)
           })
         )
       );
