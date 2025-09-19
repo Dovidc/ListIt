@@ -3377,7 +3377,19 @@ app.get('/api/listings/nearby', async (req, res) => {
     ))`;
 
     const sql = `
-      SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location,
+      SELECT l.id, l.user_id,
+             COALESCE(
+               (
+                 SELECT COALESCE(url, image_data)
+                   FROM listing_images
+                  WHERE listing_id = l.id
+                    AND (url IS NOT NULL OR image_data IS NOT NULL)
+                  ORDER BY position ASC, id ASC
+                  LIMIT 1
+               ),
+               l.image_data
+             ) AS image_data,
+             l.title, l.description, l.location,
              l.price, l.created_at, l.lat, l.lon,
              u.username as owner_username,
              ${distanceExpr} AS distance_m

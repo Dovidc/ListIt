@@ -518,7 +518,7 @@ register(payload, meta) {
     getCoversBatch(ids = [], meta) {
       const idsStr = Array.from(new Set(ids.filter(Number.isFinite))).slice(0, 200).join(',');
       if (!idsStr) return Promise.resolve([]);
-      return this._fetch(`/api/listings/covers?ids=${encodeURIComponent(idsStr)}`, { method:'GET' }, meta);
+      return this._fetch(`/api/listings/covers?ids=${idsStr}`, { method:'GET' }, meta);
     },
 
     aiAnalyze({ images, hint }, meta) {
