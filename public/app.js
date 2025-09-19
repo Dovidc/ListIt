@@ -345,7 +345,7 @@
         )
       ),
       hasImage && H('div', { className: 'ad-card__art' },
-        H('img', {
+        H(ImageWithSkeleton, {
           src: ad.image_url,
           alt: ad.title ? `${ad.title} artwork` : 'Advertisement art',
           loading: 'lazy',
@@ -1258,7 +1258,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     ),
     H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
       ...previews.map(({ url }, i)=> H('div', { key:i, style:{ position:'relative' } },
-        H('img', {
+        H(ImageWithSkeleton, {
           src: url,
           style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
         }),
@@ -1704,10 +1704,10 @@ async function submit(e){
         H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
           ...existingUrls.map((src, i) =>
             H('div', { key:i, style:{ position:'relative' } },
-              H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
-              H('button', { 
-                className:'btn danger', 
-                type:'button', 
+              H(ImageWithSkeleton, { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+              H('button', {
+                className:'btn danger',
+                type:'button',
                 style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, 
                 onClick:() => {
                   const next = [...existingUrls];
@@ -1809,7 +1809,7 @@ async function submit(e){
 
     const thumbs = len && typeof onIndex === 'function'
       ? H('div', { className:'lightbox-thumbs' },
-          ...display.map((img, i) => H('img', {
+          ...display.map((img, i) => H(ImageWithSkeleton, {
             key:i,
             src:img,
             className: i===safeIndex ? 'active' : '',
@@ -1837,6 +1837,84 @@ async function submit(e){
     );
 
     return ReactDOM.createPortal(modal, document.body);
+  }
+
+  function ImageWithSkeleton({
+    className,
+    wrapperClassName,
+    wrapperStyle,
+    skeletonClassName = 'image-skeleton',
+    skeletonStyle,
+    onLoad,
+    onError,
+    style,
+    ...imgProps
+  }) {
+    const [loaded, setLoaded] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+      setLoaded(false);
+      setFailed(false);
+    }, [imgProps.src]);
+
+    const handleLoad = useCallback((event) => {
+      setLoaded(true);
+      if (typeof onLoad === 'function') onLoad(event);
+    }, [onLoad]);
+
+    const handleError = useCallback((event) => {
+      setFailed(true);
+      if (typeof onError === 'function') onError(event);
+    }, [onError]);
+
+    const showSkeleton = !!imgProps.src && !loaded && !failed;
+
+    const computedWrapperStyle = useMemo(() => {
+      const base = { lineHeight: 0, ...wrapperStyle };
+      const pos = style?.position;
+
+      if (pos === 'absolute' || pos === 'fixed' || pos === 'sticky') {
+        base.position = pos;
+        if (style?.top !== undefined && base.top === undefined) base.top = style.top;
+        if (style?.right !== undefined && base.right === undefined) base.right = style.right;
+        if (style?.bottom !== undefined && base.bottom === undefined) base.bottom = style.bottom;
+        if (style?.left !== undefined && base.left === undefined) base.left = style.left;
+        if (style?.inset !== undefined && base.inset === undefined) base.inset = style.inset;
+      } else {
+        if (!base.position) base.position = 'relative';
+        if (!base.display) base.display = 'block';
+      }
+
+      if (style?.width !== undefined && base.width === undefined) base.width = style.width;
+      if (style?.height !== undefined && base.height === undefined) base.height = style.height;
+      if (style?.maxWidth !== undefined && base.maxWidth === undefined) base.maxWidth = style.maxWidth;
+      if (style?.maxHeight !== undefined && base.maxHeight === undefined) base.maxHeight = style.maxHeight;
+      if (style?.minWidth !== undefined && base.minWidth === undefined) base.minWidth = style.minWidth;
+      if (style?.minHeight !== undefined && base.minHeight === undefined) base.minHeight = style.minHeight;
+      if (style?.cursor !== undefined && base.cursor === undefined) base.cursor = style.cursor;
+
+      if (style?.borderRadius != null && base.borderRadius == null) base.borderRadius = style.borderRadius;
+      if (base.borderRadius != null && !base.overflow) base.overflow = 'hidden';
+
+      return base;
+    }, [style, wrapperStyle]);
+
+    const computedSkeletonStyle = useMemo(() => {
+      if (style?.borderRadius != null) {
+        return { borderRadius: style.borderRadius, ...skeletonStyle };
+      }
+      return skeletonStyle;
+    }, [style?.borderRadius, skeletonStyle]);
+
+    const wrapperClass = wrapperClassName
+      ? `image-shell ${wrapperClassName}`
+      : 'image-shell';
+
+    return H('span', { className: wrapperClass, style: computedWrapperStyle },
+      H('img', { ...imgProps, className, style, onLoad: handleLoad, onError: handleError }),
+      showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
+    );
   }
 
   // SmartImage v2.1 (kept; not used in main grid now)
@@ -1963,6 +2041,10 @@ async function submit(e){
     style,
     className,
     onClick,
+    wrapperClassName,
+    wrapperStyle,
+    skeletonClassName,
+    skeletonStyle,
     ...imgProps
   }) {
     const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
@@ -1971,7 +2053,7 @@ async function submit(e){
       : undefined;
     const defaultSrc = hasResponsive ? buildSizedUrl(src, widths[widths.length - 1]) : src;
 
-    return H('img', {
+    return H(ImageWithSkeleton, {
       src: defaultSrc || src,
       srcSet,
       sizes: srcSet ? sizes : undefined,
@@ -1982,6 +2064,10 @@ async function submit(e){
       style,
       className,
       onClick,
+      wrapperClassName,
+      wrapperStyle,
+      skeletonClassName,
+      skeletonStyle,
       ...imgProps
     });
   }
@@ -2215,7 +2301,7 @@ async function submit(e){
 
     const thumbsContent = len
       ? H('div', { className: 'lightbox-thumbs' },
-          ...list.map((img, i) => H('img', {
+          ...list.map((img, i) => H(ImageWithSkeleton, {
             key: String(i),
             src: img,
             alt: `Thumbnail ${i + 1}`,
@@ -2447,15 +2533,6 @@ function ListingCard({
   const [soldBusy, setSoldBusy] = useState(false);
   const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
   const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
-  const [coverLoading, setCoverLoading] = useState(() => Boolean(coverSrc));
-
-  useEffect(() => {
-    setCoverLoading(Boolean(coverSrc));
-  }, [coverSrc, item?.id]);
-
-  const handleCoverSettled = useCallback(() => {
-    setCoverLoading(false);
-  }, []);
 
   const controls = [];
   if (!user || user.id !== item.user_id) {
@@ -2570,7 +2647,6 @@ function ListingCard({
         borderRadius: 8
       }
     },
-      coverLoading && coverSrc ? H('div', { className: 'image-skeleton', 'aria-hidden': true }) : null,
       coverSrc
         ? H(ResponsiveImage, {
             src: coverSrc,
@@ -2579,8 +2655,6 @@ function ListingCard({
             sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
             loading: isModalView ? 'eager' : 'lazy',
             fetchPriority: isModalView ? 'high' : 'auto',
-            onLoad: handleCoverSettled,
-            onError: handleCoverSettled,
             onClick: openGalleryFromEvent
           })
         : H('div', {
@@ -3525,7 +3599,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                     background: '#f3f4f6' 
                   } 
                 },
-                  src && H('img', {
+                  src && H(ImageWithSkeleton, {
                     src,
                     alt: it.title || 'Item',
                     loading: 'lazy',
@@ -3938,7 +4012,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
             Array.isArray(m.images) && m.images.length > 0 &&
               H('div', { className:'row', style:{ gap:6, marginTop:6, flexWrap:'wrap' } },
                 ...m.images.map((src, i) =>
-                  H('img', { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
+                  H(ImageWithSkeleton, { key:i, src, loading:'lazy', decoding:'async', style:{ width:140, height:140, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb', cursor:'zoom-in' },
                     onClick:()=>openLightbox(m.images, i) })
                 )
               ),
@@ -3950,7 +4024,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       (activeId && imgPreviews.length > 0) && H('div', { className:'row', style:{ gap:6, flexWrap:'wrap', margin:'6px 0' } },
         ...imgPreviews.map(({ url },i) =>
           H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src: url, style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
+            H(ImageWithSkeleton, { src: url, style:{ width:72, height:72, objectFit:'cover', borderRadius:10, border:'1px solid #e5e7eb' } }),
             H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:2, right:2, padding:'2px 6px' }, onClick:()=>removeImg(i) }, 'x')
           )
         )
@@ -4178,7 +4252,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       H('section', { className:'masonry', ref: masonRef },
         interleaved.map(item =>
           H('div', { key:item.id, className:'masonry-item' },
-            H('img', {
+            H(ImageWithSkeleton, {
               src: item.image_data,
               loading:'lazy',
               decoding:'async',
@@ -4329,7 +4403,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           filePreviews.length > 0 && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap', marginTop:12 } },
             ...filePreviews.map(({ url },i) =>
               H('div', { key:i, style:{ position:'relative' } },
-                H('img', { src: url, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
+                H(ImageWithSkeleton, { src: url, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
                 H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
               )
             )
@@ -4528,7 +4602,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                         background: '#f3f4f6'
                       }
                     },
-                      src ? H('img', {
+                      src ? H(ImageWithSkeleton, {
                         src,
                         alt: it.title || 'Item',
                         loading: 'lazy',
@@ -4997,13 +5071,13 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       },
         ...filePreviews.map(({ url },i) =>
           H('div', { key:i, style:{ position:'relative' } },
-            H('img', { 
-              src: url, 
-              style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } 
+            H(ImageWithSkeleton, {
+              src: url,
+              style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' }
             }),
-            H('button', { 
-              className:'btn danger', 
-              type:'button', 
+            H('button', {
+              className:'btn danger',
+              type:'button',
               style:{ position:'absolute', top:-2, right:-2, padding:'0px 3px', fontSize:9, lineHeight:'12px' }, 
               onClick:()=>removeFile(i) 
             }, 'x')
@@ -5017,10 +5091,10 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
       H('div', { className:'row', style:{ gap:3, flexWrap:'wrap' } },
         ...existingUrls.map((src, i) =>
           H('div', { key:i, style:{ position:'relative' } },
-            H('img', { src, style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } }),
-            H('button', { 
-              className:'btn danger', 
-              type:'button', 
+            H(ImageWithSkeleton, { src, style:{ width:44, height:44, objectFit:'cover', borderRadius:6, border:'1px solid #ddd' } }),
+            H('button', {
+              className:'btn danger',
+              type:'button',
               style:{ position:'absolute', top:-2, right:-2, padding:'0px 3px', fontSize:9, lineHeight:'12px' }, 
               onClick:() => {
                 const next = [...existingUrls];
@@ -5702,7 +5776,7 @@ function App(){
 
       return H('div', { ref, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
         H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
-          src && H('img', {
+          src && H(ImageWithSkeleton, {
             src,
             alt: it.title || 'Item',
             loading:'lazy',
