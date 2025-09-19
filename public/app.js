@@ -2202,7 +2202,12 @@ function ListingCard({
   }, [item?.id]);
 
   React.useEffect(() => {
-    setGalleryImages(prev => sameList(prev, baseGallery) ? prev : baseGallery);
+    if (!Array.isArray(baseGallery) || !baseGallery.length) return;
+    setGalleryImages(prev => {
+      const prevList = Array.isArray(prev) ? prev : [];
+      const merged = dedupeImageUrls([...baseGallery, ...prevList]);
+      return sameList(prevList, merged) ? prevList : merged;
+    });
   }, [baseGallery, sameList]);
 
   React.useEffect(() => {
