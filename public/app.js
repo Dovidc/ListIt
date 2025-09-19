@@ -2183,7 +2183,12 @@ function ListingCard({
   }, [item?.images, fallbackImages]);
 
   const [galleryImages, setGalleryImages] = useState(baseGallery);
-  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  const normalizedBaseGallery = useMemo(() => {
+    if (Array.isArray(baseGallery) && baseGallery.length) return baseGallery;
+    const fallbackCover = item.image_data || item.__cover || item.thumb_url || '';
+    return fallbackCover ? [fallbackCover] : [];
+  }, [baseGallery, item.image_data, item.__cover, item.thumb_url]);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -2199,7 +2204,7 @@ function ListingCard({
     return true;
   }, []);
 
-  const baseImageCount = Array.isArray(baseGallery) ? baseGallery.length : 0;
+  const baseImageCount = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery.length : 0;
 
   const prefetchImages = useCallback(() => {
     if (!item?.id) return;
@@ -2211,12 +2216,12 @@ function ListingCard({
   }, [item?.id, baseImageCount]);
 
   React.useEffect(() => {
-    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    const baseList = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery : [];
     setGalleryImages(prev => {
       const prevList = Array.isArray(prev) ? prev : [];
       return sameList(prevList, baseList) ? prevList : baseList;
     });
-  }, [baseGallery, sameList]);
+  }, [normalizedBaseGallery, sameList]);
 
   React.useEffect(() => {
     if (!item?.id) return;
@@ -2228,7 +2233,7 @@ function ListingCard({
   }, [item?.id, sameList]);
 
   const handleOpenGallery = useCallback(async (start = 0) => {
-    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    const baseList = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery : [];
     setGalleryIndex(Number.isFinite(start) ? start : 0);
     setGalleryImages(prev => {
       const prevList = Array.isArray(prev) ? prev : [];
@@ -2252,7 +2257,7 @@ function ListingCard({
     } finally {
       setGalleryLoading(false);
     }
-  }, [item?.id, baseGallery, sameList, prefetchImages]);
+  }, [item?.id, normalizedBaseGallery, sameList, prefetchImages]);
 
   React.useEffect(() => {
     if (!item?.id) return;
@@ -5808,6 +5813,13 @@ function App(){
   }
 
 })();
+
+
+
+
+
+
+
 
 
 
