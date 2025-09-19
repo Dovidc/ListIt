@@ -715,6 +715,14 @@ register(payload, meta) {
     return [];
   }
 
+  function selectPrimaryListingImage(listing, primarySrc) {
+    const list = collectListingImages(listing, primarySrc, {
+      includeListingFallbackFields: true,
+      includeDataFallback: true
+    });
+    return Array.isArray(list) && list.length ? list[0] : '';
+  }
+
   async function measureImageFile(file) {
     if (!(file instanceof File)) {
       return { width: null, height: null };
@@ -1916,6 +1924,46 @@ async function submit(e){
       showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
     );
   }
+
+  const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect }) {
+    const ref = useRef(null);
+
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      if (!item?.id) return;
+
+      const observer = new IntersectionObserver((entries) => {
+        if (!Array.isArray(entries)) return;
+        const intersecting = entries.some((entry) => entry.isIntersecting);
+        if (intersecting) {
+          if (!item.__cover && typeof onEnsureCover === 'function') {
+            onEnsureCover(item.id);
+          }
+          observer.disconnect();
+        }
+      }, { rootMargin: '800px 0px' });
+
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, [item?.id, item?.__cover, onEnsureCover]);
+
+    const src = item?.__cover;
+
+    return H('div', { ref, className: 'card', style: { padding: 0, overflow: 'hidden', borderRadius: 8 } },
+      H('div', { style: { position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#f3f4f6' } },
+        src && H(ImageWithSkeleton, {
+          src,
+          alt: item?.title || 'Item',
+          loading: 'lazy',
+          decoding: 'async',
+          fetchPriority: 'low',
+          style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' },
+          onClick: (evt) => typeof onSelect === 'function' ? onSelect(evt, item, src) : undefined
+        })
+      )
+    );
+  });
 
   // SmartImage v2.1 (kept; not used in main grid now)
   function SmartImage({
@@ -4250,17 +4298,18 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       // NOTE: add ref so we can read computed column-count
       H('section', { className:'masonry', ref: masonRef },
-        interleaved.map(item =>
-          H('div', { key:item.id, className:'masonry-item' },
-            H(ImageWithSkeleton, {
-              src: item.image_data,
+        interleaved.map(item => {
+          const cover = selectPrimaryListingImage(item, item?.image_data);
+          return H('div', { key:item.id, className:'masonry-item' },
+            cover && H(ImageWithSkeleton, {
+              src: cover,
               loading:'lazy',
               decoding:'async',
-              onClick: (evt) => handleSelectListingFromEvent(evt, item),
+              onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
               style: { cursor: 'pointer' }
             })
-          )
-        )
+          );
+        })
       ),
 
       (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
@@ -5681,31 +5730,31 @@ function App(){
 
     // Persistent cover cache: coverById[id] = { url, w, h } | null
     const [coverById, setCoverById] = useState(() => (Object.create(null)));
-    async function ensureCover(id){
+    const ensureCover = useCallback(async (id) => {
       if (id == null) return;
-      if (Object.prototype.hasOwnProperty.call(coverById, id)) return; // already fetched (even null)
+      if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
       try {
-        const arr = await api.getListingImages(id, { silent:true });
+        const arr = await api.getListingImages(id, { silent: true });
         let obj = null;
         if (Array.isArray(arr) && arr.length) {
           obj = typeof arr[0] === 'string'
             ? { url: arr[0], w: null, h: null }
             : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
         }
-        setCoverById(m => ({ ...m, [id]: obj }));
+        setCoverById((prev) => ({ ...prev, [id]: obj }));
       } catch {
-        setCoverById(m => ({ ...m, [id]: null }));
+        setCoverById((prev) => ({ ...prev, [id]: null }));
       }
-    }
+    }, [coverById]);
 
     // Build render items with best cover + aspect ratio
     const items = useMemo(() => {
       return (feed || []).map(it => {
-        const inline = it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null);
         const cached = coverById[it.id];
-        const url = inline || cached?.url || '';
+        const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
+        const url = inline || '';
         const ar  = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
-        return { ...it, __cover:url, __ar: ar };
+        return { ...it, __cover: url, __ar: ar };
       });
     }, [feed, coverById]);
 
@@ -5755,39 +5804,6 @@ function App(){
       }
       openListingModal(listing, coverSrc);
     }, [openListingModal]);
-
-    // Grid tile (square)
-    function GridTile({ it }) {
-      const ref = useRef(null);
-
-      useEffect(() => {
-        const el = ref.current; if (!el) return;
-        const io = new IntersectionObserver((entries) => {
-          if (entries.some(e => e.isIntersecting)) {
-            if (!it.__cover) ensureCover(it.id);
-            io.disconnect();
-          }
-        }, { rootMargin: '800px 0px' });
-        io.observe(el);
-        return () => io.disconnect();
-      }, [it.id, it.__cover]);
-
-      const src = it.__cover;
-
-      return H('div', { ref, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
-        H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
-          src && H(ImageWithSkeleton, {
-            src,
-            alt: it.title || 'Item',
-            loading:'lazy',
-            decoding:'async',
-            fetchPriority:'low',
-            style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-            onClick: (evt) => handleListingTileEvent(evt, it, src)
-          })
-        )
-      );
-    }
 
     // ---------- RENDER ----------
     return H(React.Fragment, null,
@@ -5879,7 +5895,12 @@ function App(){
                 if (entry.type === 'ad') {
                   return H(AdTile, { key: `ad-${entry.data.id}`, ad: entry.data, cols: COLS });
                 }
-                return H(GridTile, { key: `listing-${entry.data.id}`, it: entry.data });
+                return H(GridTile, {
+                  key: `listing-${entry.data.id}`,
+                  item: entry.data,
+                  onEnsureCover: ensureCover,
+                  onSelect: handleListingTileEvent
+                });
               })
             );
           })(),
