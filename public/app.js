@@ -1397,7 +1397,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   }
 
   // --- Listing Form (S3-first) ---
-  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
     const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
 
@@ -1483,7 +1483,11 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
           setPriceVal(String(res.suggested_price));
         }
         if (typeof res.description === 'string' && res.description.trim()) {
-          setDescription(res.description.trim().slice(0, 400));
+          if (aiDescriptionEnabled) {
+            setDescription(res.description.trim().slice(0, 400));
+          } else {
+            setAiErr('Enable AI descriptions in your profile to apply AI-written descriptions.');
+          }
         }
       } catch (e) {
         setAiErr(e.message || 'AI failed');
@@ -1747,13 +1751,25 @@ async function submit(e){
         geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
       ),
 
-      isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
-        H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
-          const checked = e.target.checked;
-          setEnableNearby(checked);
-          if (checked && !hasFixedGps) useMyLocation();
-        }}),
-        H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
+      isMobile && H('label', {
+        className:'toggle-card',
+        style:{ marginTop:4, gap:8, alignItems:'flex-start' }
+      },
+        H('input', {
+          type:'checkbox',
+          className:'toggle-input',
+          checked:enableNearby,
+          onChange:e=>{
+            const checked = e.target.checked;
+            setEnableNearby(checked);
+            if (checked && !hasFixedGps) useMyLocation();
+          }
+        }),
+        H('span', { className:'toggle-slider', 'aria-hidden': true }),
+        H('div', { className:'toggle-copy' },
+          H('div', { style:{ fontWeight:700 } }, 'Enable Nearby searches'),
+          H('div', { className:'muted', style:{ fontSize:12 } }, 'Shows distance in feet/miles to buyers.')
+        )
       ),
       (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
 
@@ -4545,6 +4561,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   function ProfilePanel({
     user, items, onNewListing, onEdit, onDelete, onLogout, onAdminDelete,
     autoListEnabled, setAutoListEnabled,
+    aiDescriptionEnabled, setAiDescriptionEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
     isMobile,
     onViewSeller, // ADD THIS PARAMETER
@@ -4599,21 +4616,44 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           ),
           // Right controls: Auto-list toggle - New listing - Log out
           H('div', { className:'row', style:{ gap:12, alignItems:'center', flexWrap:'wrap' } },
-            H('label', { className:'row', style:{ gap:8, alignItems:'center', padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:12 } },
+            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
               H('input', {
                 type:'checkbox',
+                className:'toggle-input',
                 checked: !!autoListEnabled,
-                onChange: (e) => setAutoListEnabled(e.target.checked),
-                style:{ width:18, height:18 }
+                onChange: (e) => setAutoListEnabled(e.target.checked)
               }),
-              H('div', null,
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
                 H('div', { style:{ fontWeight:700 } }, 'Auto-list'),
-                H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'new uploads')
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'new uploads')
               ),
               H('button', {
                 type:'button',
-                onClick: () => setShowHelp(true),
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowHelp(true); },
                 title:'About Auto-list',
+                style:{
+                  marginLeft:6, width:24, height:24, lineHeight:'22px',
+                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+                }
+              }, '?')
+            ),
+            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
+              H('input', {
+                type:'checkbox',
+                className:'toggle-input',
+                checked: !!aiDescriptionEnabled,
+                onChange: (e) => setAiDescriptionEnabled(e.target.checked)
+              }),
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
+                H('div', { style:{ fontWeight:700 } }, 'AI descriptions'),
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'fill description for you')
+              ),
+              H('button', {
+                type:'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); alert('AI descriptions are most effective with 2+ images'); },
+                title:'AI description tips',
                 style:{
                   marginLeft:6, width:24, height:24, lineHeight:'22px',
                   borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
@@ -4634,17 +4674,22 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               transition: 'max-height 220ms ease'
             }
           },
-            H('div', { className:'row', style:{ gap:8, alignItems:'center', padding:'8px 10px', border:'1px dashed #e5e7eb', borderRadius:12, background:'#fafafa' } },
+            H('label', {
+              className:'toggle-card',
+              style:{ gap:8, alignItems:'flex-start', padding:'8px 10px', border:'1px dashed #e5e7eb', borderRadius:12, background:'#fafafa' },
+              'data-disabled': !autoListEnabled ? 'true' : undefined
+            },
               H('input', {
                 type:'checkbox',
+                className:'toggle-input',
                 checked: !!autoPostNearbyEnabled,
                 onChange: (e) => setAutoPostNearbyEnabled(e.target.checked),
-                disabled: !autoListEnabled,
-                style:{ width:18, height:18 }
+                disabled: !autoListEnabled
               }),
-              H('div', null,
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
                 H('div', { style:{ fontWeight:700 } }, 'Also post to Nearby'),
-                H('div', { className:'muted', style:{ fontSize:12, marginTop:2 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
               )
             )
           ))),
@@ -4789,7 +4834,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
-function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
+function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled }) {
   if (!isOpen) return null;
   
   const isMobile = isMobileDevice();
@@ -4855,19 +4900,21 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
           'Add photos and details for your listing. Only images are required - AI can suggest the rest.'
         ),
         
-        isMobile ? H(CompactListingForm, { 
-          draft, 
-          onCancel: onClose, 
+        isMobile ? H(CompactListingForm, {
+          draft,
+          onCancel: onClose,
           onSaved: () => { onSaved?.(); onClose(); },
           autoListEnabled,
+          aiDescriptionEnabled,
           autoPostNearbyEnabled,
           showTags,
           setShowTags
-        }) : H(ListingForm, { 
-          draft, 
-          onCancel: onClose, 
+        }) : H(ListingForm, {
+          draft,
+          onCancel: onClose,
           onSaved: () => { onSaved?.(); onClose(); },
           autoListEnabled,
+          aiDescriptionEnabled,
           autoPostNearbyEnabled
         })
       )
@@ -4878,7 +4925,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, au
 }
 
 // --- Compact Listing Form for Mobile ---
-function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
+function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
   const fileRef = useRef();
   const [files, setFiles] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
@@ -4991,7 +5038,11 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
         setPriceVal(String(res.suggested_price));
       }
       if (typeof res.description === 'string' && res.description.trim()) {
-        setDescription(res.description.trim().slice(0, 400));
+        if (aiDescriptionEnabled) {
+          setDescription(res.description.trim().slice(0, 400));
+        } else {
+          setAiErr('Enable AI descriptions in your profile to apply AI-written descriptions.');
+        }
       }
     } catch (e) { 
       setAiErr(e.message || 'AI failed'); 
@@ -5260,18 +5311,25 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPos
     ),
     geoErr && H('span', { className:'muted', style:{ color:'#b91c1c', fontSize:11 } }, geoErr),
     
-    H('label', { style:{ display:'flex', alignItems:'center', gap:5, fontSize:12, padding:'3px 0' } },
-      H('input', { 
-        type:'checkbox', 
-        checked:enableNearby, 
+    H('label', {
+      className:'toggle-card',
+      style:{ marginTop:4, gap:6, alignItems:'flex-start', fontSize:12, padding:'6px 8px' }
+    },
+      H('input', {
+        type:'checkbox',
+        className:'toggle-input',
+        checked:enableNearby,
         onChange:e=>{
           const checked = e.target.checked;
           setEnableNearby(checked);
           if (checked && !hasFixedGps) useMyLocation();
-        },
-        style: { width: 16, height: 16 }
+        }
       }),
-      'Enable Nearby searches'
+      H('span', { className:'toggle-slider', 'aria-hidden': true }),
+      H('div', { className:'toggle-copy' },
+        H('div', { style:{ fontWeight:700, fontSize:12 } }, 'Enable Nearby searches'),
+        H('div', { className:'muted', style:{ fontSize:11 } }, 'Shows distance in feet/miles to buyers.')
+      )
     ),
     
     H('div', { className:'row', style: { alignItems: 'center', gap: 6 } },
@@ -5385,6 +5443,12 @@ function App(){
       try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
     });
     useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
+
+    const AI_DESC_KEY = 'listit_ai_descriptions';
+    const [aiDescriptionEnabled, setAiDescriptionEnabled] = useState(() => {
+      try { return localStorage.getItem(AI_DESC_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AI_DESC_KEY, aiDescriptionEnabled ? '1' : '0'); } catch {} }, [aiDescriptionEnabled]);
 
     const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
     const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
@@ -6070,6 +6134,8 @@ function App(){
             onAdminDelete: handleAdminDelete,
             autoListEnabled,
             setAutoListEnabled,
+            aiDescriptionEnabled,
+            setAiDescriptionEnabled,
             autoPostNearbyEnabled,
             setAutoPostNearbyEnabled,
             onViewSeller: handleViewSeller, // ADD THIS LINE
@@ -6100,6 +6166,7 @@ function App(){
         onClose: () => { setShowForm(false); setEditing(null); },
         onSaved: async () => { await refreshListings(); },
         autoListEnabled,
+        aiDescriptionEnabled,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
       }),
 
