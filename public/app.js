@@ -1856,6 +1856,7 @@ async function submit(e){
     onLoad,
     onError,
     style,
+    disableSkeleton = false,
     ...imgProps
   }) {
     const [loaded, setLoaded] = useState(false);
@@ -1876,7 +1877,7 @@ async function submit(e){
       if (typeof onError === 'function') onError(event);
     }, [onError]);
 
-    const showSkeleton = !!imgProps.src && !loaded && !failed;
+    const showSkeleton = !disableSkeleton && !!imgProps.src && !loaded && !failed;
 
     const computedWrapperStyle = useMemo(() => {
       const base = { lineHeight: 0, ...wrapperStyle };
@@ -1959,6 +1960,7 @@ async function submit(e){
           decoding: 'async',
           fetchPriority: 'low',
           style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' },
+          disableSkeleton: true,
           onClick: (evt) => typeof onSelect === 'function' ? onSelect(evt, item, src) : undefined
         })
       )
@@ -3714,6 +3716,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                       display: 'block',
                       cursor: 'pointer'
                     },
+                    disableSkeleton: true,
                     onClick: (evt) => handleSelectListingFromEvent(evt, it, src)
                   }),
                   it.sold ? H('div', {
@@ -4358,7 +4361,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               loading:'lazy',
               decoding:'async',
               onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
-              style: { cursor: 'pointer' }
+              style: { cursor: 'pointer' },
+              disableSkeleton: true
             })
           );
         })
@@ -4716,7 +4720,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                           height: '100%',
                           objectFit: 'cover',
                           display: 'block'
-                        }
+                        },
+                        disableSkeleton: true
                       }) : H('div', {
                         style: {
                           position: 'absolute',
