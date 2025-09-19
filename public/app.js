@@ -2119,7 +2119,7 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
       )
     : H('div', { className: 'lightbox-empty' }, loading ? 'Loading images...' : 'No images available');
 
-  const thumbs = len > 1
+  const thumbsContent = len > 1
     ? H('div', { className: 'lightbox-thumbs' },
         ...list.map((img, i) => H('img', {
           key: String(i),
@@ -2129,17 +2129,21 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
           onClick: () => onIndex?.(i)
         }))
       )
-    : null;
+    : H('div', { className: 'lightbox-thumbs empty' },
+        H('span', null, len ? 'Only one photo for this listing' : 'No photos yet')
+      );
 
   const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
     H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, 'X'),
-    H('div', { className: 'lightbox-stage' },
-      canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
-      imageContent,
-      len > 1 ? H('div', { className: 'lightbox-counter' }, `${safeIndex + 1} / ${len}`) : null,
-      canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
+    H('div', { className: 'lightbox-body' },
+      H('div', { className: 'lightbox-stage' },
+        canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
+        imageContent,
+        len > 1 ? H('div', { className: 'lightbox-counter' }, `${safeIndex + 1} / ${len}`) : null,
+        canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
+      ),
+      H('div', { className: 'lightbox-footer' }, thumbsContent)
     ),
-    thumbs,
     loading ? H('div', { className: 'lightbox-info' }, len ? 'Loading more images...' : 'Loading images...') : null
   );
 
@@ -2151,6 +2155,7 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
     document.body
   );
 }
+
 
 // --- Listing Card ---
 function ListingCard({
