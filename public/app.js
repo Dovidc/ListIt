@@ -1890,10 +1890,11 @@ async function submit(e){
         if (style?.bottom !== undefined && base.bottom === undefined) base.bottom = style.bottom;
         if (style?.left !== undefined && base.left === undefined) base.left = style.left;
         if (style?.inset !== undefined && base.inset === undefined) base.inset = style.inset;
-      } else {
-        if (!base.position) base.position = 'relative';
-        if (!base.display) base.display = 'block';
+      } else if (pos != null && base.position === undefined) {
+        base.position = pos;
       }
+
+      if (style?.display !== undefined && base.display === undefined) base.display = style.display;
 
       if (style?.width !== undefined && base.width === undefined) base.width = style.width;
       if (style?.height !== undefined && base.height === undefined) base.height = style.height;
