@@ -796,6 +796,50 @@ register(payload, meta) {
     return promise;
   }
 
+  function prepareListingForModal(listing, coverHint) {
+    if (!listing || typeof listing !== 'object') {
+      return { payload: null, images: [], cover: '' };
+    }
+
+    const candidateSources = [];
+    if (typeof coverHint === 'string') candidateSources.push(coverHint);
+    if (typeof listing.image_data === 'string') candidateSources.push(listing.image_data);
+    if (typeof listing.__cover === 'string') candidateSources.push(listing.__cover);
+    if (typeof listing.thumb_url === 'string') candidateSources.push(listing.thumb_url);
+
+    let cover = '';
+    for (const src of candidateSources) {
+      if (typeof src !== 'string') continue;
+      const trimmed = src.trim();
+      if (trimmed) {
+        cover = trimmed;
+        break;
+      }
+    }
+
+    const payload = { ...listing };
+    if (cover) payload.image_data = cover;
+
+    const inline = collectListingImages(payload, cover);
+    if (inline.length) {
+      payload.images = inline;
+      if (listing?.id) {
+        listingImageCache.set(listing.id, inline);
+      }
+    }
+
+    return { payload, images: inline, cover };
+  }
+
+  function warmListingImages(listingId, baseImages) {
+    if (!Number.isFinite(Number(listingId))) return;
+    const baseCount = Array.isArray(baseImages)
+      ? baseImages.length
+      : (Number.isFinite(Number(baseImages)) ? Number(baseImages) : 0);
+    const minCount = baseCount + 1;
+    fetchListingImagesCached(listingId, { minCount }).catch(() => {});
+  }
+
   // Upload a single file to S3 then finalize in DB (for listings)
   async function uploadOneImage(listingId, file) {
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
@@ -3280,6 +3324,15 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
 
   useEffect(() => { setTab('active'); }, [sellerId]);
 
+  const handleSelectListing = useCallback((listing, coverSrc) => {
+    const { payload, images } = prepareListingForModal(listing, coverSrc);
+    if (!payload) return;
+    setSelectedListing(payload);
+    if (listing?.id) {
+      warmListingImages(listing.id, images);
+    }
+  }, [setSelectedListing]);
+
   if (loading) {
     return H('div', { style: { padding: '24px', textAlign: 'center' } },
       H('div', { className: 'spinner' }),
@@ -3351,29 +3404,16 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
                     loading: 'lazy',
                     decoding: 'async',
                     fetchPriority: 'low',
-                    style: { 
-                      position: 'absolute', 
-                      inset: 0, 
-                      width: '100%', 
-                      height: '100%', 
-                      objectFit: 'cover', 
-                      display: 'block', 
-                      cursor: 'pointer' 
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                      cursor: 'pointer'
                     },
-                    onClick: () => {
-                      const inlineImages = collectListingImages(it, src);
-                      const payload = { ...it, image_data: src };
-                      if (inlineImages.length) payload.images = inlineImages;
-                      if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
-                      setSelectedListing(payload);
-                      if (it.id) {
-                        fetchListingImagesCached(it.id).then(arr => {
-                          if (Array.isArray(arr) && arr.length) {
-                            listingImageCache.set(it.id, arr);
-                          }
-                        }).catch(() => {});
-                      }
-                    }
+                    onClick: () => handleSelectListing(it, src)
                   }),
                   it.sold ? H('div', {
                     style: {
@@ -3975,6 +4015,15 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       onEdit(it);
     }
 
+    const handleSelectListing = useCallback((listing, coverSrc) => {
+      const { payload, images } = prepareListingForModal(listing, coverSrc);
+      if (!payload) return;
+      setSelected(payload);
+      if (listing?.id) {
+        warmListingImages(listing.id, images);
+      }
+    }, [setSelected]);
+
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
         H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
@@ -4004,7 +4053,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               src: item.image_data,
               loading:'lazy',
               decoding:'async',
-              onClick: () => setSelected(item),
+              onClick: () => handleSelectListing(item),
               style: { cursor: 'pointer' }
             })
           )
@@ -5504,6 +5553,15 @@ function App(){
       return result;
     }, [items, adsForGrid]);
 
+    const openListingModal = useCallback((listing, coverSrc) => {
+      const { payload, images } = prepareListingForModal(listing, coverSrc);
+      if (!payload) return;
+      setSelectedListing(payload);
+      if (listing?.id) {
+        warmListingImages(listing.id, images);
+      }
+    }, [setSelectedListing]);
+
     // Grid tile (square)
     function GridTile({ it }) {
       const ref = useRef(null);
@@ -5531,20 +5589,7 @@ function App(){
             decoding:'async',
             fetchPriority:'low',
             style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-            onClick: () => {
-              const inlineImages = collectListingImages(it, src);
-              const payload = { ...it, image_data: src };
-              if (inlineImages.length) payload.images = inlineImages;
-              if (it.id && inlineImages.length) listingImageCache.set(it.id, inlineImages);
-              setSelectedListing(payload);
-              if (it.id) {
-                fetchListingImagesCached(it.id).then(arr => {
-                  if (Array.isArray(arr) && arr.length) {
-                    listingImageCache.set(it.id, arr);
-                  }
-                }).catch(() => {});
-              }
-            }
+            onClick: () => openListingModal(it, src)
           })
         )
       );
