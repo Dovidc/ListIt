@@ -200,6 +200,102 @@ const nearbyCache = new Map();
 
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
+const IS_POSTGRES = Boolean(process.env.DATABASE_URL);
+
+const PRIMARY_KEY = IS_POSTGRES ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+
+const GEO_FEATURES = {
+  postgisNearby: false,
+  reason: 'uninitialized'
+};
+
+async function configureSpatialFeatures() {
+  GEO_FEATURES.postgisNearby = false;
+  GEO_FEATURES.reason = IS_POSTGRES ? 'postgis_unavailable' : 'sqlite_dialect';
+
+  if (!IS_POSTGRES) {
+    return;
+  }
+
+  try {
+    await db.exec('CREATE EXTENSION IF NOT EXISTS postgis');
+  } catch (err) {
+    GEO_FEATURES.reason = `extension_failed:${err?.code || err?.message || 'unknown'}`;
+    return;
+  }
+
+  let version;
+  try {
+    const row = await db.prepare('SELECT PostGIS_Version() AS version').get();
+    version = row?.version;
+  } catch (err) {
+    GEO_FEATURES.reason = `version_failed:${err?.code || err?.message || 'unknown'}`;
+    return;
+  }
+
+  if (!version) {
+    GEO_FEATURES.reason = 'version_missing';
+    return;
+  }
+
+  GEO_FEATURES.postgisNearby = true;
+  GEO_FEATURES.reason = version;
+
+  try {
+    await db.exec('ALTER TABLE listings ADD COLUMN geog GEOGRAPHY(Point, 4326)');
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (!msg.includes('already exists')) {
+      console.warn('[postgis] failed adding geography column:', err);
+    }
+  }
+
+  try {
+    await db.exec(`
+      UPDATE listings
+         SET geog = ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography
+       WHERE lat IS NOT NULL
+         AND lon IS NOT NULL
+         AND (geog IS NULL OR ST_IsEmpty(geog));
+    `);
+  } catch (err) {
+    console.warn('[postgis] failed to backfill geography column:', err);
+  }
+
+  try {
+    await db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_listings_geog
+        ON listings
+        USING GIST (
+          COALESCE(
+            geog,
+            ST_GeographyFromText('SRID=4326;POINT(' || lon || ' ' || lat || ')')
+          )
+        );
+    `);
+  } catch (err) {
+    console.warn('[postgis] failed creating geography index:', err);
+  }
+}
+
+async function maybeUpdateListingGeography(id, lat, lon) {
+  if (!GEO_FEATURES.postgisNearby) return;
+  const latNum = Number(lat);
+  const lonNum = Number(lon);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return;
+  try {
+    await db.prepare(`
+      UPDATE listings
+         SET geog = ST_SetSRID(ST_MakePoint(@lon, @lat), 4326)::geography
+       WHERE id = @id
+    `).run({ id, lat: latNum, lon: lonNum });
+  } catch (err) {
+    console.warn('[postgis] failed updating listing geography:', err);
+    GEO_FEATURES.postgisNearby = false;
+    GEO_FEATURES.reason = `update_failed:${err?.code || err?.message || 'unknown'}`;
+  }
+}
+
 function quantizeCoord(value, precision) {
 
   return Math.round(value * precision) / precision;
@@ -450,7 +546,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS users (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         email TEXT UNIQUE NOT NULL,
 
@@ -500,7 +596,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS listings (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         user_id INTEGER NOT NULL REFERENCES users(id),
 
@@ -546,7 +642,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS listing_images (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         listing_id INTEGER NOT NULL REFERENCES listings(id),
 
@@ -576,7 +672,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS listing_upload_drafts (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         user_id INTEGER NOT NULL REFERENCES users(id),
 
@@ -608,7 +704,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS conversations (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         a_user_id INTEGER NOT NULL,
 
@@ -630,7 +726,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS messages (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         conversation_id INTEGER NOT NULL REFERENCES conversations(id),
 
@@ -650,7 +746,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS message_images (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         message_id INTEGER NOT NULL REFERENCES messages(id),
 
@@ -680,7 +776,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS ads (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         title TEXT NOT NULL,
 
@@ -716,7 +812,7 @@ async function initializeSchema() {
 
       CREATE TABLE IF NOT EXISTS seller_reports (
 
-        id SERIAL PRIMARY KEY,
+        id ${PRIMARY_KEY},
 
         reporter_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
@@ -810,7 +906,7 @@ async function initializeSchema() {
 
     await db.exec('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id DESC);');
 
-    if (process.env.DATABASE_URL) {
+    if (IS_POSTGRES) {
 
       try {
 
@@ -849,6 +945,8 @@ async function initializeSchema() {
       }
 
     }
+
+    await configureSpatialFeatures();
 
 
 
@@ -2490,7 +2588,11 @@ app.get('/api/listings/covers', async (req, res) => {
 
     return res.status(500).json({ error: 'fetch_failed' });
 
-  }app.post('/api/reports', auth, writeLimiter, async (req, res) => {
+  }
+
+});
+
+app.post('/api/reports', auth, writeLimiter, async (req, res) => {
 
   try {
 
@@ -2658,12 +2760,6 @@ app.get('/api/listings/covers', async (req, res) => {
 
 
 
-
-
-});
-
-
-
 app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
   try {
@@ -2755,6 +2851,8 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
 
     const listingId = info.lastInsertRowid;
+
+    await maybeUpdateListingGeography(listingId, lat, lon);
 
 
 
@@ -3182,6 +3280,8 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     }
 
+    await maybeUpdateListingGeography(id, row?.lat, row?.lon);
+
 
 
     try {
@@ -3334,90 +3434,130 @@ app.get('/api/listings/nearby', async (req, res) => {
 
 
 
-    const earthRadius = 6371000;
-
-    const deg2rad = Math.PI / 180;
-
-    const lat0Rad = lat0 * deg2rad;
-
-    const metersPerDegLat = 111320;
-
-    const degLat = radius / metersPerDegLat;
-
-    const cosLat = Math.cos(lat0Rad);
-
-    const safeCos = Math.max(Math.abs(cosLat), 1e-4);
-
-    const degLon = radius / (metersPerDegLat * safeCos);
-
-    const minLat = Math.max(-90, lat0 - degLat);
-
-    const maxLat = Math.min(90, lat0 + degLat);
-
-    const minLon = Math.max(-180, lon0 - degLon);
-
-    const maxLon = Math.min(180, lon0 + degLon);
-
     const limit = Math.min(NEARBY_RESULT_LIMIT, 200);
+    let rows = null;
+    let usedPostGIS = false;
 
+    if (GEO_FEATURES.postgisNearby) {
+      try {
+        const sqlPostgis = `
+          SELECT l.id, l.user_id,
+                 COALESCE(
+                   (
+                     SELECT COALESCE(url, image_data)
+                       FROM listing_images
+                      WHERE listing_id = l.id
+                        AND (url IS NOT NULL OR image_data IS NOT NULL)
+                      ORDER BY position ASC, id ASC
+                      LIMIT 1
+                   ),
+                   l.image_data
+                 ) AS image_data,
+                 l.title, l.description, l.location,
+                 l.price, l.created_at, l.lat, l.lon,
+                 u.username as owner_username,
+                 ST_Distance(
+                   COALESCE(
+                     l.geog,
+                     ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326)::geography
+                   ),
+                   ST_SetSRID(ST_MakePoint(@lon0, @lat0), 4326)::geography
+                 ) AS distance_m
+            FROM listings l
+            JOIN users u ON u.id = l.user_id
+           WHERE l.enable_nearby = 1
+             AND l.sold = 0
+             AND l.lat IS NOT NULL AND l.lon IS NOT NULL
+             AND ST_DWithin(
+                   COALESCE(
+                     l.geog,
+                     ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326)::geography
+                   ),
+                   ST_SetSRID(ST_MakePoint(@lon0, @lat0), 4326)::geography,
+                   @radius
+                 )
+           ORDER BY distance_m ASC, l.id DESC
+           LIMIT @limit
+        `;
+        rows = await db.prepare(sqlPostgis).all({ lat0, lon0, radius, limit });
+        usedPostGIS = true;
+      } catch (err) {
+        console.warn('[postgis] nearby query failed, reverting to fallback:', err);
+        GEO_FEATURES.postgisNearby = false;
+        GEO_FEATURES.reason = `nearby_failed:${err?.code || err?.message || 'unknown'}`;
+        rows = null;
+      }
+    }
 
+    if (!usedPostGIS) {
+      const earthRadius = 6371000;
+      const deg2rad = Math.PI / 180;
+      const lat0Rad = lat0 * deg2rad;
+      const metersPerDegLat = 111320;
+      const degLat = radius / metersPerDegLat;
+      const cosLat = Math.cos(lat0Rad);
+      const safeCos = Math.max(Math.abs(cosLat), 1e-4);
+      const degLon = radius / (metersPerDegLat * safeCos);
+      const minLat = Math.max(-90, lat0 - degLat);
+      const maxLat = Math.min(90, lat0 + degLat);
+      const minLon = Math.max(-180, lon0 - degLon);
+      const maxLon = Math.min(180, lon0 + degLon);
 
-    const sinHalfChordExpr = `SQRT(
-      POWER(SIN(((@deg2rad * (l.lat - @lat0)) / 2)), 2) +
-      COS(@lat0_rad) * COS(l.lat * @deg2rad) *
-      POWER(SIN(((@deg2rad * (l.lon - @lon0)) / 2)), 2)
-    )`;
+      const sinHalfChordExpr = `SQRT(
+        POWER(SIN(((@deg2rad * (l.lat - @lat0)) / 2)), 2) +
+        COS(@lat0_rad) * COS(l.lat * @deg2rad) *
+        POWER(SIN(((@deg2rad * (l.lon - @lon0)) / 2)), 2)
+      )`;
+      const distanceExpr = `(2 * @earthRadius * ASIN(
+        CASE
+          WHEN ${sinHalfChordExpr} > 1 THEN 1
+          WHEN ${sinHalfChordExpr} < -1 THEN -1
+          ELSE ${sinHalfChordExpr}
+        END
+      ))`;
+      const sqlFallback = `
+        SELECT l.id, l.user_id,
+               COALESCE(
+                 (
+                   SELECT COALESCE(url, image_data)
+                     FROM listing_images
+                    WHERE listing_id = l.id
+                      AND (url IS NOT NULL OR image_data IS NOT NULL)
+                    ORDER BY position ASC, id ASC
+                    LIMIT 1
+                 ),
+                 l.image_data
+               ) AS image_data,
+               l.title, l.description, l.location,
+               l.price, l.created_at, l.lat, l.lon,
+               u.username as owner_username,
+               ${distanceExpr} AS distance_m
+          FROM listings l
+          JOIN users u ON u.id = l.user_id
+         WHERE l.enable_nearby = 1
+           AND l.sold = 0
+           AND l.lat IS NOT NULL AND l.lon IS NOT NULL
+           AND l.lat BETWEEN @minLat AND @maxLat
+           AND l.lon BETWEEN @minLon AND @maxLon
+           AND ${distanceExpr} <= @radius
+         ORDER BY distance_m ASC, l.id DESC
+         LIMIT @limit
+      `;
 
-    const distanceExpr = `(2 * @earthRadius * ASIN(
-      CASE
-        WHEN ${sinHalfChordExpr} > 1 THEN 1
-        WHEN ${sinHalfChordExpr} < -1 THEN -1
-        ELSE ${sinHalfChordExpr}
-      END
-    ))`;
-
-    const sql = `
-      SELECT l.id, l.user_id,
-             COALESCE(
-               (
-                 SELECT COALESCE(url, image_data)
-                   FROM listing_images
-                  WHERE listing_id = l.id
-                    AND (url IS NOT NULL OR image_data IS NOT NULL)
-                  ORDER BY position ASC, id ASC
-                  LIMIT 1
-               ),
-               l.image_data
-             ) AS image_data,
-             l.title, l.description, l.location,
-             l.price, l.created_at, l.lat, l.lon,
-             u.username as owner_username,
-             ${distanceExpr} AS distance_m
-        FROM listings l
-        JOIN users u ON u.id = l.user_id
-       WHERE l.enable_nearby = 1
-         AND l.sold = 0
-         AND l.lat IS NOT NULL AND l.lon IS NOT NULL
-         AND l.lat BETWEEN @minLat AND @maxLat
-         AND l.lon BETWEEN @minLon AND @maxLon
-         AND ${distanceExpr} <= @radius
-       ORDER BY distance_m ASC, l.id DESC
-       LIMIT @limit
-    `;
-
-    const rows = await db.prepare(sql).all({
-      lat0,
-      lon0,
-      radius,
-      earthRadius,
-      deg2rad,
-      lat0_rad: lat0Rad,
-      minLat,
-      maxLat,
-      minLon,
-      maxLon,
-      limit
-    });
+      rows = await db.prepare(sqlFallback).all({
+        lat0,
+        lon0,
+        radius,
+        earthRadius,
+        deg2rad,
+        lat0_rad: lat0Rad,
+        minLat,
+        maxLat,
+        minLon,
+        maxLon,
+        limit
+      });
+    }
 
 
 
@@ -5656,6 +5796,8 @@ app._maybeCreateAdmin = maybeCreateAdmin;
 app._startServer = startServer;
 
 app._db = db;
+
+app._features = GEO_FEATURES;
 
 
 
