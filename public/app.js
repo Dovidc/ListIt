@@ -2246,7 +2246,6 @@ function ListingCard({
   }, [item?.id, baseGallery, sameList, prefetchImages]);
 
   React.useEffect(() => {
-React.useEffect(() => {
     if (!item?.id) return;
     if (!Array.isArray(galleryImages) || !galleryImages.length) return;
     listingImageCache.set(item.id, galleryImages);
