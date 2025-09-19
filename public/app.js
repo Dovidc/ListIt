@@ -762,13 +762,17 @@ register(payload, meta) {
     return uploadDraftCache.get(file);
   }
 
-  async function fetchListingImagesCached(listingId) {
+  async function fetchListingImagesCached(listingId, options = {}) {
+    const minCount = Number(options.minCount) || 0;
     if (!Number.isFinite(Number(listingId))) return [];
     if (listingImageInFlight.has(listingId)) {
       return listingImageInFlight.get(listingId);
     }
     if (listingImageCache.has(listingId)) {
-      return listingImageCache.get(listingId);
+      const cached = listingImageCache.get(listingId);
+      if (Array.isArray(cached) && cached.length >= minCount) {
+        return cached;
+      }
     }
     const promise = (async () => {
       try {
@@ -2195,11 +2199,16 @@ function ListingCard({
     return true;
   }, []);
 
+  const baseImageCount = Array.isArray(baseGallery) ? baseGallery.length : 0;
+
   const prefetchImages = useCallback(() => {
     if (!item?.id) return;
-    if (listingImageCache.has(item.id) || listingImageInFlight.has(item.id)) return;
-    fetchListingImagesCached(item.id);
-  }, [item?.id]);
+    if (listingImageInFlight.has(item.id)) return;
+    const minCount = baseImageCount + 1;
+    const cached = listingImageCache.get(item.id);
+    if (Array.isArray(cached) && cached.length >= minCount) return;
+    fetchListingImagesCached(item.id, { minCount });
+  }, [item?.id, baseImageCount]);
 
   React.useEffect(() => {
     const baseList = Array.isArray(baseGallery) ? baseGallery : [];
@@ -2232,7 +2241,7 @@ function ListingCard({
 
     setGalleryLoading(true);
     try {
-      const fetched = await fetchListingImagesCached(item.id);
+      const fetched = await fetchListingImagesCached(item.id, { minCount: baseList.length + 1 });
       const merged = dedupeImageUrls([...baseList, ...(Array.isArray(fetched) ? fetched : [])]);
       if (merged.length) {
         listingImageCache.set(item.id, merged);
@@ -2248,8 +2257,10 @@ function ListingCard({
   React.useEffect(() => {
     if (!item?.id) return;
     if (!Array.isArray(galleryImages) || !galleryImages.length) return;
+    const baseLen = baseImageCount;
+    if (galleryImages.length <= baseLen) return;
     listingImageCache.set(item.id, galleryImages);
-  }, [galleryImages, item?.id]);
+  }, [galleryImages, item?.id, baseImageCount]);
 
   React.useEffect(() => {
     if (!galleryOpen) return;
