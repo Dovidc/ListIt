@@ -2438,13 +2438,17 @@ function ListingCard({
 
   const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
 
+  const openGalleryFromEvent = useCallback((evt) => {
+    if (evt && typeof evt.stopPropagation === 'function') {
+      evt.stopPropagation();
+    }
+    handleOpenGallery(0);
+  }, [handleOpenGallery]);
+
   return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, onPointerDown: prefetchImages, onTouchStart: prefetchImages, tabIndex: -1 },
     H('div', {
       className: 'aspect',
-      onClick: (e) => {
-        e.stopPropagation();
-        handleOpenGallery(0);
-      },
+      onClick: openGalleryFromEvent,
       style: {
         cursor: 'zoom-in',
         position: 'relative',
@@ -2457,7 +2461,8 @@ function ListingCard({
             src: coverSrc,
             alt: item.title || 'Listing image',
             style: { width: '100%', height: '100%', objectFit: 'cover' },
-            sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw'
+            sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
+            onClick: openGalleryFromEvent
           })
         : H('div', {
             style: {
