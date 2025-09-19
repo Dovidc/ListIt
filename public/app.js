@@ -2183,16 +2183,17 @@ function ListingCard({
   }, [item?.images, fallbackImages]);
 
   const [galleryImages, setGalleryImages] = useState(baseGallery);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [derivedMeters, setDerivedMeters] = React.useState(null);
 
   const normalizedBaseGallery = useMemo(() => {
     if (Array.isArray(baseGallery) && baseGallery.length) return baseGallery;
     const fallbackCover = item.image_data || item.__cover || item.thumb_url || '';
     return fallbackCover ? [fallbackCover] : [];
   }, [baseGallery, item.image_data, item.__cover, item.thumb_url]);
-  const [galleryIndex, setGalleryIndex] = useState(0);
-  const [galleryLoading, setGalleryLoading] = useState(false);
-  const [showReport, setShowReport] = useState(false);
-  const [derivedMeters, setDerivedMeters] = React.useState(null);
 
   const sameList = useCallback((a, b) => {
     if (a === b) return true;
@@ -5813,6 +5814,10 @@ function App(){
   }
 
 })();
+
+
+
+
 
 
 
