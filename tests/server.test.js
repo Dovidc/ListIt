@@ -8,6 +8,12 @@ const app = require('../server');
 
 const db = app._db;
 
+function bodyItems(body) {
+  if (Array.isArray(body)) return body;
+  if (body && Array.isArray(body.items)) return body.items;
+  return [];
+}
+
 async function resetDb() {
   const res = await request(app).post('/__test/reset');
   if (res.status !== 200) {
@@ -46,7 +52,7 @@ describe('ListIt API basic flows', () => {
 
     const listRes = await buyer.get('/api/listings');
     expect(listRes.status).toBe(200);
-    const listing = listRes.body.find(item => item.id === listingId);
+    const listing = bodyItems(listRes.body).find(item => item.id === listingId);
     expect(listing).toBeTruthy();
 
     let convoRes = await buyer.post('/api/conversations').send({ with_user_id: sellerId, listing_id: listingId });
@@ -115,7 +121,7 @@ describe('Admin reports dashboard', () => {
 
     const sellerConvos = await seller.get('/api/conversations');
     expect(sellerConvos.status).toBe(200);
-    const sellerConvo = sellerConvos.body.find(c => c.id === adminConvoId);
+    const sellerConvo = bodyItems(sellerConvos.body).find(c => c.id === adminConvoId);
     expect(sellerConvo).toBeTruthy();
     expect(sellerConvo.last_message_sender_id).toBe(adminId);
     expect(Boolean(sellerConvo.last_message_is_admin)).toBe(true);
@@ -186,5 +192,79 @@ describe('Locked account restrictions', () => {
 
     res = await seller.post(`/api/conversations/${adminConvoId}/messages`).send({ body: 'Need assistance' });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('Nearby listings endpoint', () => {
+  it('returns nearby listings via fallback distance calculations when PostGIS is disabled', async () => {
+    await resetDb();
+    expect(app._features.postgisNearby).toBe(false);
+
+    const seller = request.agent(app);
+    await seller.post('/api/register').send({ email: 'geo@test.com', password: 'secret1', username: 'geoSeller' });
+
+    const createRes = await seller.post('/api/listings').send({
+      title: 'Central Item',
+      description: 'Located downtown',
+      location: 'Geo City',
+      price: 10,
+      enable_nearby: true,
+      lat: 40.0,
+      lon: -74.0
+    });
+    expect(createRes.status).toBe(200);
+
+    const res = await seller.get('/api/listings/nearby?lat=40&lon=-74&radius_m=150');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].id).toBe(createRes.body.id);
+    expect(res.body[0].distance_m).toBe(0);
+  });
+
+  it('builds a PostGIS-powered query when the feature flag is enabled', async () => {
+    await resetDb();
+
+    const originalPrepare = app._db.prepare;
+    const features = app._features;
+    const originalFeature = features.postgisNearby;
+    let capturedSql = '';
+
+    features.postgisNearby = true;
+
+    app._db.prepare = function patchedPrepare(sql) {
+      if (/ST_DWithin/i.test(sql)) {
+        capturedSql = sql;
+        return {
+          all: async () => ([{
+            id: 999,
+            user_id: 1,
+            image_data: null,
+            title: 'Stub',
+            description: 'Stub desc',
+            location: 'Nowhere',
+            price: 5,
+            created_at: new Date().toISOString(),
+            lat: 1,
+            lon: 2,
+            owner_username: 'stub',
+            distance_m: 42.4
+          }])
+        };
+      }
+      return originalPrepare.call(this, sql);
+    };
+
+    try {
+      const res = await request(app).get('/api/listings/nearby?lat=1&lon=2&radius_m=500');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body[0].distance_m).toBe(42);
+      expect(capturedSql).toContain('ST_DWithin');
+      expect(capturedSql).toContain('ST_Distance');
+    } finally {
+      app._db.prepare = originalPrepare;
+      features.postgisNearby = originalFeature;
+    }
   });
 });
