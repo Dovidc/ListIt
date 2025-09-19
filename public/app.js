@@ -5449,8 +5449,13 @@ function App(){
               const covers = await api.getCoversBatch(ids, { silent: true });
               if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
                 const patch = {};
-                covers.forEach(r => { if (r && r.id != null) patch[r.id] = r.image_data ? { url: r.image_data } : null; });
-                setCoverById(prev => ({ ...prev, ...patch }));
+                covers.forEach(r => {
+                  if (!r || r.id == null) return;
+                  if (r.image_data) patch[r.id] = { url: r.image_data };
+                });
+                if (Object.keys(patch).length) {
+                  setCoverById(prev => ({ ...prev, ...patch }));
+                }
               }
             }
           } catch {}
