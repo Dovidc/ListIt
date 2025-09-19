@@ -2123,7 +2123,7 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
       )
     : H('div', { className: 'lightbox-empty' }, loading ? 'Loading images...' : 'No images available');
 
-  const thumbsContent = len > 1
+  const thumbsContent = len
     ? H('div', { className: 'lightbox-thumbs' },
         ...list.map((img, i) => H('img', {
           key: String(i),
@@ -2134,17 +2134,14 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
         }))
       )
     : H('div', { className: 'lightbox-thumbs empty' },
-        H('span', null, loading ? 'Loading photos...' : (len ? 'Only one photo for this listing' : 'No photos yet'))
+        H('span', null, loading ? 'Loading photos...' : 'No photos yet')
       );
 
   const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
     H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, 'X'),
     H('div', { className: 'lightbox-body' },
       H('div', { className: 'lightbox-stage' },
-        canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
-        imageContent,
-        len > 1 ? H('div', { className: 'lightbox-counter' }, `${safeIndex + 1} / ${len}`) : null,
-        canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
+        imageContent
       ),
       H('div', { className: 'lightbox-footer' }, thumbsContent)
     ),
