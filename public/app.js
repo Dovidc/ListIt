@@ -166,6 +166,26 @@
     return y;
   }
 
+  function useBodyScrollLock(active) {
+    useEffect(() => {
+      if (!active) return undefined;
+      const { style } = document.body;
+      const previousOverflow = style.overflow;
+      const previousPaddingRight = style.paddingRight;
+      const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+      style.overflow = 'hidden';
+      if (scrollBarWidth > 0) {
+        const computed = window.getComputedStyle(document.body);
+        const currentPadding = parseFloat(computed.paddingRight || '0') || 0;
+        style.paddingRight = `${currentPadding + scrollBarWidth}px`;
+      }
+      return () => {
+        style.overflow = previousOverflow || '';
+        style.paddingRight = previousPaddingRight || '';
+      };
+    }, [active]);
+  }
+
   // Compute absolute pageY of an element
   function pageTop(el) {
     const r = el.getBoundingClientRect();
@@ -1942,7 +1962,8 @@ async function submit(e){
     fetchPriority = 'auto',
     style,
     className,
-    onClick
+    onClick,
+    ...imgProps
   }) {
     const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
     const srcSet = hasResponsive
@@ -1957,10 +1978,11 @@ async function submit(e){
       alt,
       loading,
       decoding,
-      fetchpriority: fetchPriority,
+      fetchPriority,
       style,
       className,
-      onClick
+      onClick,
+      ...imgProps
     });
   }
 
@@ -2117,90 +2139,161 @@ async function submit(e){
 
 
 // --- Listing Gallery Modal ---
-function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = false }) {
-  const list = Array.isArray(images) ? images.filter(Boolean) : [];
-  const len = list.length;
-  const safeIndex = len ? Math.min(Math.max(Number(index) || 0, 0), len - 1) : 0;
-  const canNavigate = len > 1 && typeof onIndex === 'function';
+  function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = false }) {
+    useBodyScrollLock(open);
 
-  React.useEffect(() => {
-    if (!open) return;
-    if (index !== safeIndex) {
-      onIndex?.(safeIndex);
-    }
-  }, [open, safeIndex, index, onIndex]);
+    const list = Array.isArray(images) ? images.filter(Boolean) : [];
+    const len = list.length;
+    const safeIndex = len ? Math.min(Math.max(Number(index) || 0, 0), len - 1) : 0;
+    const canNavigate = len > 1 && typeof onIndex === 'function';
+    const currentSrc = len ? list[safeIndex] : '';
 
-  React.useEffect(() => {
-    if (!open) return;
-    const handler = (evt) => {
-      if (evt.key === 'Escape') {
-        evt.preventDefault();
-        onClose?.();
+    const [stageLoaded, setStageLoaded] = React.useState(false);
+
+    React.useEffect(() => {
+      if (!open) {
+        setStageLoaded(false);
         return;
       }
-      if (!canNavigate) return;
-      if (evt.key === 'ArrowRight') {
-        evt.preventDefault();
-        onIndex?.((safeIndex + 1) % len);
-      } else if (evt.key === 'ArrowLeft') {
-        evt.preventDefault();
-        onIndex?.((safeIndex - 1 + len) % len);
+      setStageLoaded(false);
+    }, [open, currentSrc]);
+
+    const handleStageSettled = React.useCallback(() => {
+      setStageLoaded(true);
+    }, []);
+
+    React.useEffect(() => {
+      if (!open) return;
+      if (index !== safeIndex) {
+        onIndex?.(safeIndex);
       }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
+    }, [open, safeIndex, index, onIndex]);
 
-  if (!open) return null;
+    React.useEffect(() => {
+      if (!open) return;
+      const handler = (evt) => {
+        if (evt.key === 'Escape') {
+          evt.preventDefault();
+          onClose?.();
+          return;
+        }
+        if (!canNavigate) return;
+        if (evt.key === 'ArrowRight') {
+          evt.preventDefault();
+          onIndex?.((safeIndex + 1) % len);
+        } else if (evt.key === 'ArrowLeft') {
+          evt.preventDefault();
+          onIndex?.((safeIndex - 1 + len) % len);
+        }
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
 
-  const imageContent = len
-    ? H('div', { className: 'lightbox-main' },
-        H(ResponsiveImage, {
-          src: list[safeIndex],
-          alt: `Listing image ${safeIndex + 1}`,
-          widths: [480, 720, 1080, 1440],
-          sizes: '100vw',
-          loading: 'eager',
-          fetchPriority: 'high',
-          className: 'lightbox-img'
-        })
+    if (!open) return null;
+
+    const stageOverlay = (!stageLoaded && currentSrc) || (loading && !len)
+      ? H('div', { className: 'lightbox-stage-skeleton', 'aria-hidden': true })
+      : null;
+
+    const imageContent = len
+      ? H('div', { className: 'lightbox-main' },
+          H(ResponsiveImage, {
+            src: currentSrc,
+            alt: `Listing image ${safeIndex + 1}`,
+            widths: [480, 720, 1080, 1440],
+            sizes: '100vw',
+            loading: 'eager',
+            fetchPriority: 'high',
+            className: 'lightbox-img',
+            onLoad: handleStageSettled,
+            onError: handleStageSettled,
+            style: { opacity: stageLoaded ? 1 : 0, transition: 'opacity 180ms ease' }
+          })
+        )
+      : H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available');
+
+    const thumbsContent = len
+      ? H('div', { className: 'lightbox-thumbs' },
+          ...list.map((img, i) => H('img', {
+            key: String(i),
+            src: img,
+            alt: `Thumbnail ${i + 1}`,
+            className: i === safeIndex ? 'active' : '',
+            onClick: () => onIndex?.(i)
+          }))
+        )
+      : (loading
+          ? H('div', { className: 'lightbox-thumbs loading', 'aria-hidden': true },
+              ...Array.from({ length: 4 }).map((_, i) =>
+                H('div', { key: `s-${i}`, className: 'lightbox-thumb-skeleton' })
+              )
+            )
+          : H('div', { className: 'lightbox-thumbs empty' },
+              H('span', null, 'No photos yet')
+            )
+        );
+
+    const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
+      H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, 'X'),
+      H('div', { className: 'lightbox-body' },
+        H('div', { className: 'lightbox-stage' },
+          stageOverlay,
+          canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
+          imageContent,
+          canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
+        ),
+        H('div', { className: 'lightbox-footer' }, thumbsContent)
       )
-    : H('div', { className: 'lightbox-empty' }, loading ? 'Loading images...' : 'No images available');
+    );
 
-  const thumbsContent = len
-    ? H('div', { className: 'lightbox-thumbs' },
-        ...list.map((img, i) => H('img', {
-          key: String(i),
-          src: img,
-          alt: `Thumbnail ${i + 1}`,
-          className: i === safeIndex ? 'active' : '',
-          onClick: () => onIndex?.(i)
-        }))
-      )
-    : H('div', { className: 'lightbox-thumbs empty' },
-        H('span', null, loading ? 'Loading photos...' : 'No photos yet')
-      );
+    return ReactDOM.createPortal(
+      H('div', {
+        className: 'lightbox-overlay',
+        onClick: (evt) => { if (evt.target === evt.currentTarget) onClose?.(); }
+      }, overlayContent),
+      document.body
+    );
+  }
 
-  const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
-    H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, 'X'),
-    H('div', { className: 'lightbox-body' },
-      H('div', { className: 'lightbox-stage' },
-        imageContent
+// --- Listing Modal (portal shell) ---
+  function ListingModal({ open, item, onClose, cardProps = {} }) {
+    useBodyScrollLock(open);
+
+    React.useEffect(() => {
+      if (!open) return;
+      const handler = (evt) => {
+        if (evt.key === 'Escape') {
+          evt.preventDefault();
+          onClose?.();
+        }
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [open, onClose]);
+
+    if (!open || !item) return null;
+
+    return ReactDOM.createPortal(
+      H('div', {
+        className: 'modal open',
+        onClick: (evt) => {
+          if (evt.target === evt.currentTarget || evt.target.classList.contains('modal')) {
+            onClose?.();
+          }
+        }
+      },
+        H('div', {
+          className: 'modal-inner listing-modal',
+          onClick: (evt) => evt.stopPropagation()
+        },
+          H('button', { className: 'close', onClick: onClose }, 'x'),
+          H(ListingCard, { item, viewContext: 'modal', ...cardProps })
+        )
       ),
-      H('div', { className: 'lightbox-footer' }, thumbsContent)
-    ),
-    loading ? H('div', { className: 'lightbox-info' }, len ? 'Loading more images...' : 'Loading images...') : null
-  );
-
-  return ReactDOM.createPortal(
-    H('div', {
-      className: 'lightbox-overlay',
-      onClick: (evt) => { if (evt.target === evt.currentTarget) onClose?.(); }
-    }, overlayContent),
-    document.body
-  );
-}
-
+      document.body
+    );
+  }
 
 // --- Listing Card ---
 function ListingCard({
@@ -2213,7 +2306,8 @@ function ListingCard({
   onAdminDelete,
   onViewSeller,
   onToggleSold,
-  showDistance = false
+  showDistance = false,
+  viewContext = 'grid'
 }) {
 
   const fallbackImages = useMemo(() => collectListingImages(item, item?.__cover), [item, item?.__cover]);
@@ -2229,6 +2323,8 @@ function ListingCard({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [derivedMeters, setDerivedMeters] = React.useState(null);
+
+  const isModalView = viewContext === 'modal';
 
   const normalizedBaseGallery = useMemo(() => {
     if (Array.isArray(baseGallery) && baseGallery.length) return baseGallery;
@@ -2350,6 +2446,16 @@ function ListingCard({
   const isFree = Number(item?.price ?? 0) === 0;
   const [soldBusy, setSoldBusy] = useState(false);
   const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
+  const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
+  const [coverLoading, setCoverLoading] = useState(() => Boolean(coverSrc));
+
+  useEffect(() => {
+    setCoverLoading(Boolean(coverSrc));
+  }, [coverSrc, item?.id]);
+
+  const handleCoverSettled = useCallback(() => {
+    setCoverLoading(false);
+  }, []);
 
   const controls = [];
   if (!user || user.id !== item.user_id) {
@@ -2436,8 +2542,6 @@ function ListingCard({
     return H('span', null, `@${item.owner_username}`);
   };
 
-  const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
-
   const openGalleryFromEvent = useCallback((evt) => {
     if (evt && typeof evt.preventDefault === 'function') {
       evt.preventDefault();
@@ -2448,7 +2552,14 @@ function ListingCard({
     handleOpenGallery(0);
   }, [handleOpenGallery]);
 
-  return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, onPointerDown: prefetchImages, onTouchStart: prefetchImages, tabIndex: -1 },
+  const cardEventProps = isModalView ? {} : {
+    onMouseEnter: prefetchImages,
+    onFocus: prefetchImages,
+    onPointerDown: prefetchImages,
+    onTouchStart: prefetchImages
+  };
+
+  return H('div', { className: 'card', ...cardEventProps, tabIndex: -1 },
     H('div', {
       className: 'aspect',
       onClick: openGalleryFromEvent,
@@ -2459,12 +2570,17 @@ function ListingCard({
         borderRadius: 8
       }
     },
+      coverLoading && coverSrc ? H('div', { className: 'image-skeleton', 'aria-hidden': true }) : null,
       coverSrc
         ? H(ResponsiveImage, {
             src: coverSrc,
             alt: item.title || 'Listing image',
             style: { width: '100%', height: '100%', objectFit: 'cover' },
             sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
+            loading: isModalView ? 'eager' : 'lazy',
+            fetchPriority: isModalView ? 'high' : 'auto',
+            onLoad: handleCoverSettled,
+            onError: handleCoverSettled,
             onClick: openGalleryFromEvent
           })
         : H('div', {
@@ -3323,13 +3439,6 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
   return () => { mounted = false; };
 }, [sellerId]);
 
-  useEffect(() => {
-    if (!selectedListing) return;
-    const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [selectedListing]);
-
   useEffect(() => { setTab('active'); }, [sellerId]);
 
   const handleSelectListing = useCallback((listing, coverSrc) => {
@@ -3464,31 +3573,26 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
           );
         })(),
 
-    // In SellerProfile component, update the modal section:
-    selectedListing && H('div', {
-      className: 'modal open',
-      onClick: (e) => { if (e.target.classList.contains('modal')) setSelectedListing(null); }
-    },
-      H('div', { className: 'modal-inner listing-modal' },
-        H('button', { className: 'close', onClick: () => setSelectedListing(null) }, 'x'),
-        H(ListingCard, {
-          item: selectedListing,
-          user,
-          canEdit: false,
-          onMessage: (item) => {
-            setSelectedListing(null); // Close the modal first
-            onMessage(item); // Then trigger the message flow
-          },
-          onAdminDelete: (id) => {
-            setListings(prev => prev.filter(l => l.id !== id));
-            setSelectedListing(null);
-            onAdminDelete?.(id);
-          },
-          showDistance: false,
-          onViewSeller: null // Don't allow recursive seller viewing
-        })
-      )
-    )
+    H(ListingModal, {
+      open: !!selectedListing,
+      item: selectedListing,
+      onClose: () => setSelectedListing(null),
+      cardProps: {
+        user,
+        canEdit: false,
+        onMessage: (item) => {
+          setSelectedListing(null);
+          onMessage(item);
+        },
+        onAdminDelete: (id) => {
+          setListings(prev => prev.filter(l => l.id !== id));
+          setSelectedListing(null);
+          onAdminDelete?.(id);
+        },
+        showDistance: false,
+        onViewSeller: null
+      }
+    })
   );
 }
 
@@ -4024,9 +4128,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       };
     }, [load]);
 
-    const esc = (e)=> { if(e.key==='Escape') setSelected(null); };
-    useEffect(()=>{ if(selected){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [selected]);
-
     function handleEdit(it) {
       setSelected(null);
       setTab('browse');
@@ -4090,23 +4191,22 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
 
-      selected && H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) setSelected(null); } },
-        H('div', { className:'modal-inner listing-modal' },
-          H('button', { className:'close', onClick:()=>setSelected(null) }, 'x'),
-          H(ListingCard, {
-            item: selected,
-            user,
-            canEdit: !!mineById[selected.id],
-            onEdit: handleEdit,
-            onDelete,
-            onMessage,
-            onAdminDelete,
-            showDistance: true,
-            onViewSeller,
-            onToggleSold
-          })
-        )
-      )
+      H(ListingModal, {
+        open: !!selected,
+        item: selected,
+        onClose: () => setSelected(null),
+        cardProps: {
+          user,
+          canEdit: !!mineById[selected?.id],
+          onEdit: handleEdit,
+          onDelete,
+          onMessage,
+          onAdminDelete,
+          showDistance: true,
+          onViewSeller,
+          onToggleSold
+        }
+      })
       )
     );
   }
@@ -4272,13 +4372,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   }) {
     const [showHelp, setShowHelp] = useState(false);
     const [profileSelected, setProfileSelected] = useState(null);
-
-    useEffect(() => {
-      if (!profileSelected) return;
-      const esc = (e) => { if (e.key === 'Escape') setProfileSelected(null); };
-      window.addEventListener('keydown', esc);
-      return () => window.removeEventListener('keydown', esc);
-    }, [profileSelected]);
 
     const handleEdit = useCallback((it) => {
       setProfileSelected(null);
@@ -4491,25 +4584,21 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       showHelp && H(AutoListHelpModal, { onClose: () => setShowHelp(false) }),
 
-      profileSelected && H('div', {
-        className:'modal open',
-        onClick: (e) => { if (e.target.classList.contains('modal')) setProfileSelected(null); }
-      },
-        H('div', { className: 'modal-inner listing-modal' },
-          H('button', { className: 'close', onClick: () => setProfileSelected(null) }, 'x'),
-          H(ListingCard, {
-            item: profileSelected,
-            user,
-            canEdit: true,
-            onEdit: handleEdit,
-            onDelete: handleDelete,
-            onAdminDelete: handleAdminDelete,
-            onViewSeller,
-            onToggleSold,
-            showDistance: false
-          })
-        )
-      )
+      H(ListingModal, {
+        open: !!profileSelected,
+        item: profileSelected,
+        onClose: () => setProfileSelected(null),
+        cardProps: {
+          user,
+          canEdit: true,
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onAdminDelete: handleAdminDelete,
+          onViewSeller,
+          onToggleSold,
+          showDistance: false
+        }
+      })
     );
   }
 
@@ -5100,13 +5189,6 @@ function App(){
 
     // Modal selection for full listing card
     const [selectedListing, setSelectedListing] = useState(null);
-    useEffect(() => {
-      if (!selectedListing) return;
-      const esc = (e) => { if (e.key === 'Escape') setSelectedListing(null); };
-      window.addEventListener('keydown', esc);
-      return () => window.removeEventListener('keydown', esc);
-    }, [selectedListing]);
-
     const [editing, setEditing] = useState(null);
     const [activeConvoId, setActiveConvoId] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -5750,40 +5832,35 @@ function App(){
           // Empty state
           !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
-          // Modal with full card (distance OFF)
-          selectedListing && H('div', {
-            className:'modal open',
-            onClick:(e)=>{ if (e.target.classList.contains('modal')) setSelectedListing(null); }
-          },
-            H('div', { className:'modal-inner listing-modal' },
-              H('button', { className:'close', onClick:()=>setSelectedListing(null) }, 'x'),
-              H(ListingCard, {
-                item: selectedListing,
-                user,
-                canEdit: !!mineById[selectedListing.id],
-                onEdit:(it)=>{
-                  if(user?.account_status === 'locked'){ showLockedBanner(); return; }
-                  const rich = mineById[it.id] || it;
-                  setEditing(rich);
-                  setShowForm(true);
+          H(ListingModal, {
+            open: !!selectedListing,
+            item: selectedListing,
+            onClose: () => setSelectedListing(null),
+            cardProps: {
+              user,
+              canEdit: !!mineById[selectedListing?.id],
+              onEdit: (it) => {
+                if (user?.account_status === 'locked') { showLockedBanner(); return; }
+                const rich = mineById[it.id] || it;
+                setEditing(rich);
+                setShowForm(true);
+                setSelectedListing(null);
+                // REMOVED window.scrollTo
+              },
+              onDelete: async (it) => {
+                if (confirm('Remove this listing? (Your past messages will remain)')) {
+                  await api.deleteListing(it.id);
                   setSelectedListing(null);
-                  // REMOVED window.scrollTo
-                },
-                onDelete: async(it)=>{
-                  if (confirm('Remove this listing? (Your past messages will remain)')) {
-                    await api.deleteListing(it.id);
-                    setSelectedListing(null);
-                    await refreshListings();
-                  }
-                },
-                onMessage: startMessage,
-                onAdminDelete: handleAdminDelete,
-                showDistance: false,
-                onViewSeller: handleViewSeller, // NEW: Pass the handler
-                onToggleSold: mineById[selectedListing.id] ? toggleSold : undefined
-              })
-            )
-          )
+                  await refreshListings();
+                }
+              },
+              onMessage: startMessage,
+              onAdminDelete: handleAdminDelete,
+              showDistance: false,
+              onViewSeller: handleViewSeller,
+              onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined
+            }
+          })
         ),
 
         !viewingSeller && (tab==='nearby') &&
