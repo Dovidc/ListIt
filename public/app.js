@@ -1724,15 +1724,24 @@ async function submit(e){
     }, [open, len, index, onIndex]);
 
     const mainContent = len
-      ? H(ResponsiveImage, {
-          src: display[safeIndex] || display[0],
-          alt: 'Image ' + (safeIndex + 1),
-          widths: [480, 720, 1080, 1440],
-          sizes: '90vw',
-          loading: 'eager',
-          fetchPriority: 'high',
-          style: { maxHeight: '80vh', width: 'auto', objectFit: 'contain' }
-        })
+      ? H('div', { style: { width: '100%', display: 'flex', justifyContent: 'center' } },
+          H(ResponsiveImage, {
+            src: display[safeIndex] || display[0],
+            alt: 'Image ' + (safeIndex + 1),
+            widths: [480, 720, 1080, 1440],
+            sizes: '100vw',
+            loading: 'eager',
+            fetchPriority: 'high',
+            style: {
+              maxHeight: '80vh',
+              maxWidth: '100vw',
+              width: '100%',
+              height: 'auto',
+              objectFit: 'contain',
+              display: 'block'
+            }
+          })
+        )
       : H('div', {
           style: {
             minHeight: 200,
