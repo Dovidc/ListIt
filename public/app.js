@@ -2202,49 +2202,51 @@ function ListingCard({
   }, [item?.id]);
 
   React.useEffect(() => {
-    if (!Array.isArray(baseGallery)) return;
-    setGalleryImages(prev => sameList(prev, baseGallery) ? prev : baseGallery);
+    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    setGalleryImages(prev => {
+      const prevList = Array.isArray(prev) ? prev : [];
+      return sameList(prevList, baseList) ? prevList : baseList;
+    });
   }, [baseGallery, sameList]);
 
   React.useEffect(() => {
-    if (!galleryOpen || !item?.id) return;
-
-    let cancelled = false;
-
-    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    if (!item?.id) return;
     const cached = listingImageCache.get(item.id);
     if (Array.isArray(cached) && cached.length) {
       const cachedList = dedupeImageUrls(cached);
       setGalleryImages(prev => sameList(prev, cachedList) ? prev : cachedList);
     }
+  }, [item?.id, sameList]);
+
+  const handleOpenGallery = useCallback(async (start = 0) => {
+    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    setGalleryIndex(Number.isFinite(start) ? start : 0);
+    setGalleryImages(prev => {
+      const prevList = Array.isArray(prev) ? prev : [];
+      return sameList(prevList, baseList) ? prevList : baseList;
+    });
+    setGalleryOpen(true);
+    prefetchImages();
+
+    if (!item?.id) return;
 
     setGalleryLoading(true);
-
-    fetchListingImagesCached(item.id)
-      .then(arr => {
-        if (cancelled) return;
-        const fetched = Array.isArray(arr) ? arr : [];
-        const merged = dedupeImageUrls([...baseList, ...fetched]);
-        if (merged.length) {
-          listingImageCache.set(item.id, merged);
-        }
-        const next = merged.length ? merged : baseList;
-        setGalleryImages(prev => sameList(prev, next) ? prev : next);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        if (baseList.length) {
-          setGalleryImages(prev => sameList(prev, baseList) ? prev : baseList);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setGalleryLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [galleryOpen, item?.id, baseGallery, sameList]);
+    try {
+      const fetched = await fetchListingImagesCached(item.id);
+      const merged = dedupeImageUrls([...baseList, ...(Array.isArray(fetched) ? fetched : [])]);
+      if (merged.length) {
+        listingImageCache.set(item.id, merged);
+      }
+      setGalleryImages(prev => sameList(prev, merged) ? prev : merged);
+    } catch (err) {
+      console.warn('Failed to load gallery images for listing', item?.id, err);
+    } finally {
+      setGalleryLoading(false);
+    }
+  }, [item?.id, baseGallery, sameList, prefetchImages]);
 
   React.useEffect(() => {
+React.useEffect(() => {
     if (!item?.id) return;
     if (!Array.isArray(galleryImages) || !galleryImages.length) return;
     listingImageCache.set(item.id, galleryImages);
@@ -2263,13 +2265,6 @@ function ListingCard({
       setGalleryIndex(0);
     }
   }, [galleryOpen, galleryImages, galleryIndex]);
-
-  const handleOpenGallery = useCallback((start = 0) => {
-    const next = Number.isFinite(start) ? start : 0;
-    setGalleryIndex(next);
-    setGalleryOpen(true);
-    prefetchImages();
-  }, [prefetchImages]);
 
   React.useEffect(() => {
     if (!showDistance) {

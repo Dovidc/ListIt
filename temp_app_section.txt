@@ -1,0 +1,2501 @@
+// public/app.js
+//
+// S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
+// Messages: paste/drag/attach images -> S3 URLs (kept!)
+// Conversations list: red "x" delete button (kept!)
+// CHANGE: All listing fields optional EXCEPT at least one image.
+//         If price field empty/invalid, default to $0.00 and render the price in green.
+// NEW: MassList -- pick multiple photos -> AI per image -> create multiple listings with uploads.
+// NEW: Auto-list setting (Profile): when ON, attaching photos in the New listing form
+//      will AI-analyze and immediately create the listing + upload photos automatically.
+//      Includes "?" help modal with high-contrast text.
+// NEW: Auto-list sub-toggle: "Also post to Nearby." When Auto-list is ON and this is enabled,
+//      auto-created (and MassListed) items are created with enable_nearby=1 and lat/lon set.
+//
+// NEW (this file):
+// - Thin-fetch + pagination for the Listings tab (75 per page, default sort=Newest)
+//   * /api/listings uses ?noimg=1 (metadata only) with ?page=1&limit=75
+//   * Batch prewarm first covers via /api/listings/covers
+//   * Client guards against array OR {rows, hasNext, total, page} responses.
+
+(() => {
+  const { useCallback, useEffect, useMemo, useRef, useState } = React;
+
+  // Device detection
+  // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
+  // - Matches iPhone/Android/Windows Phone
+  // - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
+  function isMobileDevice() {
+    const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
+
+    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
+      return true;
+    }
+
+    // iPadOS desktop UA workaround
+    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // small bridge so api can redirect UI on 401s + track global loading
+  const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
+
+  // --- Helpers ---
+  function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
+  function price(n) { return Number(n ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
+  function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
+  function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
+  function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+  function fmtDistance(m){
+    if (!Number.isFinite(m)) return '';
+    if (m < 1609.344 * 0.3) {
+      const ft = m * 3.28084;
+      if (ft < 1000) return `${Math.round(ft)} ft`;
+      return `${Math.round(ft/100)/10}k ft`;
+    }
+    const mi = m / 1609.344;
+    return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+  }
+  const _toRad = d => d * Math.PI / 180;
+  function haversineMeters(aLat, aLon, bLat, bLon) {
+    const R = 6371000;
+    const dLat = _toRad(bLat - aLat);
+    const dLon = _toRad(bLon - aLon);
+    const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
+  }
+  
+  // NEW: Convert S3 URL to data URL for AI analysis
+  async function urlToDataUrl(url) {
+    if (!url || !url.startsWith('http')) return null;
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) throw new Error('Failed to fetch');
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to convert URL to data URL:', error);
+      return null;
+    }
+  }
+  
+  let _coordsPromise = null;
+  function getUserCoordsOnce() {
+    if (_coordsPromise) return _coordsPromise;
+    if (!('geolocation' in navigator)) return Promise.resolve(null);
+    _coordsPromise = new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude } ),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
+    return _coordsPromise;
+  }
+
+  // Arrange items so rows read left->right in a CSS multi-column layout
+  function interleaveByColumns(arr, cols) {
+    if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
+    const out = [];
+    for (let c = 0; c < cols; c++) {
+      for (let i = c; i < arr.length; i += cols) out.push(arr[i]);
+    }
+    return out;
+  }
+
+  // Read actual column-count from the masonry container (responds to CSS + inline styles)
+  function useColumnCount(ref, fallbackCols = 3) {
+    const [cols, setCols] = React.useState(fallbackCols);
+    React.useEffect(() => {
+      if (!ref.current) return;
+      const el = ref.current;
+      const read = () => {
+        const cs = getComputedStyle(el);
+        const n = parseInt(cs.columnCount, 10);
+        setCols(Number.isFinite(n) && n > 0 ? n : fallbackCols);
+      };
+      read();
+      const ro = new ResizeObserver(read);
+      ro.observe(el);
+      window.addEventListener('resize', read);
+      return () => { ro.disconnect(); window.removeEventListener('resize', read); };
+    }, [ref, fallbackCols]);
+    return cols;
+  }
+
+  // --- NEW: tiny helpers for virtualization (kept; used by Nearby) ---
+  function useElementWidth(ref) {
+    const [w, setW] = useState(0);
+    useEffect(() => {
+      if (!ref.current) return;
+      const el = ref.current;
+      const update = () => setW(el.clientWidth || 0);
+      update();
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      window.addEventListener('resize', update);
+      return () => { ro.disconnect(); window.removeEventListener('resize', update); };
+    }, [ref]);
+    return w;
+  }
+
+  function useWindowScrollY() {
+    const [y, setY] = useState(window.scrollY || 0);
+    useEffect(() => {
+      let ticking = false;
+      const onScroll = () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            setY(window.scrollY || 0);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+    return y;
+  }
+
+  // Compute absolute pageY of an element
+  function pageTop(el) {
+    const r = el.getBoundingClientRect();
+    return r.top + (window.scrollY || 0);
+  }
+
+  // --- NEW: robust response guards for listings / pagination ---
+  function normalizeListingsResponse(res, limit = 75) {
+    let rows = [];
+    if (Array.isArray(res)) rows = res;
+    else if (res && typeof res === 'object') {
+      if (Array.isArray(res.rows)) rows = res.rows;
+      else if (Array.isArray(res.items)) rows = res.items;
+      else if (Array.isArray(res.listings)) rows = res.listings;
+      else if (Array.isArray(res.data)) rows = res.data;
+    }
+    let hasNext = false;
+    let nextCursor = null;
+    if (res && typeof res === 'object') {
+      if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
+      else if (typeof res.next === 'boolean') hasNext = res.next;
+      else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
+        const shown = (res.page - 1) * limit + rows.length;
+        hasNext = shown < res.total;
+      } else {
+        hasNext = rows.length === limit;
+      }
+      if (res.next_cursor != null) nextCursor = res.next_cursor;
+      else if (res.cursor != null) nextCursor = res.cursor;
+    } else {
+      hasNext = rows.length === limit;
+    }
+    return { rows, hasNext, nextCursor };
+  }
+  const asArray = (x) =>
+    Array.isArray(x) ? x
+    : (x && typeof x === 'object' && (Array.isArray(x.rows) || Array.isArray(x.items) || Array.isArray(x.listings) || Array.isArray(x.data)))
+      ? normalizeListingsResponse(x).rows
+      : [];
+
+  // --- NEW: zero-dependency virtualized masonry (kept; used by Nearby) ---
+  function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
+    const scrollY = useWindowScrollY();
+    const containerW = useElementWidth(containerRef);
+
+    const [heightMap, setHeightMap] = useState(() => Object.create(null)); // id->height
+    const registerHeight = React.useCallback((id, h) => {
+      if (!id || !Number.isFinite(h) || h <= 0) return;
+      setHeightMap(m => (m[id] === h ? m : { ...m, [id]: h }));
+    }, []);
+
+    const layout = useMemo(() => {
+      const cols = Math.max(1, columnCount || 1);
+      const gap = columnGap;
+      const w = Math.max(1, containerW);
+      const colW = (w - gap * (cols - 1)) / cols;
+
+      const colHeights = new Array(cols).fill(0);
+      const pos = new Array(items.length);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const h = heightMap[it.id] || estimateHeight;
+        // pick shortest column
+        let targetCol = 0;
+        for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
+        const top = colHeights[targetCol];
+        const left = (colW + gap) * targetCol;
+        colHeights[targetCol] = top + h + gap;
+        pos[i] = { top, left, width: colW, height: h };
+      }
+      const containerHeight = Math.max(...colHeights, 0);
+      return { positions: pos, containerHeight, colWidth: colW, gap };
+    }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
+
+    const viewport = useMemo(() => {
+      const el = containerRef.current;
+      if (!el) return { top: 0, bottom: 0 };
+      const cTop = pageTop(el);
+      const over = (window.innerHeight || 0) * overscanVH;
+      const top = (scrollY - cTop) - over;
+      const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
+      return { top, bottom };
+    }, [containerRef, scrollY, overscanVH]);
+
+    const visible = useMemo(() => {
+      const out = [];
+      const { positions } = layout;
+      if (!positions || positions.length === 0) return out;
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        if (!p) continue;
+        const pBottom = p.top + p.height;
+        if (pBottom >= viewport.top && p.top <= viewport.bottom) {
+          out.push({ index: i, item: items[i], pos: p });
+        }
+      }
+      return out;
+    }, [items, layout, viewport]);
+
+    return { ...layout, visible, registerHeight };
+  }
+
+  // --- Helper: fetch coords and reverse-geocode into a display string
+  async function fetchCoordsAndReverse() {
+    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+    const { coords } = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+    );
+    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+    return {
+      lat: r?.lat ?? coords.latitude,
+      lon: r?.lon ?? coords.longitude,
+      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    };
+  }
+
+  // --- Global Loader ---
+  function GlobalLoader({ active }) {
+    if (!active) return null;
+    return H('div', { className: 'global-loader' },
+      H('div', { className: 'spinner' }),
+      H('div', { className: 'loader-text' }, 'Loading...')
+    );
+  }
+
+  function AdTile({ ad, cols = 4, className, preview = false }) {
+    if (!ad) return null;
+    const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
+    const hasImage = !!ad.image_url;
+    const href = ad.target_url || '#';
+    const ctaLabel = (ad.cta_label || 'Visit site').slice(0, 40);
+    const style = { gridColumn: `span ${spanCols}` };
+    if (ad.background) style.background = ad.background;
+    if (preview) style.cursor = 'default';
+    const cardClass = `card ad-card${hasImage ? '' : ' no-art'}${className ? ` ${className}` : ''}`;
+    const anchorProps = {
+      className: cardClass,
+      href,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      style
+    };
+    if (preview) {
+      anchorProps.onClick = (e) => e.preventDefault();
+      anchorProps.target = '_self';
+      anchorProps.rel = 'noopener';
+      anchorProps.tabIndex = -1;
+    }
+    return H('a', anchorProps,
+      H('div', { className: 'ad-card__content' },
+        H('span', { className: 'ad-card__tag' }, 'Sponsored'),
+        H('div', { className: 'ad-card__title' }, ad.title || 'Advertisement'),
+        ad.subtitle && H('div', { className: 'ad-card__subtitle' }, ad.subtitle),
+        H('div', { className: 'ad-card__ctaRow' },
+          H('span', { className: 'ad-card__cta' }, ctaLabel),
+          H('span', { className: 'ad-card__arrow' }, '>')
+        )
+      ),
+      hasImage && H('div', { className: 'ad-card__art' },
+        H('img', {
+          src: ad.image_url,
+          alt: ad.title ? `${ad.title} artwork` : 'Advertisement art',
+          loading: 'lazy',
+          decoding: 'async'
+        })
+      )
+    );
+  }
+
+  // --- API ---
+const api = {
+  async _fetch(url, opts = {}, meta = {}) {
+    const silent = !!meta.silent;
+    if (!silent) AppNav.incLoad();
+    try {
+      const res = await fetch(url, { credentials: 'include', ...opts });
+      if (res.status === 401) {
+        AppNav.setUser(null);
+        AppNav.setTab('browse');
+        throw new Error('auth');
+      }
+      if (res.status === 423) {
+        try { await res.json(); } catch {}
+        AppNav.notifyLocked();
+        throw new Error('account_locked');
+      }
+      if (!res.ok) {
+        let payload = null;
+        try { payload = await res.json(); } catch {}
+        const msg = (payload?.error) || 'request_failed';
+        if (msg === 'account_locked') AppNav.notifyLocked();
+        throw new Error(msg);
+      }
+      try { return await res.json(); } catch { return null; }
+    } finally {
+      if (!silent) AppNav.decLoad();
+    }
+  },
+
+  me(meta) { return this._fetch('/api/me', { method:'GET' }, meta); },
+  
+  // In your api object, update login and register methods:
+login(email, password, meta) {
+  return this._fetch('/api/login', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify({ email, password }) 
+  }, meta);
+},
+
+register(payload, meta) { 
+  return this._fetch('/api/register', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify(payload) 
+  }, meta);
+},
+  
+  async logout(meta) {
+    try { 
+      await this._fetch('/api/logout', { method:'POST' }, meta); 
+    } catch {}
+  },
+
+    updatePaypalEmail(paypal_email, meta) {
+      return this._fetch('/api/me/paypal', {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ paypal_email })
+      }, meta);
+    },
+
+    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit, sort }
+    listAll(a, b, meta) {
+      let q, loc, page, limit, sort, cursor;
+      if (typeof a === 'object' && a !== null) {
+        q = a.q || '';
+        loc = a.loc || '';
+        page = a.page || 1;
+        limit = a.limit || 75;
+        sort = a.sort || 'new';
+        cursor = a.cursor || null;
+        meta = b || {};
+      } else {
+        q = a || '';
+        loc = b || '';
+        page = 1;
+        limit = 75;
+        sort = 'new';
+      }
+      const params = new URLSearchParams();
+      if (q)   params.set('q', q);
+      if (loc) params.set('loc', loc);
+      params.set('noimg', '1'); // thin-fetch
+      if (cursor != null) params.set('cursor', String(cursor));
+      else params.set('page', String(page));
+      params.set('limit', String(limit));
+      params.set('sort', sort);
+      const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
+      return this._fetch(url, { method: 'GET' }, meta);
+    },
+
+        // NEW: Get listings by a specific user
+    listByUser(userId, meta) {
+      return this._fetch(`/api/users/${userId}/listings`, { method:'GET' }, meta);
+    },
+
+    listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
+    createListing(payload, meta) {
+      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
+    },
+    updateListing(id, payload, meta) {
+      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
+    },
+    markListingSold(id, sold, meta) {
+      return this.updateListing(id, { sold: !!sold }, meta);
+    },
+    deleteListing(id, meta) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }, meta); },
+
+    adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
+    adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
+
+    listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
+    adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
+    adminCreateAd(payload, meta) {
+      return this._fetch('/api/admin/ads', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminUpdateAd(id, payload, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminDeleteAd(id, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, { method:'DELETE' }, meta);
+    },
+
+    searchCities(q, meta) {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      const url = '/api/cities' + (params.toString() ? `?${params.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, { ...(meta || {}), silent: true });
+    },
+
+    ensureConversation({ with_user_id, listing_id }, meta) {
+      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) }, meta);
+    },
+    listConversations(meta) { return this._fetch('/api/conversations', { method:'GET' }, meta); },
+    getMessages(id, meta)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }, meta); },
+    sendMessage(id, body, images, meta){
+      return this._fetch(`/api/conversations/${id}/messages`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ body, images })
+      }, meta);
+    },
+    // delete a conversation
+    deleteConversation(id, meta) {
+      return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
+    },
+
+    getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
+
+    // NEW: batch cover prewarm
+    getCoversBatch(ids = [], meta) {
+      const idsStr = Array.from(new Set(ids.filter(Number.isFinite))).slice(0, 200).join(',');
+      if (!idsStr) return Promise.resolve([]);
+      return this._fetch(`/api/listings/covers?ids=${encodeURIComponent(idsStr)}`, { method:'GET' }, meta);
+    },
+
+    aiAnalyze({ images, hint }, meta) {
+      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) }, meta);
+    },
+
+    reverseGeocode(lat, lon, meta) {
+      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
+    },
+
+    // Nearby
+    listNearby(lat, lon, radius_m = 150, meta) {
+      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    reportSeller(payload, meta) {
+      return this._fetch('/api/reports', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminSearchUsers(params = {}, meta) {
+      const q = params.q ?? params.query ?? '';
+      const limit = params.limit;
+      const searchParams = new URLSearchParams();
+      if (q) searchParams.set('q', q);
+      if (limit) searchParams.set('limit', String(limit));
+      const url = '/api/admin/users/search' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminGetUser(id, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}`, { method:'GET' }, meta);
+    },
+
+    adminGetUserReports(id, params = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      const searchParams = new URLSearchParams();
+      if (params.limit) searchParams.set('limit', String(params.limit));
+      const url = `/api/admin/users/${id}/reports` + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminUpdateUserStatus(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/status`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminTopReports(params = {}, meta) {
+      const searchParams = new URLSearchParams();
+      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));
+      if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));
+      if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));
+      const url = '/api/admin/reports/top' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminClearUserReports(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/reports/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    // --- S3 upload helpers ---
+    signUpload({ filename, contentType, bytes }, meta) {
+      return this._fetch('/api/uploads/sign', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ filename, contentType, bytes })
+      }, meta);
+    },
+    finalizeUpload({ listingId, key, url, width, height, bytes }, meta) {
+      const payload = {};
+      if (listingId != null) payload.listingId = listingId;
+      if (key != null) payload.key = key;
+      if (url != null) payload.url = url;
+      if (width != null) payload.width = width;
+      if (height != null) payload.height = height;
+      if (bytes != null) payload.bytes = bytes;
+      return this._fetch('/api/uploads/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    }
+  };
+
+  function createConcurrencyLimiter(maxConcurrent = 3) {
+    let active = 0;
+    const queue = [];
+
+    const next = () => {
+      if (active >= maxConcurrent || queue.length === 0) return;
+      const { fn, resolve, reject } = queue.shift();
+      active += 1;
+
+      let finished = false;
+      const finalize = () => {
+        if (!finished) {
+          finished = true;
+          active -= 1;
+          next();
+        }
+      };
+
+      try {
+        Promise.resolve(fn()).then(
+          (value) => {
+            finalize();
+            resolve(value);
+          },
+          (err) => {
+            finalize();
+            reject(err);
+          }
+        );
+      } catch (err) {
+        finalize();
+        reject(err);
+      }
+    };
+
+    return function schedule(fn) {
+      return new Promise((resolve, reject) => {
+        queue.push({ fn, resolve, reject });
+        next();
+      });
+    };
+  }
+
+  const uploadDraftCache = new WeakMap();
+  const s3UploadLimiter = createConcurrencyLimiter(3);
+  const listingImageCache = new Map();
+  const listingImageInFlight = new Map();
+
+  function dedupeImageUrls(input) {
+    if (!Array.isArray(input)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of input) {
+      if (typeof raw !== 'string') continue;
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const key = trimmed.split('?')[0];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+    }
+    return out;
+  }
+
+  function collectListingImages(listing, primarySrc, options = {}) {
+    const { includeDataFallback = true, includeListingFallbackFields = true, extra = [] } = options;
+    const remote = [];
+    let dataFallback = null;
+
+    function push(url) {
+      if (!url || typeof url !== 'string') return;
+      const trimmed = url.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+        if (includeDataFallback && !dataFallback) dataFallback = trimmed;
+      } else {
+        remote.push(trimmed);
+      }
+    }
+
+    const extras = Array.isArray(extra) ? extra : [extra];
+    extras.forEach(push);
+    push(primarySrc);
+
+    if (listing) {
+      if (Array.isArray(listing.images)) listing.images.forEach(push);
+      if (includeListingFallbackFields) {
+        push(listing.image_data);
+        push(listing.thumb_url);
+      }
+    }
+
+    const dedupedRemote = dedupeImageUrls(remote);
+    if (dedupedRemote.length) return dedupedRemote;
+    if (includeDataFallback && dataFallback) return [dataFallback];
+    return [];
+  }
+
+  async function measureImageFile(file) {
+    if (!(file instanceof File)) {
+      return { width: null, height: null };
+    }
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const dims = { width: img.naturalWidth || null, height: img.naturalHeight || null };
+        URL.revokeObjectURL(objectUrl);
+        resolve(dims);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: null, height: null });
+      };
+      img.src = objectUrl;
+    });
+  }
+
+  function clearDraftCacheForFile(file) {
+    if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
+  }
+
+  async function uploadFileDraft(file) {
+    if (!file) throw new Error('file_required');
+
+    if (!uploadDraftCache.has(file)) {
+      const uploadPromise = s3UploadLimiter(async () => {
+        const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+        if (sig?.error) throw new Error(sig.error);
+        if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
+
+        const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+        if (!putRes.ok) throw new Error('s3_put_failed');
+
+        const dims = await measureImageFile(file);
+
+        const finalizeRes = await api.finalizeUpload({
+          key: sig.Key,
+          url: sig.publicUrl,
+          width: dims.width,
+          height: dims.height,
+          bytes: file.size
+        }, { silent: true });
+
+        if (finalizeRes?.error) throw new Error(finalizeRes.error);
+        if (!finalizeRes?.uploadToken) throw new Error('missing_upload_token');
+
+        return {
+          uploadToken: finalizeRes.uploadToken,
+          publicUrl: finalizeRes.url || sig.publicUrl,
+          width: finalizeRes.width ?? dims.width ?? null,
+          height: finalizeRes.height ?? dims.height ?? null,
+          bytes: finalizeRes.bytes ?? file.size
+        };
+      }).catch((err) => {
+        clearDraftCacheForFile(file);
+        throw err;
+      });
+
+      uploadDraftCache.set(file, uploadPromise);
+    }
+
+    return uploadDraftCache.get(file);
+  }
+
+  async function fetchListingImagesCached(listingId) {
+    if (!Number.isFinite(Number(listingId))) return [];
+    if (listingImageInFlight.has(listingId)) {
+      return listingImageInFlight.get(listingId);
+    }
+    if (listingImageCache.has(listingId)) {
+      return listingImageCache.get(listingId);
+    }
+    const promise = (async () => {
+      try {
+        const arr = await api.getListingImages(listingId);
+        const safe = Array.isArray(arr) ? arr.filter(Boolean) : [];
+        const deduped = dedupeImageUrls(safe);
+        if (deduped.length) {
+          listingImageCache.set(listingId, deduped);
+        } else {
+          listingImageCache.delete(listingId);
+        }
+        return deduped;
+      } catch {
+        listingImageCache.delete(listingId);
+        return [];
+      } finally {
+        listingImageInFlight.delete(listingId);
+      }
+    })();
+    listingImageInFlight.set(listingId, promise);
+    return promise;
+  }
+
+  // Upload a single file to S3 then finalize in DB (for listings)
+  async function uploadOneImage(listingId, file) {
+    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+    if (sig?.error) throw new Error(sig.error);
+    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
+    if (!putRes.ok) throw new Error('s3_put_failed');
+
+    const dims = await measureImageFile(file);
+
+    await api.finalizeUpload({
+      listingId,
+      key: sig.Key,
+      url: sig.publicUrl,
+      width: dims.width,
+      height: dims.height,
+      bytes: file.size
+    });
+
+    return sig.publicUrl;
+  }
+
+  async function uploadFilesForListing(listingId, files = []) {
+    const out = [];
+    for (const f of files) {
+      const url = await uploadOneImage(listingId, f);
+      out.push(url);
+    }
+    return out;
+  }
+
+  // Upload a single file to S3 (for messages; no finalize, just return public URL)
+  async function uploadOneMessageImage(file) {
+    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+    if (sig.error) throw new Error(sig.error);
+
+    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
+    if (!putRes.ok) throw new Error('s3_put_failed');
+
+    return sig.publicUrl;
+  }
+
+  // --- Attach icon button (Messages) ---
+  function AttachButton({ onClick, title = 'Attach images' }) {
+    return H('button', {
+      className: 'icon-btn',
+      type: 'button',
+      onClick,
+      title,
+      'aria-label': title,
+      'data-testid': 'dm-attach',
+      style: {
+        width: 40, height: 40, borderRadius: 12,
+        border: '1px solid #e5e7eb',
+        background: '#fff',
+        display: 'grid',
+        placeItems: 'center',
+        cursor: 'pointer'
+      }
+    },
+      H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+        H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
+        H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
+        H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      )
+    );
+  }
+
+  // --- City Autocomplete (unchanged) ---
+  function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
+    const [open, setOpen] = useState(false);
+    const [hover, setHover] = useState(0);
+    const boxRef = useRef(null);
+
+    const list = useMemo(() => {
+      const v = (value || '').trim().toLowerCase();
+      const opts = Array.isArray(options) ? options : [];
+      if (!v) return opts.slice(0, 8);
+      return opts.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
+    }, [value, options]);
+
+    function pick(s) {
+      onChange(s);
+      setOpen(false);
+      setHover(0);
+      setTimeout(() => boxRef.current && boxRef.current.querySelector('input')?.focus(), 0);
+    }
+
+    function onKeyDown(e) {
+      if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) {
+        setOpen(true);
+        return;
+      }
+      if (!open) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHover(h => Math.min(h + 1, list.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setHover(h => Math.max(h - 1, 0)); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (list[hover]) pick(list[hover]); }
+      else if (e.key === 'Escape') { setOpen(false); }
+    }
+
+    function onFocus() { if (list.length) setOpen(true); }
+    function onBlur() { setTimeout(() => setOpen(false), 100); }
+
+    return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
+      H('input', {
+        placeholder:'City...',
+        value: value,
+        onChange: e => { onChange(e.target.value); setOpen(true); },
+        onKeyDown, onFocus, onBlur,
+        style:{ maxWidth:220 }
+      }),
+      H('button', { type:'button', className:'btn', onClick:onUseMyLocation }, 'Use my location'),
+      open && list.length > 0 && H('div', {
+        style: {
+          position:'absolute', top:'100%', left:0, right:0, zIndex: 50,
+          background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, marginTop:6,
+          boxShadow:'0 6px 20px rgba(0,0,0,0.08)', overflow:'hidden'
+        }
+      },
+        ...list.map((s, i) => H('div', {
+          key:s,
+          onMouseEnter:()=>setHover(i),
+          onMouseDown:(e)=>{ e.preventDefault(); pick(s); },
+          style:{
+            padding:'10px 12px',
+            background: i===hover ? '#f3f4f6' : 'transparent',
+            cursor:'pointer'
+          }
+        }, s))
+      )
+    );
+  }
+
+  // --- Header (profile tab shows @username) ---
+  // --- Header (simplified for modal auth) ---
+function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick, hasAdminUnread }) {
+  // If user not logged in, show Register/Login buttons
+  if (!user) {
+    return H('header', null,
+      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
+          H('div', { className: 'brand-badge' },
+            H('div', { className: 'brand-ring' }),
+            H('div', { className: 'brand-initials' }, 'CL')
+          ),
+          H('div', { className: 'brand-copy' },
+            H('div', { className: 'brand-title' }, 'Creegslist'),
+            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+          )
+        ),
+        H('div', { className: 'row', style: { gap: 8 } },
+          H('button', { className: 'btn', onClick: () => onAuthClick('register') }, 'Register'),
+          H('button', { className: 'btn primary', onClick: () => onAuthClick('login') }, 'Log In')
+        )
+      )
+    );
+  }
+
+  // Original header for logged in users
+  const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+
+  const authArea = user
+    ? H('div', { className: 'row', style: { gap: 8 } },
+        !!user.is_admin && H('button', {
+          className: 'btn danger',
+          onClick: async () => {
+            if (confirm('Delete ALL listings? This cannot be undone.')) {
+              await onAdminDeleteAll?.();
+            }
+          }
+        }, 'Admin: Delete ALL')
+      )
+    : null;
+
+  const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
+
+  const messagesBtn = H('button', {
+    className: `btn ${active==='messages'?'primary':''}`,
+    style: { position: 'relative' },
+    onClick: () => {
+      if (!user) { alert('Log in to view messages.'); return; }
+      onNav('messages');
+    }
+  }, 'Messages',
+    (unreadCount > 0) &&
+      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: unreadDotColor } })
+  );
+
+  return H('header', null,
+    H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
+          H('div', { className: 'brand-badge' },
+            H('div', { className: 'brand-ring' }),
+            H('div', { className: 'brand-initials' }, 'CL')
+          ),
+          H('div', { className: 'brand-copy' },
+            H('div', { className: 'brand-title' }, 'Creegslist'),
+            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+          )
+        ),
+      H('nav', { className: 'row' },
+        H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
+        isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+        messagesBtn,
+        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel),
+        user?.is_admin && H('button', { className: `btn ${active==='admin'?'primary':''}`, onClick: () => onNav('admin') }, 'Admin')
+      ),
+      authArea
+    )
+  );
+}
+
+  // --- Auth Modal Component (NEW) ---
+function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
+  const [mode, setMode] = useState(initialMode);
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setError('');
+      setUsername('');
+      setEmail('');
+      setPassword('');
+    }
+  }, [isOpen, initialMode]);
+  
+  // Handle ESC key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    try {
+      let user;
+      if (mode === 'login') {
+        user = await api.login(email, password);
+      } else {
+        user = await api.register({ username, email, password });
+      }
+      onSuccess(user);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  if (!isOpen) return null;
+  
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    try {
+      let user;
+      if (mode === 'login') {
+        user = await api.login(email, password);
+      } else {
+        user = await api.register({ username, email, password });
+      }
+      onSuccess(user);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  if (!isOpen) return null;
+  
+  return ReactDOM.createPortal(
+    H('div', { 
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
+    },
+      H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px', background: '#fff', color: '#111' } },
+        H('button', { className: 'close', onClick: onClose }, 'x'),
+        H('h2', { style: { margin: '0 0 24px', fontSize: '28px', color: '#111' } }, 
+          mode === 'login' ? 'Welcome Back' : 'Create Account'),
+        
+        H('form', { onSubmit: handleSubmit },
+          mode === 'register' && H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Username'),
+            H('input', {
+              type: 'text',
+              value: username,
+              onChange: e => setUsername(e.target.value),
+              placeholder: 'johndoe',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color:'#111' } }, 'Email'),
+            H('input', {
+              type: 'email',
+              value: email,
+              onChange: e => setEmail(e.target.value),
+              placeholder: 'john@example.com',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          H('div', { style: { marginBottom: '16px' } },
+            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
+            H('input', {
+              type: 'password',
+              value: password,
+              onChange: e => setPassword(e.target.value),
+              placeholder: '--------',
+              required: true,
+              disabled: loading
+            })
+          ),
+          
+          error && H('div', { style: { color: '#be123c', margin: '12px 0' } }, error),
+          
+          H('button', {
+            type: 'submit',
+            className: 'btn primary',
+            style: { width: '100%', marginTop: '16px' },
+            disabled: loading
+          }, loading ? 'Loading...' : (mode === 'login' ? 'Log In' : 'Create Account')),
+          
+          H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
+            mode === 'login' 
+              ? H(React.Fragment, null,
+                  "Don't have an account? ",
+                  H('button', {
+                    type: 'button',
+                    onClick: () => setMode('register'),
+                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
+                  }, 'Register')
+                )
+              : H(React.Fragment, null,
+                  "Already have an account? ",
+                  H('button', {
+                    type: 'button',
+                    onClick: () => setMode('login'),
+                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
+                  }, 'Log In')
+                )
+          )
+        )
+      )
+    ),
+    document.body
+  );
+}
+
+
+  // --- MultiFilePicker (for S3 uploads) ---
+  function MultiFilePicker({ files, onChange }) {
+    const ref = useRef();
+    const MAX_MB = 20;
+    const previews = useFilePreviews(files);
+
+    function pick(e) {
+      const selected = Array.from(e.target.files || []);
+      const next = [...files];
+      for (const f of selected) {
+        if (f.size > MAX_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
+        if (!f.type.startsWith('image/')) { alert('Only images are allowed'); continue; }
+        next.push(f);
+      }
+      onChange(next);
+      if (ref.current) ref.current.value = '';
+    }
+    function removeAt(i) {
+      const next = [...files];
+      const [removed] = next.splice(i,1);
+      if (removed) clearDraftCacheForFile(removed);
+      onChange(next);
+    }
+
+    return H('div', null,
+      H('div', { className:'row' },
+      H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
+      H('span', { className:'muted' }, `${(files||[]).length} file(s)`)
+    ),
+    H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
+      ...previews.map(({ url }, i)=> H('div', { key:i, style:{ position:'relative' } },
+        H('img', {
+          src: url,
+          style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
+        }),
+        H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
+      ))
+    )
+    );
+  }
+
+  // Helper: convert File[] to dataURLs for AI analysis only
+  const AI_IMAGE_LIMIT = 8;
+
+  async function filesToDataUrls(files = []) {
+    async function toB64(file) {
+      return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    }
+    const out = [];
+    for (const f of files.slice(0, AI_IMAGE_LIMIT)) out.push(await toB64(f));
+    return out;
+  }
+  async function fileToDataUrl(file) {
+    const arr = await filesToDataUrls([file]);
+    return arr && arr[0];
+  }
+
+  function useFilePreviews(files = []) {
+    const [previews, setPreviews] = useState([]);
+
+    useEffect(() => {
+      if (!files || files.length === 0) {
+        setPreviews([]);
+        return;
+      }
+
+      const entries = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+      setPreviews(entries);
+
+      return () => {
+        for (const entry of entries) {
+          try { URL.revokeObjectURL(entry.url); } catch (_) {}
+        }
+      };
+    }, [files]);
+
+    return previews;
+  }
+
+  // --- Auto-list help modal (clean single-column layout) ---
+  function AutoListHelpModal({ onClose }) {
+    return ReactDOM.createPortal(
+      H('div', {
+        className: 'modal open',
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
+        style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
+      },
+        H('div', {
+          // force single column and good contrast regardless of global CSS
+          className: 'modal-inner',
+          style: {
+            display: 'block',
+            width: 'min(520px, 92vw)',
+            background: '#111',
+            color: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            boxShadow: '0 16px 48px rgba(0,0,0,.45)',
+            lineHeight: 1.55
+          }
+        },
+          // header row with title + close
+          H('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8
+            }
+          },
+            H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              'aria-label': 'Close',
+              // avoid relying on .close class so we don't inherit odd positioning
+              style: {
+                width: 28, height: 28, borderRadius: 14,
+                border: '1px solid rgba(255,255,255,0.25)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff', cursor: 'pointer',
+                display: 'grid', placeItems: 'center',
+                fontSize: 16, lineHeight: '26px'
+              }
+            }, 'x')
+          ),
+
+          // intro
+          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
+            'When enabled, Auto-List will:'
+          ),
+
+          // bullets
+          H('ul', {
+            style: {
+              paddingLeft: 18,
+              margin: '0 0 12px',
+              listStyle: 'disc'
+            }
+          },
+            H('li', null, 'Allow AI to suggest title, tags and price .'),
+            H('li', null, 'Immediately create the listing for you.'),
+            H('li', null, 'Upload all selected photos to that listing.')
+          ),
+
+          // footnote
+          H('div', {
+            style: {
+              fontSize: 13,
+              opacity: 0.9,
+              borderTop: '1px solid rgba(255,255,255,0.12)',
+              paddingTop: 10
+            }
+          }, 'You can still edit or delete the listing afterwards.')
+        )
+      ),
+      document.body
+    );
+  }
+
+  // --- Listing Form (S3-first) ---
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled }) {
+    const [files, setFiles] = useState([]); // Files to upload to S3
+    const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
+
+    const [title, setTitle] = useState(draft?.title || '');
+    const [description, setDescription] = useState(draft?.description || '');
+    const [location, setLocation] = useState(draft?.location || '');
+    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+    const [tags, setTags] = useState(() => {
+      if (!draft?.tags) return '';
+      if (Array.isArray(draft.tags)) return draft.tags.join(', ');
+      return String(draft.tags);
+    });
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiErr, setAiErr] = useState('');
+
+    // auto-list guard
+    const autoRunning = useRef(false);
+    const [autoBusy, setAutoBusy] = useState(false);
+
+    const hasFixedGps = !!draft?.lat;
+    const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoErr, setGeoErr] = useState('');
+
+    const [lat, setLat] = useState(draft?.lat ?? null);
+    const [lon, setLon] = useState(draft?.lon ?? null);
+
+    const isMobile = isMobileDevice();
+
+    // Load current images (URLs/base64; new uploads use files[])
+    useEffect(() => {
+      (async () => {
+        if (draft?.id) {
+          try { const arr = await api.getListingImages(draft.id); setExistingUrls(arr || []); }
+          catch { setExistingUrls([]); }
+        } else {
+          setExistingUrls([]);
+        }
+      })();
+    }, [draft?.id]);
+
+    // UPDATED: AI analysis that works with both new files and S3 URLs
+    async function runAI(){
+      setAiErr('');
+      setAiBusy(true);
+      try {
+        const sources = [];
+
+        if (files.length) {
+          for (const file of files) {
+            if (sources.length >= AI_IMAGE_LIMIT) break;
+            try {
+              const upload = await uploadFileDraft(file);
+              if (upload?.publicUrl) sources.push(upload.publicUrl);
+            } catch (err) {
+              console.error('AI draft upload failed:', err);
+            }
+          }
+        }
+
+        if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
+         for (const url of existingUrls) {
+            if (sources.length >= AI_IMAGE_LIMIT) break;
+            if (typeof url === 'string' && url.trim()) {
+              sources.push(url);
+            }
+          }
+        }
+
+        if (!sources.length) {
+          alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
+          return;
+        }
+
+        const res = await api.aiAnalyze({
+          images: sources.slice(0, AI_IMAGE_LIMIT),
+          hint: `${title} ${description}`.trim()
+        });
+
+        if (res.title) setTitle(res.title);
+        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+          setPriceVal(String(res.suggested_price));
+        }
+        if (typeof res.description === 'string' && res.description.trim()) {
+          setDescription(res.description.trim().slice(0, 400));
+        }
+      } catch (e) {
+        setAiErr(e.message || 'AI failed');
+      } finally {
+        setAiBusy(false);
+      }
+    }
+
+    async function useMyLocation() {
+      setGeoErr('');
+      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+      setGeoBusy(true);
+      try {
+        const coords = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            err => rej(err),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          )
+        );
+        const r = await api.reverseGeocode(coords.lat, coords.lon);
+        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+        setLat(r?.lat ?? coords.lat);
+        setLon(r?.lon ?? coords.lon);
+      } catch { setGeoErr('Could not get your location'); }
+      finally { setGeoBusy(false); }
+    }
+
+
+    // Add this state after the other useState declarations in ListingForm:
+const [originalUrls, setOriginalUrls] = useState([]);
+
+// Update the useEffect that loads images:
+useEffect(() => {
+  (async () => {
+    if (draft?.id) {
+      try { 
+        const arr = await api.getListingImages(draft.id); 
+        setExistingUrls(arr || []);
+        setOriginalUrls(arr || []); // Track original state
+      }
+      catch { 
+        setExistingUrls([]); 
+        setOriginalUrls([]);
+      }
+    } else {
+      setExistingUrls([]);
+      setOriginalUrls([]);
+    }
+  })();
+}, [draft?.id]);
+
+// Update the submit function:
+async function submit(e){
+  e.preventDefault();
+  try {
+    // ... existing validation code ...
+
+    if (draft) {
+      // Determine which images were deleted
+      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+      
+      // Include deleted images in the payload
+      if (deletedImages.length > 0) {
+        payload.deletedImages = deletedImages;
+      }
+      
+      await api.updateListing(draft.id, payload);
+      if (files.length) await uploadFilesForListing(draft.id, files);
+    } else {
+      // ... existing create logic ...
+    }
+    onSaved?.();
+  } catch (err) {
+    console.error('Create/save failed:', err);
+    alert(`Create/save failed: ${err?.message || err}`);
+  }
+}
+
+    // Auto-list: when ON, creating a brand-new listing & user added photos -> AI + create + upload
+    useEffect(() => {
+      if (!autoListEnabled) return;
+      if (draft) return;            // only for new listings
+      if (!files || files.length === 0) return;
+      if (autoRunning.current) return;
+
+      (async () => {
+        autoRunning.current = true;
+        setAutoBusy(true);
+        try {
+          const uploads = await Promise.all(files.map(uploadFileDraft));
+          if (!uploads.length) throw new Error('No images to upload');
+
+          let ai = {};
+          let aiDescription = '';
+          try {
+            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
+            if (aiSources.length) {
+              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+            }
+          } catch (_) {}
+
+          const parsedPrice = Number(ai.suggested_price);
+          const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+          if (typeof ai.description === 'string' && ai.description.trim()) {
+            aiDescription = ai.description.trim().slice(0, 400);
+          }
+
+          // Nearby preference (sub-toggle)
+          let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+          if (autoPostNearbyEnabled) {
+            try {
+              const c = await fetchCoordsAndReverse();
+              enableNearbyAuto = 1;
+              latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+            } catch (_) {
+              enableNearbyAuto = 0;
+            }
+          }
+
+          const payload = {
+            title: (ai.title || 'Item for sale').toString().slice(0, 80),
+            description: aiDescription || 'No description',
+            location: locAuto || '',
+            price: safePrice,
+            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+            enable_nearby: enableNearbyAuto,
+            upload_tokens: uploads.map((u) => u.uploadToken)
+          };
+          if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+          const created = await api.createListing(payload);
+          if (!created?.id) throw new Error('Create failed');
+
+          onSaved?.();
+        } catch (err) {
+          console.error('Auto-list failed:', err);
+          alert(`Auto-list failed: ${err?.message || err}`);
+        } finally {
+          setAutoBusy(false);
+        }
+      })();
+    }, [autoListEnabled, autoPostNearbyEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // UPDATED: Submit function that handles image changes properly
+    // Update the submit function (remove the duplicate and fix it):
+async function submit(e){
+  e.preventDefault();
+  try {
+    const totalImages = existingUrls.length + files.length;
+    if (totalImages === 0) {
+      alert('Please add at least one image.');
+      return;
+    }
+
+    const parsedPrice = Number(priceVal);
+    const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+    const payload = {
+      title: String(title || '').trim(),
+      description: String(description || 'No description').trim(),
+      location: String(location || '').trim(),
+      price: safePrice,
+      tags: String(tags || '').trim(),
+      enable_nearby: enableNearby ? 1 : 0
+    };
+
+    if (enableNearby && !hasFixedGps) {
+      payload.lat = lat;
+      payload.lon = lon;
+    }
+
+    if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+      alert('Enable Nearby requires using your location.');
+      return;
+    }
+
+    if (draft) {
+      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+      if (deletedImages.length > 0) {
+        payload.deletedImages = deletedImages;
+      }
+
+      await api.updateListing(draft.id, payload);
+      if (files.length) await uploadFilesForListing(draft.id, files);
+    } else {
+      let uploads = [];
+      if (files.length) {
+        uploads = await Promise.all(files.map(uploadFileDraft));
+        const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+        if (!tokens.length) {
+          throw new Error('Image upload failed');
+        }
+        payload.upload_tokens = tokens;
+      }
+
+      const created = await api.createListing(payload);
+      if (!created?.id) { throw new Error('Create failed'); }
+    }
+    onSaved?.();
+  } catch (err) {
+    console.error('Create/save failed:', err);
+    alert(`Create/save failed: ${err?.message || err}`);
+  }
+}
+
+    const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
+
+      // Auto-list overlay while it works
+      autoBusy && H('div', {
+        style:{
+          position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+          display:'grid', placeItems:'center', zIndex:5, borderRadius:12
+        }
+      }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing...'))),
+
+      // New uploads (go to S3)
+      H(MultiFilePicker, { files, onChange:setFiles }),
+
+      // UPDATED: Existing images with delete capability
+      (existingUrls.length > 0) && H('div', null,
+        H('div', { className:'muted', style:{ marginBottom:8 } }, 'Existing images:'),
+        H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
+          ...existingUrls.map((src, i) =>
+            H('div', { key:i, style:{ position:'relative' } },
+              H('img', { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+              H('button', { 
+                className:'btn danger', 
+                type:'button', 
+                style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, 
+                onClick:() => {
+                  const next = [...existingUrls];
+                  next.splice(i, 1);
+                  setExistingUrls(next);
+                }
+              }, 'x')
+            )
+          )
+        )
+      ),
+
+      H('div', { className:'row', style:{ gap:8 } },
+        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
+        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        H('span', { className:'muted' }, 'Only images are required. AI can suggest title/tags/price.')
+      ),
+
+      H('label', null, 'Title (optional)'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Optional' }),
+
+      H('label', null, 'Description (optional)'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value), placeholder:'Optional' }),
+
+      H('label', null, 'Location (optional)'),
+      H('div', { className:'row', style:{ gap:8 } },
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Optional (City, State)' }),
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
+        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
+
+      isMobile && H('div', { className:'row', style:{ alignItems:'center', gap:6, marginTop:4 } },
+        H('input', { type:'checkbox', checked:enableNearby, onChange:e=>{
+          const checked = e.target.checked;
+          setEnableNearby(checked);
+          if (checked && !hasFixedGps) useMyLocation();
+        }}),
+        H('span', null, 'Enable Nearby searches (shows distance in feet/miles to buyers)')
+      ),
+      (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
+
+      H('label', null, 'Price (optional)'),
+      H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+        H('input', {
+          value:priceVal,
+          inputMode:'decimal',
+          onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+          placeholder:'Leave empty for $0.00'
+        }),
+        H('span', {
+          className:'muted',
+          style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
+        }, isFree ? price(0) : price(Number(priceVal)))
+      ),
+
+      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private, optional)'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
+        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+      ),
+
+      H('div', { className:'row' },
+        H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
+      )
+    );
+  }
+
+  // --- Lightbox ---
+  function Lightbox({ open, images, fallback, index, onClose, onIndex, loading = false }) {
+    const esc = (e)=> { if(e.key==='Escape') onClose(); };
+    React.useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open, onClose]);
+
+    const display = Array.isArray(images) && images.length ? images : (Array.isArray(fallback) ? fallback : []);
+    const len = display.length;
+    const safeIndex = len ? Math.min(Math.max(index, 0), len - 1) : 0;
+    const canNavigate = len > 1 && typeof onIndex === 'function';
+
+    React.useEffect(() => {
+      if (!open || !len) return;
+      if (index < 0 || index >= len) onIndex?.(0);
+    }, [open, len, index, onIndex]);
+
+    const mainContent = len
+      ? H('div', { className: 'lightbox-main' },
+          H(ResponsiveImage, {
+            src: display[safeIndex] || display[0],
+            alt: 'Image ' + (safeIndex + 1),
+            widths: [480, 720, 1080, 1440],
+            sizes: '100vw',
+            loading: 'eager',
+            fetchPriority: 'high',
+            className: 'lightbox-img'
+          })
+        )
+      : H('div', {
+          className: 'lightbox-empty'
+        }, loading ? 'Loading images...' : 'No images available');
+
+    const thumbs = len && typeof onIndex === 'function'
+      ? H('div', { className:'lightbox-thumbs' },
+          ...display.map((img, i) => H('img', {
+            key:i,
+            src:img,
+            className: i===safeIndex ? 'active' : '',
+            onClick:()=>onIndex(i)
+          }))
+        )
+      : null;
+
+    if (!open) return null;
+
+    const modal = H('div', {
+      className: 'lightbox-overlay',
+      onClick:(e)=>{ if (e.target === e.currentTarget) onClose(); }
+    },
+      H('div', { className:'lightbox-content', role:'dialog', 'aria-modal': true },
+        H('button', { className:'lightbox-close', onClick:onClose, 'aria-label':'Close image' }, 'X'),
+        H('div', { className:'lightbox-stage' },
+          canNavigate ? H('button', { className:'lightbox-arrow left', onClick:()=>onIndex((safeIndex-1+len)%len), 'aria-label':'Previous image' }, '<') : null,
+          mainContent,
+          canNavigate ? H('button', { className:'lightbox-arrow right', onClick:()=>onIndex((safeIndex+1)%len), 'aria-label':'Next image' }, '>') : null
+        ),
+        thumbs,
+        loading && len ? H('div', { className:'lightbox-info' }, 'Loading...') : null
+      )
+    );
+
+    return ReactDOM.createPortal(modal, document.body);
+  }
+
+  // SmartImage v2.1 (kept; not used in main grid now)
+  function SmartImage({
+    src,
+    alt = '',
+    br = 8,
+    onClick,
+    dropFar = true,
+    initialAR = 4 / 3,
+    lockAR = true,
+    fetchPriority = 'auto'
+  }) {
+    const wrapRef = React.useRef(null);
+    const imgRef  = React.useRef(null);
+
+    const [activeSrc, setActiveSrc] = React.useState('');
+    const [ratio, setRatio]         = React.useState(initialAR);
+    const [loaded, setLoaded]       = React.useState(false);
+
+    React.useEffect(() => {
+      const el = wrapRef.current; if (!el) return;
+      let clearTo = null;
+
+      const io = new IntersectionObserver((entries) => {
+        const e = entries[0]; if (!e) return;
+
+        if (e.isIntersecting) {
+          setActiveSrc(src);
+        } else if (dropFar) {
+          const top = e.boundingClientRect.top;
+          const bottom = e.boundingClientRect.bottom;
+          const dist = top > 0 ? top : -bottom; // positive px from viewport
+          if (dist > window.innerHeight * 3.5) {
+            clearTimeout(clearTo);
+            clearTo = setTimeout(() => setActiveSrc(''), 120);
+          }
+        }
+      }, { root: null, rootMargin: '600px 0px' });
+
+      io.observe(el);
+      return () => { clearTimeout(clearTo); io.disconnect(); };
+    }, [src, dropFar]);
+
+    React.useEffect(() => {
+      setLoaded(false);
+    }, [activeSrc]);
+
+    function onLoad(e) {
+      setLoaded(true);
+      if (lockAR) return;
+      const w = e.currentTarget.naturalWidth || 0;
+      const h = e.currentTarget.naturalHeight || 0;
+      if (w && h) setRatio(w / h);
+    }
+
+    return H('div', {
+      ref: wrapRef,
+      style: {
+        position: 'relative',
+        width: '100%',
+        aspectRatio: `${ratio} / 1`,
+        borderRadius: br,
+        overflow: 'hidden',
+        background: '#f3f4f6'
+      }
+    },
+      !loaded && activeSrc && H('div', {
+        style: {
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(120deg, #f3f4f6 15%, #e5e7eb 35%, #f3f4f6 55%)',
+          backgroundSize: '200% 200%',
+          animation: 'img-shimmer 1s ease-in-out infinite'
+        }
+      }),
+      activeSrc && H('img', {
+        ref: imgRef,
+        src: activeSrc,
+        alt,
+        loading: 'lazy',
+        decoding: 'async',
+        fetchpriority: fetchPriority,
+        onLoad,
+        style: {
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
+          cursor: onClick ? 'pointer' : 'default',
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 180ms ease'
+        },
+        onClick
+      })
+    );
+  }
+
+  const RESPONSIVE_WIDTHS = [320, 480, 640, 960, 1280];
+
+  function buildSizedUrl(src, width) {
+    if (!src || typeof src !== 'string') return src;
+    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
+    try {
+      const url = new URL(src);
+      if (width && Number.isFinite(width)) url.searchParams.set('w', String(width));
+      if (!url.searchParams.has('auto')) url.searchParams.set('auto', 'compress');
+      return url.toString();
+    } catch (_) {
+      return src;
+    }
+  }
+
+  function ResponsiveImage({
+    src,
+    alt = '',
+    widths = RESPONSIVE_WIDTHS,
+    sizes = '(min-width: 1024px) 280px, (min-width: 640px) 50vw, 90vw',
+    loading = 'lazy',
+    decoding = 'async',
+    fetchPriority = 'auto',
+    style,
+    className,
+    onClick
+  }) {
+    const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
+    const srcSet = hasResponsive
+      ? widths.map((w) => `${buildSizedUrl(src, w)} ${w}w`).join(', ')
+      : undefined;
+    const defaultSrc = hasResponsive ? buildSizedUrl(src, widths[widths.length - 1]) : src;
+
+    return H('img', {
+      src: defaultSrc || src,
+      srcSet,
+      sizes: srcSet ? sizes : undefined,
+      alt,
+      loading,
+      decoding,
+      fetchpriority: fetchPriority,
+      style,
+      className,
+      onClick
+    });
+  }
+
+  const REPORT_REASON_OPTIONS = [
+    { value: 'fraud', label: 'Fraud or scam' },
+    { value: 'spam', label: 'Spam or advertising' },
+    { value: 'inappropriate', label: 'Inappropriate content' },
+    { value: 'harassment', label: 'Harassment or abusive behavior' },
+    { value: 'other', label: 'Other' }
+  ];
+
+  function makeReportCaptcha() {
+    return {
+      a: 2 + Math.floor(Math.random() * 7),
+      b: 2 + Math.floor(Math.random() * 7)
+    };
+  }
+
+  function ReportSellerModal({ open, listing, onClose, onReported }) {
+    const [selected, setSelected] = useState(() => new Set());
+    const [details, setDetails] = useState('');
+    const [captcha, setCaptcha] = useState(() => makeReportCaptcha());
+    const [answer, setAnswer] = useState('');
+    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+
+    useEffect(() => {
+      if (!open) return;
+      setSelected(new Set());
+      setDetails('');
+      setCaptcha(makeReportCaptcha());
+      setAnswer('');
+      setError('');
+      setSubmitted(false);
+    }, [open, listing?.id]);
+
+    useEffect(() => {
+      if (!open) return;
+      const onKey = (ev) => { if (ev.key === 'Escape') onClose?.(); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [open, onClose]);
+
+    const toggleReason = (value) => {
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(value)) next.delete(value);
+        else next.add(value);
+        return next;
+      });
+    };
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (submitting || submitted) return;
+      setError('');
+      const reasons = Array.from(selected);
+      if (!reasons.length) {
+        setError('Select at least one reason.');
+        return;
+      }
+      if (reasons.includes('other') && !details.trim()) {
+        setError('Please include details for "Other".');
+        return;
+      }
+      const expected = captcha.a + captcha.b;
+      if (Number(answer) !== expected) {
+        setError('Captcha answer is incorrect.');
+        setCaptcha(makeReportCaptcha());
+        setAnswer('');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await api.reportSeller({
+          reported_user_id: listing?.user_id,
+          listing_id: listing?.id,
+          reasons,
+          details: details.trim() || undefined,
+          captcha: { a: captcha.a, b: captcha.b, answer: Number(answer) }
+        });
+        setSubmitted(true);
+        onReported?.();
+      } catch (err) {
+        setError(err.message || 'Unable to submit report.');
+        setCaptcha(makeReportCaptcha());
+        setAnswer('');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    if (!open) return null;
+
+    const sellerName = listing?.owner_username ? `@${listing.owner_username}` : 'this seller';
+
+    const modal = H('div', {
+      className: 'modal open',
+      onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); }
+    },
+      H('div', { className: 'modal-inner', style: { maxWidth: '520px', padding: '24px', background: '#fff', color: '#111' } },
+        H('button', { className: 'close', onClick: onClose, disabled: submitting && !submitted }, 'X'),
+        H('h2', { style: { margin: '0 0 16px', fontSize: 24, fontWeight: 700 } }, `Report ${sellerName}`),
+        submitted ?
+          H('div', { className: 'muted', style: { marginBottom: 16 } }, 'Thank you. We will review this report shortly.') :
+          H('form', { onSubmit: handleSubmit, style: { display: 'grid', gap: 12 } },
+            H('div', { style: { fontWeight: 600 } }, 'Why are you reporting this seller?'),
+            REPORT_REASON_OPTIONS.map(opt => H('label', {
+              key: opt.value,
+              style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }
+            },
+              H('input', {
+                type: 'checkbox',
+                checked: selected.has(opt.value),
+                disabled: submitting,
+                onChange: () => toggleReason(opt.value)
+              }),
+              opt.label
+            )),
+            H('textarea', {
+              placeholder: 'Additional details (optional)',
+              value: details,
+              onChange: (e) => setDetails(e.target.value),
+              disabled: submitting,
+              rows: 3,
+              style: { width: '100%', fontSize: 13, padding: 8 }
+            }),
+            H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              H('span', null, `What is ${captcha.a} + ${captcha.b}?`),
+              H('input', {
+                type: 'number',
+                value: answer,
+                onChange: (e) => setAnswer(e.target.value),
+                disabled: submitting,
+                style: { width: 80 }
+              })
+            ),
+            error && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, error),
+            H('div', { className: 'row', style: { gap: 8, marginTop: 4 } },
+              H('button', { className: 'btn primary', type: 'submit', disabled: submitting, style: { flex: 1 } }, submitting ? 'Submitting...' : 'Submit report'),
+              H('button', { className: 'btn', type: 'button', onClick: onClose, disabled: submitting, style: { flex: 1 } }, 'Cancel')
+            )
+          ),
+        submitted && H('div', { style: { marginTop: 16 } },
+          H('button', { className: 'btn primary', onClick: onClose }, 'Close')
+        )
+      )
+    );
+
+    return ReactDOM.createPortal(modal, document.body);
+  }
+
+
+
+// --- Listing Gallery Modal ---
+function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = false }) {
+  const list = Array.isArray(images) ? images.filter(Boolean) : [];
+  const len = list.length;
+  const safeIndex = len ? Math.min(Math.max(Number(index) || 0, 0), len - 1) : 0;
+  const canNavigate = len > 1 && typeof onIndex === 'function';
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (index !== safeIndex) {
+      onIndex?.(safeIndex);
+    }
+  }, [open, safeIndex, index, onIndex]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (evt) => {
+      if (evt.key === 'Escape') {
+        evt.preventDefault();
+        onClose?.();
+        return;
+      }
+      if (!canNavigate) return;
+      if (evt.key === 'ArrowRight') {
+        evt.preventDefault();
+        onIndex?.((safeIndex + 1) % len);
+      } else if (evt.key === 'ArrowLeft') {
+        evt.preventDefault();
+        onIndex?.((safeIndex - 1 + len) % len);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
+
+  if (!open) return null;
+
+  const imageContent = len
+    ? H('div', { className: 'lightbox-main' },
+        H(ResponsiveImage, {
+          src: list[safeIndex],
+          alt: `Listing image ${safeIndex + 1}`,
+          widths: [480, 720, 1080, 1440],
+          sizes: '100vw',
+          loading: 'eager',
+          fetchPriority: 'high',
+          className: 'lightbox-img'
+        })
+      )
+    : H('div', { className: 'lightbox-empty' }, loading ? 'Loading images...' : 'No images available');
+
+  const thumbsContent = len > 1
+    ? H('div', { className: 'lightbox-thumbs' },
+        ...list.map((img, i) => H('img', {
+          key: String(i),
+          src: img,
+          alt: `Thumbnail ${i + 1}`,
+          className: i === safeIndex ? 'active' : '',
+          onClick: () => onIndex?.(i)
+        }))
+      )
+    : H('div', { className: 'lightbox-thumbs empty' },
+        H('span', null, loading ? 'Loading photos...' : (len ? 'Only one photo for this listing' : 'No photos yet'))
+      );
+
+  const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
+    H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, 'X'),
+    H('div', { className: 'lightbox-body' },
+      H('div', { className: 'lightbox-stage' },
+        canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
+        imageContent,
+        len > 1 ? H('div', { className: 'lightbox-counter' }, `${safeIndex + 1} / ${len}`) : null,
+        canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
+      ),
+      H('div', { className: 'lightbox-footer' }, thumbsContent)
+    ),
+    loading ? H('div', { className: 'lightbox-info' }, len ? 'Loading more images...' : 'Loading images...') : null
+  );
+
+  return ReactDOM.createPortal(
+    H('div', {
+      className: 'lightbox-overlay',
+      onClick: (evt) => { if (evt.target === evt.currentTarget) onClose?.(); }
+    }, overlayContent),
+    document.body
+  );
+}
+
+
+// --- Listing Card ---
+function ListingCard({
+  item,
+  canEdit,
+  onEdit,
+  onDelete,
+  user,
+  onMessage,
+  onAdminDelete,
+  onViewSeller,
+  onToggleSold,
+  showDistance = false
+}) {
+
+  const fallbackImages = useMemo(() => collectListingImages(item, item?.__cover), [item, item?.__cover]);
+  const baseGallery = useMemo(() => {
+    const fallbackList = Array.isArray(fallbackImages) ? fallbackImages : [];
+    const inlineList = Array.isArray(item?.images) ? item.images : [];
+    return dedupeImageUrls([...fallbackList, ...inlineList]);
+  }, [item?.images, fallbackImages]);
+
+  const [galleryImages, setGalleryImages] = useState(baseGallery);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [derivedMeters, setDerivedMeters] = React.useState(null);
+
+  const sameList = useCallback((a, b) => {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }, []);
+
+  const prefetchImages = useCallback(() => {
+    if (!item?.id) return;
+    if (listingImageCache.has(item.id) || listingImageInFlight.has(item.id)) return;
+    fetchListingImagesCached(item.id);
+  }, [item?.id]);
+
+  React.useEffect(() => {
+    if (!Array.isArray(baseGallery)) return;
+    setGalleryImages(prev => sameList(prev, baseGallery) ? prev : baseGallery);
+  }, [baseGallery, sameList]);
+
+  React.useEffect(() => {
+    if (!galleryOpen || !item?.id) return;
+
+    let cancelled = false;
+
+    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    const cached = listingImageCache.get(item.id);
+    if (Array.isArray(cached) && cached.length) {
+      const cachedList = dedupeImageUrls(cached);
+      setGalleryImages(prev => sameList(prev, cachedList) ? prev : cachedList);
+    }
+
+    setGalleryLoading(true);
+
+    fetchListingImagesCached(item.id)
+      .then(arr => {
+        if (cancelled) return;
+        const fetched = Array.isArray(arr) ? arr : [];
+        const merged = dedupeImageUrls([...baseList, ...fetched]);
+        if (merged.length) {
+          listingImageCache.set(item.id, merged);
+        }
+        const next = merged.length ? merged : baseList;
+        setGalleryImages(prev => sameList(prev, next) ? prev : next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (baseList.length) {
+          setGalleryImages(prev => sameList(prev, baseList) ? prev : baseList);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGalleryLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [galleryOpen, item?.id, baseGallery, sameList]);
+
+  React.useEffect(() => {
+    if (!item?.id) return;
+    if (!Array.isArray(galleryImages) || !galleryImages.length) return;
+    listingImageCache.set(item.id, galleryImages);
+  }, [galleryImages, item?.id]);
+
+  React.useEffect(() => {
+    if (!galleryOpen) return;
+    const len = Array.isArray(galleryImages) ? galleryImages.length : 0;
+    if (!len) {
+      if (galleryIndex !== 0) setGalleryIndex(0);
+      return;
+    }
+    if (galleryIndex >= len) {
+      setGalleryIndex(len - 1);
+    } else if (galleryIndex < 0) {
+      setGalleryIndex(0);
+    }
+  }, [galleryOpen, galleryImages, galleryIndex]);
+
+  const handleOpenGallery = useCallback((start = 0) => {
+    const next = Number.isFinite(start) ? start : 0;
+    setGalleryIndex(next);
+    setGalleryOpen(true);
+    prefetchImages();
+  }, [prefetchImages]);
+
+  React.useEffect(() => {
+    if (!showDistance) {
+      setDerivedMeters(null);
+      return;
+    }
+    let fromServer = null;
+    if (Number.isFinite(item?.distance_m)) fromServer = item.distance_m;
+    if (Number.isFinite(item?.distance_ft)) fromServer = item.distance_ft / 3.28084;
+    if (fromServer != null) {
+      setDerivedMeters(fromServer);
+      return;
+    }
+
+    if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
+      getUserCoordsOnce().then(coords => {
+        if (!coords) return;
+        const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
+        setDerivedMeters(m);
+      });
+    } else {
+      setDerivedMeters(null);
+    }
+  }, [showDistance, item?.id, item?.lat, item?.lon]);
+
+  const isFree = Number(item?.price ?? 0) === 0;
+  const [soldBusy, setSoldBusy] = useState(false);
+  const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
+
+  const controls = [];
+  if (!user || user.id !== item.user_id) {
+    controls.push(H('button', {
+      key: 'm',
+      className: 'btn primary',
+      onClick: () => onMessage?.(item)
+    }, 'Message seller'));
+  }
+  if (user && user.id !== item.user_id) {
+    controls.push(H('button', {
+      key: 'report',
+      className: 'btn',
+      onClick: () => setShowReport(true)
+    }, 'Report seller'));
+  }
+  if (canEdit) {
+    controls.push(H('button', {
+      key: 'e',
+      className: 'btn',
+      onClick: () => onEdit?.(item)
+    }, 'Edit'));
+    if (onToggleSold) {
+      const isSold = !!item?.sold;
+      controls.push(H('button', {
+        key: 'sold-toggle',
+        className: 'btn',
+        onClick: async () => {
+          if (soldBusy) return;
+          try {
+            setSoldBusy(true);
+            await onToggleSold(item, !isSold);
+          } finally {
+            setSoldBusy(false);
+          }
+        },
+        disabled: soldBusy,
+        style: {
+          background: isSold ? '#D1FAE5' : '#059669',
+          color: isSold ? '#047857' : '#fff',
+          borderColor: '#059669'
+        }
+      }, isSold ? 'Mark as unsold' : 'Mark as sold'));
+    }
+    controls.push(H('button', {
+      key: 'd',
+      className: 'btn danger',
+      onClick: () => onDelete?.(item)
+    }, 'Remove Listing'));
+  }
+  if (user?.is_admin) {
+    controls.push(H('button', {
+      key: 'admin-del',
+      className: 'btn danger',
+      onClick: async () => {
+        if (!confirm('Admin: Delete this listing?')) return;
+        await api.adminDeleteListing(item.id);
+        onAdminDelete?.(item.id);
+      }
+    }, 'Admin Delete'));
+  }
+
+  const renderSellerInfo = () => {
+    if (!item.owner_username) {
+      return '--';
+    }
+
+    if (onViewSeller) {
+      return H('button', {
+        onClick: () => onViewSeller(item.user_id, item.owner_username),
+        style: {
+          background: 'none',
+          border: 'none',
+          color: '#111',
+          fontWeight: 600,
+          textDecoration: 'underline',
+          cursor: 'pointer',
+          padding: 0,
+          font: 'inherit'
+        }
+      }, `@${item.owner_username}`);
+    }
+
+    return H('span', null, `@${item.owner_username}`);
+  };
+
+  const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
+
+  return H('div', { className: 'card', onMouseEnter: prefetchImages, onFocus: prefetchImages, onPointerDown: prefetchImages, onTouchStart: prefetchImages, tabIndex: -1 },
+    H('div', {
+      className: 'aspect',
+      onClick: (e) => {
+        e.stopPropagation();
+        handleOpenGallery(0);
+      },
+      style: {
+        cursor: 'zoom-in',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: 8
+      }
+    },
+      coverSrc
+        ? H(ResponsiveImage, {
+            src: coverSrc,
+            alt: item.title || 'Listing image',
+            style: { width: '100%', height: '100%', objectFit: 'cover' },
+            sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw'
+          })
+        : H('div', {
+            style: {
+              width: '100%',
+              height: '100%',
+              background: '#f3f4f6',
+              display: 'grid',
+              placeItems: 'center',
+              color: '#6b7280',
+              fontWeight: 600
+            }
+          }, 'No image'),
+      item.sold ? H('div', {
+        style: {
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none'
+        }
+      },
+        H('div', {
+          style: {
+            transform: 'rotate(-18deg)',
+            padding: '6px 18px',
+            textTransform: 'uppercase',
+            letterSpacing: '6px',
+            fontWeight: 800,
+            fontSize: 26,
+            color: 'rgba(4, 120, 87, 0.85)',
+            border: '3px solid rgba(16, 185, 129, 0.55)',
+            background: 'rgba(229, 255, 244, 0.82)',
+            borderRadius: 999
+          }
+        }, 'Sold')
+      ) : null,
+      galleryCount > 1 ? H('div', {
+        className: 'photo-count-badge'
+      }, `${galleryCount} photos`) : null
+    ),
+
+    H('div', { style: { padding: 16 } },
+      H('div', {
+        className: 'row',
+        style: { justifyContent: 'space-between', alignItems: 'start' }
+      },
+        H('div', null,
+          H('div', { style: { fontWeight: 800 } }, item.title || 'Item for sale'),
+          H('div', { className: 'muted' }, item.description)
+        ),
+        H('div', {
+          style: {
+            fontWeight: 800,
+            textAlign: 'right',
+            color: isFree ? '#16a34a' : '#111'
+          }
+        }, price(item.price))
+      ),
+
+      H('div', { className: 'muted' }, item.location || 'No location'),
+
+      (showDistance && derivedMeters != null) &&
+        H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
+
+      H('div', { className: 'muted' },
+        'Seller: ',
+        renderSellerInfo()
+      ),
+
+      H('div', {
+        className: 'row',
+        style: { marginTop: 8, justifyContent: 'flex-start', gap: 8 }
+      }, ...controls)
+    ),
+
+    showReport && H(ReportSellerModal, {
+      open: showReport,
+      listing: item,
+      onClose: () => setShowReport(false)
+    }),
+
+    H(ListingGalleryModal, {
+      open: galleryOpen,
+      images: galleryImages,
+      index: galleryIndex,
+      onClose: () => setGalleryOpen(false),
+      onIndex: setGalleryIndex,
+      loading: galleryLoading
+    })
+  );
+}
+
