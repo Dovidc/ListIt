@@ -2065,11 +2065,63 @@ async function submit(e){
 
   const RESPONSIVE_WIDTHS = [320, 480, 640, 960, 1280];
 
+  const SENSITIVE_IMAGE_QUERY_KEYS = new Set([
+    'signature',
+    'sig',
+    'token',
+    'access_token',
+    'auth',
+    'authorization',
+    'expires',
+    'expiry',
+    'awsaccesskeyid',
+    'x-amz-signature',
+    'x-amz-credential',
+    'x-amz-security-token',
+    'x-amz-access-token',
+    'x-amz-signedheaders',
+    'x-amz-date',
+    'x-amz-expires',
+    'x-goog-signature',
+    'x-goog-credential',
+    'x-goog-algorithm',
+    'x-goog-date',
+    'x-goog-expires',
+    'x-goog-signedheaders',
+    'key-pair-id',
+    'policy'
+  ]);
+
+  const SENSITIVE_IMAGE_QUERY_PREFIXES = ['x-amz-', 'x-goog-', 'x-oss-', 'x-ms-'];
+
+  function isLikelySignedAssetUrl(url) {
+    if (!url) return false;
+    try {
+      const params = url.searchParams;
+      if (!params) return false;
+      for (const key of params.keys()) {
+        const lower = key.toLowerCase();
+        if (SENSITIVE_IMAGE_QUERY_KEYS.has(lower)) return true;
+        if (lower === 'x-amz-meta-iv') return true;
+        if (lower.endsWith('_signature') || lower.endsWith('_token')) return true;
+        if (lower.endsWith('-signature') || lower.endsWith('-token')) return true;
+        if (lower === 'signature' || lower === 'sig') return true;
+        if (lower.endsWith('_sig') || lower.endsWith('-sig')) return true;
+        if (lower.includes('token')) return true;
+        if (SENSITIVE_IMAGE_QUERY_PREFIXES.some(prefix => lower.startsWith(prefix))) return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
   function buildSizedUrl(src, width) {
     if (!src || typeof src !== 'string') return src;
     if (src.startsWith('data:') || src.startsWith('blob:')) return src;
     try {
       const url = new URL(src);
+      if (isLikelySignedAssetUrl(url)) return src;
       if (width && Number.isFinite(width)) url.searchParams.set('w', String(width));
       if (!url.searchParams.has('auto')) url.searchParams.set('auto', 'compress');
       return url.toString();
