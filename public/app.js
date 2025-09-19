@@ -2448,11 +2448,6 @@ function ListingCard({
           }
         }, 'Sold')
       ) : null,
-      galleryCount > 1 ? H('div', {
-        className: 'photo-count-badge'
-      }, `${galleryCount} photos`) : null
-    ),
-
     H('div', { style: { padding: 16 } },
       H('div', {
         className: 'row',

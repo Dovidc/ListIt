@@ -533,22 +533,6 @@
   color: #d1d5db;
   text-align: center;
 }
-
-.photo-count-badge {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  padding: 6px 12px;
-  background: rgba(17, 24, 39, 0.72);
-  color: #fff;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  pointer-events: none;
-}
-
-
 @media (max-width: 640px) {
   .lightbox-thumbs img {
     width: 56px;
