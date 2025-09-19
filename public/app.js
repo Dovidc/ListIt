@@ -2130,7 +2130,7 @@ function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = 
         }))
       )
     : H('div', { className: 'lightbox-thumbs empty' },
-        H('span', null, len ? 'Only one photo for this listing' : 'No photos yet')
+        H('span', null, galleryLoading ? 'Loading photos...' : (len ? 'Only one photo for this listing' : 'No photos yet'))
       );
 
   const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
@@ -2202,49 +2202,47 @@ function ListingCard({
   }, [item?.id]);
 
   React.useEffect(() => {
-    if (!Array.isArray(baseGallery) || !baseGallery.length) return;
-    setGalleryImages(prev => {
-      const prevList = Array.isArray(prev) ? prev : [];
-      const merged = dedupeImageUrls([...baseGallery, ...prevList]);
-      return sameList(prevList, merged) ? prevList : merged;
-    });
+    if (!Array.isArray(baseGallery)) return;
+    setGalleryImages(prev => sameList(prev, baseGallery) ? prev : baseGallery);
   }, [baseGallery, sameList]);
 
   React.useEffect(() => {
-    if (!item?.id) return;
-    const cached = listingImageCache.get(item.id);
-    let shouldFetch = true;
-    if (Array.isArray(cached) && cached.length) {
-      setGalleryImages(prev => sameList(prev, cached) ? prev : cached);
-      const baseCount = Array.isArray(baseGallery) ? baseGallery.length : 0;
-      if (cached.length > baseCount) {
-        shouldFetch = false;
-      }
-    }
-
-    if (!shouldFetch) return;
+    if (!galleryOpen || !item?.id) return;
 
     let cancelled = false;
+
+    const baseList = Array.isArray(baseGallery) ? baseGallery : [];
+    const cached = listingImageCache.get(item.id);
+    if (Array.isArray(cached) && cached.length) {
+      const cachedList = dedupeImageUrls(cached);
+      setGalleryImages(prev => sameList(prev, cachedList) ? prev : cachedList);
+    }
+
     setGalleryLoading(true);
 
     fetchListingImagesCached(item.id)
       .then(arr => {
         if (cancelled) return;
         const fetched = Array.isArray(arr) ? arr : [];
-        const merged = dedupeImageUrls([...fetched, ...baseGallery]);
-        const next = merged.length ? merged : baseGallery;
+        const merged = dedupeImageUrls([...baseList, ...fetched]);
         if (merged.length) {
           listingImageCache.set(item.id, merged);
         }
+        const next = merged.length ? merged : baseList;
         setGalleryImages(prev => sameList(prev, next) ? prev : next);
       })
-      .catch(() => {})
+      .catch(() => {
+        if (cancelled) return;
+        if (baseList.length) {
+          setGalleryImages(prev => sameList(prev, baseList) ? prev : baseList);
+        }
+      })
       .finally(() => {
         if (!cancelled) setGalleryLoading(false);
       });
 
     return () => { cancelled = true; };
-  }, [item?.id, baseGallery, sameList]);
+  }, [galleryOpen, item?.id, baseGallery, sameList]);
 
   React.useEffect(() => {
     if (!item?.id) return;
