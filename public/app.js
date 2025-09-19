@@ -2213,10 +2213,16 @@ function ListingCard({
   React.useEffect(() => {
     if (!item?.id) return;
     const cached = listingImageCache.get(item.id);
+    let shouldFetch = true;
     if (Array.isArray(cached) && cached.length) {
       setGalleryImages(prev => sameList(prev, cached) ? prev : cached);
-      return;
+      const baseCount = Array.isArray(baseGallery) ? baseGallery.length : 0;
+      if (cached.length > baseCount) {
+        shouldFetch = false;
+      }
     }
+
+    if (!shouldFetch) return;
 
     let cancelled = false;
     setGalleryLoading(true);
