@@ -2447,7 +2447,8 @@ function ListingCard({
             borderRadius: 999
           }
         }, 'Sold')
-      ) : null,
+      ) : null
+    ),
     H('div', { style: { padding: 16 } },
       H('div', {
         className: 'row',
@@ -5807,4 +5808,6 @@ function App(){
   }
 
 })();
+
+
 
