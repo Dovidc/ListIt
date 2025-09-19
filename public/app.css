@@ -344,7 +344,7 @@
   box-sizing: border-box;
 }
 
-@media (max-width: 640px) {\n  .lightbox-content {\n    width: 100vw;\n    height: 100vh;\n    padding: 0;\n    gap: 6px;\n  }\n}
+@media (max-width: 640px) {  .lightbox-content {    width: 100vw;    height: 100vh;    padding: 0;    gap: 6px;  }
 
 .lightbox-stage {
   position: relative;
@@ -465,3 +465,4 @@
   }
 }
 
+}
