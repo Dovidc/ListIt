@@ -14,6 +14,16 @@
   pointer-events: none;
 }
 
+.image-shell {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
+
+.image-shell > img {
+  display: block;
+}
+
 /* Modern brand header */
 .brand-badge {
   position: relative;
@@ -147,12 +157,20 @@
   justify-content: center;
 }
 
+.ad-card__art .image-shell {
+  width: 100%;
+  max-height: 160px;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
 .ad-card__art img {
   width: 100%;
+  height: 100%;
   max-height: 160px;
   object-fit: cover;
   border-radius: 16px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
 }
 
 
@@ -307,6 +325,10 @@
   padding-top: 56%;
   margin-bottom: 12px;
 }
+.modal-inner.listing-modal .aspect .image-shell {
+  position: absolute;
+  inset: 0;
+}
 .modal-inner.listing-modal .aspect img {
   position: absolute;
   inset: 0;
@@ -419,6 +441,18 @@
   justify-content: center;
 }
 
+.lightbox-main .image-shell {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.lightbox-main .image-shell .image-skeleton {
+  border-radius: inherit;
+}
+
 
 .lightbox-img {
   width: 100%;
@@ -437,6 +471,10 @@
   .lightbox-img {
     max-height: calc(100vh - 210px);
     min-height: 100px;
+    border-radius: 10px;
+  }
+
+  .lightbox-main .image-shell {
     border-radius: 10px;
   }
 }
@@ -544,6 +582,14 @@
   transition: transform 120ms ease, opacity 120ms ease;
 }
 
+.lightbox-thumbs .image-shell {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 .lightbox-thumbs img:hover {
   opacity: 0.85;
   transform: translateY(-2px);
@@ -576,6 +622,11 @@
 }
 @media (max-width: 640px) {
   .lightbox-thumbs img {
+    width: 56px;
+    height: 56px;
+  }
+
+  .lightbox-thumbs .image-shell {
     width: 56px;
     height: 56px;
   }

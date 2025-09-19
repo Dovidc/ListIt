@@ -4,6 +4,7 @@
   padding: 20px;
 }
 
+.ad-card__art .image-shell,
 .ad-card__art img {
   max-height: 140px;
 }
@@ -109,6 +110,13 @@ select { width: auto; }
   border-radius: 16px;
   overflow: hidden;
 }
+.modal-inner .image-shell {
+  max-width: 95vw;
+  max-height: 95vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .modal-inner img {
   max-width: 95vw;
   max-height: 95vh;
@@ -158,6 +166,8 @@ main { padding-bottom: 16px; }
   break-inside: avoid;
   margin-bottom: 8px;
 }
+#tab-nearby .masonry .image-shell,
+[data-tab="nearby"] .masonry .image-shell,
 #tab-nearby .masonry img,
 [data-tab="nearby"] .masonry img {
   width: 100%;
@@ -166,6 +176,11 @@ main { padding-bottom: 16px; }
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   cursor: pointer;
+}
+
+#tab-nearby .masonry .image-shell,
+[data-tab="nearby"] .masonry .image-shell {
+  overflow: hidden;
 }
 
 /* Modal for full listing */
@@ -185,6 +200,12 @@ main { padding-bottom: 16px; }
   position: relative;
   padding-top: 56%;
   margin-bottom: 12px;
+}
+.modal-inner.listing-modal .aspect .image-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
 }
 .modal-inner.listing-modal .aspect img {
   position: absolute; top: 0; left: 0;
@@ -264,4 +285,6 @@ main { padding-bottom: 16px; }
   width: 100%;
   display: inline-block; /* prevents spanning columns */
 }
+.masonry-item .image-shell,
 .masonry-item img { width: 100%; height: auto; display: block; }
+.masonry-item .image-shell { overflow: hidden; }
