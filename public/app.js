@@ -3679,48 +3679,53 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('active');
   useEffect(() => {
-  let mounted = true;
-  
-  async function fetchSellerListings() {
-    try {
-      setLoading(true);
-      const items = await api.listByUser(sellerId);
-      if (mounted) {
-        setListings(asArray(items));
-      }
-    } catch (e) {
-  if (mounted) {
-    console.error('Failed to fetch seller listings:', e);
-    
-    // Check if it's a 404 (user not found)
-    if (e.message === 'User not found' || e.message === 'Not found') {
-      setError('User not found');
-    } else {
-      setError('Failed to load listings');
-    }
-    setListings([]);
-  }
-} finally {
-      if (mounted) {
-        setLoading(false);
-      }
-    }
-  }
-  if (error) {
-  return H('div', { style: { padding: '24px', textAlign: 'center' } },
-    H('div', { className: 'muted' }, error),
-    H('button', { className: 'btn', onClick: onBack }, '<- Back')
-  );
-}
-  
-  if (sellerId) {
-    fetchSellerListings();
-  }
-  
-  return () => { mounted = false; };
-}, [sellerId]);
+    let mounted = true;
 
-  useEffect(() => { setTab('active'); }, [sellerId]);
+    async function fetchSellerListings() {
+      try {
+        setLoading(true);
+        const items = await api.listByUser(sellerId);
+        if (mounted) {
+          setListings(asArray(items));
+        }
+      } catch (e) {
+        if (mounted) {
+          console.error('Failed to fetch seller listings:', e);
+
+          // Check if it's a 404 (user not found)
+          if (e.message === 'User not found' || e.message === 'Not found') {
+            setError('User not found');
+          } else {
+            setError('Failed to load listings');
+          }
+          setListings([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (sellerId) {
+      fetchSellerListings();
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [sellerId]);
+
+  useEffect(() => {
+    setTab('active');
+  }, [sellerId]);
+
+  if (error) {
+    return H('div', { style: { padding: '24px', textAlign: 'center' } },
+      H('div', { className: 'muted' }, error),
+      H('button', { className: 'btn', onClick: onBack }, '<- Back')
+    );
+  }
 
   const handleSelectListing = useCallback((listing, coverSrc) => {
     const { payload, images } = prepareListingForModal(listing, coverSrc);
