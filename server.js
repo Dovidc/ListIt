@@ -5225,7 +5225,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 const TEST_LISTING_OWNER_EMAIL = 'seed.listings@example.com';
 const TEST_LISTING_OWNER_USERNAME = 'seed_seller';
-const MAX_SEED_LISTINGS = 100;
+const MAX_SEED_LISTINGS = 2000;
 
 const TEST_LISTING_TEMPLATES = [
   {
