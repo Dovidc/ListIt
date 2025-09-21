@@ -4005,7 +4005,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
   async function deleteConvo(id) {
     if (!id) return;
-    const ok = confirm('Delete this conversation? This removes all messages and images for both participants.');
+    const ok = confirm('Delete this conversation from your inbox? The other participant will keep the messages.');
     if (!ok) return;
     try {
       await api.deleteConversation(id);
@@ -4036,7 +4036,18 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       urls.push(url);
     }
 
-    await api.sendMessage(activeId, bodyTrim, urls);
+    let resp;
+    try {
+      resp = await api.sendMessage(activeId, bodyTrim, urls);
+    } catch (e) {
+      alert(e?.message || 'Send failed');
+      return;
+    }
+
+    if (resp?.other_user_deleted) {
+      alert('Heads up: This user deleted the conversation. They may not see your new message.');
+    }
+
     setInput('');
     setImgFiles([]);
     await fetchMsgs();
@@ -4054,7 +4065,17 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     if (!activeId) return;
     if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
     const msg = `My PayPal address: ${user.paypal_email}`;
-    await api.sendMessage(activeId, msg, []);
+    let resp;
+    try {
+      resp = await api.sendMessage(activeId, msg, []);
+    } catch (e) {
+      alert(e?.message || 'Send failed');
+      return;
+    }
+
+    if (resp?.other_user_deleted) {
+      alert('Heads up: This user deleted the conversation. They may not see your new message.');
+    }
     await fetchMsgs();
     await fetchConvos();
   }
