@@ -200,6 +200,50 @@
   opacity: 0.6;
 }
 
+.listing-queue-toast {
+  position: fixed;
+  top: 140px;
+  right: 16px;
+  transform: translateX(calc(100% + 24px));
+  transition: transform 0.28s ease, opacity 0.28s ease;
+  background: #0f172a;
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+  opacity: 0;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.listing-queue-toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.listing-queue-toast__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.listing-queue-toast__text {
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+}
+
 .toggle-card .toggle-copy {
   display: grid;
   gap: 2px;
