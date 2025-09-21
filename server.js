@@ -2181,6 +2181,7 @@ app.get('/api/listings', async (req, res) => {
     const noimg = req.query.noimg === '1';
 
     const sort = String(req.query.sort || 'new').toLowerCase();
+    const isCursorById = sort === 'new';
 
 
 
@@ -2188,17 +2189,41 @@ app.get('/api/listings', async (req, res) => {
 
     const pageParam = Number(req.query.page);
 
-    const cursorParam = Number(req.query.cursor || req.query.before || req.query.before_id);
+    const rawCursorParam = Number(req.query.cursor || req.query.before || req.query.before_id);
 
 
 
     let limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(75, limitParam)) : 75;
 
-    const hasCursor = Number.isFinite(cursorParam) && cursorParam > 0;
+    const hasCursor = isCursorById && Number.isFinite(rawCursorParam) && rawCursorParam > 0;
 
-    const hasPage = !hasCursor && Number.isFinite(pageParam) && pageParam > 0;
+    const cursorParam = hasCursor ? rawCursorParam : null;
 
-    const page = hasPage ? pageParam : 1;
+    let page = 1;
+
+    if (isCursorById) {
+
+      if (!hasCursor && Number.isFinite(pageParam) && pageParam > 0) {
+
+        page = pageParam;
+
+      }
+
+    } else {
+
+      if (Number.isFinite(rawCursorParam) && rawCursorParam > 0) {
+
+        page = rawCursorParam;
+
+      } else if (Number.isFinite(pageParam) && pageParam > 0) {
+
+        page = pageParam;
+
+      }
+
+    }
+
+    const hasPage = page > 1;
 
     const offset = hasPage ? (page - 1) * limit : 0;
 
@@ -2430,7 +2455,7 @@ app.get('/api/listings', async (req, res) => {
 
 
 
-      const sql = `
+      let sql = `
 
         SELECT ${fields}
 
@@ -2448,13 +2473,29 @@ app.get('/api/listings', async (req, res) => {
 
 
 
-      const rows = await db.prepare(sql).all({ ...params, ...locParams, lim });
+      const queryParams = { ...params, ...locParams, lim };
+
+      if (!isCursorById) {
+
+        sql += ' OFFSET @off';
+
+        queryParams.off = offset;
+
+      }
+
+
+
+      const rows = await db.prepare(sql).all(queryParams);
 
       const has_more = rows.length > limit;
 
       const items = has_more ? rows.slice(0, limit) : rows;
 
-      const next_cursor = items.length ? items[items.length - 1].id : null;
+      const next_cursor = isCursorById
+
+        ? (items.length ? items[items.length - 1].id : null)
+
+        : (has_more ? page + 1 : null);
 
       const normalizedItems = items.map(r => {
 
