@@ -926,7 +926,18 @@ register(payload, meta) {
   }
 
   // --- Attach icon button (Messages) ---
-  function AttachButton({ onClick, title = 'Attach images' }) {
+  function AttachButton({ onClick, title = 'Attach images', variant = 'library' }) {
+    const icon = variant === 'camera'
+      ? H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+          H('rect', { x: 3, y: 6, width: 18, height: 13, rx: 3, stroke: '#9ca3af', 'stroke-width': 2 }),
+          H('path', { d: 'M9 6l1.5-2h3L15 6', stroke: '#9ca3af', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+          H('circle', { cx: 12, cy: 12.5, r: 3, stroke: '#9ca3af', 'stroke-width': 2 })
+        )
+      : H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+          H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
+          H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
+          H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+        );
     return H('button', {
       className: 'icon-btn',
       type: 'button',
@@ -942,13 +953,7 @@ register(payload, meta) {
         placeItems: 'center',
         cursor: 'pointer'
       }
-    },
-      H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
-        H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
-        H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
-        H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-      )
-    );
+    }, icon);
   }
 
   // --- City Autocomplete (unchanged) ---
@@ -3932,7 +3937,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   const [input, setInput] = useState('');
   const [imgFiles, setImgFiles] = useState([]); // attachments (File[] for S3 upload)
   const imgPreviews = useFilePreviews(imgFiles);
-  const fileRef = useRef();
+  const cameraFileRef = useRef();
+  const libraryFileRef = useRef();
   const [lb, setLb] = useState({ open:false, images:[], index:0 });
   const pollRef = useRef(null);
   const dropRef = useRef();
@@ -4078,7 +4084,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
   function pickImgs(e){
     addFiles(e.target.files);
-    if (fileRef.current) fileRef.current.value = '';
+    if (e?.target) e.target.value = '';
   }
 
   function onComposerPaste(e){
@@ -4307,10 +4313,15 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         onDrop
       },
         H('input', {
-          type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pickImgs,
+          type:'file', accept:'image/*', capture:'environment', ref:cameraFileRef, onChange: pickImgs,
           style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
         }),
-        H(AttachButton, { onClick: () => fileRef.current && fileRef.current.click() }),
+        H('input', {
+          type:'file', accept:'image/*', multiple:true, ref:libraryFileRef, onChange: pickImgs,
+          style:{ position:'absolute', width:1, height:1, opacity:0, pointerEvents:'none' }
+        }),
+        H(AttachButton, { onClick: () => cameraFileRef.current && cameraFileRef.current.click(), title: 'Take a photo', variant: 'camera' }),
+        H(AttachButton, { onClick: () => libraryFileRef.current && libraryFileRef.current.click(), title: 'Attach from photos', variant: 'library' }),
         H('textarea', {
           placeholder:'Type a message...  (Tip: paste or drag images)',
           value:input,
