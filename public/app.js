@@ -1,4 +1,4 @@
-// public/app.js
+﻿// public/app.js
 //
 // S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images -> S3 URLs (kept!)
@@ -1405,9 +1405,9 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       bullets: [
         'Analyze your uploaded photos to draft a description for you.',
         'Include the AI-written text right in the description field.',
-        'Let you review and edit the copy before publishing.'
+    
       ],
-      footer: 'Add at least two clear photos for best results.'
+      footer: 'The more photos you upload, the better the AI can understand your item.'
     });
   }
 
