@@ -620,7 +620,9 @@ async function initializeSchema() {
 
         enable_nearby INTEGER DEFAULT 0,
 
-        sold INTEGER DEFAULT 0
+        sold INTEGER DEFAULT 0,
+
+        is_test_listing INTEGER DEFAULT 0
 
       );
 
@@ -631,6 +633,14 @@ async function initializeSchema() {
     try {
 
       await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0');
+
+    } catch {}
+
+
+
+    try {
+
+      await db.exec('ALTER TABLE listings ADD COLUMN is_test_listing INTEGER DEFAULT 0');
 
     } catch {}
 
@@ -5209,9 +5219,410 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
+/* Admin helpers                                                       */
+
+/* ------------------------------------------------------------------ */
+
+const TEST_LISTING_OWNER_EMAIL = 'seed.listings@example.com';
+const TEST_LISTING_OWNER_USERNAME = 'seed_seller';
+
+const TEST_LISTING_TEMPLATES = [
+  {
+    title: 'Mid-Century Walnut Coffee Table',
+    description: 'Solid walnut table with tapered legs. A few surface scuffs from everyday use but sturdy and smoke-free home.',
+    location: 'Portland, OR',
+    price: 180,
+    tags: ['furniture', 'living room', 'midcentury'],
+    lat: 45.5152,
+    lon: -122.6784,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Commuter Hybrid Bicycle',
+    description: 'Aluminum frame with 700c wheels and hydraulic disc brakes. Tuned this spring and ready to ride.',
+    location: 'Austin, TX',
+    price: 320,
+    tags: ['bike', 'outdoors', 'commuter'],
+    lat: 30.2672,
+    lon: -97.7431,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1485963631004-f2f00b1d6606?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Large Monstera Deliciosa Plant',
+    description: 'Healthy monstera in a 12" terra cotta pot. New growth every month. Includes moss pole support.',
+    location: 'Seattle, WA',
+    price: 85,
+    tags: ['plants', 'home', 'decor'],
+    lat: 47.6062,
+    lon: -122.3321,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Smart 55" 4K TV with Stand',
+    description: 'Samsung 4K UHD television with HDR10 support. Comes with remote, power cable, and minimalist oak stand.',
+    location: 'Chicago, IL',
+    price: 425,
+    tags: ['electronics', 'tv', 'home theater'],
+    lat: 41.8781,
+    lon: -87.6298,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Three-Seat Linen Sofa',
+    description: 'Light gray sofa with removable, machine-washable cushion covers. No stains or sagging. Fits 84" wall.',
+    location: 'Brooklyn, NY',
+    price: 650,
+    tags: ['furniture', 'sofa', 'living room'],
+    lat: 40.6782,
+    lon: -73.9442,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Gaming Laptop RTX 3060',
+    description: '15" Ryzen 7 laptop with RTX 3060, 16GB RAM, and 1TB SSD. Fresh Windows install and original charger included.',
+    location: 'Denver, CO',
+    price: 950,
+    tags: ['electronics', 'gaming', 'laptop'],
+    lat: 39.7392,
+    lon: -104.9903,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'KitchenAid Artisan Stand Mixer',
+    description: 'Matte black 5 qt mixer with dough hook, whisk, and paddle attachments. Works perfectly, just downsizing.',
+    location: 'Minneapolis, MN',
+    price: 210,
+    tags: ['kitchen', 'appliances', 'baking'],
+    lat: 44.9778,
+    lon: -93.265,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1481931098730-318b6f776db0?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Weekend Camping Tent (4-person)',
+    description: 'REI Half Dome 4-person tent with rainfly, footprint, and stakes. Used twice and stored indoors.',
+    location: 'Salt Lake City, UT',
+    price: 275,
+    tags: ['outdoors', 'camping', 'gear'],
+    lat: 40.7608,
+    lon: -111.891,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Vintage Turntable with Speakers',
+    description: 'Fully working Pioneer turntable with built-in preamp and powered bookshelf speakers. Great starter vinyl setup.',
+    location: 'Nashville, TN',
+    price: 340,
+    tags: ['audio', 'vintage', 'music'],
+    lat: 36.1627,
+    lon: -86.7816,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Air Purifier with HEPA Filter',
+    description: 'Coway Mighty purifier. Includes a brand new HEPA filter and carbon pre-filter. Perfect for medium rooms.',
+    location: 'San Francisco, CA',
+    price: 140,
+    tags: ['home', 'air quality', 'appliances'],
+    lat: 37.7749,
+    lon: -122.4194,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1580041065738-e72023775cdc?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Hardcover Mystery Book Bundle',
+    description: 'Set of eight gently read mystery novels from 2020-2022 releases. No writing inside and dust jackets intact.',
+    location: 'Raleigh, NC',
+    price: 45,
+    tags: ['books', 'bundle', 'fiction'],
+    lat: 35.7796,
+    lon: -78.6382,
+    enableNearby: false,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Adjustable Standing Desk',
+    description: '60" x 30" electric standing desk with programmable heights. Includes cable tray and anti-fatigue mat.',
+    location: 'San Diego, CA',
+    price: 390,
+    tags: ['office', 'desk', 'furniture'],
+    lat: 32.7157,
+    lon: -117.1611,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1517430816045-df4b7de11d1d?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  },
+  {
+    title: 'Cordless Stick Vacuum Cleaner',
+    description: 'Dyson V10 Animal with wall mount, crevice tool, and extra battery. Recently cleaned filters and bin.',
+    location: 'Atlanta, GA',
+    price: 260,
+    tags: ['home', 'cleaning', 'appliances'],
+    lat: 33.749,
+    lon: -84.388,
+    enableNearby: true,
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1581579186989-2ab7d2ac0d83?auto=format&fit=crop&w=1600&q=80',
+        width: 1600,
+        height: 1067
+      }
+    ]
+  }
+];
+
+async function ensureSeedSellerUser() {
+
+  const existing = await db.prepare('SELECT id FROM users WHERE email = ?').get(TEST_LISTING_OWNER_EMAIL);
+
+  if (existing?.id) return existing.id;
+
+  const password = crypto.randomBytes(24).toString('hex');
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const info = await db.prepare(`
+    INSERT INTO users (email, username, password_hash, created_at, is_admin)
+    VALUES (?, ?, ?, ?, 0)
+  `).run(
+    TEST_LISTING_OWNER_EMAIL,
+    TEST_LISTING_OWNER_USERNAME,
+    passwordHash,
+    nowIso()
+  );
+
+  return info.lastInsertRowid;
+}
+
+async function deleteSeedListingsInternal() {
+
+  const rows = await db.prepare('SELECT id, location FROM listings WHERE is_test_listing = 1').all();
+
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+
+  const ids = rows.map(r => Number(r.id)).filter((id) => Number.isFinite(id));
+
+  if (!ids.length) return 0;
+
+  for (const row of rows) {
+
+    try { await decrementCityCount(row.location); } catch {}
+
+  }
+
+  const idList = ids.join(',');
+
+  try { await db.exec(`DELETE FROM listing_images WHERE listing_id IN (${idList});`); } catch {}
+
+  try { await db.exec(`DELETE FROM seller_reports WHERE listing_id IN (${idList});`); } catch {}
+
+  await db.exec(`DELETE FROM listings WHERE id IN (${idList});`);
+
+  invalidateNearbyCache();
+
+  return ids.length;
+}
+
+async function seedListingsInternal() {
+
+  const sellerId = await ensureSeedSellerUser();
+
+  await deleteSeedListingsInternal();
+
+  let created = 0;
+
+  for (let index = 0; index < TEST_LISTING_TEMPLATES.length; index += 1) {
+
+    const template = TEST_LISTING_TEMPLATES[index];
+
+    const createdAt = new Date(Date.now() - index * 3600 * 1000).toISOString();
+
+    const enableNearby = template.enableNearby ? 1 : (template.lat != null && template.lon != null ? 1 : 0);
+
+    const info = await db.prepare(`
+      INSERT INTO listings (
+        user_id, image_data, title, description, location, price,
+        created_at, tags, lat, lon, enable_nearby, sold, is_test_listing
+      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
+    `).run(
+      sellerId,
+      String(template.title || ''),
+      String(template.description || ''),
+      String(template.location || ''),
+      Number(template.price) || 0,
+      createdAt,
+      normalizeTags(template.tags),
+      Number.isFinite(template.lat) ? template.lat : null,
+      Number.isFinite(template.lon) ? template.lon : null,
+      enableNearby
+    );
+
+    const listingId = info.lastInsertRowid;
+
+    try { await incrementCityCount(template.location); } catch {}
+
+    if (Number.isFinite(template.lat) && Number.isFinite(template.lon)) {
+
+      try { await maybeUpdateListingGeography(listingId, template.lat, template.lon); } catch {}
+
+    }
+
+    const images = Array.isArray(template.images) ? template.images : [];
+
+    let position = 0;
+
+    for (const image of images) {
+
+      const key = `seed-${listingId}-${position}-${crypto.randomBytes(6).toString('hex')}`;
+
+      const url = canonicalAssetUrl(String(image.url || ''));
+
+      await db.prepare(`
+        INSERT INTO listing_images (
+          listing_id, image_data, position, key, url, width, height, bytes, created_at
+        ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        listingId,
+        position,
+        key,
+        url,
+        Number.isFinite(image.width) ? image.width : null,
+        Number.isFinite(image.height) ? image.height : null,
+        Number.isFinite(image.bytes) ? image.bytes : null,
+        Math.floor(Date.now() / 1000)
+      );
+
+      position += 1;
+    }
+
+    created += 1;
+  }
+
+  invalidateNearbyCache();
+
+  return { created, sellerId };
+}
+
+/* ------------------------------------------------------------------ */
+
 /* Admin endpoints                                                     */
 
 /* ------------------------------------------------------------------ */
+
+app.post('/api/admin/listings/seed', auth, requireAdmin, async (_req, res) => {
+
+  try {
+
+    const result = await seedListingsInternal();
+
+    res.json({ ok: true, created: result.created, seller_id: result.sellerId });
+
+  } catch (e) {
+
+    console.error('Admin seed listings failed:', e);
+
+    return res.status(500).json({ error: 'seed_failed' });
+
+  }
+
+});
+
+app.delete('/api/admin/listings/seed', auth, requireAdmin, async (_req, res) => {
+
+  try {
+
+    const removed = await deleteSeedListingsInternal();
+
+    res.json({ ok: true, deleted: removed });
+
+  } catch (e) {
+
+    console.error('Admin delete seed listings failed:', e);
+
+    return res.status(500).json({ error: 'seed_delete_failed' });
+
+  }
+
+});
 
 app.delete('/api/admin/listings/:id', auth, requireAdmin, async (req, res) => {
 
