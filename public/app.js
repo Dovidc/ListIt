@@ -6571,7 +6571,7 @@ function App(){
         'data-count': queuePendingCount > 0 ? queuePendingCount : undefined
       },
         H('span', { className:'listing-queue-toast__icon', 'aria-hidden': true }, '✓'),
-        H('span', { className:'listing-queue-toast__text' }, 'listings in progresss')
+        H('span', { className:'listing-queue-toast__text' }, 'listings in progress')
       )
     );
   }
