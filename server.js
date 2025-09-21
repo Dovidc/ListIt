@@ -712,6 +712,10 @@ async function initializeSchema() {
 
         listing_id INTEGER,
 
+        a_deleted_at TEXT,
+
+        b_deleted_at TEXT,
+
         created_at TEXT NOT NULL,
 
         UNIQUE (a_user_id, b_user_id, listing_id)
@@ -899,6 +903,10 @@ async function initializeSchema() {
     await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);');
 
     await db.exec('CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);');
+
+    try { await db.exec('ALTER TABLE conversations ADD COLUMN a_deleted_at TEXT'); } catch {}
+
+    try { await db.exec('ALTER TABLE conversations ADD COLUMN b_deleted_at TEXT'); } catch {}
 
     await db.exec('CREATE INDEX IF NOT EXISTS idx_conversations_a_user ON conversations(a_user_id, id DESC);');
 
@@ -4089,9 +4097,37 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
-function isMember(convo, uid) { 
+function isMember(convo, uid) {
 
-  return convo && (convo.a_user_id === uid || convo.b_user_id === uid); 
+  return convo && (convo.a_user_id === uid || convo.b_user_id === uid);
+
+}
+
+async function restoreConversationForUser(convo, userId) {
+
+  if (!convo || !convo.id) return convo;
+
+  const id = Number(convo.id);
+
+  if (!Number.isFinite(id)) return convo;
+
+  const isA = Number(convo.a_user_id) === Number(userId);
+
+  const isB = Number(convo.b_user_id) === Number(userId);
+
+  if (!isA && !isB) return convo;
+
+  const updates = [];
+
+  if (isA && convo.a_deleted_at != null) updates.push('a_deleted_at = NULL');
+
+  if (isB && convo.b_deleted_at != null) updates.push('b_deleted_at = NULL');
+
+  if (!updates.length) return convo;
+
+  await db.prepare(`UPDATE conversations SET ${updates.join(', ')} WHERE id = ?`).run(id);
+
+  return await db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
 
 }
 
@@ -4187,11 +4223,13 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
           await db.prepare('UPDATE conversations SET listing_id = NULL WHERE id = ?').run(existing.id);
 
-          existing.listing_id = null;
-
         }
 
-        return res.json(existing);
+        const refreshed = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(existing.id);
+
+        const restored = await restoreConversationForUser(refreshed, req.user.id);
+
+        return res.json(restored);
 
       }
 
@@ -4207,13 +4245,21 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
         .run(a, b, listing_id || null, nowIso());
 
-      return res.json({ id: info.lastInsertRowid, a_user_id: a, b_user_id: b, listing_id: listing_id || null });
+      const created = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(info.lastInsertRowid);
+
+      const restored = await restoreConversationForUser(created, req.user.id);
+
+      return res.json(restored);
 
     } catch {
 
-    const row = await db.prepare('SELECT * FROM conversations WHERE a_user_id=? AND b_user_id=? AND listing_id = ?')        .get(a, b, listing_id || null);
+      const row = await db.prepare('SELECT * FROM conversations WHERE a_user_id=? AND b_user_id=? AND listing_id = ?')
 
-      return res.json(row);
+        .get(a, b, listing_id || null);
+
+      const restored = await restoreConversationForUser(row, req.user.id);
+
+      return res.json(restored);
 
     }
 
@@ -4291,7 +4337,15 @@ app.get('/api/conversations', auth, async (req, res) => {
 
         lm.id AS last_message_id,
 
-        sender.is_admin AS last_message_is_admin
+        sender.is_admin AS last_message_is_admin,
+
+        CASE
+
+          WHEN c.a_user_id = @me THEN CASE WHEN c.b_deleted_at IS NULL THEN 0 ELSE 1 END
+
+          ELSE CASE WHEN c.a_deleted_at IS NULL THEN 0 ELSE 1 END
+
+        END AS other_user_deleted
 
       FROM conversations c
 
@@ -4311,7 +4365,9 @@ app.get('/api/conversations', auth, async (req, res) => {
 
         ON sender.id = lm.sender_id
 
-      WHERE c.a_user_id = @me OR c.b_user_id = @me
+      WHERE (c.a_user_id = @me AND c.a_deleted_at IS NULL)
+
+         OR (c.b_user_id = @me AND c.b_deleted_at IS NULL)
 
       ORDER BY c.id DESC
 
@@ -4323,7 +4379,9 @@ app.get('/api/conversations', auth, async (req, res) => {
 
       ...row,
 
-      image_data: canonicalAssetUrl(row.image_data)
+      image_data: canonicalAssetUrl(row.image_data),
+
+      other_user_deleted: !!row.other_user_deleted
 
     }));
 
@@ -4351,11 +4409,25 @@ app.get('/api/conversations/:id/messages', auth, async (req, res) => {
 
     const convo = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
 
-    
+
 
     if (!convo) return res.status(404).json({ error: 'Not found' });
 
     if (!isMember(convo, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+
+
+
+    const isAdmin = !!req.user?.is_admin;
+
+    const isA = Number(convo.a_user_id) === Number(req.user.id);
+
+    const isB = Number(convo.b_user_id) === Number(req.user.id);
+
+    if (!isAdmin && ((isA && convo.a_deleted_at != null) || (isB && convo.b_deleted_at != null))) {
+
+      return res.status(404).json({ error: 'Not found' });
+
+    }
 
 
 
@@ -4427,7 +4499,35 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
 
 
-    const otherUserId = convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id;
+    const isA = Number(convo.a_user_id) === Number(req.user.id);
+
+    const isB = Number(convo.b_user_id) === Number(req.user.id);
+
+    const otherUserId = isA ? convo.b_user_id : convo.a_user_id;
+
+    const otherDeleted = isA
+
+      ? convo.b_deleted_at != null
+
+      : (isB ? convo.a_deleted_at != null : false);
+
+
+
+    const columnsToClear = [];
+
+    if (isA && convo.a_deleted_at != null) columnsToClear.push('a_deleted_at = NULL');
+
+    if (isB && convo.b_deleted_at != null) columnsToClear.push('b_deleted_at = NULL');
+
+    if (columnsToClear.length) {
+
+      await db.prepare(`UPDATE conversations SET ${columnsToClear.join(', ')} WHERE id = ?`).run(id);
+
+      if (isA) convo.a_deleted_at = null;
+
+      if (isB) convo.b_deleted_at = null;
+
+    }
 
     if (isLockedAccount(req.user)) {
 
@@ -4505,9 +4605,11 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
     const normalizedImgs = imgs.map(r => canonicalAssetUrl(r.image_data));
 
-    
+    const messagePayload = { ...row, images: normalizedImgs };
 
-    res.json({ ...row, images: normalizedImgs });
+
+
+    res.json({ message: messagePayload, other_user_deleted: !!otherDeleted });
 
 
 
@@ -4517,7 +4619,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
       conversation_id: id,
 
-      message: { ...row, images: normalizedImgs },
+      message: messagePayload,
 
       sender_id: req.user.id,
 
@@ -4663,21 +4765,47 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
 
 
 
-    await db.prepare(`
+    const isAdmin = !!req.user?.is_admin;
 
-      DELETE FROM message_images
+    const isA = Number(convo.a_user_id) === Number(req.user.id);
 
-        WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)
-
-    `).run(id);
-
-    await db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
-
-    await db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+    const isB = Number(convo.b_user_id) === Number(req.user.id);
 
 
 
-    res.json({ ok: true });
+    if (isAdmin && !isA && !isB) {
+
+      await db.prepare(`
+
+        DELETE FROM message_images
+
+          WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)
+
+      `).run(id);
+
+      await db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
+
+      await db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+
+
+
+      return res.json({ ok: true, deleted_for_all: true });
+
+    }
+
+
+
+    const columnName = isA ? 'a_deleted_at' : 'b_deleted_at';
+
+    if (!columnName) return res.status(403).json({ error: 'Forbidden' });
+
+
+
+    await db.prepare(`UPDATE conversations SET ${columnName} = @now WHERE id = @id`).run({ now: nowIso(), id });
+
+
+
+    return res.json({ ok: true, deleted_for_self: true });
 
   } catch (e) {
 

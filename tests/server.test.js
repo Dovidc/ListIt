@@ -66,6 +66,100 @@ describe('ListIt API basic flows', () => {
     expect(msgRes.status).toBe(200);
     expect(msgRes.body[0].body).toBe('Hi!');
   });
+
+  it('keeps conversations for the other user when one participant deletes them', async () => {
+    await resetDb();
+
+    const alice = request.agent(app);
+
+    const bob = request.agent(app);
+
+
+
+    let res = await alice.post('/api/register').send({ email: 'alice@test.com', password: 'secret1', username: 'aliceUser' });
+
+    expect(res.status).toBe(200);
+
+    res = await bob.post('/api/register').send({ email: 'bob@test.com', password: 'secret1', username: 'bobUser' });
+
+    expect(res.status).toBe(200);
+
+    const bobId = res.body.id;
+
+
+
+    res = await alice.post('/api/conversations').send({ with_user_id: bobId });
+
+    expect(res.status).toBe(200);
+
+    const convoId = res.body.id;
+
+
+
+    res = await alice.post(`/api/conversations/${convoId}/messages`).send({ body: 'Hello Bob' });
+
+    expect(res.status).toBe(200);
+
+
+
+    res = await bob.get('/api/conversations');
+
+    expect(res.status).toBe(200);
+
+    const bobConvos = bodyItems(res.body);
+
+    expect(bobConvos.some(c => c.id === convoId)).toBe(true);
+
+
+
+    res = await alice.delete(`/api/conversations/${convoId}`);
+
+    expect(res.status).toBe(200);
+
+
+
+    res = await alice.get('/api/conversations');
+
+    expect(res.status).toBe(200);
+
+    const aliceConvos = bodyItems(res.body);
+
+    expect(aliceConvos.find(c => c.id === convoId)).toBeUndefined();
+
+
+
+    res = await bob.get('/api/conversations');
+
+    expect(res.status).toBe(200);
+
+    const stillThere = bodyItems(res.body).find(c => c.id === convoId);
+
+    expect(stillThere).toBeTruthy();
+
+
+
+    res = await bob.post(`/api/conversations/${convoId}/messages`).send({ body: 'Are you there?' });
+
+    expect(res.status).toBe(200);
+
+    expect(Boolean(res.body.other_user_deleted)).toBe(true);
+
+
+
+    const aliceMessages = await alice.get(`/api/conversations/${convoId}/messages`);
+
+    expect(aliceMessages.status).toBe(404);
+
+
+
+    const bobMessages = await bob.get(`/api/conversations/${convoId}/messages`);
+
+    expect(bobMessages.status).toBe(200);
+
+    expect(Array.isArray(bobMessages.body)).toBe(true);
+
+    expect(bobMessages.body.length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('Admin reports dashboard', () => {
