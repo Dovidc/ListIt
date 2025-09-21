@@ -3684,7 +3684,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
         H('input', {
           type: 'number',
           min: 1,
-          max: 100,
+          max: 2000,
           step: 1,
           value: seedCount,
           placeholder: 'Uses default when left blank',
