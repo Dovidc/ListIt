@@ -1593,8 +1593,9 @@ async function submit(e){
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
-          if (typeof ai.description === 'string' && ai.description.trim()) {
-            aiDescription = ai.description.trim().slice(0, 400);
+          const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+          if (rawDescription && aiDescriptionEnabled) {
+            aiDescription = rawDescription.slice(0, 400);
           }
 
           // Nearby preference (sub-toggle)
@@ -1631,7 +1632,7 @@ async function submit(e){
           setAutoBusy(false);
         }
       })();
-    }, [autoListEnabled, autoPostNearbyEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // UPDATED: Submit function that handles image changes properly
     // Update the submit function (remove the duplicate and fix it):
@@ -4408,7 +4409,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   }
 
   // --- MassList Modal (fixed) ---
-  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, onLockedAction }) {
+  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, onLockedAction }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -4470,8 +4471,9 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
           }
 
           const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-          if (typeof ai.description === 'string' && ai.description.trim()) {
-            aiDescription = ai.description.trim().slice(0, 400);
+          const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+          if (rawDescription && aiDescriptionEnabled) {
+            aiDescription = rawDescription.slice(0, 400);
           }
           const payload = {
             title: (ai.title || 'Item for sale').toString().slice(0, 80),
@@ -5097,8 +5099,9 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
         const parsedPrice = Number(ai.suggested_price);
         const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
-        if (typeof ai.description === 'string' && ai.description.trim()) {
-          aiDescription = ai.description.trim().slice(0, 400);
+        const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+        if (rawDescription && aiDescriptionEnabled) {
+          aiDescription = rawDescription.slice(0, 400);
         }
 
         let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
@@ -5134,7 +5137,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
         setAutoBusy(false);
       }
     })();
-  }, [autoListEnabled, autoPostNearbyEnabled, draft, files]);
+  }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, draft, files]);
 
   async function submit(e){
     e.preventDefault();
@@ -6156,7 +6159,8 @@ function App(){
         reloadMine: reloadMineOnly,
         user,
         onLockedAction: showLockedBanner,
-        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+        aiDescriptionEnabled
       }),
 
       // NEW: Listing Form modal
