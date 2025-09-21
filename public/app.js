@@ -4723,7 +4723,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       await Promise.allSettled(jobs);
 
       try { await reloadMine(); } catch {}
-      try { await reloadAll(); } catch {}
+      try { await reloadAll({ preserveExisting: true }); } catch {}
 
       return { total, created: total - failedCount, failed: failedCount };
     };
@@ -5986,10 +5986,12 @@ function App(){
       loadListings({ cursor: null, replace: true });
     }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
 
-    const refreshListings = useCallback(async () => {
+    const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
       nextCursorRef.current = null;
-      setAll([]);
-      setHasNext(false);
+      if (!preserveExisting) {
+        setAll([]);
+        setHasNext(false);
+      }
       await loadListings({ cursor: null, replace: true });
     }, [loadListings]);
 
@@ -6549,7 +6551,7 @@ function App(){
         isOpen: showForm,
         draft: editing,
         onClose: () => { setShowForm(false); setEditing(null); },
-        onSaved: async () => { await refreshListings(); },
+        onSaved: async () => { await refreshListings({ preserveExisting: true }); },
         autoListEnabled,
         aiDescriptionEnabled,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
