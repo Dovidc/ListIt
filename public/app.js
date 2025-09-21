@@ -467,6 +467,8 @@ register(payload, meta) {
 
     adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
     adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
+    adminSeedListings(meta)    { return this._fetch('/api/admin/listings/seed', { method:'POST' }, meta); },
+    adminDeleteSeedListings(meta) { return this._fetch('/api/admin/listings/seed', { method:'DELETE' }, meta); },
 
     listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
     adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
@@ -2918,6 +2920,10 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [adSaving, setAdSaving] = useState(false);
   const [editingAdId, setEditingAdId] = useState(null);
   const [adForm, setAdForm] = useState(() => createEmptyAdForm());
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [seedDeleteBusy, setSeedDeleteBusy] = useState(false);
+  const [seedMessage, setSeedMessage] = useState('');
+  const [seedError, setSeedError] = useState('');
 
   const searchTimer = useRef(null);
 
@@ -2954,6 +2960,44 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       loadAds();
     }
   }, [tab, loadAds]);
+
+  async function handleSeedListings() {
+    if (seedBusy || seedDeleteBusy) return;
+    setSeedError('');
+    setSeedMessage('');
+    setSeedBusy(true);
+    try {
+      const result = await api.adminSeedListings();
+      const count = Number(result?.created || 0);
+      setSeedMessage(count
+        ? `Created ${count} test listing${count === 1 ? '' : 's'}.`
+        : 'No listings were created.');
+    } catch (err) {
+      setSeedError(err?.message || 'Failed to seed test listings.');
+    } finally {
+      setSeedBusy(false);
+    }
+  }
+
+  async function handleDeleteSeedListings() {
+    if (seedBusy || seedDeleteBusy) return;
+    setSeedError('');
+    setSeedMessage('');
+    setSeedDeleteBusy(true);
+    try {
+      const result = await api.adminDeleteSeedListings();
+      const count = Number(result?.deleted || 0);
+      setSeedMessage(count
+        ? `Deleted ${count} test listing${count === 1 ? '' : 's'}.`
+        : 'No test listings to delete.');
+    } catch (err) {
+      setSeedError(err?.message || 'Failed to delete test listings.');
+    } finally {
+      setSeedDeleteBusy(false);
+    }
+  }
+
+  const seedActionsDisabled = seedBusy || seedDeleteBusy;
 
   function formatDate(value) {
     if (!value) return '--';
@@ -3595,6 +3639,34 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
 
         )
 
+    )
+    ),
+
+    H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+      H('h3', { style: { margin: 0, fontSize: 18 } }, 'Testing utilities'),
+      H('div', { className: 'muted', style: { fontSize: 13 } }, 'Generate sample listings with photos for QA or demo walkthroughs.'),
+      seedError
+        ? H('div', { style: { color: '#b91c1c', fontSize: 13 } }, seedError)
+        : (seedMessage
+            ? H('div', { style: { color: '#047857', fontSize: 13 } }, seedMessage)
+            : null),
+      (seedBusy || seedDeleteBusy)
+        ? H('div', { className: 'muted', style: { fontSize: 13 } }, seedBusy ? 'Seeding test listings… this may take a moment.' : 'Deleting test listings…')
+        : null,
+      H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+        H('button', {
+          className: 'btn primary',
+          type: 'button',
+          onClick: handleSeedListings,
+          disabled: seedActionsDisabled
+        }, seedBusy ? 'Seeding…' : 'Seed test listings'),
+        H('button', {
+          className: 'btn danger',
+          type: 'button',
+          onClick: handleDeleteSeedListings,
+          disabled: seedActionsDisabled
+        }, seedDeleteBusy ? 'Deleting…' : 'Delete test listings')
+      )
     )
   );
 }

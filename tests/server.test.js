@@ -222,6 +222,51 @@ describe('Admin reports dashboard', () => {
   });
 });
 
+describe('Admin test listing utilities', () => {
+  it('seeds and clears demo listings', async () => {
+    await resetDb();
+
+    const admin = request.agent(app);
+
+    let res = await admin.post('/api/register').send({ email: 'seed-admin@test.com', password: 'secret1', username: 'seedAdmin' });
+    expect(res.status).toBe(200);
+    const adminId = res.body.id;
+    await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
+
+    res = await admin.post('/api/login').send({ email: 'seed-admin@test.com', password: 'secret1' });
+    expect(res.status).toBe(200);
+
+    res = await admin.post('/api/admin/listings/seed');
+    expect(res.status).toBe(200);
+    const createdCount = Number(res.body.created || 0);
+    expect(createdCount).toBeGreaterThan(0);
+
+    res = await admin.get('/api/listings');
+    expect(res.status).toBe(200);
+    const seededListings = bodyItems(res.body);
+    expect(Array.isArray(seededListings)).toBe(true);
+    expect(seededListings.length).toBe(createdCount);
+    expect(seededListings.every(item => item.owner_username === 'seed_seller')).toBe(true);
+
+    const idsParam = seededListings.map(item => item.id).join(',');
+    expect(idsParam).not.toBe('');
+
+    const coversRes = await admin.get(`/api/listings/covers?ids=${idsParam}`);
+    expect(coversRes.status).toBe(200);
+    expect(Array.isArray(coversRes.body)).toBe(true);
+    expect(coversRes.body.length).toBeGreaterThan(0);
+    expect(coversRes.body.every(row => row && row.image_data)).toBe(true);
+
+    res = await admin.delete('/api/admin/listings/seed');
+    expect(res.status).toBe(200);
+    expect(Number(res.body.deleted || 0)).toBe(createdCount);
+
+    res = await admin.get('/api/listings');
+    expect(res.status).toBe(200);
+    expect(bodyItems(res.body).length).toBe(0);
+  });
+});
+
 describe('Locked account restrictions', () => {
   it('restricts selling actions but allows messaging admins', async () => {
     await resetDb();
