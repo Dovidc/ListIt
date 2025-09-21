@@ -1439,11 +1439,11 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       title: 'About the background queue',
       intro: 'When enabled, the background queue will:',
       bullets: [
-        'Run Auto-list, manual saves, and MassList jobs one at a time in the background.',
-        'Let you close the form immediately while uploads and AI work finishes.',
-        'Show a quick toast whenever listings are still processing so you know to keep the tab open.'
+        'Run Auto-list, and MassList jobs one at a time in the background.',
+        'Allow you to immediately move on to another task without waiting for proccesses to finish.',
+        'Show a brief notification indicating the job has started.',
       ],
-      footer: 'Leave this page open until the toast disappears to ensure uploads complete.'
+      footer: 'Most effective after uploading a large MassList.'
     });
   }
 
