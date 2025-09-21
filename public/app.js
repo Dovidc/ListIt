@@ -1426,9 +1426,24 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       bullets: [
         'Analyze your uploaded photos to draft a description for you.',
         'Include the AI-written text right in the description field.',
-    
+
       ],
       footer: 'The more photos you upload, the better the AI can understand your item.'
+    });
+  }
+
+  // --- Background queue help modal ---
+  function BackgroundQueueHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About the background queue',
+      intro: 'When enabled, the background queue will:',
+      bullets: [
+        'Run Auto-list, manual saves, and MassList jobs one at a time in the background.',
+        'Let you close the form immediately while uploads and AI work finishes.',
+        'Show a quick toast whenever listings are still processing so you know to keep the tab open.'
+      ],
+      footer: 'Leave this page open until the toast disappears to ensure uploads complete.'
     });
   }
 
@@ -4913,7 +4928,16 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               H('div', { className:'toggle-copy' },
                 H('div', { style:{ fontWeight:700 } }, 'Background queue'),
                 H('div', { className:'muted', style:{ fontSize:12 } }, 'listings run in background')
-              )
+              ),
+              H('button', {
+                type:'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('bgqueue'); },
+                title:'Background queue info',
+                style:{
+                  marginLeft:6, width:24, height:24, lineHeight:'22px',
+                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+                }
+              }, '?')
             ),
             H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
             H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
@@ -5065,6 +5089,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
       helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
+      helpModal === 'bgqueue' && H(BackgroundQueueHelpModal, { onClose: () => setHelpModal(null) }),
 
       H(ListingModal, {
         open: !!profileSelected,
