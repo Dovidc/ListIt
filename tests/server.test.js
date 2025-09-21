@@ -236,10 +236,10 @@ describe('Admin test listing utilities', () => {
     res = await admin.post('/api/login').send({ email: 'seed-admin@test.com', password: 'secret1' });
     expect(res.status).toBe(200);
 
-    res = await admin.post('/api/admin/listings/seed');
+    res = await admin.post('/api/admin/listings/seed').send({ count: 3 });
     expect(res.status).toBe(200);
     const createdCount = Number(res.body.created || 0);
-    expect(createdCount).toBeGreaterThan(0);
+    expect(createdCount).toBe(3);
 
     res = await admin.get('/api/listings');
     expect(res.status).toBe(200);
