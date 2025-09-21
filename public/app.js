@@ -1433,7 +1433,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   }
 
   // --- Listing Form (S3-first) ---
-  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled }) {
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
     const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
 
@@ -1610,127 +1610,170 @@ async function submit(e){
       if (!files || files.length === 0) return;
       if (autoRunning.current) return;
 
-      (async () => {
-        autoRunning.current = true;
-        setAutoBusy(true);
+      autoRunning.current = true;
+
+      const runAutoListJob = async () => {
+        const uploads = await Promise.all(files.map(uploadFileDraft));
+        if (!uploads.length) throw new Error('No images to upload');
+
+        let ai = {};
+        let aiDescription = '';
         try {
-          const uploads = await Promise.all(files.map(uploadFileDraft));
-          if (!uploads.length) throw new Error('No images to upload');
+          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
+          if (aiSources.length) {
+            ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+          }
+        } catch (_) {}
 
-          let ai = {};
-          let aiDescription = '';
+        const parsedPrice = Number(ai.suggested_price);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+        if (rawDescription && aiDescriptionEnabled) {
+          aiDescription = rawDescription.slice(0, 400);
+        }
+
+        // Nearby preference (sub-toggle)
+        let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+        if (autoPostNearbyEnabled) {
           try {
-            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
-            if (aiSources.length) {
-              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
-            }
-          } catch (_) {}
-
-          const parsedPrice = Number(ai.suggested_price);
-          const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-          const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-          if (rawDescription && aiDescriptionEnabled) {
-            aiDescription = rawDescription.slice(0, 400);
+            const c = await fetchCoordsAndReverse();
+            enableNearbyAuto = 1;
+            latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+          } catch (_) {
+            enableNearbyAuto = 0;
           }
+        }
 
-          // Nearby preference (sub-toggle)
-          let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
-          if (autoPostNearbyEnabled) {
-            try {
-              const c = await fetchCoordsAndReverse();
-              enableNearbyAuto = 1;
-              latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
-            } catch (_) {
-              enableNearbyAuto = 0;
-            }
+        const payload = {
+          title: (ai.title || 'Item for sale').toString().slice(0, 80),
+          description: aiDescription || 'No description',
+          location: locAuto || '',
+          price: safePrice,
+          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+          enable_nearby: enableNearbyAuto,
+          upload_tokens: uploads.map((u) => u.uploadToken)
+        };
+        if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+        const created = await api.createListing(payload);
+        if (!created?.id) throw new Error('Create failed');
+      };
+
+      if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+        enqueueListingJob(async () => {
+          try {
+            await runAutoListJob();
+            onSaved?.();
+          } catch (err) {
+            console.error('Auto-list failed:', err);
+            alert(`Auto-list failed: ${err?.message || err}`);
+          } finally {
+            autoRunning.current = false;
           }
+        });
+        onCancel?.();
+        return;
+      }
 
-          const payload = {
-            title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: aiDescription || 'No description',
-            location: locAuto || '',
-            price: safePrice,
-            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: enableNearbyAuto,
-            upload_tokens: uploads.map((u) => u.uploadToken)
-          };
-          if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
-
-          const created = await api.createListing(payload);
-          if (!created?.id) throw new Error('Create failed');
-
+      setAutoBusy(true);
+      (async () => {
+        try {
+          await runAutoListJob();
           onSaved?.();
         } catch (err) {
           console.error('Auto-list failed:', err);
           alert(`Auto-list failed: ${err?.message || err}`);
         } finally {
           setAutoBusy(false);
+          autoRunning.current = false;
         }
       })();
-    }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, draft, files]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // UPDATED: Submit function that handles image changes properly
     // Update the submit function (remove the duplicate and fix it):
-async function submit(e){
-  e.preventDefault();
-  try {
-    const totalImages = existingUrls.length + files.length;
-    if (totalImages === 0) {
-      alert('Please add at least one image.');
-      return;
-    }
-
-    const parsedPrice = Number(priceVal);
-    const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-    const payload = {
-      title: String(title || '').trim(),
-      description: String(description || 'No description').trim(),
-      location: String(location || '').trim(),
-      price: safePrice,
-      tags: String(tags || '').trim(),
-      enable_nearby: enableNearby ? 1 : 0
-    };
-
-    if (enableNearby && !hasFixedGps) {
-      payload.lat = lat;
-      payload.lon = lon;
-    }
-
-    if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
-      alert('Enable Nearby requires using your location.');
-      return;
-    }
-
-    if (draft) {
-      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
-      if (deletedImages.length > 0) {
-        payload.deletedImages = deletedImages;
-      }
-
-      await api.updateListing(draft.id, payload);
-      if (files.length) await uploadFilesForListing(draft.id, files);
-    } else {
-      let uploads = [];
-      if (files.length) {
-        uploads = await Promise.all(files.map(uploadFileDraft));
-        const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
-        if (!tokens.length) {
-          throw new Error('Image upload failed');
+    async function submit(e){
+      e.preventDefault();
+      try {
+        const totalImages = existingUrls.length + files.length;
+        if (totalImages === 0) {
+          alert('Please add at least one image.');
+          return;
         }
-        payload.upload_tokens = tokens;
-      }
 
-      const created = await api.createListing(payload);
-      if (!created?.id) { throw new Error('Create failed'); }
+        const parsedPrice = Number(priceVal);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        const basePayload = {
+          title: String(title || '').trim(),
+          description: String(description || 'No description').trim(),
+          location: String(location || '').trim(),
+          price: safePrice,
+          tags: String(tags || '').trim(),
+          enable_nearby: enableNearby ? 1 : 0
+        };
+
+        if (enableNearby && !hasFixedGps) {
+          basePayload.lat = lat;
+          basePayload.lon = lon;
+        }
+
+        if (basePayload.enable_nearby && !hasFixedGps && (basePayload.lat == null || basePayload.lon == null)) {
+          alert('Enable Nearby requires using your location.');
+          return;
+        }
+
+        if (draft) {
+          const payload = { ...basePayload };
+          const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+          if (deletedImages.length > 0) {
+            payload.deletedImages = deletedImages;
+          }
+
+          await api.updateListing(draft.id, payload);
+          if (files.length) await uploadFilesForListing(draft.id, files);
+          onSaved?.();
+          return;
+        }
+
+        const filesSnapshot = files.slice();
+        const runCreate = async () => {
+          const payload = { ...basePayload };
+          if (filesSnapshot.length) {
+            const uploads = await Promise.all(filesSnapshot.map(uploadFileDraft));
+            const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+            if (!tokens.length) {
+              throw new Error('Image upload failed');
+            }
+            payload.upload_tokens = tokens;
+          }
+
+          const created = await api.createListing(payload);
+          if (!created?.id) { throw new Error('Create failed'); }
+        };
+
+        if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+          enqueueListingJob(async () => {
+            try {
+              await runCreate();
+              onSaved?.();
+            } catch (err) {
+              console.error('Create/save failed:', err);
+              alert(`Create/save failed: ${err?.message || err}`);
+            }
+          });
+          onCancel?.();
+          return;
+        }
+
+        await runCreate();
+        onSaved?.();
+      } catch (err) {
+        console.error('Create/save failed:', err);
+        alert(`Create/save failed: ${err?.message || err}`);
+      }
     }
-    onSaved?.();
-  } catch (err) {
-    console.error('Create/save failed:', err);
-    alert(`Create/save failed: ${err?.message || err}`);
-  }
-}
 
     const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
 
@@ -4568,7 +4611,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   }
 
   // --- MassList Modal (fixed) ---
-  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, onLockedAction }) {
+  function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob }) {
     const [files, setFiles] = useState([]);
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -4595,14 +4638,16 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       setFiles(next);
     }
 
-    async function runMassList(){
-      if (!user) { alert('Log in to create listings.'); return; }
-      if (user.account_status === 'locked') { onLockedAction?.(); return; }
-      if (!files.length) { alert('Pick at least one image.'); return; }
-      setBusy(true);
-      setProgress({ done: 0, total: files.length, failed: 0 });
+    const executeMassList = async ({ filesSnapshot, trackProgress }) => {
+      const total = filesSnapshot.length;
+      let failedCount = 0;
+      let doneCount = 0;
 
-      let failed = 0;
+      const updateProgress = trackProgress
+        ? (nextDone, nextFailed) => setProgress({ done: nextDone, total, failed: nextFailed })
+        : () => {};
+
+      updateProgress(0, 0);
 
       let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
       if (autoPostNearbyEnabled) {
@@ -4616,10 +4661,10 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
       const limiter = createConcurrencyLimiter(3);
 
-      const jobs = files.map((f) => limiter(async () => {
+      const jobs = filesSnapshot.map((file) => limiter(async () => {
         let encounteredError = false;
         try {
-          const upload = await uploadFileDraft(f);
+          const upload = await uploadFileDraft(file);
 
           let ai = {};
           let aiDescription = '';
@@ -4650,10 +4695,11 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 
         } catch (err) {
           encounteredError = true;
-          failed += 1;
+          failedCount += 1;
           console.error('MassList failed:', err);
         } finally {
-          setProgress((p) => ({ ...p, done: p.done + 1, failed }));
+          doneCount += 1;
+          updateProgress(doneCount, failedCount);
         }
 
         return !encounteredError;
@@ -4664,11 +4710,45 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
       try { await reloadMine(); } catch {}
       try { await reloadAll(); } catch {}
 
-      setBusy(false);
+      return { total, created: total - failedCount, failed: failedCount };
+    };
 
-      const stats = { total: files.length, created: files.length - failed, failed };
-      onDone && onDone(stats);
-      onClose && onClose();
+    async function runMassList(){
+      if (!user) { alert('Log in to create listings.'); return; }
+      if (user.account_status === 'locked') { onLockedAction?.(); return; }
+      if (!files.length) { alert('Pick at least one image.'); return; }
+
+      const filesSnapshot = files.slice();
+
+      const runJob = async (trackProgress) => {
+        const stats = await executeMassList({ filesSnapshot, trackProgress });
+        onDone && onDone(stats);
+      };
+
+      if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+        enqueueListingJob(async () => {
+          try {
+            await runJob(false);
+          } catch (err) {
+            console.error('MassList failed:', err);
+            alert(`MassList failed: ${err?.message || err}`);
+          }
+        });
+        onClose?.();
+        return;
+      }
+
+      setBusy(true);
+      setProgress({ done: 0, total: filesSnapshot.length, failed: 0 });
+      try {
+        await runJob(true);
+        onClose?.();
+      } catch (err) {
+        console.error('MassList failed:', err);
+        alert(`MassList failed: ${err?.message || err}`);
+      } finally {
+        setBusy(false);
+      }
     }
 
     const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
@@ -4724,6 +4804,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     autoListEnabled, setAutoListEnabled,
     aiDescriptionEnabled, setAiDescriptionEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
+    backgroundQueueEnabled, setBackgroundQueueEnabled,
     isMobile,
     onViewSeller, // ADD THIS PARAMETER
     onToggleSold
@@ -4820,6 +4901,19 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
                   borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
                 }
               }, '?')
+            ),
+            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
+              H('input', {
+                type:'checkbox',
+                className:'toggle-input',
+                checked: !!backgroundQueueEnabled,
+                onChange: (e) => setBackgroundQueueEnabled(e.target.checked)
+              }),
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
+                H('div', { style:{ fontWeight:700 } }, 'Background queue'),
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'listings run in background')
+              )
             ),
             H('button', { className:'btn', onClick:onNewListing }, 'New listing'),
             H('button', { className:'btn danger', onClick:onLogout }, 'Log out')
@@ -4996,7 +5090,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
-function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled }) {
+function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
   if (!isOpen) return null;
   
   const isMobile = isMobileDevice();
@@ -5069,6 +5163,8 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, ai
           autoListEnabled,
           aiDescriptionEnabled,
           autoPostNearbyEnabled,
+          backgroundQueueEnabled,
+          enqueueListingJob,
           showTags,
           setShowTags
         }) : H(ListingForm, {
@@ -5077,7 +5173,9 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, ai
           onSaved: () => { onSaved?.(); onClose(); },
           autoListEnabled,
           aiDescriptionEnabled,
-          autoPostNearbyEnabled
+          autoPostNearbyEnabled,
+          backgroundQueueEnabled,
+          enqueueListingJob
         })
       )
     )
@@ -5087,7 +5185,7 @@ function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, ai
 }
 
 // --- Compact Listing Form for Mobile ---
-function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, showTags, setShowTags }) {
+function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags }) {
   const fileRef = useRef();
   const [files, setFiles] = useState([]);
   const [existingUrls, setExistingUrls] = useState([]);
@@ -5240,64 +5338,85 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
     if (!files || files.length === 0) return;
     if (autoRunning.current) return;
 
-    (async () => {
-      autoRunning.current = true;
-      setAutoBusy(true);
+    autoRunning.current = true;
+
+    const runAutoListJob = async () => {
+      const uploads = await Promise.all(files.map(uploadFileDraft));
+      if (!uploads.length) throw new Error('No images to upload');
+
+      let ai = {};
+      let aiDescription = '';
       try {
-        const uploads = await Promise.all(files.map(uploadFileDraft));
-        if (!uploads.length) throw new Error('No images to upload');
+        const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
+        if (aiSources.length) {
+          ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+        }
+      } catch (_) {}
 
-        let ai = {};
-        let aiDescription = '';
+      const parsedPrice = Number(ai.suggested_price);
+      const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+      const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+      if (rawDescription && aiDescriptionEnabled) {
+        aiDescription = rawDescription.slice(0, 400);
+      }
+
+      let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+      if (autoPostNearbyEnabled) {
         try {
-          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
-          if (aiSources.length) {
-            ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
-          }
-        } catch (_) {}
-
-        const parsedPrice = Number(ai.suggested_price);
-        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-        const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-        if (rawDescription && aiDescriptionEnabled) {
-          aiDescription = rawDescription.slice(0, 400);
+          const c = await fetchCoordsAndReverse();
+          enableNearbyAuto = 1;
+          latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+        } catch (_) {
+          enableNearbyAuto = 0;
         }
+      }
 
-        let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
-        if (autoPostNearbyEnabled) {
-          try {
-            const c = await fetchCoordsAndReverse();
-            enableNearbyAuto = 1;
-            latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
-          } catch (_) {
-            enableNearbyAuto = 0;
-          }
+      const payload = {
+        title: (ai.title || 'Item for sale').toString().slice(0, 80),
+        description: aiDescription || 'No description',
+        location: locAuto || '',
+        price: safePrice,
+        tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+        enable_nearby: enableNearbyAuto,
+        upload_tokens: uploads.map((u) => u.uploadToken)
+      };
+      if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+      const created = await api.createListing(payload);
+      if (!created?.id) throw new Error('Create failed');
+    };
+
+    if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+      enqueueListingJob(async () => {
+        try {
+          await runAutoListJob();
+          onSaved?.();
+        } catch (err) {
+          console.error('Auto-list failed:', err);
+          alert(`Auto-list failed: ${err?.message || err}`);
+        } finally {
+          autoRunning.current = false;
         }
+      });
+      onCancel?.();
+      return;
+    }
 
-        const payload = {
-          title: (ai.title || 'Item for sale').toString().slice(0, 80),
-          description: aiDescription || 'No description',
-          location: locAuto || '',
-          price: safePrice,
-          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-          enable_nearby: enableNearbyAuto,
-          upload_tokens: uploads.map((u) => u.uploadToken)
-        };
-        if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
-
-        const created = await api.createListing(payload);
-        if (!created?.id) throw new Error('Create failed');
-
+    setAutoBusy(true);
+    (async () => {
+      try {
+        await runAutoListJob();
         onSaved?.();
       } catch (err) {
         console.error('Auto-list failed:', err);
         alert(`Auto-list failed: ${err?.message || err}`);
       } finally {
         setAutoBusy(false);
+        autoRunning.current = false;
       }
     })();
-  }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, draft, files]);
+  }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
 
   async function submit(e){
     e.preventDefault();
@@ -5311,7 +5430,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
       const parsedPrice = Number(priceVal);
       const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
-      const payload = {
+      const basePayload = {
         title: String(title || '').trim(),
         description: String(description || 'No description').trim(),
         location: String(location || '').trim(),
@@ -5319,28 +5438,34 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
         tags: String(tags || '').trim(),
         enable_nearby: enableNearby ? 1 : 0,
       };
-      
-      if (enableNearby && !hasFixedGps) { 
-        payload.lat = lat; 
-        payload.lon = lon; 
+
+      if (enableNearby && !hasFixedGps) {
+        basePayload.lat = lat;
+        basePayload.lon = lon;
       }
-      
-      if (payload.enable_nearby && !hasFixedGps && (payload.lat == null || payload.lon == null)) {
+
+      if (basePayload.enable_nearby && !hasFixedGps && (basePayload.lat == null || basePayload.lon == null)) {
         alert('Enable Nearby requires using your location.');
         return;
       }
 
       if (draft) {
+        const payload = { ...basePayload };
         const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
         if (deletedImages.length > 0) {
           payload.deletedImages = deletedImages;
         }
         await api.updateListing(draft.id, payload);
         if (files.length) await uploadFilesForListing(draft.id, files);
-      } else {
-        let uploads = [];
-        if (files.length) {
-          uploads = await Promise.all(files.map(uploadFileDraft));
+        onSaved?.();
+        return;
+      }
+
+      const filesSnapshot = files.slice();
+      const runCreate = async () => {
+        const payload = { ...basePayload };
+        if (filesSnapshot.length) {
+          const uploads = await Promise.all(filesSnapshot.map(uploadFileDraft));
           const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
           if (!tokens.length) {
             throw new Error('Image upload failed');
@@ -5350,7 +5475,23 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 
         const created = await api.createListing(payload);
         if (!created?.id) { throw new Error('Create failed'); }
+      };
+
+      if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+        enqueueListingJob(async () => {
+          try {
+            await runCreate();
+            onSaved?.();
+          } catch (err) {
+            console.error('Create/save failed:', err);
+            alert(`Create/save failed: ${err?.message || err}`);
+          }
+        });
+        onCancel?.();
+        return;
       }
+
+      await runCreate();
       onSaved?.();
     } catch (err) {
       console.error('Create/save failed:', err);
@@ -5619,7 +5760,58 @@ function App(){
     });
     useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
+    const BG_QUEUE_KEY = 'listit_background_queue';
+    const [backgroundQueueEnabled, setBackgroundQueueEnabled] = useState(() => {
+      try { return localStorage.getItem(BG_QUEUE_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(BG_QUEUE_KEY, backgroundQueueEnabled ? '1' : '0'); } catch {} }, [backgroundQueueEnabled]);
+
     const isMobile = isMobileDevice();
+
+    const listingQueueRef = useRef([]);
+    const listingQueueProcessingRef = useRef(false);
+    const [showQueueToast, setShowQueueToast] = useState(false);
+    const toastTimerRef = useRef(null);
+    const [queuePendingCount, setQueuePendingCount] = useState(0);
+
+    const showQueueReminder = useCallback(() => {
+      setShowQueueToast(true);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
+    }, []);
+
+    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+
+    useEffect(() => () => {
+      listingQueueRef.current = [];
+      listingQueueProcessingRef.current = false;
+    }, []);
+
+    const processNextListingJob = useCallback(() => {
+      if (listingQueueProcessingRef.current) return;
+      const job = listingQueueRef.current.shift();
+      if (!job) {
+        setQueuePendingCount(0);
+        return;
+      }
+      listingQueueProcessingRef.current = true;
+      Promise.resolve()
+        .then(() => job())
+        .catch((err) => { console.error('Background listing job failed:', err); })
+        .finally(() => {
+          listingQueueProcessingRef.current = false;
+          setQueuePendingCount(listingQueueRef.current.length);
+          processNextListingJob();
+        });
+    }, []);
+
+    const enqueueListingJob = useCallback((job) => {
+      if (typeof job !== 'function') return;
+      listingQueueRef.current.push(job);
+      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
+      if (backgroundQueueEnabled) showQueueReminder();
+      processNextListingJob();
+    }, [backgroundQueueEnabled, processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {
@@ -6301,6 +6493,8 @@ function App(){
             setAiDescriptionEnabled,
             autoPostNearbyEnabled,
             setAutoPostNearbyEnabled,
+            backgroundQueueEnabled,
+            setBackgroundQueueEnabled,
             onViewSeller: handleViewSeller, // ADD THIS LINE
             onToggleSold: toggleSold
           }),
@@ -6320,7 +6514,9 @@ function App(){
         user,
         onLockedAction: showLockedBanner,
         autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-        aiDescriptionEnabled
+        aiDescriptionEnabled,
+        backgroundQueueEnabled,
+        enqueueListingJob
       }),
 
       // NEW: Listing Form modal
@@ -6331,7 +6527,9 @@ function App(){
         onSaved: async () => { await refreshListings(); },
         autoListEnabled,
         aiDescriptionEnabled,
-        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled)
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+        backgroundQueueEnabled,
+        enqueueListingJob
       }),
 
       // ADD THIS NEW AUTH MODAL:
@@ -6340,7 +6538,16 @@ function App(){
         onClose: () => setAuthModal({ ...authModal, isOpen: false }),
         initialMode: authModal.mode,
         onSuccess: handleAuthSuccess
-      })
+      }),
+
+      H('div', {
+        className: `listing-queue-toast${showQueueToast ? ' show' : ''}`,
+        'aria-live': 'polite',
+        'data-count': queuePendingCount > 0 ? queuePendingCount : undefined
+      },
+        H('span', { className:'listing-queue-toast__icon', 'aria-hidden': true }, '✓'),
+        H('span', { className:'listing-queue-toast__text' }, 'listings in progress')
+      )
     );
   }
 
