@@ -1314,16 +1314,15 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     return previews;
   }
 
-  // --- Auto-list help modal (clean single-column layout) ---
-  function AutoListHelpModal({ onClose }) {
+  // --- Shared help modal shell (high-contrast layout) ---
+  function InfoHelpModal({ title, intro, bullets, footer, onClose }) {
     return ReactDOM.createPortal(
       H('div', {
         className: 'modal open',
-        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); },
-        style: { background: 'rgba(0,0,0,0.5)' }  // darker overlay
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); },
+        style: { background: 'rgba(0,0,0,0.5)' }
       },
         H('div', {
-          // force single column and good contrast regardless of global CSS
           className: 'modal-inner',
           style: {
             display: 'block',
@@ -1336,7 +1335,6 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
             lineHeight: 1.55
           }
         },
-          // header row with title + close
           H('div', {
             style: {
               display: 'flex',
@@ -1346,12 +1344,11 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
               marginBottom: 8
             }
           },
-            H('div', { style: { fontWeight: 800, fontSize: 16 } }, 'About Auto-list'),
+            H('div', { style: { fontWeight: 800, fontSize: 16 } }, title),
             H('button', {
               type: 'button',
               onClick: onClose,
               'aria-label': 'Close',
-              // avoid relying on .close class so we don't inherit odd positioning
               style: {
                 width: 28, height: 28, borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -1362,38 +1359,56 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
               }
             }, 'x')
           ),
-
-          // intro
-          H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } },
-            'When enabled, Auto-List will:'
-          ),
-
-          // bullets
-          H('ul', {
+          intro && H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, intro),
+          Array.isArray(bullets) && bullets.length > 0 && H('ul', {
             style: {
               paddingLeft: 18,
               margin: '0 0 12px',
               listStyle: 'disc'
             }
-          },
-            H('li', null, 'Allow AI to suggest title, tags and price .'),
-            H('li', null, 'Immediately create the listing for you.'),
-            H('li', null, 'Upload all selected photos to that listing.')
-          ),
-
-          // footnote
-          H('div', {
+          }, bullets.map((line, idx) => H('li', { key: idx }, line))),
+          footer && H('div', {
             style: {
               fontSize: 13,
               opacity: 0.9,
               borderTop: '1px solid rgba(255,255,255,0.12)',
               paddingTop: 10
             }
-          }, 'You can still edit or delete the listing afterwards.')
+          }, footer)
         )
       ),
       document.body
     );
+  }
+
+  // --- Auto-list help modal (clean single-column layout) ---
+  function AutoListHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About Auto-list',
+      intro: 'When enabled, Auto-List will:',
+      bullets: [
+        'Allow AI to suggest title, tags and price .',
+        'Immediately create the listing for you.',
+        'Upload all selected photos to that listing.'
+      ],
+      footer: 'You can still edit or delete the listing afterwards.'
+    });
+  }
+
+  // --- AI description help modal (matches Auto-list styling) ---
+  function AiDescriptionHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About AI descriptions',
+      intro: 'When enabled, AI descriptions will:',
+      bullets: [
+        'Analyze your uploaded photos to draft a description for you.',
+        'Include the AI-written text right in the description field.',
+        'Let you review and edit the copy before publishing.'
+      ],
+      footer: 'Add at least two clear photos for best results.'
+    });
   }
 
   // --- Listing Form (S3-first) ---
@@ -4569,7 +4584,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
     onViewSeller, // ADD THIS PARAMETER
     onToggleSold
   }) {
-    const [showHelp, setShowHelp] = useState(false);
+    const [helpModal, setHelpModal] = useState(null);
     const [profileSelected, setProfileSelected] = useState(null);
 
     const handleEdit = useCallback((it) => {
@@ -4632,7 +4647,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               ),
               H('button', {
                 type:'button',
-                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowHelp(true); },
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('auto'); },
                 title:'About Auto-list',
                 style:{
                   marginLeft:6, width:24, height:24, lineHeight:'22px',
@@ -4654,7 +4669,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
               ),
               H('button', {
                 type:'button',
-                onClick: (e) => { e.preventDefault(); e.stopPropagation(); alert('AI descriptions are most effective with 2+ images'); },
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
                 title:'AI description tips',
                 style:{
                   marginLeft:6, width:24, height:24, lineHeight:'22px',
@@ -4810,7 +4825,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange }) {
         )
       ),
 
-      showHelp && H(AutoListHelpModal, { onClose: () => setShowHelp(false) }),
+      helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
+      helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
 
       H(ListingModal, {
         open: !!profileSelected,
