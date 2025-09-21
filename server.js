@@ -3961,13 +3961,15 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
           '"title": concise <=80 chars, no emojis;',
 
-          '"description": <=200 chars, buyer-focused summary noting condition, notable damage, wear, included accessories;',
+          '"description": <=200 chars, objective tone focusing on verifiable condition/defects (including less-visible issues) and never assuming accessories unless the user hint confirms them;',
 
           '"tags": array of 12-24 short, lowercase search terms;',
 
           '"price_usd": fair used-market price in USD as a number;',
 
           'When damage, wear, or missing parts are visible, explicitly mention it in the description.',
+
+          'Describe only what can be confirmed from the photos or user hint; avoid promising inclusions.',
 
           'If condition is unclear, say "Condition unclear" rather than guessing.',
 
