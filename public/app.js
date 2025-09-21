@@ -467,7 +467,21 @@ register(payload, meta) {
 
     adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
     adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
-    adminSeedListings(meta)    { return this._fetch('/api/admin/listings/seed', { method:'POST' }, meta); },
+    adminSeedListings(options = {}, meta) {
+      let payload = null;
+      if (options && typeof options === 'object' && options !== null) {
+        const count = Number(options.count);
+        if (Number.isFinite(count) && count > 0) {
+          payload = { count: Math.floor(count) };
+        }
+      }
+      const opts = { method: 'POST' };
+      if (payload) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(payload);
+      }
+      return this._fetch('/api/admin/listings/seed', opts, meta);
+    },
     adminDeleteSeedListings(meta) { return this._fetch('/api/admin/listings/seed', { method:'DELETE' }, meta); },
 
     listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
@@ -2924,6 +2938,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [seedDeleteBusy, setSeedDeleteBusy] = useState(false);
   const [seedMessage, setSeedMessage] = useState('');
   const [seedError, setSeedError] = useState('');
+  const [seedCount, setSeedCount] = useState('');
 
   const searchTimer = useRef(null);
 
@@ -2965,9 +2980,19 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     if (seedBusy || seedDeleteBusy) return;
     setSeedError('');
     setSeedMessage('');
+    const trimmed = typeof seedCount === 'string' ? seedCount.trim() : '';
+    let desiredCount = null;
+    if (trimmed) {
+      const parsed = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setSeedError('Enter a valid number of images to seed (minimum 1).');
+        return;
+      }
+      desiredCount = parsed;
+    }
     setSeedBusy(true);
     try {
-      const result = await api.adminSeedListings();
+      const result = await api.adminSeedListings(desiredCount ? { count: desiredCount } : undefined);
       const count = Number(result?.created || 0);
       setSeedMessage(count
         ? `Created ${count} test listing${count === 1 ? '' : 's'}.`
@@ -3311,7 +3336,8 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     H('div', { className: 'row', style: { gap: 8 } },
       H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
       H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
-      H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads')
+      H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
+      H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing')
     ),
 
     tab === 'users' && H('div', { style: { display: 'grid', gap: 16 } },
@@ -3642,7 +3668,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     
     ),
 
-    H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+    tab === 'testing' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
       H('h3', { style: { margin: 0, fontSize: 18 } }, 'Testing utilities'),
       H('div', { className: 'muted', style: { fontSize: 13 } }, 'Generate sample listings with photos for QA or demo walkthroughs.'),
       seedError
@@ -3653,6 +3679,19 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       (seedBusy || seedDeleteBusy)
         ? H('div', { className: 'muted', style: { fontSize: 13 } }, seedBusy ? 'Seeding test listings… this may take a moment.' : 'Deleting test listings…')
         : null,
+      H('label', { style: { display: 'grid', gap: 6, fontSize: 13 } },
+        'Images to seed',
+        H('input', {
+          type: 'number',
+          min: 1,
+          max: 100,
+          step: 1,
+          value: seedCount,
+          placeholder: 'Uses default when left blank',
+          onChange: (e) => setSeedCount(e.target.value),
+          disabled: seedActionsDisabled
+        })
+      ),
       H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
         H('button', {
           className: 'btn primary',

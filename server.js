@@ -5225,6 +5225,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 const TEST_LISTING_OWNER_EMAIL = 'seed.listings@example.com';
 const TEST_LISTING_OWNER_USERNAME = 'seed_seller';
+const MAX_SEED_LISTINGS = 100;
 
 const TEST_LISTING_TEMPLATES = [
   {
@@ -5502,17 +5503,26 @@ async function deleteSeedListingsInternal() {
   return ids.length;
 }
 
-async function seedListingsInternal() {
+async function seedListingsInternal(requestedCount) {
 
   const sellerId = await ensureSeedSellerUser();
 
   await deleteSeedListingsInternal();
 
+  const templateCount = TEST_LISTING_TEMPLATES.length;
+  if (templateCount === 0) {
+    return { created: 0, sellerId };
+  }
+
+  let total = Number.isFinite(requestedCount) ? Math.floor(requestedCount) : templateCount;
+  if (total < 1) total = 1;
+  if (total > MAX_SEED_LISTINGS) total = MAX_SEED_LISTINGS;
+
   let created = 0;
 
-  for (let index = 0; index < TEST_LISTING_TEMPLATES.length; index += 1) {
+  for (let index = 0; index < total; index += 1) {
 
-    const template = TEST_LISTING_TEMPLATES[index];
+    const template = TEST_LISTING_TEMPLATES[index % templateCount];
 
     const createdAt = new Date(Date.now() - index * 3600 * 1000).toISOString();
 
@@ -5588,11 +5598,13 @@ async function seedListingsInternal() {
 
 /* ------------------------------------------------------------------ */
 
-app.post('/api/admin/listings/seed', auth, requireAdmin, async (_req, res) => {
+app.post('/api/admin/listings/seed', auth, requireAdmin, async (req, res) => {
 
   try {
 
-    const result = await seedListingsInternal();
+    const rawCount = req?.body ? Number(req.body.count) : undefined;
+
+    const result = await seedListingsInternal(rawCount);
 
     res.json({ ok: true, created: result.created, seller_id: result.sellerId });
 
