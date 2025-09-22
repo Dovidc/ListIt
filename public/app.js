@@ -4719,7 +4719,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
           display:'grid',
           gap:12,
           marginTop:12,
-          gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))'
+          gridTemplateColumns:'repeat(3, minmax(0, 1fr))'
         }
       },
         visibleItems.map((item, idx) => {
@@ -4752,11 +4752,12 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
               padding:0,
               display:'flex',
               flexDirection:'column',
-              overflow:'hidden'
+              overflow:'hidden',
+              borderRadius:8
             }
           },
             H('div', {
-              style:{ position:'relative', width:'100%', paddingTop:'75%', background:'#f3f4f6' }
+              style:{ position:'relative', width:'100%', paddingTop:'100%', background:'#f3f4f6' }
             },
               cover
                 ? H(ImageWithSkeleton, {
