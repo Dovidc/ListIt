@@ -30,6 +30,18 @@ let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
 
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 
+let webPush;
+try {
+  webPush = require('web-push');
+} catch (err) {
+  const msg = err?.message || err;
+  if (msg) {
+    console.warn('[push] web-push module unavailable:', msg);
+  } else {
+    console.warn('[push] web-push module unavailable');
+  }
+}
+
 
 
 const app = express();
@@ -197,6 +209,39 @@ const NEARBY_CACHE_TTL_MS = Number(process.env.NEARBY_CACHE_TTL_MS || 20000);
 const NEARBY_CACHE_MAX = Number(process.env.NEARBY_CACHE_MAX || 200);
 
 const nearbyCache = new Map();
+
+const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || '').trim();
+const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || '').trim();
+const VAPID_SUBJECT_RAW = (process.env.VAPID_SUBJECT || process.env.PUSH_CONTACT_EMAIL || '').trim();
+const VAPID_SUBJECT = VAPID_SUBJECT_RAW
+  ? (/^(mailto:|https?:)/i.test(VAPID_SUBJECT_RAW)
+      ? VAPID_SUBJECT_RAW
+      : `mailto:${VAPID_SUBJECT_RAW.replace(/^mailto:/i, '')}`)
+  : 'mailto:support@listit.local';
+
+const PUSH_MAX_PER_USER = Math.max(1, Number(process.env.PUSH_MAX_PER_USER || 10));
+const PUSH_BROADCAST_LIMIT = Math.max(1, Number(process.env.PUSH_BROADCAST_LIMIT || 200));
+const PUSH_FAILURE_MAX = Math.max(1, Number(process.env.PUSH_FAILURE_MAX || 3));
+const PUSH_FAILURE_TTL_DAYS = Math.max(1, Number(process.env.PUSH_FAILURE_TTL_DAYS || 14));
+const PUSH_STALE_TTL_DAYS = Math.max(30, Number(process.env.PUSH_STALE_TTL_DAYS || 90));
+const PUSH_CLEANUP_INTERVAL_MS = Math.max(300000, Number(process.env.PUSH_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000));
+
+const PUSH_AVAILABLE = Boolean(webPush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+
+if (PUSH_AVAILABLE) {
+  try {
+    webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log('[push] web-push configured with subject', VAPID_SUBJECT);
+  } catch (err) {
+    console.error('[push] Failed to configure web-push:', err);
+  }
+} else if (!IS_TEST) {
+  if (!webPush) {
+    console.warn('[push] Push notifications disabled: web-push module missing');
+  } else if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.warn('[push] Push notifications disabled: VAPID keys not provided');
+  }
+}
 
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
@@ -785,6 +830,32 @@ async function initializeSchema() {
     `);
 
 
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id ${PRIMARY_KEY},
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        expiration_time INTEGER,
+        fail_count INTEGER DEFAULT 0,
+        last_failed_at TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id, updated_at DESC);');
+
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN fail_count INTEGER DEFAULT 0'); } catch {}
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_failed_at TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_error TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN expiration_time INTEGER'); } catch {}
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN updated_at TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN created_at TEXT'); } catch {}
+
+
 
     await db.exec(`
 
@@ -987,6 +1058,217 @@ async function initializeSchema() {
 /* ------------------------------------------------------------------ */
 
 function nowIso() { return new Date().toISOString(); }
+
+function normalizePushSubscriptionInput(raw) {
+  const subscription = raw && raw.subscription ? raw.subscription : raw;
+  if (!subscription || typeof subscription !== 'object') {
+    return { error: 'invalid_subscription' };
+  }
+
+  const endpoint = String(subscription.endpoint || '').trim();
+  if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
+    return { error: 'invalid_endpoint' };
+  }
+
+  const keys = subscription.keys || {};
+  const auth = typeof keys.auth === 'string' ? keys.auth.trim() : '';
+  const p256dh = typeof keys.p256dh === 'string' ? keys.p256dh.trim() : '';
+  if (!auth || !p256dh) {
+    return { error: 'invalid_keys' };
+  }
+
+  let expiration = null;
+  if (subscription.expirationTime != null) {
+    const n = Number(subscription.expirationTime);
+    if (Number.isFinite(n)) {
+      expiration = Math.max(0, Math.trunc(n));
+    }
+  }
+
+  return {
+    value: {
+      endpoint,
+      keys: { auth, p256dh },
+      expiration_time: expiration
+    }
+  };
+}
+
+async function savePushSubscription(userId, normalized) {
+  if (!normalized || typeof normalized !== 'object') return;
+  const now = nowIso();
+
+  const payload = {
+    userId,
+    endpoint: normalized.endpoint,
+    auth: normalized.keys.auth,
+    p256dh: normalized.keys.p256dh,
+    expiration: normalized.expiration_time,
+    now
+  };
+
+  await db.prepare(`
+    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, expiration_time, created_at, updated_at, fail_count, last_failed_at, last_error)
+    VALUES (@userId, @endpoint, @p256dh, @auth, @expiration, @now, @now, 0, NULL, NULL)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      user_id = excluded.user_id,
+      p256dh = excluded.p256dh,
+      auth = excluded.auth,
+      expiration_time = excluded.expiration_time,
+      updated_at = excluded.updated_at,
+      fail_count = 0,
+      last_failed_at = NULL,
+      last_error = NULL
+  `).run(payload);
+
+  await db.prepare(`
+    DELETE FROM push_subscriptions
+     WHERE user_id = @userId
+       AND id NOT IN (
+         SELECT id FROM push_subscriptions
+          WHERE user_id = @userId
+          ORDER BY updated_at DESC
+          LIMIT @limit
+       )
+  `).run({ userId, limit: PUSH_MAX_PER_USER });
+}
+
+async function deletePushSubscription(userId, endpoint) {
+  if (!endpoint) return;
+  await db.prepare(
+    'DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?'
+  ).run(userId, endpoint);
+}
+
+async function getPushSubscriptionsForUser(userId, limit = PUSH_MAX_PER_USER) {
+  return await db.prepare(`
+    SELECT id, endpoint, p256dh, auth, expiration_time
+      FROM push_subscriptions
+     WHERE user_id = ?
+     ORDER BY updated_at DESC
+     LIMIT ?
+  `).all(userId, Math.max(1, limit));
+}
+
+async function handlePushDeliveryFailure(row, error) {
+  try {
+    const statusCode = Number(error?.statusCode || error?.status || error?.code || 0);
+    const body = typeof error?.body === 'string' ? error.body : '';
+    const message = String(error?.message || body || statusCode || 'unknown');
+    const fatal = statusCode === 404 || statusCode === 410 || /gone|expired|unsubscribed/i.test(message) || /410/.test(body);
+
+    if (fatal) {
+      await db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(row.id);
+      return;
+    }
+
+    await db.prepare(`
+      UPDATE push_subscriptions
+         SET fail_count = fail_count + 1,
+             last_failed_at = @ts,
+             last_error = @err
+       WHERE id = @id
+    `).run({ id: row.id, ts: nowIso(), err: message.slice(0, 255) });
+  } catch (err) {
+    console.warn('[push] failed to mark delivery error:', err);
+  }
+}
+
+async function deliverPushRows(rows, payload, options = {}) {
+  if (!PUSH_AVAILABLE || !Array.isArray(rows) || rows.length === 0) return;
+  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+  for (const row of rows) {
+    const subscription = {
+      endpoint: row.endpoint,
+      keys: {
+        auth: row.auth,
+        p256dh: row.p256dh
+      }
+    };
+    if (row.expiration_time != null) {
+      subscription.expirationTime = Number(row.expiration_time);
+    }
+
+    try {
+      await webPush.sendNotification(subscription, body, options);
+    } catch (err) {
+      await handlePushDeliveryFailure(row, err);
+    }
+  }
+}
+
+async function sendPushToUser(userId, payload, options = {}) {
+  if (!PUSH_AVAILABLE) return;
+  const rows = await getPushSubscriptionsForUser(userId, options.limit || PUSH_MAX_PER_USER);
+  await deliverPushRows(rows, payload, options);
+}
+
+async function broadcastPushNotification(payload, options = {}) {
+  if (!PUSH_AVAILABLE) return;
+  const limit = Math.max(1, Number(options.limit || PUSH_BROADCAST_LIMIT));
+  const excludeUserId = options.excludeUserId ?? null;
+  const rows = await db.prepare(`
+    SELECT id, user_id, endpoint, p256dh, auth, expiration_time
+      FROM push_subscriptions
+     WHERE (@exclude IS NULL OR user_id <> @exclude)
+     ORDER BY updated_at DESC
+     LIMIT @limit
+  `).all({ exclude: excludeUserId, limit });
+  await deliverPushRows(rows, payload, options);
+}
+
+async function notifyNearbyListing(listing) {
+  if (!PUSH_AVAILABLE) return;
+  if (!listing || !listing.enable_nearby) return;
+  const lat = Number(listing.lat);
+  const lon = Number(listing.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+  const payload = {
+    type: 'nearby_listing',
+    listing_id: listing.id,
+    title: listing.title,
+    location: listing.location,
+    price: listing.price,
+    created_at: listing.created_at,
+    lat,
+    lon,
+    image: listing.image_data || null
+  };
+
+  await broadcastPushNotification(payload, { excludeUserId: listing.user_id });
+}
+
+async function cleanupStalePushSubscriptions() {
+  if (!PUSH_AVAILABLE) return;
+  const errorCutoff = new Date(Date.now() - PUSH_FAILURE_TTL_DAYS * 86400000).toISOString();
+  const staleCutoff = new Date(Date.now() - PUSH_STALE_TTL_DAYS * 86400000).toISOString();
+  try {
+    await db.prepare(`
+      DELETE FROM push_subscriptions
+       WHERE fail_count >= @maxFails
+          OR (last_failed_at IS NOT NULL AND last_failed_at < @errorCutoff)
+          OR updated_at < @staleCutoff
+    `).run({ maxFails: PUSH_FAILURE_MAX, errorCutoff, staleCutoff });
+  } catch (err) {
+    console.warn('[push] cleanup failed:', err?.message || err);
+  }
+}
+
+if (PUSH_AVAILABLE && !IS_TEST) {
+  cleanupStalePushSubscriptions().catch((err) => {
+    console.warn('[push] initial cleanup failed:', err?.message || err);
+  });
+  const pushCleanupTimer = setInterval(() => {
+    cleanupStalePushSubscriptions().catch((err) => {
+      console.warn('[push] scheduled cleanup failed:', err?.message || err);
+    });
+  }, PUSH_CLEANUP_INTERVAL_MS);
+  if (typeof pushCleanupTimer.unref === 'function') {
+    pushCleanupTimer.unref();
+  }
+}
 
 function normalizePair(u1, u2) {
 
@@ -2158,6 +2440,49 @@ app.put('/api/me/paypal', auth, writeLimiter, async (req, res) => {
 
 });
 
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    if (!PUSH_AVAILABLE) {
+      return res.status(503).json({ error: 'push_unavailable' });
+    }
+
+    const normalized = normalizePushSubscriptionInput(req.body);
+    if (!normalized || normalized.error) {
+      return res.status(400).json({ error: normalized?.error || 'invalid_subscription' });
+    }
+
+    await savePushSubscription(req.user.id, normalized.value);
+    return res.status(204).end();
+  } catch (e) {
+    console.error('Push subscribe failed:', e);
+    return res.status(500).json({ error: 'push_subscribe_failed' });
+  }
+});
+
+
+app.delete('/api/push/unsubscribe', auth, async (req, res) => {
+  try {
+    let endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint.trim() : '';
+    if (!endpoint) {
+      const normalized = normalizePushSubscriptionInput(req.body);
+      if (normalized && !normalized.error) {
+        endpoint = normalized.value.endpoint;
+      }
+    }
+
+    if (!endpoint) {
+      return res.status(400).json({ error: 'invalid_endpoint' });
+    }
+
+    await deletePushSubscription(req.user.id, endpoint);
+    return res.status(204).end();
+  } catch (e) {
+    console.error('Push unsubscribe failed:', e);
+    return res.status(500).json({ error: 'push_unsubscribe_failed' });
+  }
+});
+
+
 
 
 /* ------------------------------------------------------------------ */
@@ -3064,6 +3389,12 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
     }
 
     invalidateNearbyCache();
+
+    if (row) {
+      notifyNearbyListing(row).catch((err) => {
+        console.warn('[push] nearby listing notification failed:', err?.message || err);
+      });
+    }
 
     return res.json(row);
 
@@ -4692,7 +5023,24 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
     });
 
-    
+    if (PUSH_AVAILABLE && wsMessage.recipient_id && wsMessage.recipient_id !== req.user.id) {
+      const preview = typeof messagePayload.body === 'string'
+        ? messagePayload.body.slice(0, 160)
+        : '';
+      const hasImages = Array.isArray(messagePayload.images) && messagePayload.images.length > 0;
+      sendPushToUser(wsMessage.recipient_id, {
+        type: 'new_message',
+        conversation_id: id,
+        message_id: messagePayload.id,
+        sender_id: req.user.id,
+        body: preview,
+        has_images: hasImages,
+        created_at: messagePayload.created_at
+      }).catch((err) => {
+        console.warn('[push] new_message notification failed:', err?.message || err);
+      });
+    }
+
 
   } catch (e) {
 
@@ -6273,6 +6621,8 @@ if (IS_TEST) {
 
       const tables = [
 
+        'push_subscriptions',
+
         'message_images',
 
         'messages',
@@ -6309,7 +6659,7 @@ if (IS_TEST) {
 
         try {
 
-          await db.exec("DELETE FROM sqlite_sequence WHERE name IN ('message_images','messages','conversations','listing_images','seller_reports','listings','listing_cities','users')");
+          await db.exec("DELETE FROM sqlite_sequence WHERE name IN ('push_subscriptions','message_images','messages','conversations','listing_images','seller_reports','listings','listing_cities','users')");
 
         } catch (err) {
 
