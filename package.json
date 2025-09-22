@@ -26,6 +26,7 @@
     "jsonwebtoken": "^9.0.2",
     "openai": "^5.16.0",
     "pg": "^8.16.3",
+    "web-push": "^3.6.7",
     "ws": "^8.18.3"
   },
   "devDependencies": {
