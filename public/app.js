@@ -86,6 +86,64 @@
       return null;
     }
   }
+
+  function base64UrlToUint8Array(base64String) {
+    if (!base64String || typeof base64String !== 'string') return null;
+    try {
+      const padded = base64String + '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
+      const raw = window.atob(base64);
+      const output = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+      return output;
+    } catch (err) {
+      console.warn('Failed to decode VAPID key:', err);
+      return null;
+    }
+  }
+
+  function arrayBufferToBase64Url(buf) {
+    if (!buf) return '';
+    try {
+      const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || []);
+      let binary = '';
+      bytes.forEach(b => { binary += String.fromCharCode(b); });
+      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    } catch {
+      return '';
+    }
+  }
+
+  function serializePushSubscription(sub) {
+    if (!sub) return null;
+    try {
+      const json = typeof sub.toJSON === 'function' ? sub.toJSON() : null;
+      if (json) return json;
+    } catch {}
+
+    const payload = {
+      endpoint: sub.endpoint,
+      expirationTime: sub.expirationTime ?? null,
+      keys: {}
+    };
+
+    if (typeof sub.getKey === 'function') {
+      const auth = sub.getKey('auth');
+      const p256dh = sub.getKey('p256dh');
+      if (auth) payload.keys.auth = arrayBufferToBase64Url(auth);
+      if (p256dh) payload.keys.p256dh = arrayBufferToBase64Url(p256dh);
+    }
+
+    if (!payload.keys.auth || !payload.keys.p256dh) {
+      if (sub.keys && typeof sub.keys === 'object') {
+        if (!payload.keys.auth && typeof sub.keys.auth === 'string') payload.keys.auth = sub.keys.auth;
+        if (!payload.keys.p256dh && typeof sub.keys.p256dh === 'string') payload.keys.p256dh = sub.keys.p256dh;
+      }
+    }
+
+    if (!payload.endpoint || !payload.keys.auth || !payload.keys.p256dh) return null;
+    return payload;
+  }
   
   let _coordsPromise = null;
   function getUserCoordsOnce() {
@@ -405,9 +463,27 @@ register(payload, meta) {
 },
   
   async logout(meta) {
-    try { 
-      await this._fetch('/api/logout', { method:'POST' }, meta); 
+    try {
+      await this._fetch('/api/logout', { method:'POST' }, meta);
     } catch {}
+  },
+
+  pushSubscribe(subscription, meta) {
+    if (!subscription) return Promise.resolve(null);
+    return this._fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription })
+    }, meta);
+  },
+
+  pushUnsubscribe(subscription, meta) {
+    if (!subscription) return Promise.resolve(null);
+    return this._fetch('/api/push/unsubscribe', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription })
+    }, meta);
   },
 
     updatePaypalEmail(paypal_email, meta) {
@@ -5719,7 +5795,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 // Then your existing ListingForm component stays the same...
 
 function App(){
-    const { user, setUser } = useAuth();
+    const { user, setUser, pushMeta } = useAuth();
     const [tab, setTab] = useState('browse');
     const [all, setAll] = useState([]);      // current page rows (thin)
     const [mine, setMine] = useState([]);
@@ -5798,6 +5874,7 @@ function App(){
     const [showQueueToast, setShowQueueToast] = useState(false);
     const toastTimerRef = useRef(null);
     const [queuePendingCount, setQueuePendingCount] = useState(0);
+    const pushSetupRef = useRef({ userId: null, permission: null });
 
     const showQueueReminder = useCallback(() => {
       setShowQueueToast(true);
@@ -5845,6 +5922,32 @@ function App(){
       } catch (err) {
         console.error('Failed to load ads', err);
         setAds([]);
+      }
+    }, []);
+
+    const removePushSubscription = useCallback(async () => {
+      if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration || !registration.pushManager) return;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!subscription) return;
+        const serialized = serializePushSubscription(subscription);
+        if (serialized) {
+          try {
+            await api.pushUnsubscribe(serialized, { silent: true });
+          } catch (err) {
+            console.warn('Push unsubscribe request failed:', err);
+          }
+        }
+        try {
+          await subscription.unsubscribe();
+        } catch (err) {
+          console.warn('Push unsubscribe failed:', err);
+        }
+      } catch (err) {
+        console.warn('Push cleanup failed:', err);
       }
     }, []);
 
@@ -6149,6 +6252,89 @@ function App(){
     }, [user?.id]);
 
     useEffect(() => {
+      let aborted = false;
+
+      async function setupPushNotifications() {
+        if (!user?.id) return;
+        if (!pushMeta?.available) return;
+        if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (typeof Notification === 'undefined') return;
+
+        const vapidKey = pushMeta?.vapidPublicKey;
+        if (!vapidKey) return;
+
+        const currentPermission = Notification.permission;
+        const last = pushSetupRef.current;
+        if (last && last.userId === user.id && last.permission === 'granted' && currentPermission === 'granted') {
+          return;
+        }
+
+        if (currentPermission === 'denied') {
+          pushSetupRef.current = { userId: user.id, permission: 'denied' };
+          return;
+        }
+
+        try {
+          const registration = await navigator.serviceWorker.register('/sw.js');
+          const readyRegistration = await navigator.serviceWorker.ready.catch(() => registration);
+          if (aborted) return;
+
+          let permission = Notification.permission;
+          if (permission === 'default' && typeof Notification.requestPermission === 'function') {
+            try {
+              permission = await Notification.requestPermission();
+            } catch (err) {
+              console.warn('Notification permission request failed:', err);
+              pushSetupRef.current = { userId: user.id, permission: 'error' };
+              return;
+            }
+          }
+
+          if (permission !== 'granted') {
+            pushSetupRef.current = { userId: user.id, permission };
+            return;
+          }
+
+          const applicationServerKey = base64UrlToUint8Array(vapidKey);
+          if (!applicationServerKey) {
+            pushSetupRef.current = { userId: user.id, permission: 'error' };
+            return;
+          }
+
+          let subscription = await readyRegistration.pushManager.getSubscription();
+          if (!subscription) {
+            subscription = await readyRegistration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey
+            });
+          }
+
+          if (!subscription) {
+            pushSetupRef.current = { userId: user.id, permission: 'error' };
+            return;
+          }
+
+          const serialized = serializePushSubscription(subscription);
+          if (!serialized) {
+            pushSetupRef.current = { userId: user.id, permission: 'error' };
+            return;
+          }
+
+          await api.pushSubscribe(serialized, { silent: true });
+          pushSetupRef.current = { userId: user.id, permission: 'granted' };
+        } catch (err) {
+          console.warn('Push setup failed:', err);
+          pushSetupRef.current = { userId: user.id, permission: 'error' };
+        }
+      }
+
+      setupPushNotifications();
+
+      return () => { aborted = true; };
+    }, [user?.id, pushMeta?.available, pushMeta?.vapidPublicKey]);
+
+    useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
       if (!isMobile && tab === 'nearby') setTab('browse');
     }, [user, tab, isMobile]);
@@ -6232,6 +6418,7 @@ function App(){
     }
 
     async function logoutFromProfile(){
+      await removePushSubscription();
       await api.logout();
       setUser(null);
       setTab('browse');
@@ -6578,10 +6765,47 @@ function App(){
     );
   }
 
+  function normalizePushMeta(value) {
+    const source = value && typeof value === 'object'
+      ? (value.push_meta && typeof value.push_meta === 'object'
+          ? value.push_meta
+          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
+      : null;
+    const available = !!source?.available;
+    const vapid = typeof source?.vapid_public_key === 'string'
+      ? source.vapid_public_key.trim()
+      : (typeof source?.vapidPublicKey === 'string' ? source.vapidPublicKey.trim() : '');
+    return {
+      available: available && !!vapid,
+      vapidPublicKey: vapid || null
+    };
+  }
+
   function useAuth() {
-    const [user, setUser] = useState(null);
-    useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
-    return { user, setUser };
+    const [user, setUserState] = useState(null);
+    const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
+
+    const setUser = useCallback((next) => {
+      setUserState(next || null);
+      setPushMeta(normalizePushMeta(next));
+    }, []);
+
+    useEffect(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const me = await api.me();
+          if (!alive) return;
+          setUser(me);
+        } catch {
+          if (!alive) return;
+          setUser(null);
+        }
+      })();
+      return () => { alive = false; };
+    }, [setUser]);
+
+    return { user, setUser, pushMeta };
   }
 
   // Robust mount (React 18+ or older)

@@ -248,6 +248,13 @@ if (!PUSH_AVAILABLE && !IS_TEST) {
   }
 }
 
+function publicPushMeta() {
+  return {
+    available: !!PUSH_AVAILABLE,
+    vapid_public_key: PUSH_AVAILABLE ? VAPID_PUBLIC_KEY : null
+  };
+}
+
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
 const IS_POSTGRES = Boolean(process.env.DATABASE_URL);
@@ -2213,7 +2220,7 @@ app.post('/api/register', writeLimiter, async (req, res) => {
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: false, account_status: 'active' });
 
-    return res.json({ ...user, token });
+    return res.json({ ...user, token, push_meta: publicPushMeta() });
 
   } catch (e) {
 
@@ -2321,7 +2328,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
-    return res.json({ ...user, token });
+    return res.json({ ...user, token, push_meta: publicPushMeta() });
 
   } catch (e) {
 
@@ -2403,7 +2410,9 @@ app.get('/api/me', async (req, res) => {
 
       created_at: row.created_at,
 
-      last_login_at: row.last_login_at
+      last_login_at: row.last_login_at,
+
+      push_meta: publicPushMeta()
 
     });
 
