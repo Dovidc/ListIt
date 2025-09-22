@@ -519,6 +519,57 @@
   }
 }
 
+.flagged-detail-button {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  text-align: left;
+  width: 100%;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  color: #111;
+  font: inherit;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.flagged-detail-button:hover,
+.flagged-detail-button:focus-visible {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  outline: none;
+}
+
+.flagged-detail-type {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1f2937;
+}
+
+.flagged-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flagged-tag {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flagged-detail-preview {
+  font-size: 12px;
+  color: #4b5563;
+}
+
 .lightbox-stage {
   position: relative;
   width: 100%;
