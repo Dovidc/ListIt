@@ -14,6 +14,36 @@ function bodyItems(body) {
   return [];
 }
 
+async function uploadTestImage(agent, overrides = {}) {
+
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const payload = {
+
+    key: `tests/${id}.jpg`,
+
+    url: `https://example-bucket.s3.amazonaws.com/tests/${id}.jpg`,
+
+    width: 640,
+
+    height: 480,
+
+    bytes: 12345,
+
+    ...overrides
+
+  };
+
+  const res = await agent.post('/api/uploads/finalize').send(payload);
+
+  expect(res.status).toBe(200);
+
+  expect(res.body.uploadToken).toBeTruthy();
+
+  return res.body.uploadToken;
+
+}
+
 async function resetDb() {
   const res = await request(app).post('/__test/reset');
   if (res.status !== 200) {
@@ -45,7 +75,9 @@ describe('ListIt API basic flows', () => {
     res = await buyer.post('/api/register').send({ email: 'buyer@test.com', password: 'secret1', username: 'buyerB' });
     expect(res.status).toBe(200);
 
-    res = await seller.post('/api/listings').send({ title: 'Test Bike', description: 'Road ready bike', location: 'NYC, NY', price: 120 });
+    const uploadToken = await uploadTestImage(seller);
+
+    res = await seller.post('/api/listings').send({ title: 'Test Bike', description: 'Road ready bike', location: 'NYC, NY', price: 120, upload_tokens: [uploadToken] });
     expect(res.status).toBe(200);
     const listingId = res.body.id;
     const sellerId = res.body.user_id;
@@ -180,7 +212,9 @@ describe('Admin reports dashboard', () => {
     expect(res.status).toBe(200);
     const sellerId = res.body.id;
 
-    res = await seller.post('/api/listings').send({ title: 'Vintage Camera', description: 'Works perfectly', location: 'Brooklyn, NY', price: 200 });
+    const uploadToken = await uploadTestImage(seller);
+
+    res = await seller.post('/api/listings').send({ title: 'Vintage Camera', description: 'Works perfectly', location: 'Brooklyn, NY', price: 200, upload_tokens: [uploadToken] });
     expect(res.status).toBe(200);
     const listingId = res.body.id;
 
@@ -291,7 +325,9 @@ describe('Locked account restrictions', () => {
     const buyerId = res.body.id;
 
     const listingPayload = { title: 'Road Bike', description: 'Great condition', location: 'NYC, NY', price: 250 };
-    res = await seller.post('/api/listings').send(listingPayload);
+    const uploadToken = await uploadTestImage(seller);
+
+    res = await seller.post('/api/listings').send({ ...listingPayload, upload_tokens: [uploadToken] });
     expect(res.status).toBe(200);
     const listingId = res.body.id;
 
@@ -342,6 +378,8 @@ describe('Nearby listings endpoint', () => {
     const seller = request.agent(app);
     await seller.post('/api/register').send({ email: 'geo@test.com', password: 'secret1', username: 'geoSeller' });
 
+    const uploadToken = await uploadTestImage(seller);
+
     const createRes = await seller.post('/api/listings').send({
       title: 'Central Item',
       description: 'Located downtown',
@@ -349,7 +387,8 @@ describe('Nearby listings endpoint', () => {
       price: 10,
       enable_nearby: true,
       lat: 40.0,
-      lon: -74.0
+      lon: -74.0,
+      upload_tokens: [uploadToken]
     });
     expect(createRes.status).toBe(200);
 
