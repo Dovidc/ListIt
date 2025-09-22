@@ -4370,6 +4370,57 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 
 
+      const moderationInputs = [];
+      if (hint) moderationInputs.push(`hint: ${hint}`);
+      for (const img of images) {
+        if (typeof img === 'string' && img.trim()) {
+          moderationInputs.push(img.trim());
+        }
+      }
+
+      if (moderationInputs.length) {
+        try {
+          const moderation = await client.moderations.create({
+            model: 'omni-moderation-latest',
+            input: moderationInputs
+          });
+
+          const flagged = [];
+          const hintOffset = hint ? 1 : 0;
+          moderation.results?.forEach((result, index) => {
+            if (!result || !result.flagged) return;
+            const entry = {
+              target: null,
+              type: null,
+              categories: [],
+              category_scores: result.category_scores || {}
+            };
+
+            if (hint && index === 0) {
+              entry.type = 'hint';
+              entry.target = hint;
+            } else {
+              const imgIndex = index - hintOffset;
+              entry.type = 'image';
+              entry.target = images[imgIndex];
+            }
+
+            const categories = result.categories || {};
+            entry.categories = Object.keys(categories).filter((key) => categories[key]);
+            flagged.push(entry);
+          });
+
+          if (flagged.length) {
+            return res.status(400).json({ error: 'moderation_flagged', flagged });
+          }
+        } catch (err) {
+          console.error('Moderation check failed:', err);
+          return res.status(502).json({ error: 'moderation_failed' });
+        }
+      }
+
+
+
       const content = [];
 
       content.push({
