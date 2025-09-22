@@ -956,20 +956,7 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_by INTEGER"); } catch {}
     try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_note TEXT"); } catch {}
 
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS flagged_attempts (
-        id ${PRIMARY_KEY},
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
-        listing_title TEXT,
-        details TEXT,
-        flagged_at TEXT NOT NULL
-      );
-    `);
-    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL'); } catch {}
-    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'); } catch {}
+    await ensureFlaggedAttemptsSchema();
 
     await db.exec(`
 
@@ -1104,6 +1091,48 @@ function safeJsonParse(str, fallback) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+let flaggedSchemaReady = false;
+let flaggedSchemaPromise = null;
+async function ensureFlaggedAttemptsSchema() {
+  if (flaggedSchemaReady) return;
+  if (flaggedSchemaPromise) return flaggedSchemaPromise;
+
+  flaggedSchemaPromise = (async () => {
+    try {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS flagged_attempts (
+          id ${PRIMARY_KEY},
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+          listing_title TEXT,
+          details TEXT,
+          flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      try {
+        await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL');
+      } catch {}
+      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch {}
+      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch {}
+      try {
+        await db.exec('ALTER TABLE flagged_attempts ADD COLUMN flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
+      } catch {}
+      try {
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_flagged_attempts_flagged_at ON flagged_attempts(flagged_at DESC, id DESC)');
+      } catch {}
+      flaggedSchemaReady = true;
+    } catch (err) {
+      flaggedSchemaReady = false;
+      console.error('Failed to ensure flagged_attempts schema:', err);
+      throw err;
+    } finally {
+      flaggedSchemaPromise = null;
+    }
+  })();
+
+  return flaggedSchemaPromise;
+}
+
 async function recordFlaggedAttempt({ userId, listingId = null, title = '', flagged = [] } = {}) {
   const uid = Number(userId);
   if (!Number.isFinite(uid)) return;
@@ -1120,6 +1149,7 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
     try { detailsJson = JSON.stringify(flagged.slice(0, 20)); } catch {}
   }
   try {
+    await ensureFlaggedAttemptsSchema();
     await db.prepare(`
       INSERT INTO flagged_attempts (user_id, listing_id, listing_title, details, flagged_at)
       VALUES (?, ?, ?, ?, ?)
@@ -5694,6 +5724,7 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
 
 app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
   try {
+    await ensureFlaggedAttemptsSchema();
     const limitRaw = Number(req.query.limit);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
     const rows = await db.prepare(`
@@ -5725,6 +5756,7 @@ app.delete('/api/admin/flagged/:id', auth, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid_flagged_id' });
   try {
+    await ensureFlaggedAttemptsSchema();
     await db.prepare('DELETE FROM flagged_attempts WHERE id = ?').run(id);
     return res.json({ ok: true });
   } catch (err) {
