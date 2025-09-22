@@ -5728,23 +5728,46 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
     const limitRaw = Number(req.query.limit);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
     const rows = await db.prepare(`
-      SELECT f.id, f.user_id, f.listing_id, f.listing_title, f.details, f.flagged_at,
-             u.username, u.email
+      SELECT f.id,
+             COALESCE(f.user_id, l.user_id)            AS user_id,
+             f.listing_id,
+             COALESCE(NULLIF(f.listing_title, ''), l.title, '') AS listing_title,
+             f.details,
+             f.flagged_at,
+             u.username,
+             u.email
         FROM flagged_attempts f
-        LEFT JOIN users u ON u.id = f.user_id
+        LEFT JOIN listings l ON l.id = f.listing_id
+        LEFT JOIN users u ON u.id = COALESCE(f.user_id, l.user_id)
        ORDER BY COALESCE(f.flagged_at, '') DESC, f.id DESC
        LIMIT ?
     `).all(limit);
-    const data = rows.map((row) => ({
-      id: row.id,
-      user_id: row.user_id,
-      listing_id: row.listing_id,
-      listing_title: row.listing_title,
-      flagged_at: row.flagged_at,
-      username: row.username,
-      email: row.email,
-      details: safeJsonParse(row.details, [])
-    }));
+    const data = rows.map((row) => {
+      const details = safeJsonParse(row.details, []);
+      const id = Number(row.id);
+      const userId = Number.isFinite(Number(row.user_id)) ? Number(row.user_id) : null;
+      const listingId = Number.isFinite(Number(row.listing_id)) ? Number(row.listing_id) : null;
+      let listingTitle = typeof row.listing_title === 'string' ? row.listing_title.trim() : '';
+      if (!listingTitle) {
+        const detailWithTarget = (details || []).find((detail) => {
+          return detail && typeof detail === 'object' && typeof detail.target === 'string' && detail.target.trim();
+        });
+        if (detailWithTarget) {
+          listingTitle = detailWithTarget.target.trim().slice(0, 160);
+        }
+      }
+      const username = row.username || (Number.isFinite(userId) ? `User #${userId}` : null);
+      return {
+        id: Number.isFinite(id) ? id : row.id,
+        user_id: userId,
+        listing_id: listingId,
+        listing_title: listingTitle,
+        flagged_at: row.flagged_at,
+        username,
+        email: row.email,
+        details
+      };
+    });
     return res.json(data);
   } catch (err) {
     console.error('Admin flagged list failed:', err);
