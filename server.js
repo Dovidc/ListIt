@@ -5012,7 +5012,12 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
 
 
-    const row = await db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
+    const row = await db.prepare(`
+      SELECT m.*, u.username AS sender_username
+        FROM messages m
+        JOIN users u ON u.id = m.sender_id
+       WHERE m.id = ?
+    `).get(msgId);
 
     const imgs = await db.prepare('SELECT COALESCE(url, image_data) AS image_data FROM message_images WHERE message_id = ? ORDER BY position ASC')
 
@@ -5021,6 +5026,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
     const normalizedImgs = imgs.map(r => canonicalAssetUrl(r.image_data));
 
     const messagePayload = { ...row, images: normalizedImgs };
+    const senderUsername = row?.sender_username || req.user.username || null;
 
 
 
@@ -5038,7 +5044,11 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
       sender_id: req.user.id,
 
-      recipient_id: convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id
+      recipient_id: convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id,
+
+      sender_username: senderUsername,
+
+      listing_id: convo.listing_id || null
 
     };
 
@@ -5061,11 +5071,15 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
         ? messagePayload.body.slice(0, 160)
         : '';
       const hasImages = Array.isArray(messagePayload.images) && messagePayload.images.length > 0;
+      const pushSender = messagePayload.sender_username || req.user.username || null;
       sendPushToUser(wsMessage.recipient_id, {
         type: 'new_message',
         conversation_id: id,
         message_id: messagePayload.id,
         sender_id: req.user.id,
+        sender_username: pushSender,
+        sender_name: pushSender,
+        listing_id: convo.listing_id || null,
         body: preview,
         has_images: hasImages,
         created_at: messagePayload.created_at

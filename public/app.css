@@ -729,6 +729,55 @@
   opacity: 0.75;
 }
 
+.message-toast-container {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  gap: 8px;
+  z-index: 1200;
+  max-width: min(360px, calc(100vw - 48px));
+}
+
+.message-toast {
+  background: rgba(17, 24, 39, 0.94);
+  color: #f9fafb;
+  padding: 14px 16px;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.message-toast:focus,
+.message-toast:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.4);
+}
+
+.message-toast__title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #f9fafb;
+}
+
+.message-toast__preview {
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(249, 250, 251, 0.85);
+}
+
+@media (max-width: 640px) {
+  .message-toast-container {
+    right: 16px;
+    bottom: 16px;
+    max-width: calc(100vw - 32px);
+  }
+}
+
 
 .lightbox-info {
   font-size: 12px;
