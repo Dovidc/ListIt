@@ -226,7 +226,7 @@ const PUSH_FAILURE_TTL_DAYS = Math.max(1, Number(process.env.PUSH_FAILURE_TTL_DA
 const PUSH_STALE_TTL_DAYS = Math.max(30, Number(process.env.PUSH_STALE_TTL_DAYS || 90));
 const PUSH_CLEANUP_INTERVAL_MS = Math.max(300000, Number(process.env.PUSH_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000));
 
-const PUSH_AVAILABLE = Boolean(webPush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+let PUSH_AVAILABLE = Boolean(webPush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
 if (PUSH_AVAILABLE) {
   try {
@@ -234,12 +234,17 @@ if (PUSH_AVAILABLE) {
     console.log('[push] web-push configured with subject', VAPID_SUBJECT);
   } catch (err) {
     console.error('[push] Failed to configure web-push:', err);
+    PUSH_AVAILABLE = false;
   }
-} else if (!IS_TEST) {
+}
+
+if (!PUSH_AVAILABLE && !IS_TEST) {
   if (!webPush) {
     console.warn('[push] Push notifications disabled: web-push module missing');
   } else if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     console.warn('[push] Push notifications disabled: VAPID keys not provided');
+  } else {
+    console.warn('[push] Push notifications disabled: web-push configuration failed');
   }
 }
 
