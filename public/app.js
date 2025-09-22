@@ -561,6 +561,8 @@ register(payload, meta) {
     adminDeleteSeedListings(meta) { return this._fetch('/api/admin/listings/seed', { method:'DELETE' }, meta); },
 
     listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
+    adminListFlagged(meta) { return this._fetch('/api/admin/flagged', { method:'GET' }, meta); },
+    adminDeleteFlagged(id, meta) { return this._fetch(`/api/admin/flagged/${id}`, { method:'DELETE' }, meta); },
     adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
     adminCreateAd(payload, meta) {
       return this._fetch('/api/admin/ads', {
@@ -3067,6 +3069,11 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [topDays, setTopDays] = useState(7);
   const [topMin, setTopMin] = useState(1);
 
+  const [flaggedList, setFlaggedList] = useState([]);
+  const [flaggedLoading, setFlaggedLoading] = useState(false);
+  const [flaggedError, setFlaggedError] = useState('');
+  const [dismissingFlaggedId, setDismissingFlaggedId] = useState(null);
+
   const [adsList, setAdsList] = useState([]);
   const [adsLoading, setAdsLoading] = useState(false);
   const [adsError, setAdsError] = useState('');
@@ -3095,6 +3102,20 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     searchTimer.current = setTimeout(() => { fetchSearch(term); }, 300);
   }, [searchTerm]);
 
+  const loadFlagged = useCallback(async () => {
+    setFlaggedLoading(true);
+    setFlaggedError('');
+    try {
+      const rows = await api.adminListFlagged({ silent: true });
+      setFlaggedList(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setFlaggedError(err?.message || 'Failed to load flagged uploads');
+      setFlaggedList([]);
+    } finally {
+      setFlaggedLoading(false);
+    }
+  }, []);
+
   const loadAds = useCallback(async () => {
     setAdsLoading(true);
     setAdsError('');
@@ -3114,6 +3135,12 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       loadAds();
     }
   }, [tab, loadAds]);
+
+  useEffect(() => {
+    if (tab === 'flagged') {
+      loadFlagged();
+    }
+  }, [tab, loadFlagged]);
 
   async function handleSeedListings() {
     if (seedBusy || seedDeleteBusy) return;
@@ -3427,6 +3454,32 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     }
   }
 
+  async function handleMessageFlagged(userId) {
+    if (!onMessageUser) return;
+    const targetId = Number(userId);
+    if (!Number.isFinite(targetId)) return;
+    try {
+      await onMessageUser(targetId);
+    } catch (err) {
+      alert(err?.message || 'Failed to open conversation.');
+    }
+  }
+
+  async function handleDismissFlagged(id) {
+    const numericId = Number(id);
+    if (!Number.isFinite(numericId)) return;
+    if (dismissingFlaggedId === numericId) return;
+    try {
+      setDismissingFlaggedId(numericId);
+      await api.adminDeleteFlagged(numericId);
+      setFlaggedList(list => list.filter(item => Number(item.id) !== numericId));
+    } catch (err) {
+      alert(err?.message || 'Failed to dismiss flagged attempt.');
+    } finally {
+      setDismissingFlaggedId(null);
+    }
+  }
+
   const reportsList = userReports.length
     ? H('div', { style: { display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto', marginTop: 12 } },
         userReports.map(r => H('div', {
@@ -3475,6 +3528,7 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     H('div', { className: 'row', style: { gap: 8 } },
       H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
       H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
+      H('button', { className: `btn ${tab === 'flagged' ? 'primary' : ''}`, onClick: () => setTab('flagged') }, 'Flagged'),
       H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
       H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing')
     ),
@@ -3558,6 +3612,58 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       topList
     ),
 
+    tab === 'flagged' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+        H('h3', { style: { margin: 0, fontSize: 18 } }, 'Flagged uploads'),
+        H('button', { className: 'btn', onClick: loadFlagged, disabled: flaggedLoading }, flaggedLoading ? 'Refreshing…' : 'Refresh')
+      ),
+      flaggedError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, flaggedError),
+      flaggedLoading && !flaggedList.length ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading flagged uploads…') : null,
+      flaggedList.length
+        ? H('div', { style: { display: 'grid', gap: 12 } },
+            flaggedList.map(item => {
+              const details = Array.isArray(item?.details) ? item.details : [];
+              return H('div', {
+                key: item.id,
+                className: 'card',
+                style: { padding: 12, border: '1px solid #e5e7eb', display: 'grid', gap: 8 }
+              },
+                H('div', { style: { display: 'grid', gap: 4 } },
+                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                    H('span', { style: { fontWeight: 600 } }, item?.username || '(no username)'),
+                    item?.flagged_at && H('span', { className: 'muted', style: { fontSize: 12 } }, formatDateTime(item.flagged_at))
+                  ),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, item?.email || 'No email on file'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, item?.listing_title ? `Title: ${item.listing_title}` : 'Title not provided'),
+                  details.length ? H('div', { style: { display: 'grid', gap: 4 } },
+                    details.map((detail, idx) => {
+                      if (!detail || typeof detail !== 'object') return null;
+                      const categories = Array.isArray(detail.categories) ? detail.categories.filter(Boolean) : [];
+                      const categoryLabel = categories.length ? categories.join(', ') : 'Flagged';
+                      const typeLabel = detail.type ? detail.type : 'content';
+                      const target = typeof detail.target === 'string' ? detail.target.trim() : '';
+                      const preview = target.length > 80 ? `${target.slice(0, 77)}…` : target;
+                      return H('div', { key: `${item.id}-${idx}`, className: 'muted', style: { fontSize: 12 } },
+                        `${typeLabel}: ${categoryLabel}` + (preview ? ` — ${preview}` : '')
+                      );
+                    }).filter(Boolean)
+                  ) : null
+                ),
+                H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+                  onMessageUser && H('button', { className: 'btn', onClick: () => handleMessageFlagged(item.user_id) }, 'Message'),
+                  H('button', {
+                    className: 'btn',
+                    onClick: () => handleDismissFlagged(item.id),
+                    disabled: dismissingFlaggedId === Number(item.id)
+                  }, dismissingFlaggedId === Number(item.id) ? 'Removing…' : 'Dismiss')
+                )
+              );
+            })
+          )
+        : (!flaggedLoading && !flaggedError
+            ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'No flagged uploads yet.')
+            : null)
+    ),
 
 
     tab === 'ads' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 16 } },
