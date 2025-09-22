@@ -4488,7 +4488,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
   );
 }
 
-  // --- Nearby Panel (unchanged) ---
+  // --- Nearby Panel ---
   function NearbyPanel({ user, mineById, onEdit, onDelete, onMessage, onAdminDelete, setTab, onViewSeller, onToggleSold }) {
     const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
@@ -4496,6 +4496,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const [selected, setSelected] = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sort, setSort] = useState('new');
     const storedCoords = useMemo(() => {
       try {
         const raw = localStorage.getItem('listit_nearby_coords');
@@ -4514,36 +4516,60 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const coordsTsRef = useRef(storedCoords?.ts || 0);
     const abortRef = useRef(null);
 
-    // NEW: masonry container ref + live column-count
-    const masonRef = useRef(null);
-    const [nearbyCols, setNearbyCols] = useState(3);
-    useEffect(() => {
-      if (!masonRef.current) return;
-      const el = masonRef.current;
+    const visibleItems = useMemo(() => {
+      const source = Array.isArray(items) ? items : [];
+      if (!source.length) return [];
 
-      const readCols = () => {
-        const cs = getComputedStyle(el);
-        const n = parseInt(cs.columnCount, 10);
-        setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
+      const term = searchQuery.trim().toLowerCase();
+      const match = (value) => {
+        if (value == null) return false;
+        try {
+          return value.toString().toLowerCase().includes(term);
+        } catch {
+          return false;
+        }
       };
-      readCols();
 
-      const ro = new ResizeObserver(readCols);
-      ro.observe(el);
-      window.addEventListener('resize', readCols);
-      return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
-    }, []);
+      const filtered = term
+        ? source.filter(it => {
+            if (!it) return false;
+            const tagsField = Array.isArray(it?.tags) ? it.tags.join(', ') : it?.tags;
+            return (
+              match(it?.title) ||
+              match(it?.description) ||
+              match(tagsField) ||
+              match(it?.location)
+            );
+          })
+        : source.slice();
 
-    // NEW: interleave helper (row-wise ordering for CSS column masonry)
-    const interleaved = useMemo(() => {
-      const arr = items || [];
-      if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
-      const out = [];
-      for (let c = 0; c < nearbyCols; c++) {
-        for (let i = c; i < arr.length; i += nearbyCols) out.push(arr[i]);
-      }
-      return out;
-    }, [items, nearbyCols]);
+      const sorted = filtered.slice();
+      const parsePrice = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const parseTime = (item) => {
+        const candidates = [item?.updated_at, item?.created_at];
+        for (const c of candidates) {
+          if (!c) continue;
+          const parsed = Date.parse(c);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        return 0;
+      };
+
+      sorted.sort((a, b) => {
+        if (sort === 'price_desc') {
+          return parsePrice(b?.price) - parsePrice(a?.price);
+        }
+        if (sort === 'price_asc') {
+          return parsePrice(a?.price) - parsePrice(b?.price);
+        }
+        return parseTime(b) - parseTime(a);
+      });
+
+      return sorted;
+    }, [items, searchQuery, sort]);
 
     const ensureCoords = useCallback(async (force = false) => {
       const cached = coordsRef.current;
@@ -4666,26 +4692,112 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
         lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
       ),
 
+      H('div', { className:'row', style:{ gap:10, marginTop:12, flexWrap:'wrap' } },
+        H('input', {
+          placeholder:'Search title, description, tags...',
+          value: searchQuery,
+          onChange: e => setSearchQuery(e.target.value),
+          style:{ flex:'1 1 220px', minWidth:220 }
+        }),
+        H('select', {
+          value: sort,
+          onChange: e => setSort(e.target.value),
+          style:{ width:'auto' }
+        },
+          H('option', { value:'new' }, 'Newest'),
+          H('option', { value:'price_desc' }, 'Price: High -> Low'),
+          H('option', { value:'price_asc' }, 'Price: Low -> High')
+        )
+      ),
+
       errorMsg && H('div', { className:'muted', style:{ color:'#b91c1c', marginTop:8, fontSize:12 } }, errorMsg),
 
-      // NOTE: add ref so we can read computed column-count
-      H('section', { className:'masonry', ref: masonRef },
-        interleaved.map(item => {
+      busy && H('div', { className:'muted', style:{ marginTop:12, fontSize:12 } }, 'Loading nearby listings...'),
+
+      H('div', {
+        style:{
+          display:'grid',
+          gap:12,
+          marginTop:12,
+          gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))'
+        }
+      },
+        visibleItems.map((item, idx) => {
           const cover = selectPrimaryListingImage(item, item?.image_data);
-          return H('div', { key:item.id, className:'masonry-item' },
-            cover && H(ImageWithSkeleton, {
-              src: cover,
-              loading:'lazy',
-              decoding:'async',
-              onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
-              style: { cursor: 'pointer' },
-              disableSkeleton: true
-            })
+          const numericPrice = Number(item?.price ?? 0);
+          const isFree = Number.isFinite(numericPrice) ? numericPrice === 0 : false;
+          const priceLabel = price(item?.price);
+          const rawDesc = typeof item?.description === 'string' ? item.description.trim() : '';
+          const summary = rawDesc.length > 140 ? `${rawDesc.slice(0, 137)}…` : rawDesc;
+          const location = typeof item?.location === 'string' ? item.location.trim() : '';
+          const distanceMeters = Number(item?.distance_m);
+          const hasDistance = Number.isFinite(distanceMeters) && distanceMeters >= 0;
+          const distanceLabel = hasDistance ? fmtDistance(distanceMeters) : '';
+          const key = item?.id != null ? item.id : `nearby-${idx}`;
+
+          const handleKeyDown = (evt) => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+              handleSelectListingFromEvent(evt, item, cover);
+            }
+          };
+
+          return H('div', {
+            key,
+            className:'card',
+            role:'button',
+            tabIndex:0,
+            onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
+            onKeyDown: handleKeyDown,
+            style:{
+              padding:0,
+              display:'flex',
+              flexDirection:'column',
+              overflow:'hidden'
+            }
+          },
+            H('div', {
+              style:{ position:'relative', width:'100%', paddingTop:'75%', background:'#f3f4f6' }
+            },
+              cover
+                ? H(ImageWithSkeleton, {
+                    src: cover,
+                    loading:'lazy',
+                    decoding:'async',
+                    style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' },
+                    disableSkeleton: true
+                  })
+                : H('div', {
+                    style:{
+                      position:'absolute',
+                      inset:0,
+                      display:'grid',
+                      placeItems:'center',
+                      color:'#6b7280',
+                      fontWeight:600
+                    }
+                  }, 'No image')
+            ),
+            H('div', { style:{ padding:12, display:'flex', flexDirection:'column', gap:6 } },
+              H('div', { className:'row', style:{ justifyContent:'space-between', alignItems:'flex-start', gap:8 } },
+                H('div', { style:{ fontWeight:700, fontSize:14, flex:'1 1 auto' } }, item?.title || 'Item for sale'),
+                H('div', {
+                  style:{
+                    fontWeight:800,
+                    color: isFree ? '#16a34a' : '#111',
+                    whiteSpace:'nowrap'
+                  }
+                }, priceLabel)
+              ),
+              location && H('div', { className:'muted', style:{ fontSize:12 } }, location),
+              (distanceLabel) && H('div', { className:'muted', style:{ fontSize:12 } }, `${distanceLabel} away`),
+              summary && H('div', { className:'muted', style:{ fontSize:12 } }, summary)
+            )
           );
         })
       ),
 
-      (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
+      (!visibleItems.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } },
+        items.length ? 'No nearby listings match your search.' : 'No nearby listings found in this radius.'),
 
       H(ListingModal, {
         open: !!selected,
