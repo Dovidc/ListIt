@@ -1086,6 +1086,151 @@ function safeJsonParse(str, fallback) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+function normalizeFlaggedDetailObject(detail) {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return null;
+
+  const wrapperKeys = ['flagged', 'details', 'entries', 'items', 'data', 'results'];
+  const hasWrapperChildren = wrapperKeys.some((key) => {
+    const value = detail[key];
+    return Array.isArray(value) || typeof value === 'string';
+  });
+
+  const pickString = (...candidates) => {
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        const trimmed = candidate.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+    return '';
+  };
+
+  const type = (() => {
+    const rawType = pickString(detail.type, detail.kind, detail.category, detail.label);
+    if (rawType) return rawType;
+    const guessTarget = pickString(detail.target, detail.value, detail.text, detail.body, detail.content, detail.url, detail.image_url);
+    if (guessTarget && /^https?:\/\//i.test(guessTarget)) return 'image';
+    return guessTarget ? 'content' : '';
+  })();
+
+  const target = pickString(detail.target, detail.value, detail.text, detail.body, detail.content, detail.url, detail.image_url);
+
+  const categories = (() => {
+    if (Array.isArray(detail.categories)) {
+      return detail.categories.map((cat) => pickString(cat)).filter(Boolean);
+    }
+    if (Array.isArray(detail.labels)) {
+      return detail.labels.map((cat) => pickString(cat)).filter(Boolean);
+    }
+    if (Array.isArray(detail.flags)) {
+      return detail.flags.map((cat) => pickString(cat)).filter(Boolean);
+    }
+    const single = pickString(detail.category, detail.label);
+    return single ? [single] : [];
+  })();
+
+  const scoreSource = (() => {
+    const candidates = [detail.category_scores, detail.scores, detail.confidence, detail.score];
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  })();
+
+  const category_scores = {};
+  if (scoreSource) {
+    for (const [key, value] of Object.entries(scoreSource)) {
+      const trimmedKey = pickString(key);
+      if (!trimmedKey) continue;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) category_scores[trimmedKey] = numeric;
+    }
+  }
+
+  if (!type && !target && !categories.length && !Object.keys(category_scores).length && hasWrapperChildren) {
+    return null;
+  }
+
+  const resolvedType = type || (target && /^https?:\/\//i.test(target) ? 'image' : 'content');
+
+  return {
+    type: resolvedType || 'content',
+    target,
+    categories,
+    category_scores
+  };
+}
+
+function normalizeFlaggedDetails(raw) {
+  if (raw == null) return [];
+
+  const stack = [raw];
+  const seenStrings = new Set();
+  const results = [];
+
+  while (stack.length) {
+    const current = stack.pop();
+    if (current == null) continue;
+
+    if (typeof current === 'string') {
+      const trimmed = current.trim();
+      if (!trimmed) continue;
+      if (!seenStrings.has(trimmed)) {
+        seenStrings.add(trimmed);
+        const parsed = safeJsonParse(trimmed, null);
+        if (parsed !== null && parsed !== trimmed) {
+          stack.push(parsed);
+          continue;
+        }
+      }
+      results.push({
+        type: 'content',
+        target: trimmed,
+        categories: [],
+        category_scores: {}
+      });
+      continue;
+    }
+
+    if (Array.isArray(current)) {
+      for (let i = current.length - 1; i >= 0; i -= 1) {
+        stack.push(current[i]);
+      }
+      continue;
+    }
+
+    if (typeof current === 'object') {
+      const wrapperKeys = ['flagged', 'details', 'entries', 'items', 'data', 'results'];
+      for (const key of wrapperKeys) {
+        const value = current[key];
+        if (Array.isArray(value) || typeof value === 'string') {
+          stack.push(value);
+        }
+      }
+
+      const normalized = normalizeFlaggedDetailObject(current);
+      if (normalized) {
+        results.push(normalized);
+      }
+    }
+  }
+
+  const unique = [];
+  const seenObjects = new Set();
+  for (const detail of results) {
+    if (!detail) continue;
+    const key = JSON.stringify(detail);
+    if (seenObjects.has(key)) continue;
+    seenObjects.add(key);
+    unique.push(detail);
+    if (unique.length >= 20) break;
+  }
+
+  return unique;
+}
+
 let flaggedSchemaReady = false;
 let flaggedSchemaPromise = null;
 async function ensureFlaggedAttemptsSchema() {
@@ -1141,7 +1286,10 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
   })();
   let detailsJson = null;
   if (Array.isArray(flagged) && flagged.length) {
-    try { detailsJson = JSON.stringify(flagged.slice(0, 20)); } catch {}
+    const normalized = normalizeFlaggedDetails(flagged);
+    if (normalized.length) {
+      try { detailsJson = JSON.stringify(normalized); } catch {}
+    }
   }
   try {
     await ensureFlaggedAttemptsSchema();
@@ -5738,7 +5886,7 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
        LIMIT ?
     `).all(limit);
     const data = rows.map((row) => {
-      const details = safeJsonParse(row.details, []);
+      const details = normalizeFlaggedDetails(row.details);
       const id = Number(row.id);
       const userId = Number.isFinite(Number(row.user_id)) ? Number(row.user_id) : null;
       const listingId = Number.isFinite(Number(row.listing_id)) ? Number(row.listing_id) : null;
