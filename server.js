@@ -1072,17 +1072,36 @@ async function initializeSchema() {
 function nowIso() { return new Date().toISOString(); }
 
 function normalizePushSubscriptionInput(raw) {
-  const subscription = raw && raw.subscription ? raw.subscription : raw;
-  if (!subscription || typeof subscription !== 'object') {
+  let source = raw;
+
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      return { error: 'invalid_subscription' };
+    }
+  }
+
+  if (source && typeof source === 'object' && typeof source.subscription === 'string') {
+    try {
+      source = JSON.parse(source.subscription);
+    } catch {
+      return { error: 'invalid_subscription' };
+    }
+  } else if (source && typeof source === 'object' && source.subscription) {
+    source = source.subscription;
+  }
+
+  if (!source || typeof source !== 'object') {
     return { error: 'invalid_subscription' };
   }
 
-  const endpoint = String(subscription.endpoint || '').trim();
+  const endpoint = String(source.endpoint || '').trim();
   if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
     return { error: 'invalid_endpoint' };
   }
 
-  const keys = subscription.keys || {};
+  const keys = source.keys || {};
   const auth = typeof keys.auth === 'string' ? keys.auth.trim() : '';
   const p256dh = typeof keys.p256dh === 'string' ? keys.p256dh.trim() : '';
   if (!auth || !p256dh) {
@@ -1090,8 +1109,8 @@ function normalizePushSubscriptionInput(raw) {
   }
 
   let expiration = null;
-  if (subscription.expirationTime != null) {
-    const n = Number(subscription.expirationTime);
+  if (source.expirationTime != null) {
+    const n = Number(source.expirationTime);
     if (Number.isFinite(n)) {
       expiration = Math.max(0, Math.trunc(n));
     }
