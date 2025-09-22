@@ -4496,6 +4496,8 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const [selected, setSelected] = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
+    const [search, setSearch] = useState('');
+    const [sort, setSort] = useState('new');
     const storedCoords = useMemo(() => {
       try {
         const raw = localStorage.getItem('listit_nearby_coords');
@@ -4514,36 +4516,62 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const coordsTsRef = useRef(storedCoords?.ts || 0);
     const abortRef = useRef(null);
 
-    // NEW: masonry container ref + live column-count
-    const masonRef = useRef(null);
-    const [nearbyCols, setNearbyCols] = useState(3);
-    useEffect(() => {
-      if (!masonRef.current) return;
-      const el = masonRef.current;
+    const isMobile = useMemo(() => isMobileDevice(), []);
+    const columns = isMobile ? 3 : 4;
+    const gridGap = isMobile ? 8 : 12;
 
-      const readCols = () => {
-        const cs = getComputedStyle(el);
-        const n = parseInt(cs.columnCount, 10);
-        setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
-      };
-      readCols();
+    const filteredItems = useMemo(() => {
+      const base = Array.isArray(items) ? items.slice() : [];
+      const query = search.trim().toLowerCase();
+      let working = base;
 
-      const ro = new ResizeObserver(readCols);
-      ro.observe(el);
-      window.addEventListener('resize', readCols);
-      return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
-    }, []);
-
-    // NEW: interleave helper (row-wise ordering for CSS column masonry)
-    const interleaved = useMemo(() => {
-      const arr = items || [];
-      if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
-      const out = [];
-      for (let c = 0; c < nearbyCols; c++) {
-        for (let i = c; i < arr.length; i += nearbyCols) out.push(arr[i]);
+      if (query) {
+        working = base.filter((item) => {
+          const haystack = [
+            item?.title,
+            item?.description,
+            item?.location,
+            item?.owner_username
+          ].filter(Boolean).map(value => String(value).toLowerCase()).join(' ');
+          return haystack.includes(query);
+        });
+      } else {
+        working = [...working];
       }
-      return out;
-    }, [items, nearbyCols]);
+
+      const parseDate = (value) => {
+        if (!value) return 0;
+        const ts = new Date(value).getTime();
+        return Number.isFinite(ts) ? ts : 0;
+      };
+
+      const parsePrice = (item) => {
+        const val = Number(item?.price);
+        return Number.isFinite(val) ? val : 0;
+      };
+
+      working.sort((a, b) => {
+        if (sort === 'price_asc') {
+          const diff = parsePrice(a) - parsePrice(b);
+          if (diff !== 0) return diff;
+        } else if (sort === 'price_desc') {
+          const diff = parsePrice(b) - parsePrice(a);
+          if (diff !== 0) return diff;
+        } else {
+          const tb = parseDate(b?.created_at || b?.updated_at);
+          const ta = parseDate(a?.created_at || a?.updated_at);
+          const diff = tb - ta;
+          if (diff !== 0) return diff;
+        }
+
+        // Fallback tie-breakers
+        const createdDiff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
+        if (createdDiff !== 0) return createdDiff;
+        return Number(b?.id || 0) - Number(a?.id || 0);
+      });
+
+      return working;
+    }, [items, search, sort]);
 
     const ensureCoords = useCallback(async (force = false) => {
       const cached = coordsRef.current;
@@ -4649,41 +4677,68 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
 
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
-        H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
-        H('label', { htmlFor:'radius' }, 'Filter radius:'),
-        H('select', {
-          id:'radius',
-          value: radius,
-          onChange: e => setRadius(Number(e.target.value)),
-          style:{ width:'auto' }
-        },
-          H('option', { value:150 }, '~500 ft'),
-          H('option', { value:402 }, '0.25 mi'),
-          H('option', { value:805 }, '0.5 mi'),
-          H('option', { value:1609 }, '1 mi')
+        H('div', { className:'row nearby-filter', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
+          H('input', {
+            type:'search',
+            placeholder:'Search nearby listings...',
+            value: search,
+            onChange: e => setSearch(e.target.value),
+            style:{ flex:'1 1 220px', minWidth:180 }
+          }),
+          H('select', {
+            value: sort,
+            onChange: e => setSort(e.target.value),
+            style:{ width:'auto' }
+          },
+            H('option', { value:'new' }, 'Newest'),
+            H('option', { value:'price_asc' }, 'Price: Low -> High'),
+            H('option', { value:'price_desc' }, 'Price: High -> Low')
+          ),
+          H('label', { htmlFor:'radius' }, 'Filter radius:'),
+          H('select', {
+            id:'radius',
+            value: radius,
+            onChange: e => setRadius(Number(e.target.value)),
+            style:{ width:'auto' }
+          },
+            H('option', { value:150 }, '~500 ft'),
+            H('option', { value:402 }, '0.25 mi'),
+            H('option', { value:805 }, '0.5 mi'),
+            H('option', { value:1609 }, '1 mi')
+          ),
+          H('button', { className:'btn', onClick: () => load(true), disabled:busy }, busy ? 'Refreshing...' : 'Reload'),
+          lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
         ),
-        H('button', { className:'btn', onClick: () => load(true), disabled:busy }, busy ? 'Refreshing...' : 'Reload'),
-        lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
-      ),
 
       errorMsg && H('div', { className:'muted', style:{ color:'#b91c1c', marginTop:8, fontSize:12 } }, errorMsg),
 
-      // NOTE: add ref so we can read computed column-count
-      H('section', { className:'masonry', ref: masonRef },
-        interleaved.map(item => {
+      H('section', {
+        className:'nearby-grid',
+        style:{
+          display:'grid',
+          gridTemplateColumns:`repeat(${columns}, minmax(0, 1fr))`,
+          gap:gridGap
+        }
+      },
+        filteredItems.map(item => {
           const cover = selectPrimaryListingImage(item, item?.image_data);
-          return H('div', { key:item.id, className:'masonry-item' },
-            cover && H(ImageWithSkeleton, {
-              src: cover,
-              loading:'lazy',
-              decoding:'async',
-              onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
-              style: { cursor: 'pointer' },
-              disableSkeleton: true
-            })
+          return H('div', { key:item.id, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
+            H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
+              cover && H(ImageWithSkeleton, {
+                src: cover,
+                loading:'lazy',
+                decoding:'async',
+                onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
+                style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
+                disableSkeleton: true
+              })
+            )
           );
         })
       ),
+
+      (filteredItems.length === 0 && items.length > 0 && !busy && !errorMsg) &&
+        H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings match your search.'),
 
       (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
 
