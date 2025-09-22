@@ -700,21 +700,16 @@ async function initializeSchema() {
 
     `);
 
-
-
-    try {
-
-      await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0');
-
-    } catch {}
-
-
-
-    try {
-
-      await db.exec('ALTER TABLE listings ADD COLUMN is_test_listing INTEGER DEFAULT 0');
-
-    } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN title TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN tags TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN lat REAL'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN lon REAL'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN enable_nearby INTEGER DEFAULT 0'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN is_test_listing INTEGER DEFAULT 0'); } catch {}
+    try { await db.exec("UPDATE listings SET enable_nearby = 0 WHERE enable_nearby IS NULL"); } catch {}
+    try { await db.exec("UPDATE listings SET sold = 0 WHERE sold IS NULL"); } catch {}
+    try { await db.exec("UPDATE listings SET is_test_listing = 0 WHERE is_test_listing IS NULL"); } catch {}
 
 
 
