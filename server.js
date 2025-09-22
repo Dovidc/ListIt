@@ -29,6 +29,21 @@ let helmet; try { helmet = require('helmet'); } catch {}
 let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
 
 let OpenAI; try { OpenAI = require('openai'); } catch {}
+let cachedOpenAIClient = null;
+
+function getOpenAIClient() {
+
+  if (!process.env.OPENAI_API_KEY || !OpenAI) return null;
+
+  if (!cachedOpenAIClient) {
+
+    cachedOpenAIClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  }
+
+  return cachedOpenAIClient;
+
+}
 
 let webPush;
 try {
@@ -421,9 +436,9 @@ function invalidateNearbyCache() {
 
 app.use(cookieParser());
 
-app.use(express.json({ limit: '100mb' }));
+app.use(express.json({ limit: '10mb' }));
 
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use((err, req, res, next) => {
 
@@ -1786,6 +1801,104 @@ function validateMsgImages(images) {
   }
 
   return null;
+
+}
+
+
+
+async function moderateListingContent({ title, description, imageUrls }) {
+
+  const client = getOpenAIClient();
+
+  if (!client) return [];
+
+  const entries = [];
+
+  if (typeof title === 'string') {
+
+    const trimmed = title.trim();
+
+    if (trimmed) entries.push({ type: 'title', value: trimmed });
+
+  }
+
+  if (typeof description === 'string') {
+
+    const trimmed = description.trim();
+
+    if (trimmed) entries.push({ type: 'description', value: trimmed });
+
+  }
+
+  if (Array.isArray(imageUrls)) {
+
+    for (const raw of imageUrls) {
+
+      if (typeof raw !== 'string') continue;
+
+      const trimmed = raw.trim();
+
+      if (!trimmed) continue;
+
+      const canonical = canonicalAssetUrl(trimmed);
+
+      const normalized = (typeof canonical === 'string' && canonical) ? canonical : trimmed;
+
+      entries.push({ type: 'image', value: normalized });
+
+    }
+
+  }
+
+  if (!entries.length) return [];
+
+  let moderation;
+
+  try {
+
+    moderation = await client.moderations.create({
+
+      model: 'omni-moderation-latest',
+
+      input: entries.map((entry) => entry.value)
+
+    });
+
+  } catch (err) {
+
+    const error = new Error('moderation_failed');
+
+    error.code = 'moderation_failed';
+
+    error.cause = err;
+
+    throw error;
+
+  }
+
+  const flagged = [];
+
+  moderation.results?.forEach((result, index) => {
+
+    if (!result?.flagged) return;
+
+    const entry = entries[index];
+
+    flagged.push({
+
+      type: entry.type,
+
+      target: entry.value,
+
+      categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
+
+      category_scores: result.category_scores || {}
+
+    });
+
+  });
+
+  return flagged;
 
 }
 
@@ -3221,6 +3334,114 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
     )).slice(0, 12);
 
+    if (!uploadTokens.length) {
+
+      return res.status(400).json({ error: 'image_required' });
+
+    }
+
+    const tokenParams = { userId: req.user.id };
+
+    const placeholders = uploadTokens.map((_, idx) => {
+
+      const key = `t${idx}`;
+
+      tokenParams[key] = uploadTokens[idx];
+
+      return `@${key}`;
+
+    }).join(', ');
+
+    const rows = placeholders
+
+      ? await db.prepare(`
+
+          SELECT token, key, url, width, height, bytes, created_at
+
+            FROM listing_upload_drafts
+
+           WHERE user_id = @userId
+
+             AND token IN (${placeholders})
+
+        `).all(tokenParams)
+
+      : [];
+
+    const rowByToken = new Map((rows || []).map((r) => [r.token, r]));
+
+    const orderedRows = uploadTokens.map((token) => rowByToken.get(token)).filter(Boolean);
+
+    const uploads = orderedRows.map((r) => {
+
+      const safeWidth = Number(r?.width);
+
+      const safeHeight = Number(r?.height);
+
+      const safeBytes = Number(r?.bytes);
+
+      const createdAt = Number.isFinite(Number(r?.created_at)) ? Number(r.created_at) : Math.floor(Date.now() / 1000);
+
+      const url = canonicalAssetUrl(String(r?.url || ''));
+
+      return {
+
+        token: r?.token,
+
+        key: String(r?.key || ''),
+
+        url,
+
+        width: Number.isFinite(safeWidth) ? safeWidth : null,
+
+        height: Number.isFinite(safeHeight) ? safeHeight : null,
+
+        bytes: Number.isFinite(safeBytes) ? safeBytes : null,
+
+        createdAt
+
+      };
+
+    }).filter((item) => typeof item.url === 'string' && item.url && isAllowedPublicUrl(item.url));
+
+    if (!uploads.length) {
+
+      return res.status(400).json({ error: 'image_required' });
+
+    }
+
+    try {
+
+      const flagged = await moderateListingContent({
+
+        title: String(safeTitle || ''),
+
+        description: String(descStr || ''),
+
+        imageUrls: uploads.map((item) => item.url)
+
+      });
+
+      if (flagged?.length) {
+
+        return res.status(400).json({ error: 'moderation_flagged', flagged });
+
+      }
+
+    } catch (err) {
+
+      if (err?.code === 'moderation_failed') {
+
+        console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+
+        return res.status(502).json({ error: 'moderation_failed' });
+
+      }
+
+      throw err;
+
+    }
+
 
 
     let lat = Number(req.body.lat);
@@ -3273,113 +3494,73 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
 
 
 
-    if (uploadTokens.length) {
+    if (uploads.length) {
 
-      const tokenParams = { userId: req.user.id };
+      const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(listingId);
 
-      const placeholders = uploadTokens.map((_, idx) => {
+      let pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
 
-        const key = `t${idx}`;
+      let coverUrl = null;
 
-        tokenParams[key] = uploadTokens[idx];
+      for (const upload of uploads) {
 
-        return `@${key}`;
+        await db.prepare(`
 
-      }).join(', ');
+          INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
 
-      const rows = placeholders
+          VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
 
-        ? await db.prepare(`
+        `).run(
 
-            SELECT token, key, url, width, height, bytes, created_at
+          listingId,
 
-              FROM listing_upload_drafts
+          pos,
 
-             WHERE user_id = @userId
+          upload.key,
 
-               AND token IN (${placeholders})
+          upload.url,
 
-          `).all(tokenParams)
+          upload.width,
 
-        : [];
+          upload.height,
 
-      const rowByToken = new Map((rows || []).map((r) => [r.token, r]));
+          upload.bytes,
 
-      const orderedRows = uploadTokens.map((token) => rowByToken.get(token)).filter(Boolean);
+          upload.createdAt
 
-      if (orderedRows.length) {
+        );
 
-        const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(listingId);
+        if (!coverUrl) coverUrl = upload.url;
 
-        let pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+        pos += 1;
 
-        let coverUrl = null;
+      }
 
-        for (const r of orderedRows) {
+      if (coverUrl) {
 
-          const safeWidth = Number(r?.width);
+        await db.prepare(`
 
-          const safeHeight = Number(r?.height);
+          UPDATE listings
 
-          const safeBytes = Number(r?.bytes);
+             SET image_data = COALESCE(NULLIF(image_data, ''), @url)
 
-          const createdAt = Number.isFinite(Number(r?.created_at)) ? Number(r.created_at) : Math.floor(Date.now() / 1000);
+           WHERE id = @listingId
 
-          const url = canonicalAssetUrl(String(r?.url || ''));
+        `).run({ listingId, url: coverUrl });
 
-          await db.prepare(`
+      }
 
-            INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
+      const tokensToDelete = uploads.map((item) => item.token).filter(Boolean);
 
-            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
-
-          `).run(
-
-            listingId,
-
-            pos,
-
-            String(r?.key || ''),
-
-            url,
-
-            Number.isFinite(safeWidth) ? safeWidth : null,
-
-            Number.isFinite(safeHeight) ? safeHeight : null,
-
-            Number.isFinite(safeBytes) ? safeBytes : null,
-
-            createdAt
-
-          );
-
-          if (!coverUrl) coverUrl = url;
-
-          pos += 1;
-
-        }
-
-        if (coverUrl) {
-
-          await db.prepare(`
-
-            UPDATE listings
-
-               SET image_data = COALESCE(NULLIF(image_data, ''), @url)
-
-             WHERE id = @listingId
-
-          `).run({ listingId, url: coverUrl });
-
-        }
+      if (tokensToDelete.length) {
 
         const deleteParams = { userId: req.user.id };
 
-        const deletePlaceholders = orderedRows.map((row, idx) => {
+        const deletePlaceholders = tokensToDelete.map((token, idx) => {
 
           const key = `d${idx}`;
 
-          deleteParams[key] = row.token;
+          deleteParams[key] = token;
 
           return `@${key}`;
 
@@ -3551,7 +3732,85 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     const { title, description, location, price, tags, deletedImages } = req.body || {};
 
-    
+
+
+    const existingImages = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position, id')
+
+      .all(id);
+
+    const existingImageUrls = existingImages
+
+      .map((img) => canonicalAssetUrl(img?.url || img?.image_data))
+
+      .filter((url) => typeof url === 'string' && url);
+
+    const deleteCanonical = new Set();
+
+    if (Array.isArray(deletedImages) && deletedImages.length > 0) {
+
+      for (const imageUrl of deletedImages) {
+
+        const raw = String(imageUrl ?? '').trim();
+
+        if (!raw) continue;
+
+        const variants = assetVariants(raw);
+
+        const pool = variants.length ? variants : [raw];
+
+        for (const variant of pool) {
+
+          const canonical = canonicalAssetUrl(variant);
+
+          if (typeof canonical === 'string' && canonical) deleteCanonical.add(canonical);
+
+        }
+
+      }
+
+    }
+
+    const remainingImageUrls = existingImageUrls.filter((url) => !deleteCanonical.has(url));
+
+    const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
+
+    const newDesc = (description !== undefined) ? String(description).slice(0,400) : existing.description;
+
+    const newLoc = (location !== undefined) ? String(location).slice(0,80) : existing.location;
+
+    try {
+
+      const flagged = await moderateListingContent({
+
+        title: String(newTitle || ''),
+
+        description: String(newDesc || ''),
+
+        imageUrls: remainingImageUrls
+
+      });
+
+      if (flagged?.length) {
+
+        return res.status(400).json({ error: 'moderation_flagged', flagged });
+
+      }
+
+    } catch (err) {
+
+      if (err?.code === 'moderation_failed') {
+
+        console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+
+        return res.status(502).json({ error: 'moderation_failed' });
+
+      }
+
+      throw err;
+
+    }
+
+
 
     // Handle image deletions
 
@@ -3577,7 +3836,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
       }
 
-      
+
 
       // Re-index remaining images
 
@@ -3593,7 +3852,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
       }
 
-      
+
 
       // Update listing cover if needed
 
@@ -3618,14 +3877,6 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       }
 
     }
-
-
-
-    const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
-
-    const newDesc = (description !== undefined) ? String(description).slice(0,400) : existing.description;
-
-    const newLoc = (location !== undefined) ? String(location).slice(0,80) : existing.location;
 
 
 
@@ -4168,13 +4419,57 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
       }
 
-      const owner = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(lid);
+      const listing = await db.prepare('SELECT user_id, title, description FROM listings WHERE id = ?').get(lid);
 
-      if (!owner) return res.status(404).json({ error: 'Listing not found' });
+      if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
-      if (!req.user?.is_admin && owner.user_id !== req.user.id) {
+      if (!req.user?.is_admin && listing.user_id !== req.user.id) {
 
         return res.status(403).json({ error: 'Not your listing' });
+
+      }
+
+      const currentImages = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position, id')
+
+        .all(lid);
+
+      const imageUrls = currentImages
+
+        .map((img) => canonicalAssetUrl(img?.url || img?.image_data))
+
+        .filter((url) => typeof url === 'string' && url);
+
+      imageUrls.push(sanitized.url);
+
+      try {
+
+        const flagged = await moderateListingContent({
+
+          title: String(listing.title || ''),
+
+          description: String(listing.description || ''),
+
+          imageUrls
+
+        });
+
+        if (flagged?.length) {
+
+          return res.status(400).json({ error: 'moderation_flagged', flagged });
+
+        }
+
+      } catch (err) {
+
+        if (err?.code === 'moderation_failed') {
+
+          console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+
+          return res.status(502).json({ error: 'moderation_failed' });
+
+        }
+
+        throw err;
 
       }
 
@@ -4356,17 +4651,49 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
     const MAX_AI_IMAGES = 8;
 
-    const images = Array.isArray(req.body.images) ? req.body.images.slice(0, MAX_AI_IMAGES) : [];
+    const rawImages = Array.isArray(req.body.images) ? req.body.images.slice(0, MAX_AI_IMAGES) : [];
 
     const hint = String(req.body.hint || '').slice(0, 200);
+
+    const images = [];
+
+    for (const raw of rawImages) {
+
+      if (typeof raw !== 'string') {
+
+        return res.status(400).json({ error: 'invalid_asset_url' });
+
+      }
+
+      const trimmed = raw.trim();
+
+      if (!trimmed) {
+
+        return res.status(400).json({ error: 'invalid_asset_url' });
+
+      }
+
+      const canonical = canonicalAssetUrl(trimmed);
+
+      const normalized = (typeof canonical === 'string' && canonical) ? canonical : trimmed;
+
+      if (!isAllowedPublicUrl(normalized)) {
+
+        return res.status(400).json({ error: 'invalid_asset_url' });
+
+      }
+
+      images.push(normalized);
+
+    }
 
     if (!images.length) return res.status(400).json({ error: 'No images provided' });
 
 
 
-    if (process.env.OPENAI_API_KEY && OpenAI) {
+    const client = getOpenAIClient();
 
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    if (client) {
 
 
 
