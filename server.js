@@ -957,6 +957,21 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_note TEXT"); } catch {}
 
     await db.exec(`
+      CREATE TABLE IF NOT EXISTS flagged_attempts (
+        id ${PRIMARY_KEY},
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+        listing_title TEXT,
+        details TEXT,
+        flagged_at TEXT NOT NULL
+      );
+    `);
+    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL'); } catch {}
+    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'); } catch {}
+
+    await db.exec(`
 
       CREATE TABLE IF NOT EXISTS listing_cities (
 
@@ -1083,6 +1098,36 @@ async function initializeSchema() {
 /* Utils                                                              */
 
 /* ------------------------------------------------------------------ */
+
+function safeJsonParse(str, fallback) {
+  if (str == null) return fallback;
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+async function recordFlaggedAttempt({ userId, listingId = null, title = '', flagged = [] } = {}) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid)) return;
+  const lid = Number(listingId);
+  const hasListingId = Number.isFinite(lid) ? lid : null;
+  const cleanTitle = (() => {
+    const raw = typeof title === 'string' ? title : (title == null ? '' : String(title));
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, 160);
+  })();
+  let detailsJson = null;
+  if (Array.isArray(flagged) && flagged.length) {
+    try { detailsJson = JSON.stringify(flagged.slice(0, 20)); } catch {}
+  }
+  try {
+    await db.prepare(`
+      INSERT INTO flagged_attempts (user_id, listing_id, listing_title, details, flagged_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(uid, hasListingId, cleanTitle, detailsJson, nowIso());
+  } catch (err) {
+    console.warn('Failed to record flagged attempt:', err?.message || err);
+  }
+}
 
 function nowIso() { return new Date().toISOString(); }
 
@@ -3423,6 +3468,7 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
       });
 
       if (flagged?.length) {
+        await recordFlaggedAttempt({ userId: req.user?.id, title: safeTitle, flagged });
 
         return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -3791,6 +3837,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
       });
 
       if (flagged?.length) {
+        await recordFlaggedAttempt({ userId: req.user?.id, listingId: id, title: newTitle, flagged });
 
         return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -4454,6 +4501,7 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
         });
 
         if (flagged?.length) {
+          await recordFlaggedAttempt({ userId: req.user?.id, listingId: lid, title: listing.title, flagged });
 
           return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -4738,6 +4786,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
           });
 
           if (flagged.length) {
+            await recordFlaggedAttempt({ userId: req.user?.id, title: hint, flagged });
             return res.status(400).json({ error: 'moderation_flagged', flagged });
           }
         } catch (err) {
@@ -5642,6 +5691,47 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
 });
 
 
+
+app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
+    const rows = await db.prepare(`
+      SELECT f.id, f.user_id, f.listing_id, f.listing_title, f.details, f.flagged_at,
+             u.username, u.email
+        FROM flagged_attempts f
+        LEFT JOIN users u ON u.id = f.user_id
+       ORDER BY COALESCE(f.flagged_at, '') DESC, f.id DESC
+       LIMIT ?
+    `).all(limit);
+    const data = rows.map((row) => ({
+      id: row.id,
+      user_id: row.user_id,
+      listing_id: row.listing_id,
+      listing_title: row.listing_title,
+      flagged_at: row.flagged_at,
+      username: row.username,
+      email: row.email,
+      details: safeJsonParse(row.details, [])
+    }));
+    return res.json(data);
+  } catch (err) {
+    console.error('Admin flagged list failed:', err);
+    return res.status(500).json({ error: 'flagged_fetch_failed' });
+  }
+});
+
+app.delete('/api/admin/flagged/:id', auth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid_flagged_id' });
+  try {
+    await db.prepare('DELETE FROM flagged_attempts WHERE id = ?').run(id);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Admin flagged delete failed:', err);
+    return res.status(500).json({ error: 'flagged_delete_failed' });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 
