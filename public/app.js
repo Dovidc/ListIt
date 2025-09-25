@@ -21,6 +21,14 @@
 (() => {
   const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
+  const featureRegistry = window.ListItFeatures || {};
+  const authFeature = featureRegistry.Auth || {};
+  const { AuthProvider, useAuth } = authFeature;
+
+  if (typeof AuthProvider !== 'function' || typeof useAuth !== 'function') {
+    throw new Error('Auth feature bundle failed to load.');
+  }
+
   const core = window.ListItCore || {};
   const {
     createApiClient,
@@ -6973,56 +6981,17 @@ function App(){
     );
   }
 
-  function normalizePushMeta(value) {
-    const source = value && typeof value === 'object'
-      ? (value.push_meta && typeof value.push_meta === 'object'
-          ? value.push_meta
-          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
-      : null;
-    const available = !!source?.available;
-    const vapid = typeof source?.vapid_public_key === 'string'
-      ? source.vapid_public_key.trim()
-      : (typeof source?.vapidPublicKey === 'string' ? source.vapidPublicKey.trim() : '');
-    return {
-      available: available && !!vapid,
-      vapidPublicKey: vapid || null
-    };
-  }
-
-  function useAuth() {
-    const [user, setUserState] = useState(null);
-    const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
-
-    const setUser = useCallback((next) => {
-      setUserState(next || null);
-      setPushMeta(normalizePushMeta(next));
-    }, []);
-
-    useEffect(() => {
-      let alive = true;
-      (async () => {
-        try {
-          const me = await api.me();
-          if (!alive) return;
-          setUser(me);
-        } catch {
-          if (!alive) return;
-          setUser(null);
-        }
-      })();
-      return () => { alive = false; };
-    }, [setUser]);
-
-    return { user, setUser, pushMeta };
+  function RootApp() {
+    return H(AuthProvider, { api }, H(App));
   }
 
   // Robust mount (React 18+ or older)
   const rootEl = document.getElementById('root');
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
-    root.render(H(App));
+    root.render(H(RootApp));
   } else {
-    ReactDOM.render(H(App), rootEl);
+    ReactDOM.render(H(RootApp), rootEl);
   }
 
 })();
