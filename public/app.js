@@ -437,7 +437,16 @@ const api = {
         if (msg === 'account_locked') AppNav.notifyLocked();
         throw new Error(msg);
       }
-      try { return await res.json(); } catch { return null; }
+      const text = await res.text();
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        const parseError = new Error('invalid_json');
+        parseError.cause = err;
+        parseError.responseText = text;
+        throw parseError;
+      }
     } finally {
       if (!silent) AppNav.decLoad();
     }
