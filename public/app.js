@@ -1510,21 +1510,6 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     });
   }
 
-  // --- Background queue help modal ---
-  function BackgroundQueueHelpModal({ onClose }) {
-    return H(InfoHelpModal, {
-      onClose,
-      title: 'About the background queue',
-      intro: 'When enabled, the background queue will:',
-      bullets: [
-        'Run Auto-list, and MassList jobs one at a time in the background.',
-        'Allow you to immediately move on to another task without waiting for proccesses to finish.',
-        'Show a brief notification indicating the job has started.',
-      ],
-      footer: 'Most effective after uploading a large MassList.'
-    });
-  }
-
   // --- Listing Form (S3-first) ---
   function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
     const [files, setFiles] = useState([]); // Files to upload to S3
@@ -5215,7 +5200,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     autoListEnabled, setAutoListEnabled,
     aiDescriptionEnabled, setAiDescriptionEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
-    backgroundQueueEnabled, setBackgroundQueueEnabled,
     isMobile,
     onViewSeller, // ADD THIS PARAMETER
     onToggleSold
@@ -5307,28 +5291,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
                 type:'button',
                 onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
                 title:'AI description tips',
-                style:{
-                  marginLeft:6, width:24, height:24, lineHeight:'22px',
-                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
-                }
-              }, '?')
-            ),
-            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
-              H('input', {
-                type:'checkbox',
-                className:'toggle-input',
-                checked: !!backgroundQueueEnabled,
-                onChange: (e) => setBackgroundQueueEnabled(e.target.checked)
-              }),
-              H('span', { className:'toggle-slider', 'aria-hidden': true }),
-              H('div', { className:'toggle-copy' },
-                H('div', { style:{ fontWeight:700 } }, 'Background queue'),
-                H('div', { className:'muted', style:{ fontSize:12 } }, 'listings run in background')
-              ),
-              H('button', {
-                type:'button',
-                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('bgqueue'); },
-                title:'Background queue info',
                 style:{
                   marginLeft:6, width:24, height:24, lineHeight:'22px',
                   borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
@@ -5485,7 +5447,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
 
       helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
       helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
-      helpModal === 'bgqueue' && H(BackgroundQueueHelpModal, { onClose: () => setHelpModal(null) }),
 
       H(ListingModal, {
         open: !!profileSelected,
@@ -6188,11 +6149,7 @@ function App(){
     });
     useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
-    const BG_QUEUE_KEY = 'listit_background_queue';
-    const [backgroundQueueEnabled, setBackgroundQueueEnabled] = useState(() => {
-      try { return localStorage.getItem(BG_QUEUE_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(BG_QUEUE_KEY, backgroundQueueEnabled ? '1' : '0'); } catch {} }, [backgroundQueueEnabled]);
+    const backgroundQueueEnabled = true;
 
     const isMobile = isMobileDevice();
 
@@ -6266,9 +6223,9 @@ function App(){
       if (typeof job !== 'function') return;
       listingQueueRef.current.push(job);
       setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
-      if (backgroundQueueEnabled) showQueueReminder();
+      showQueueReminder();
       processNextListingJob();
-    }, [backgroundQueueEnabled, processNextListingJob, showQueueReminder]);
+    }, [processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {
@@ -7225,8 +7182,6 @@ function App(){
             setAiDescriptionEnabled,
             autoPostNearbyEnabled,
             setAutoPostNearbyEnabled,
-            backgroundQueueEnabled,
-            setBackgroundQueueEnabled,
             onViewSeller: handleViewSeller, // ADD THIS LINE
             onToggleSold: toggleSold
           }),
