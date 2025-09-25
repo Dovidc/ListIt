@@ -33,6 +33,13 @@ import {
   useFilePreviews
 } from '../features/listings/utils/drafts.mjs';
 
+const React = window.React;
+const ReactDOM = window.ReactDOM;
+
+if (!React || !ReactDOM) {
+  throw new Error('React failed to load.');
+}
+
 const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
   const core = window.ListItCore || {};
