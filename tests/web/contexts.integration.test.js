@@ -82,6 +82,9 @@ describe('web feature contexts', () => {
     store.setAiDescriptionEnabled(true);
     store.setAutoPostNearbyEnabled(true);
     store.setShowQueueToast(true);
+    store.enqueueListingJob(() => {});
+    store.enqueueListingJob(() => {});
+    expect(store.state.queuePendingCount).toBe(2);
     store.setQueuePendingCount(3);
 
     expect(storage.get('listit_auto_list')).toBe('1');

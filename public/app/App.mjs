@@ -5838,14 +5838,9 @@ function App(){
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
-      listingQueueRef,
-      listingQueueProcessingRef,
       showQueueToast,
-      setShowQueueToast,
       queuePendingCount,
-      setQueuePendingCount,
-      toastTimerRef,
-      showQueueReminder
+      enqueueListingJob
     } = useUploads();
     const {
       banner,
@@ -5887,37 +5882,6 @@ function App(){
     const backgroundQueueEnabled = true;
 
     const isMobile = isMobileDevice();
-
-    useEffect(() => () => {
-      listingQueueRef.current = [];
-      listingQueueProcessingRef.current = false;
-    }, [listingQueueRef, listingQueueProcessingRef]);
-
-    const processNextListingJob = useCallback(() => {
-      if (listingQueueProcessingRef.current) return;
-      const job = listingQueueRef.current.shift();
-      if (!job) {
-        setQueuePendingCount(0);
-        return;
-      }
-      listingQueueProcessingRef.current = true;
-      Promise.resolve()
-        .then(() => job())
-        .catch((err) => { console.error('Background listing job failed:', err); })
-        .finally(() => {
-          listingQueueProcessingRef.current = false;
-          setQueuePendingCount(listingQueueRef.current.length);
-          processNextListingJob();
-        });
-    }, []);
-
-    const enqueueListingJob = useCallback((job) => {
-      if (typeof job !== 'function') return;
-      listingQueueRef.current.push(job);
-      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
-      showQueueReminder();
-      processNextListingJob();
-    }, [processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {

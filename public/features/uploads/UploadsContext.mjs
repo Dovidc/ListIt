@@ -70,11 +70,17 @@ export function UploadsProvider({ children }) {
   const toastTimerRef = useRef(null);
   const [queuePendingCount, setQueuePendingCount] = useState(0);
 
+  const clearQueueRefs = useCallback(() => {
+    listingQueueRef.current = [];
+    listingQueueProcessingRef.current = false;
+  }, []);
+
   useEffect(() => () => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
     }
-  }, []);
+    clearQueueRefs();
+  }, [clearQueueRefs]);
 
   const showQueueReminder = useCallback(() => {
     setShowQueueToast(true);
@@ -82,7 +88,35 @@ export function UploadsProvider({ children }) {
       clearTimeout(toastTimerRef.current);
     }
     toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
-  }, []);
+  }, [setShowQueueToast]);
+
+  const processNextListingJob = useCallback(() => {
+    if (listingQueueProcessingRef.current) return;
+    const job = listingQueueRef.current.shift();
+    if (!job) {
+      setQueuePendingCount(0);
+      return;
+    }
+    listingQueueProcessingRef.current = true;
+    Promise.resolve()
+      .then(() => job())
+      .catch((err) => {
+        console.error('Background listing job failed:', err);
+      })
+      .finally(() => {
+        listingQueueProcessingRef.current = false;
+        setQueuePendingCount(listingQueueRef.current.length);
+        processNextListingJob();
+      });
+  }, [setQueuePendingCount]);
+
+  const enqueueListingJob = useCallback((job) => {
+    if (typeof job !== 'function') return;
+    listingQueueRef.current.push(job);
+    setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
+    showQueueReminder();
+    processNextListingJob();
+  }, [processNextListingJob, setQueuePendingCount, showQueueReminder]);
 
   const value = useMemo(
     () => ({
@@ -96,14 +130,11 @@ export function UploadsProvider({ children }) {
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
-      listingQueueRef,
-      listingQueueProcessingRef,
       showQueueToast,
       setShowQueueToast,
       queuePendingCount,
       setQueuePendingCount,
-      toastTimerRef,
-      showQueueReminder
+      enqueueListingJob
     }),
     [
       showForm,
@@ -113,7 +144,7 @@ export function UploadsProvider({ children }) {
       autoPostNearbyEnabled,
       showQueueToast,
       queuePendingCount,
-      showQueueReminder
+      enqueueListingJob
     ]
   );
 
@@ -166,7 +197,11 @@ export function createUploadsStateForTest(storage = new Map()) {
     setAutoListEnabled: (value) => { state.autoListEnabled = !!value; updateFlag(AUTO_KEY, state.autoListEnabled); },
     setAiDescriptionEnabled: (value) => { state.aiDescriptionEnabled = !!value; updateFlag(AI_DESC_KEY, state.aiDescriptionEnabled); },
     setAutoPostNearbyEnabled: (value) => { state.autoPostNearbyEnabled = !!value; updateFlag(AUTO_NEAR_KEY, state.autoPostNearbyEnabled); },
-    enqueue: (job) => { if (typeof job === 'function') state.listingQueueRef.push(job); },
+    enqueueListingJob: (job) => {
+      if (typeof job !== 'function') return;
+      state.listingQueueRef.push(job);
+      state.queuePendingCount = state.listingQueueRef.length;
+    },
     setQueuePendingCount: (value) => { state.queuePendingCount = Number(value) || 0; },
     setShowQueueToast: (value) => { state.showQueueToast = !!value; }
   };
