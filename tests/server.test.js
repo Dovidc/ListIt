@@ -3,10 +3,17 @@ if (!process.env.DB_PATH) {
   process.env.DB_PATH = ':memory:';
 }
 
+const skipServer = process.env.SKIP_SERVER_TESTS === '1';
 const request = require('supertest');
-const app = require('../server');
+let app = null;
+let db = null;
 
-const db = app._db;
+if (!skipServer) {
+  app = require('../server');
+  db = app._db;
+}
+
+const maybeDescribe = skipServer ? describe.skip : describe;
 
 function bodyItems(body) {
   if (Array.isArray(body)) return body;
@@ -15,55 +22,48 @@ function bodyItems(body) {
 }
 
 async function uploadTestImage(agent, overrides = {}) {
-
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
   const payload = {
-
     key: `tests/${id}.jpg`,
-
     url: `https://example-bucket.s3.amazonaws.com/tests/${id}.jpg`,
-
     width: 640,
-
     height: 480,
-
     bytes: 12345,
-
     ...overrides
-
   };
 
   const res = await agent.post('/api/uploads/finalize').send(payload);
-
   expect(res.status).toBe(200);
-
   expect(res.body.uploadToken).toBeTruthy();
-
   return res.body.uploadToken;
-
 }
 
 async function resetDb() {
+  if (!app) {
+    return;
+  }
+
   const res = await request(app).post('/__test/reset');
   if (res.status !== 200) {
     throw new Error(`reset_failed:${res.status}`);
   }
 }
 
-beforeAll(async () => {
-  await app._initializeSchema();
-});
+if (!skipServer) {
+  beforeAll(async () => {
+    await app._initializeSchema();
+  });
 
-afterAll(() => {
-  if (db && typeof db.close === 'function') {
-    try { db.close(); } catch (err) {
-      // ignore close errors in tests
+  afterAll(() => {
+    if (db && typeof db.close === 'function') {
+      try { db.close(); } catch (err) {
+        // ignore close errors in tests
+      }
     }
-  }
-});
+  });
+}
 
-describe('ListIt API basic flows', () => {
+maybeDescribe('ListIt API basic flows', () => {
   it('supports listing creation and conversations', async () => {
     await resetDb();
     const seller = request.agent(app);
@@ -194,7 +194,7 @@ describe('ListIt API basic flows', () => {
   });
 });
 
-describe('Admin reports dashboard', () => {
+maybeDescribe('Admin reports dashboard', () => {
   it('aggregates reported accounts', async () => {
     await resetDb();
     const admin = request.agent(app);
@@ -256,7 +256,7 @@ describe('Admin reports dashboard', () => {
   });
 });
 
-describe('Admin test listing utilities', () => {
+maybeDescribe('Admin test listing utilities', () => {
   it('seeds and clears demo listings', async () => {
     await resetDb();
 
@@ -301,7 +301,7 @@ describe('Admin test listing utilities', () => {
   });
 });
 
-describe('Locked account restrictions', () => {
+maybeDescribe('Locked account restrictions', () => {
   it('restricts selling actions but allows messaging admins', async () => {
     await resetDb();
 
@@ -370,7 +370,7 @@ describe('Locked account restrictions', () => {
   });
 });
 
-describe('Nearby listings endpoint', () => {
+maybeDescribe('Nearby listings endpoint', () => {
   it('returns nearby listings via fallback distance calculations when PostGIS is disabled', async () => {
     await resetDb();
     expect(app._features.postgisNearby).toBe(false);
