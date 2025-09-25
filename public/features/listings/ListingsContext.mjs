@@ -257,6 +257,7 @@ export function ListingsProvider({ children, api: apiProp }) {
 
   const value = useMemo(
     () => ({
+      api,
       tab,
       setTab,
       tabRef,
@@ -296,6 +297,7 @@ export function ListingsProvider({ children, api: apiProp }) {
       toggleSold
     }),
     [
+      api,
       tab,
       all,
       mine,
@@ -335,6 +337,7 @@ export function useListings() {
 
 export function createListingsStateForTest(api = null) {
   const state = {
+    api,
     tab: 'browse',
     all: [],
     mine: [],
