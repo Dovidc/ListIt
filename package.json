@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
+    "build:shared": "node scripts/build-shared.js",
     "postinstall": "npm rebuild better-sqlite3 --build-from-source || echo \"better-sqlite3 rebuild skipped\""
   },
   "dependencies": {
