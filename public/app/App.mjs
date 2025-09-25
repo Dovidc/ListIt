@@ -1,4 +1,4 @@
-﻿// public/app.js
+// public/app.js
 //
 // S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images -> S3 URLs (kept!)
@@ -18,8 +18,12 @@
 //   * Batch prewarm first covers via /api/listings/covers
 //   * Client guards against array OR {rows, hasNext, total, page} responses.
 
-(() => {
-  const { useCallback, useEffect, useMemo, useRef, useState } = React;
+import { AuthProvider, useAuth } from '../features/auth/AuthContext.mjs';
+import { ListingsProvider, useListings } from '../features/listings/ListingsContext.mjs';
+import { NotificationsProvider, useNotifications } from '../features/notifications/NotificationsContext.mjs';
+import { UploadsProvider, useUploads } from '../features/uploads/UploadsContext.mjs';
+
+const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
   const core = window.ListItCore || {};
   const {
@@ -5789,23 +5793,88 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 // Then your existing ListingForm component stays the same...
 
 function App(){
-    const { user, setUser, pushMeta } = useAuth();
-    const [tab, setTab] = useState('browse');
-    const [all, setAll] = useState([]);      // current page rows (thin)
-    const [mine, setMine] = useState([]);
-    const [query, setQuery] = useState('');
-    const [locationQuery, setLocationQuery] = useState('');
-    const [sort, setSort] = useState('new'); // default: Newest
-    const [showForm, setShowForm] = useState(false);
-    const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
-    const [banner, setBanner] = useState(null);
-    const [ads, setAds] = useState([]);
+    const { user, setUser, pushMeta, authModal, setAuthModal } = useAuth();
+    const {
+      tab,
+      setTab,
+      tabRef,
+      all,
+      setAll,
+      mine,
+      setMine,
+      query,
+      setQuery,
+      locationQuery,
+      setLocationQuery,
+      sort,
+      setSort,
+      ads,
+      setAds,
+      viewingSeller,
+      setViewingSeller,
+      hasNext,
+      setHasNext,
+      isFetchingListings,
+      setIsFetchingListings,
+      sentinelRef,
+      loadingListingsRef,
+      nextCursorRef,
+      reloadReqRef,
+      selectedListing,
+      setSelectedListing,
+      editing,
+      setEditing,
+      debouncedQuery,
+      debouncedLocation
+    } = useListings();
+    const {
+      showForm,
+      setShowForm,
+      showMassList,
+      setShowMassList,
+      autoListEnabled,
+      setAutoListEnabled,
+      aiDescriptionEnabled,
+      setAiDescriptionEnabled,
+      autoPostNearbyEnabled,
+      setAutoPostNearbyEnabled,
+      listingQueueRef,
+      listingQueueProcessingRef,
+      showQueueToast,
+      setShowQueueToast,
+      queuePendingCount,
+      setQueuePendingCount,
+      toastTimerRef,
+      showQueueReminder
+    } = useUploads();
+    const {
+      banner,
+      setBanner,
+      messageToasts,
+      setMessageToasts,
+      pushSetupRef,
+      toastTimersRef,
+      conversationMapRef,
+      audioCtxRef,
+      windowFocused,
+      setWindowFocused,
+      windowFocusedRef,
+      unreadCount,
+      setUnreadCount,
+      hasAdminUnread,
+      setHasAdminUnread,
+      loadingCount,
+      setLoadingCount,
+      activeConvoId,
+      setActiveConvoId,
+      activeConvoIdRef
+    } = useNotifications();
 
     const showLockedBanner = useCallback(() => {
       setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
-    }, []);
+    }, [setBanner]);
 
-    const dismissBanner = useCallback(() => setBanner(null), []);
+    const dismissBanner = useCallback(() => setBanner(null), [setBanner]);
 
     const handleTabChange = (newTab) => {
     if (newTab === 'admin' && !user?.is_admin) {
@@ -5815,104 +5884,14 @@ function App(){
     setViewingSeller(null); // Clear seller view when switching tabs
   };
 
-    // NEW: Seller profile state
-    const [viewingSeller, setViewingSeller] = useState(null);
-    
-    // Pagination / infinite scroll
-    const [hasNext, setHasNext] = useState(false);
-    const [isFetchingListings, setIsFetchingListings] = useState(false);
-    const sentinelRef = useRef(null);
-    const loadingListingsRef = useRef(false);
-    const nextCursorRef = useRef(null);
-
-    // Modal selection for full listing card
-    const [selectedListing, setSelectedListing] = useState(null);
-    const [editing, setEditing] = useState(null);
-    const [activeConvoId, setActiveConvoId] = useState(null);
-    const tabRef = useRef(tab);
-    const activeConvoIdRef = useRef(activeConvoId);
-    const [windowFocused, setWindowFocused] = useState(() => {
-      if (typeof document === 'undefined') return true;
-      return !document.hidden;
-    });
-    const windowFocusedRef = useRef(windowFocused);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [hasAdminUnread, setHasAdminUnread] = useState(false);
-    const [loadingCount, setLoadingCount] = useState(0);
-
-    // MassList modal
-    const [showMassList, setShowMassList] = useState(false);
-
-    // Auto-list toggles (persisted)
-    const AUTO_KEY = 'listit_auto_list';
-    const [autoListEnabled, setAutoListEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
-
-    const AI_DESC_KEY = 'listit_ai_descriptions';
-    const [aiDescriptionEnabled, setAiDescriptionEnabled] = useState(() => {
-      try { return localStorage.getItem(AI_DESC_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AI_DESC_KEY, aiDescriptionEnabled ? '1' : '0'); } catch {} }, [aiDescriptionEnabled]);
-
-    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
-    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
-
     const backgroundQueueEnabled = true;
 
     const isMobile = isMobileDevice();
 
-    const listingQueueRef = useRef([]);
-    const listingQueueProcessingRef = useRef(false);
-    const [showQueueToast, setShowQueueToast] = useState(false);
-    const toastTimerRef = useRef(null);
-    const [queuePendingCount, setQueuePendingCount] = useState(0);
-    const [messageToasts, setMessageToasts] = useState([]);
-    const pushSetupRef = useRef({ userId: null, permission: null });
-    const toastTimersRef = useRef(new Map());
-    const conversationMapRef = useRef(new Map());
-    const audioCtxRef = useRef(null);
-
-    const showQueueReminder = useCallback(() => {
-      setShowQueueToast(true);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
-    }, []);
-
-    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
-
     useEffect(() => () => {
       listingQueueRef.current = [];
       listingQueueProcessingRef.current = false;
-    }, []);
-
-    useEffect(() => () => {
-      toastTimersRef.current.forEach(clearTimeout);
-      toastTimersRef.current.clear();
-    }, []);
-
-    useEffect(() => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') return;
-      const handleFocus = () => setWindowFocused(true);
-      const handleBlur = () => setWindowFocused(false);
-      const handleVisibility = () => setWindowFocused(!document.hidden);
-      window.addEventListener('focus', handleFocus);
-      window.addEventListener('blur', handleBlur);
-      document.addEventListener('visibilitychange', handleVisibility);
-      return () => {
-        window.removeEventListener('focus', handleFocus);
-        window.removeEventListener('blur', handleBlur);
-        document.removeEventListener('visibilitychange', handleVisibility);
-      };
-    }, []);
-
-    useEffect(() => { tabRef.current = tab; }, [tab]);
-    useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
-    useEffect(() => { windowFocusedRef.current = windowFocused; }, [windowFocused]);
+    }, [listingQueueRef, listingQueueProcessingRef]);
 
     const processNextListingJob = useCallback(() => {
       if (listingQueueProcessingRef.current) return;
@@ -6119,7 +6098,7 @@ function App(){
     useEffect(() => {
       AppNav.incLoad = () => setLoadingCount(c => c + 1);
       AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-    }, []);
+    }, [setLoadingCount]);
 
     useEffect(() => {
       if (!user?.is_admin && tab === 'admin') {
@@ -6151,27 +6130,12 @@ function App(){
       setViewingSeller(null);
     }
 
-    // Debounce: search + city
-    const [debouncedQuery, setDebouncedQuery] = useState(query);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedQuery(query), 250);
-      return () => clearTimeout(t);
-    }, [query]);
-
-    const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-      return () => clearTimeout(t);
-    }, [locationQuery]);
-
     // Reload helpers
     async function reloadMineOnly(){
       if (!user) { setMine([]); return; }
       const m = await api.listMine();
       setMine(asArray(m)||[]);
     }
-
-    const reloadReqRef = useRef(0);
 
     const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
       const req = ++reloadReqRef.current;
@@ -6973,59 +6937,27 @@ function App(){
     );
   }
 
-  function normalizePushMeta(value) {
-    const source = value && typeof value === 'object'
-      ? (value.push_meta && typeof value.push_meta === 'object'
-          ? value.push_meta
-          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
-      : null;
-    const available = !!source?.available;
-    const vapid = typeof source?.vapid_public_key === 'string'
-      ? source.vapid_public_key.trim()
-      : (typeof source?.vapidPublicKey === 'string' ? source.vapidPublicKey.trim() : '');
-    return {
-      available: available && !!vapid,
-      vapidPublicKey: vapid || null
-    };
-  }
+export function AppProviders({ children }) {
+  return H(AuthProvider, { api },
+    H(NotificationsProvider, null,
+      H(ListingsProvider, null,
+        H(UploadsProvider, null, children))));
+}
 
-  function useAuth() {
-    const [user, setUserState] = useState(null);
-    const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
+export function AppRoot() {
+  return H(App);
+}
 
-    const setUser = useCallback((next) => {
-      setUserState(next || null);
-      setPushMeta(normalizePushMeta(next));
-    }, []);
-
-    useEffect(() => {
-      let alive = true;
-      (async () => {
-        try {
-          const me = await api.me();
-          if (!alive) return;
-          setUser(me);
-        } catch {
-          if (!alive) return;
-          setUser(null);
-        }
-      })();
-      return () => { alive = false; };
-    }, [setUser]);
-
-    return { user, setUser, pushMeta };
-  }
-
-  // Robust mount (React 18+ or older)
-  const rootEl = document.getElementById('root');
+export function renderApp(rootEl) {
+  if (!rootEl) return;
+  const tree = H(AppProviders, null, H(App));
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
-    root.render(H(App));
+    root.render(tree);
   } else {
-    ReactDOM.render(H(App), rootEl);
+    ReactDOM.render(tree, rootEl);
   }
-
-})();
+}
 
 
 
