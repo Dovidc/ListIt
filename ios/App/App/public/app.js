@@ -1,4 +1,4 @@
-// public/app.js
+﻿// public/app.js
 //
 // S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images -> S3 URLs (kept!)
@@ -18,51 +18,55 @@
 //   * Batch prewarm first covers via /api/listings/covers
 //   * Client guards against array OR {rows, hasNext, total, page} responses.
 
-import { AuthProvider, useAuth } from '../features/auth/AuthContext.mjs';
-import { ListingsProvider, useListings } from '../features/listings/ListingsContext.mjs';
-import { NotificationsProvider, useNotifications } from '../features/notifications/NotificationsContext.mjs';
-import { UploadsProvider, useUploads } from '../features/uploads/UploadsContext.mjs';
-import { ListingFormModal, AutoListHelpModal, AiDescriptionHelpModal } from '../features/listings/components/ListingFormModal.mjs';
-import { ImageWithSkeleton } from '../components/ImageWithSkeleton.mjs';
-import { isMobileDevice } from '../utils/device.mjs';
-import {
-  clearDraftCacheForFile,
-  createConcurrencyLimiter,
-  fetchCoordsAndReverse,
-  uploadFileDraft,
-  useFilePreviews
-} from '../features/listings/utils/drafts.mjs';
-
-const { useCallback, useEffect, useMemo, useRef, useState } = React;
-
-  const core = window.ListItCore || {};
-  const {
-    createApiClient,
-    formatCurrency,
-    formatDistance,
-    haversineMeters: coreHaversineMeters
-  } = core;
-
-  if (typeof createApiClient !== 'function') {
-    throw new Error('ListIt core bundle failed to load.');
-  }
-
-  const price = (n) => formatCurrency(n ?? 0);
-  const fmtDistance = (m) => formatDistance(m);
-  const haversineMeters = (...args) => coreHaversineMeters(...args);
+(() => {
+  const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
   // Device detection
   // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
   // - Matches iPhone/Android/Windows Phone
   // - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
+  function isMobileDevice() {
+    const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
+
+    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
+      return true;
+    }
+
+    // iPadOS desktop UA workaround
+    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+      return true;
+    }
+
+    return false;
+  }
+
   // small bridge so api can redirect UI on 401s + track global loading
   const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
+  function price(n) { return Number(n ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
+  function fmtDistance(m){
+    if (!Number.isFinite(m)) return '';
+    if (m < 1609.344 * 0.3) {
+      const ft = m * 3.28084;
+      if (ft < 1000) return `${Math.round(ft)} ft`;
+      return `${Math.round(ft/100)/10}k ft`;
+    }
+    const mi = m / 1609.344;
+    return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+  }
+  const _toRad = d => d * Math.PI / 180;
+  function haversineMeters(aLat, aLon, bLat, bLon) {
+    const R = 6371000;
+    const dLat = _toRad(bLat - aLat);
+    const dLon = _toRad(bLon - aLon);
+    const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
+  }
   
   // NEW: Convert S3 URL to data URL for AI analysis
   async function urlToDataUrl(url) {
@@ -81,64 +85,6 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
       console.error('Failed to convert URL to data URL:', error);
       return null;
     }
-  }
-
-  function base64UrlToUint8Array(base64String) {
-    if (!base64String || typeof base64String !== 'string') return null;
-    try {
-      const padded = base64String + '='.repeat((4 - (base64String.length % 4)) % 4);
-      const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
-      const raw = window.atob(base64);
-      const output = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
-      return output;
-    } catch (err) {
-      console.warn('Failed to decode VAPID key:', err);
-      return null;
-    }
-  }
-
-  function arrayBufferToBase64Url(buf) {
-    if (!buf) return '';
-    try {
-      const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || []);
-      let binary = '';
-      bytes.forEach(b => { binary += String.fromCharCode(b); });
-      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    } catch {
-      return '';
-    }
-  }
-
-  function serializePushSubscription(sub) {
-    if (!sub) return null;
-    try {
-      const json = typeof sub.toJSON === 'function' ? sub.toJSON() : null;
-      if (json) return json;
-    } catch {}
-
-    const payload = {
-      endpoint: sub.endpoint,
-      expirationTime: sub.expirationTime ?? null,
-      keys: {}
-    };
-
-    if (typeof sub.getKey === 'function') {
-      const auth = sub.getKey('auth');
-      const p256dh = sub.getKey('p256dh');
-      if (auth) payload.keys.auth = arrayBufferToBase64Url(auth);
-      if (p256dh) payload.keys.p256dh = arrayBufferToBase64Url(p256dh);
-    }
-
-    if (!payload.keys.auth || !payload.keys.p256dh) {
-      if (sub.keys && typeof sub.keys === 'object') {
-        if (!payload.keys.auth && typeof sub.keys.auth === 'string') payload.keys.auth = sub.keys.auth;
-        if (!payload.keys.p256dh && typeof sub.keys.p256dh === 'string') payload.keys.p256dh = sub.keys.p256dh;
-      }
-    }
-
-    if (!payload.endpoint || !payload.keys.auth || !payload.keys.p256dh) return null;
-    return payload;
   }
   
   let _coordsPromise = null;
@@ -246,15 +192,39 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
     return r.top + (window.scrollY || 0);
   }
 
-  const asArray = (x) => {
-    if (Array.isArray(x)) return x;
-    if (!x || typeof x !== 'object') return [];
-    if (Array.isArray(x.rows)) return x.rows;
-    if (Array.isArray(x.items)) return x.items;
-    if (Array.isArray(x.listings)) return x.listings;
-    if (Array.isArray(x.data)) return x.data;
-    return [];
-  };
+  // --- NEW: robust response guards for listings / pagination ---
+  function normalizeListingsResponse(res, limit = 75) {
+    let rows = [];
+    if (Array.isArray(res)) rows = res;
+    else if (res && typeof res === 'object') {
+      if (Array.isArray(res.rows)) rows = res.rows;
+      else if (Array.isArray(res.items)) rows = res.items;
+      else if (Array.isArray(res.listings)) rows = res.listings;
+      else if (Array.isArray(res.data)) rows = res.data;
+    }
+    let hasNext = false;
+    let nextCursor = null;
+    if (res && typeof res === 'object') {
+      if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
+      else if (typeof res.next === 'boolean') hasNext = res.next;
+      else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
+        const shown = (res.page - 1) * limit + rows.length;
+        hasNext = shown < res.total;
+      } else {
+        hasNext = rows.length === limit;
+      }
+      if (res.next_cursor != null) nextCursor = res.next_cursor;
+      else if (res.cursor != null) nextCursor = res.cursor;
+    } else {
+      hasNext = rows.length === limit;
+    }
+    return { rows, hasNext, nextCursor };
+  }
+  const asArray = (x) =>
+    Array.isArray(x) ? x
+    : (x && typeof x === 'object' && (Array.isArray(x.rows) || Array.isArray(x.items) || Array.isArray(x.listings) || Array.isArray(x.data)))
+      ? normalizeListingsResponse(x).rows
+      : [];
 
   // --- NEW: zero-dependency virtualized masonry (kept; used by Nearby) ---
   function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
@@ -319,6 +289,19 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
   }
 
   // --- Helper: fetch coords and reverse-geocode into a display string
+  async function fetchCoordsAndReverse() {
+    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+    const { coords } = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+    );
+    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+    return {
+      lat: r?.lat ?? coords.latitude,
+      lon: r?.lon ?? coords.longitude,
+      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    };
+  }
+
   // --- Global Loader ---
   function GlobalLoader({ active }) {
     if (!active) return null;
@@ -373,17 +356,328 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
   }
 
   // --- API ---
-  const api = createApiClient({
-    onRequestStart: () => AppNav.incLoad(),
-    onRequestEnd: () => AppNav.decLoad(),
-    onUnauthorized: () => {
-      AppNav.setUser(null);
-      AppNav.setTab('browse');
-    },
-    onAccountLocked: () => AppNav.notifyLocked(),
-    fetchImpl: (input, init) => fetch(input, init)
-  });
+const api = {
+  async _fetch(url, opts = {}, meta = {}) {
+    const silent = !!meta.silent;
+    if (!silent) AppNav.incLoad();
+    try {
+      const res = await fetch(url, { credentials: 'include', ...opts });
+      if (res.status === 401) {
+        AppNav.setUser(null);
+        AppNav.setTab('browse');
+        throw new Error('auth');
+      }
+      if (res.status === 423) {
+        try { await res.json(); } catch {}
+        AppNav.notifyLocked();
+        throw new Error('account_locked');
+      }
+      if (!res.ok) {
+        let payload = null;
+        try { payload = await res.json(); } catch {}
+        const msg = (payload?.error) || 'request_failed';
+        if (msg === 'account_locked') AppNav.notifyLocked();
+        throw new Error(msg);
+      }
+      try { return await res.json(); } catch { return null; }
+    } finally {
+      if (!silent) AppNav.decLoad();
+    }
+  },
 
+  me(meta) { return this._fetch('/api/me', { method:'GET' }, meta); },
+  
+  // In your api object, update login and register methods:
+login(email, password, meta) {
+  return this._fetch('/api/login', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify({ email, password }) 
+  }, meta);
+},
+
+register(payload, meta) { 
+  return this._fetch('/api/register', { 
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body:JSON.stringify(payload) 
+  }, meta);
+},
+  
+  async logout(meta) {
+    try { 
+      await this._fetch('/api/logout', { method:'POST' }, meta); 
+    } catch {}
+  },
+
+    updatePaypalEmail(paypal_email, meta) {
+      return this._fetch('/api/me/paypal', {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ paypal_email })
+      }, meta);
+    },
+
+    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit, sort }
+    listAll(a, b, meta) {
+      let q, loc, page, limit, sort, cursor;
+      if (typeof a === 'object' && a !== null) {
+        q = a.q || '';
+        loc = a.loc || '';
+        page = a.page || 1;
+        limit = a.limit || 75;
+        sort = a.sort || 'new';
+        cursor = a.cursor || null;
+        meta = b || {};
+      } else {
+        q = a || '';
+        loc = b || '';
+        page = 1;
+        limit = 75;
+        sort = 'new';
+      }
+      const params = new URLSearchParams();
+      if (q)   params.set('q', q);
+      if (loc) params.set('loc', loc);
+      params.set('noimg', '1'); // thin-fetch
+      if (cursor != null) params.set('cursor', String(cursor));
+      else params.set('page', String(page));
+      params.set('limit', String(limit));
+      params.set('sort', sort);
+      const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
+      return this._fetch(url, { method: 'GET' }, meta);
+    },
+
+        // NEW: Get listings by a specific user
+    listByUser(userId, meta) {
+      return this._fetch(`/api/users/${userId}/listings`, { method:'GET' }, meta);
+    },
+
+    listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
+    createListing(payload, meta) {
+      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
+    },
+    updateListing(id, payload, meta) {
+      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
+    },
+    markListingSold(id, sold, meta) {
+      return this.updateListing(id, { sold: !!sold }, meta);
+    },
+    deleteListing(id, meta) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }, meta); },
+
+    adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
+    adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
+    adminSeedListings(options = {}, meta) {
+      let payload = null;
+      if (options && typeof options === 'object' && options !== null) {
+        const count = Number(options.count);
+        if (Number.isFinite(count) && count > 0) {
+          payload = { count: Math.floor(count) };
+        }
+      }
+      const opts = { method: 'POST' };
+      if (payload) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(payload);
+      }
+      return this._fetch('/api/admin/listings/seed', opts, meta);
+    },
+    adminDeleteSeedListings(meta) { return this._fetch('/api/admin/listings/seed', { method:'DELETE' }, meta); },
+
+    listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
+    adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
+    adminCreateAd(payload, meta) {
+      return this._fetch('/api/admin/ads', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminUpdateAd(id, payload, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    },
+    adminDeleteAd(id, meta) {
+      return this._fetch(`/api/admin/ads/${id}`, { method:'DELETE' }, meta);
+    },
+
+    searchCities(q, meta) {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      const url = '/api/cities' + (params.toString() ? `?${params.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, { ...(meta || {}), silent: true });
+    },
+
+    ensureConversation({ with_user_id, listing_id }, meta) {
+      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) }, meta);
+    },
+    listConversations(meta) { return this._fetch('/api/conversations', { method:'GET' }, meta); },
+    getMessages(id, meta)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }, meta); },
+    sendMessage(id, body, images, meta){
+      return this._fetch(`/api/conversations/${id}/messages`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ body, images })
+      }, meta);
+    },
+    // delete a conversation
+    deleteConversation(id, meta) {
+      return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
+    },
+
+    getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
+
+    // NEW: batch cover prewarm
+    getCoversBatch(ids = [], meta) {
+      const idsStr = Array.from(new Set(ids.filter(Number.isFinite))).slice(0, 200).join(',');
+      if (!idsStr) return Promise.resolve([]);
+      return this._fetch(`/api/listings/covers?ids=${idsStr}`, { method:'GET' }, meta);
+    },
+
+    aiAnalyze({ images, hint }, meta) {
+      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) }, meta);
+    },
+
+    reverseGeocode(lat, lon, meta) {
+      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
+    },
+
+    // Nearby
+    listNearby(lat, lon, radius_m = 150, meta) {
+      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    reportSeller(payload, meta) {
+      return this._fetch('/api/reports', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminSearchUsers(params = {}, meta) {
+      const q = params.q ?? params.query ?? '';
+      const limit = params.limit;
+      const searchParams = new URLSearchParams();
+      if (q) searchParams.set('q', q);
+      if (limit) searchParams.set('limit', String(limit));
+      const url = '/api/admin/users/search' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminGetUser(id, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}`, { method:'GET' }, meta);
+    },
+
+    adminGetUserReports(id, params = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      const searchParams = new URLSearchParams();
+      if (params.limit) searchParams.set('limit', String(params.limit));
+      const url = `/api/admin/users/${id}/reports` + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminUpdateUserStatus(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/status`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    adminTopReports(params = {}, meta) {
+      const searchParams = new URLSearchParams();
+      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));
+      if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));
+      if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));
+      const url = '/api/admin/reports/top' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      return this._fetch(url, { method:'GET' }, meta);
+    },
+
+    adminClearUserReports(id, payload = {}, meta) {
+      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
+      return this._fetch(`/api/admin/users/${id}/reports/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload || {})
+      }, meta);
+    },
+
+    // --- S3 upload helpers ---
+    signUpload({ filename, contentType, bytes }, meta) {
+      return this._fetch('/api/uploads/sign', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ filename, contentType, bytes })
+      }, meta);
+    },
+    finalizeUpload({ listingId, key, url, width, height, bytes }, meta) {
+      const payload = {};
+      if (listingId != null) payload.listingId = listingId;
+      if (key != null) payload.key = key;
+      if (url != null) payload.url = url;
+      if (width != null) payload.width = width;
+      if (height != null) payload.height = height;
+      if (bytes != null) payload.bytes = bytes;
+      return this._fetch('/api/uploads/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, meta);
+    }
+  };
+
+  function createConcurrencyLimiter(maxConcurrent = 3) {
+    let active = 0;
+    const queue = [];
+
+    const next = () => {
+      if (active >= maxConcurrent || queue.length === 0) return;
+      const { fn, resolve, reject } = queue.shift();
+      active += 1;
+
+      let finished = false;
+      const finalize = () => {
+        if (!finished) {
+          finished = true;
+          active -= 1;
+          next();
+        }
+      };
+
+      try {
+        Promise.resolve(fn()).then(
+          (value) => {
+            finalize();
+            resolve(value);
+          },
+          (err) => {
+            finalize();
+            reject(err);
+          }
+        );
+      } catch (err) {
+        finalize();
+        reject(err);
+      }
+    };
+
+    return function schedule(fn) {
+      return new Promise((resolve, reject) => {
+        queue.push({ fn, resolve, reject });
+        next();
+      });
+    };
+  }
+
+  const uploadDraftCache = new WeakMap();
+  const s3UploadLimiter = createConcurrencyLimiter(3);
   const listingImageCache = new Map();
   const listingImageInFlight = new Map();
 
@@ -465,6 +759,53 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
     });
   }
 
+  function clearDraftCacheForFile(file) {
+    if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
+  }
+
+  async function uploadFileDraft(file) {
+    if (!file) throw new Error('file_required');
+
+    if (!uploadDraftCache.has(file)) {
+      const uploadPromise = s3UploadLimiter(async () => {
+        const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+        if (sig?.error) throw new Error(sig.error);
+        if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
+
+        const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+        if (!putRes.ok) throw new Error('s3_put_failed');
+
+        const dims = await measureImageFile(file);
+
+        const finalizeRes = await api.finalizeUpload({
+          key: sig.Key,
+          url: sig.publicUrl,
+          width: dims.width,
+          height: dims.height,
+          bytes: file.size
+        }, { silent: true });
+
+        if (finalizeRes?.error) throw new Error(finalizeRes.error);
+        if (!finalizeRes?.uploadToken) throw new Error('missing_upload_token');
+
+        return {
+          uploadToken: finalizeRes.uploadToken,
+          publicUrl: finalizeRes.url || sig.publicUrl,
+          width: finalizeRes.width ?? dims.width ?? null,
+          height: finalizeRes.height ?? dims.height ?? null,
+          bytes: finalizeRes.bytes ?? file.size
+        };
+      }).catch((err) => {
+        clearDraftCacheForFile(file);
+        throw err;
+      });
+
+      uploadDraftCache.set(file, uploadPromise);
+    }
+
+    return uploadDraftCache.get(file);
+  }
+
   async function fetchListingImagesCached(listingId, options = {}) {
     const minCount = Number(options.minCount) || 0;
     if (!Number.isFinite(Number(listingId))) return [];
@@ -541,6 +882,36 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
       : (Number.isFinite(Number(baseImages)) ? Number(baseImages) : 0);
     const minCount = baseCount + 1;
     fetchListingImagesCached(listingId, { minCount }).catch(() => {});
+  }
+
+  // Upload a single file to S3 then finalize in DB (for listings)
+  async function uploadOneImage(listingId, file) {
+    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+    if (sig?.error) throw new Error(sig.error);
+    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
+    if (!putRes.ok) throw new Error('s3_put_failed');
+
+    const dims = await measureImageFile(file);
+
+    await api.finalizeUpload({
+      listingId,
+      key: sig.Key,
+      url: sig.publicUrl,
+      width: dims.width,
+      height: dims.height,
+      bytes: file.size
+    });
+
+    return sig.publicUrl;
+  }
+
+  async function uploadFilesForListing(listingId, files = []) {
+    const out = [];
+    for (const f of files) {
+      const url = await uploadOneImage(listingId, f);
+      out.push(url);
+    }
+    return out;
   }
 
   // Upload a single file to S3 (for messages; no finalize, just return public URL)
@@ -885,6 +1256,645 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
 }
 
 
+  // --- MultiFilePicker (for S3 uploads) ---
+  function MultiFilePicker({ files, onChange }) {
+    const ref = useRef();
+    const MAX_MB = 20;
+    const previews = useFilePreviews(files);
+
+    function pick(e) {
+      const selected = Array.from(e.target.files || []);
+      const next = [...files];
+      for (const f of selected) {
+        if (f.size > MAX_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
+        if (!f.type.startsWith('image/')) { alert('Only images are allowed'); continue; }
+        next.push(f);
+      }
+      onChange(next);
+      if (ref.current) ref.current.value = '';
+    }
+    function removeAt(i) {
+      const next = [...files];
+      const [removed] = next.splice(i,1);
+      if (removed) clearDraftCacheForFile(removed);
+      onChange(next);
+    }
+
+    return H('div', null,
+      H('div', { className:'row' },
+      H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
+      H('span', { className:'muted' }, `${(files||[]).length} file(s)`)
+    ),
+    H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
+      ...previews.map(({ url }, i)=> H('div', { key:i, style:{ position:'relative' } },
+        H(ImageWithSkeleton, {
+          src: url,
+          style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
+        }),
+        H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
+      ))
+    )
+    );
+  }
+
+  // Helper: convert File[] to dataURLs for AI analysis only
+  const AI_IMAGE_LIMIT = 8;
+
+  async function filesToDataUrls(files = []) {
+    async function toB64(file) {
+      return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    }
+    const out = [];
+    for (const f of files.slice(0, AI_IMAGE_LIMIT)) out.push(await toB64(f));
+    return out;
+  }
+  async function fileToDataUrl(file) {
+    const arr = await filesToDataUrls([file]);
+    return arr && arr[0];
+  }
+
+  function useFilePreviews(files = []) {
+    const [previews, setPreviews] = useState([]);
+
+    useEffect(() => {
+      if (!files || files.length === 0) {
+        setPreviews([]);
+        return;
+      }
+
+      const entries = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+      setPreviews(entries);
+
+      return () => {
+        for (const entry of entries) {
+          try { URL.revokeObjectURL(entry.url); } catch (_) {}
+        }
+      };
+    }, [files]);
+
+    return previews;
+  }
+
+  // --- Shared help modal shell (high-contrast layout) ---
+  function InfoHelpModal({ title, intro, bullets, footer, onClose }) {
+    return ReactDOM.createPortal(
+      H('div', {
+        className: 'modal open',
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); },
+        style: { background: 'rgba(0,0,0,0.5)' }
+      },
+        H('div', {
+          className: 'modal-inner',
+          style: {
+            display: 'block',
+            width: 'min(520px, 92vw)',
+            background: '#111',
+            color: '#fff',
+            borderRadius: 16,
+            padding: 16,
+            boxShadow: '0 16px 48px rgba(0,0,0,.45)',
+            lineHeight: 1.55
+          }
+        },
+          H('div', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8
+            }
+          },
+            H('div', { style: { fontWeight: 800, fontSize: 16 } }, title),
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              'aria-label': 'Close',
+              style: {
+                width: 28, height: 28, borderRadius: 14,
+                border: '1px solid rgba(255,255,255,0.25)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff', cursor: 'pointer',
+                display: 'grid', placeItems: 'center',
+                fontSize: 16, lineHeight: '26px'
+              }
+            }, 'x')
+          ),
+          intro && H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, intro),
+          Array.isArray(bullets) && bullets.length > 0 && H('ul', {
+            style: {
+              paddingLeft: 18,
+              margin: '0 0 12px',
+              listStyle: 'disc'
+            }
+          }, bullets.map((line, idx) => H('li', { key: idx }, line))),
+          footer && H('div', {
+            style: {
+              fontSize: 13,
+              opacity: 0.9,
+              borderTop: '1px solid rgba(255,255,255,0.12)',
+              paddingTop: 10
+            }
+          }, footer)
+        )
+      ),
+      document.body
+    );
+  }
+
+  // --- Auto-list help modal (clean single-column layout) ---
+  function AutoListHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About Auto-list',
+      intro: 'When enabled, Auto-List will:',
+      bullets: [
+        'Allow AI to suggest title, tags and price .',
+        'Immediately create the listing for you.',
+        'Upload all selected photos to that listing.'
+      ],
+      footer: 'You can still edit or delete the listing afterwards.'
+    });
+  }
+
+  // --- AI description help modal (matches Auto-list styling) ---
+  function AiDescriptionHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About AI descriptions',
+      intro: 'When enabled, AI descriptions will:',
+      bullets: [
+        'Analyze your uploaded photos to draft a description for you.',
+        'Include the AI-written text right in the description field.',
+
+      ],
+      footer: 'The more photos you upload, the better the AI can understand your item.'
+    });
+  }
+
+  // --- Background queue help modal ---
+  function BackgroundQueueHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'About the background queue',
+      intro: 'When enabled, the background queue will:',
+      bullets: [
+        'Run Auto-list, and MassList jobs one at a time in the background.',
+        'Allow you to immediately move on to another task without waiting for proccesses to finish.',
+        'Show a brief notification indicating the job has started.',
+      ],
+      footer: 'Most effective after uploading a large MassList.'
+    });
+  }
+
+  // --- Listing Form (S3-first) ---
+  function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
+    const [files, setFiles] = useState([]); // Files to upload to S3
+    const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
+
+    const [title, setTitle] = useState(draft?.title || '');
+    const [description, setDescription] = useState(draft?.description || '');
+    const [location, setLocation] = useState(draft?.location || '');
+    const [priceVal, setPriceVal] = useState(draft?.price?.toString?.() || '');
+    const [tags, setTags] = useState(() => {
+      if (!draft?.tags) return '';
+      if (Array.isArray(draft.tags)) return draft.tags.join(', ');
+      return String(draft.tags);
+    });
+    const [aiBusy, setAiBusy] = useState(false);
+    const [aiErr, setAiErr] = useState('');
+
+    // auto-list guard
+    const autoRunning = useRef(false);
+    const [autoBusy, setAutoBusy] = useState(false);
+
+    const hasFixedGps = !!draft?.lat;
+    const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoErr, setGeoErr] = useState('');
+
+    const [lat, setLat] = useState(draft?.lat ?? null);
+    const [lon, setLon] = useState(draft?.lon ?? null);
+
+    const isMobile = isMobileDevice();
+
+    // Load current images (URLs/base64; new uploads use files[])
+    useEffect(() => {
+      (async () => {
+        if (draft?.id) {
+          try { const arr = await api.getListingImages(draft.id); setExistingUrls(arr || []); }
+          catch { setExistingUrls([]); }
+        } else {
+          setExistingUrls([]);
+        }
+      })();
+    }, [draft?.id]);
+
+    // UPDATED: AI analysis that works with both new files and S3 URLs
+    async function runAI(){
+      setAiErr('');
+      setAiBusy(true);
+      try {
+        const sources = [];
+
+        if (files.length) {
+          for (const file of files) {
+            if (sources.length >= AI_IMAGE_LIMIT) break;
+            try {
+              const upload = await uploadFileDraft(file);
+              if (upload?.publicUrl) sources.push(upload.publicUrl);
+            } catch (err) {
+              console.error('AI draft upload failed:', err);
+            }
+          }
+        }
+
+        if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
+         for (const url of existingUrls) {
+            if (sources.length >= AI_IMAGE_LIMIT) break;
+            if (typeof url === 'string' && url.trim()) {
+              sources.push(url);
+            }
+          }
+        }
+
+        if (!sources.length) {
+          alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
+          return;
+        }
+
+        const res = await api.aiAnalyze({
+          images: sources.slice(0, AI_IMAGE_LIMIT),
+          hint: `${title} ${description}`.trim()
+        });
+
+        if (res.title) setTitle(res.title);
+        if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
+        if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
+          setPriceVal(String(res.suggested_price));
+        }
+        if (typeof res.description === 'string' && res.description.trim()) {
+          if (aiDescriptionEnabled) {
+            setDescription(res.description.trim().slice(0, 400));
+          } else {
+            setAiErr('Enable AI descriptions in your profile to apply AI-written descriptions.');
+          }
+        }
+      } catch (e) {
+        setAiErr(e.message || 'AI failed');
+      } finally {
+        setAiBusy(false);
+      }
+    }
+
+    async function useMyLocation() {
+      setGeoErr('');
+      if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
+      setGeoBusy(true);
+      try {
+        const coords = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            err => rej(err),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          )
+        );
+        const r = await api.reverseGeocode(coords.lat, coords.lon);
+        setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+        setLat(r?.lat ?? coords.lat);
+        setLon(r?.lon ?? coords.lon);
+      } catch { setGeoErr('Could not get your location'); }
+      finally { setGeoBusy(false); }
+    }
+
+
+    // Add this state after the other useState declarations in ListingForm:
+const [originalUrls, setOriginalUrls] = useState([]);
+
+// Update the useEffect that loads images:
+useEffect(() => {
+  (async () => {
+    if (draft?.id) {
+      try { 
+        const arr = await api.getListingImages(draft.id); 
+        setExistingUrls(arr || []);
+        setOriginalUrls(arr || []); // Track original state
+      }
+      catch { 
+        setExistingUrls([]); 
+        setOriginalUrls([]);
+      }
+    } else {
+      setExistingUrls([]);
+      setOriginalUrls([]);
+    }
+  })();
+}, [draft?.id]);
+
+// Update the submit function:
+async function submit(e){
+  e.preventDefault();
+  try {
+    // ... existing validation code ...
+
+    if (draft) {
+      // Determine which images were deleted
+      const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+      
+      // Include deleted images in the payload
+      if (deletedImages.length > 0) {
+        payload.deletedImages = deletedImages;
+      }
+      
+      await api.updateListing(draft.id, payload);
+      if (files.length) await uploadFilesForListing(draft.id, files);
+    } else {
+      // ... existing create logic ...
+    }
+    onSaved?.();
+  } catch (err) {
+    console.error('Create/save failed:', err);
+    alert(`Create/save failed: ${err?.message || err}`);
+  }
+}
+
+    // Auto-list: when ON, creating a brand-new listing & user added photos -> AI + create + upload
+    useEffect(() => {
+      if (!autoListEnabled) return;
+      if (draft) return;            // only for new listings
+      if (!files || files.length === 0) return;
+      if (autoRunning.current) return;
+
+      autoRunning.current = true;
+
+      const runAutoListJob = async () => {
+        const uploads = await Promise.all(files.map(uploadFileDraft));
+        if (!uploads.length) throw new Error('No images to upload');
+
+        let ai = {};
+        let aiDescription = '';
+        try {
+          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
+          if (aiSources.length) {
+            ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+          }
+        } catch (_) {}
+
+        const parsedPrice = Number(ai.suggested_price);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+        if (rawDescription && aiDescriptionEnabled) {
+          aiDescription = rawDescription.slice(0, 400);
+        }
+
+        // Nearby preference (sub-toggle)
+        let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+        if (autoPostNearbyEnabled) {
+          try {
+            const c = await fetchCoordsAndReverse();
+            enableNearbyAuto = 1;
+            latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+          } catch (_) {
+            enableNearbyAuto = 0;
+          }
+        }
+
+        const payload = {
+          title: (ai.title || 'Item for sale').toString().slice(0, 80),
+          description: aiDescription || 'No description',
+          location: locAuto || '',
+          price: safePrice,
+          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+          enable_nearby: enableNearbyAuto,
+          upload_tokens: uploads.map((u) => u.uploadToken)
+        };
+        if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+        const created = await api.createListing(payload);
+        if (!created?.id) throw new Error('Create failed');
+      };
+
+      if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+        enqueueListingJob(async () => {
+          try {
+            await runAutoListJob();
+            onSaved?.();
+          } catch (err) {
+            console.error('Auto-list failed:', err);
+            alert(`Auto-list failed: ${err?.message || err}`);
+          } finally {
+            autoRunning.current = false;
+          }
+        });
+        onCancel?.();
+        return;
+      }
+
+      setAutoBusy(true);
+      (async () => {
+        try {
+          await runAutoListJob();
+          onSaved?.();
+        } catch (err) {
+          console.error('Auto-list failed:', err);
+          alert(`Auto-list failed: ${err?.message || err}`);
+        } finally {
+          setAutoBusy(false);
+          autoRunning.current = false;
+        }
+      })();
+    }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // UPDATED: Submit function that handles image changes properly
+    // Update the submit function (remove the duplicate and fix it):
+    async function submit(e){
+      e.preventDefault();
+      try {
+        const totalImages = existingUrls.length + files.length;
+        if (totalImages === 0) {
+          alert('Please add at least one image.');
+          return;
+        }
+
+        const parsedPrice = Number(priceVal);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        const basePayload = {
+          title: String(title || '').trim(),
+          description: String(description || 'No description').trim(),
+          location: String(location || '').trim(),
+          price: safePrice,
+          tags: String(tags || '').trim(),
+          enable_nearby: enableNearby ? 1 : 0
+        };
+
+        if (enableNearby && !hasFixedGps) {
+          basePayload.lat = lat;
+          basePayload.lon = lon;
+        }
+
+        if (basePayload.enable_nearby && !hasFixedGps && (basePayload.lat == null || basePayload.lon == null)) {
+          alert('Enable Nearby requires using your location.');
+          return;
+        }
+
+        if (draft) {
+          const payload = { ...basePayload };
+          const deletedImages = originalUrls.filter(url => !existingUrls.includes(url));
+          if (deletedImages.length > 0) {
+            payload.deletedImages = deletedImages;
+          }
+
+          await api.updateListing(draft.id, payload);
+          if (files.length) await uploadFilesForListing(draft.id, files);
+          onSaved?.();
+          return;
+        }
+
+        const filesSnapshot = files.slice();
+        const runCreate = async () => {
+          const payload = { ...basePayload };
+          if (filesSnapshot.length) {
+            const uploads = await Promise.all(filesSnapshot.map(uploadFileDraft));
+            const tokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+            if (!tokens.length) {
+              throw new Error('Image upload failed');
+            }
+            payload.upload_tokens = tokens;
+          }
+
+          const created = await api.createListing(payload);
+          if (!created?.id) { throw new Error('Create failed'); }
+        };
+
+        if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+          enqueueListingJob(async () => {
+            try {
+              await runCreate();
+              onSaved?.();
+            } catch (err) {
+              console.error('Create/save failed:', err);
+              alert(`Create/save failed: ${err?.message || err}`);
+            }
+          });
+          onCancel?.();
+          return;
+        }
+
+        await runCreate();
+        onSaved?.();
+      } catch (err) {
+        console.error('Create/save failed:', err);
+        alert(`Create/save failed: ${err?.message || err}`);
+      }
+    }
+
+    const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+
+    return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
+
+      // Auto-list overlay while it works
+      autoBusy && H('div', {
+        style:{
+          position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
+          display:'grid', placeItems:'center', zIndex:5, borderRadius:12
+        }
+      }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing...'))),
+
+      // New uploads (go to S3)
+      H(MultiFilePicker, { files, onChange:setFiles }),
+
+      // UPDATED: Existing images with delete capability
+      (existingUrls.length > 0) && H('div', null,
+        H('div', { className:'muted', style:{ marginBottom:8 } }, 'Existing images:'),
+        H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
+          ...existingUrls.map((src, i) =>
+            H('div', { key:i, style:{ position:'relative' } },
+              H(ImageWithSkeleton, { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+              H('button', {
+                className:'btn danger',
+                type:'button',
+                style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, 
+                onClick:() => {
+                  const next = [...existingUrls];
+                  next.splice(i, 1);
+                  setExistingUrls(next);
+                }
+              }, 'x')
+            )
+          )
+        )
+      ),
+
+      H('div', { className:'row', style:{ gap:8 } },
+        H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
+        aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
+        H('span', { className:'muted' }, 'Only images are required. AI can suggest title/tags/price.')
+      ),
+
+      H('label', null, 'Title (optional)'),
+      H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Optional' }),
+
+      H('label', null, 'Description (optional)'),
+      H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value), placeholder:'Optional' }),
+
+      H('label', null, 'Location (optional)'),
+      H('div', { className:'row', style:{ gap:8 } },
+        H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Optional (City, State)' }),
+        H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
+        geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+      ),
+
+      isMobile && H('label', {
+        className:'toggle-card',
+        style:{ marginTop:4, gap:8, alignItems:'flex-start' }
+      },
+        H('input', {
+          type:'checkbox',
+          className:'toggle-input',
+          checked:enableNearby,
+          onChange:e=>{
+            const checked = e.target.checked;
+            setEnableNearby(checked);
+            if (checked && !hasFixedGps) useMyLocation();
+          }
+        }),
+        H('span', { className:'toggle-slider', 'aria-hidden': true }),
+        H('div', { className:'toggle-copy' },
+          H('div', { style:{ fontWeight:700 } }, 'Enable Nearby searches'),
+          H('div', { className:'muted', style:{ fontSize:12 } }, 'Shows distance in feet/miles to buyers.')
+        )
+      ),
+      (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
+
+      H('label', null, 'Price (optional)'),
+      H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+        H('input', {
+          value:priceVal,
+          inputMode:'decimal',
+          onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+          placeholder:'Leave empty for $0.00'
+        }),
+        H('span', {
+          className:'muted',
+          style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
+        }, isFree ? price(0) : price(Number(priceVal)))
+      ),
+
+      H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
+        H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private, optional)'),
+        H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example: "car, suv, 4x4".'),
+        H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+      ),
+
+      H('div', { className:'row' },
+        H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
+        H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
+      )
+    );
+  }
+
   // --- Lightbox ---
   function Lightbox({ open, images, fallback, index, onClose, onIndex, loading = false }) {
     const esc = (e)=> { if(e.key==='Escape') onClose(); };
@@ -946,6 +1956,86 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     );
 
     return ReactDOM.createPortal(modal, document.body);
+  }
+
+  function ImageWithSkeleton({
+    className,
+    wrapperClassName,
+    wrapperStyle,
+    skeletonClassName = 'image-skeleton',
+    skeletonStyle,
+    onLoad,
+    onError,
+    style,
+    disableSkeleton = false,
+    ...imgProps
+  }) {
+    const [loaded, setLoaded] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+      setLoaded(false);
+      setFailed(false);
+    }, [imgProps.src]);
+
+    const handleLoad = useCallback((event) => {
+      setLoaded(true);
+      if (typeof onLoad === 'function') onLoad(event);
+    }, [onLoad]);
+
+    const handleError = useCallback((event) => {
+      setFailed(true);
+      if (typeof onError === 'function') onError(event);
+    }, [onError]);
+
+    const showSkeleton = !disableSkeleton && !!imgProps.src && !loaded && !failed;
+
+    const computedWrapperStyle = useMemo(() => {
+      const base = { lineHeight: 0, ...wrapperStyle };
+      const pos = style?.position;
+
+      if (pos === 'absolute' || pos === 'fixed' || pos === 'sticky') {
+        base.position = pos;
+        if (style?.top !== undefined && base.top === undefined) base.top = style.top;
+        if (style?.right !== undefined && base.right === undefined) base.right = style.right;
+        if (style?.bottom !== undefined && base.bottom === undefined) base.bottom = style.bottom;
+        if (style?.left !== undefined && base.left === undefined) base.left = style.left;
+        if (style?.inset !== undefined && base.inset === undefined) base.inset = style.inset;
+      } else if (pos != null && base.position === undefined) {
+        base.position = pos;
+      }
+
+      if (style?.display !== undefined && base.display === undefined) base.display = style.display;
+
+      if (style?.width !== undefined && base.width === undefined) base.width = style.width;
+      if (style?.height !== undefined && base.height === undefined) base.height = style.height;
+      if (style?.maxWidth !== undefined && base.maxWidth === undefined) base.maxWidth = style.maxWidth;
+      if (style?.maxHeight !== undefined && base.maxHeight === undefined) base.maxHeight = style.maxHeight;
+      if (style?.minWidth !== undefined && base.minWidth === undefined) base.minWidth = style.minWidth;
+      if (style?.minHeight !== undefined && base.minHeight === undefined) base.minHeight = style.minHeight;
+      if (style?.cursor !== undefined && base.cursor === undefined) base.cursor = style.cursor;
+
+      if (style?.borderRadius != null && base.borderRadius == null) base.borderRadius = style.borderRadius;
+      if (base.borderRadius != null && !base.overflow) base.overflow = 'hidden';
+
+      return base;
+    }, [style, wrapperStyle]);
+
+    const computedSkeletonStyle = useMemo(() => {
+      if (style?.borderRadius != null) {
+        return { borderRadius: style.borderRadius, ...skeletonStyle };
+      }
+      return skeletonStyle;
+    }, [style?.borderRadius, skeletonStyle]);
+
+    const wrapperClass = wrapperClassName
+      ? `image-shell ${wrapperClassName}`
+      : 'image-shell';
+
+    return H('span', { className: wrapperClass, style: computedWrapperStyle },
+      H('img', { ...imgProps, className, style, onLoad: handleLoad, onError: handleError }),
+      showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
+    );
   }
 
   const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect }) {
@@ -1344,127 +2434,6 @@ function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
     );
 
     return ReactDOM.createPortal(modal, document.body);
-  }
-
-
-  function FlaggedDetailsModal({ open, detail, item, onClose }) {
-    const isImage = (detail?.type || '').toLowerCase() === 'image';
-    const target = typeof detail?.target === 'string' ? detail.target : '';
-    const categories = useMemo(() => {
-      if (!detail || !Array.isArray(detail.categories)) return [];
-      return detail.categories.filter(Boolean);
-    }, [detail]);
-    const scores = detail && detail.category_scores && typeof detail.category_scores === 'object'
-      ? detail.category_scores
-      : null;
-
-    useEffect(() => {
-      if (!open) return;
-      const onKey = (ev) => { if (ev.key === 'Escape') onClose?.(); };
-      window.addEventListener('keydown', onKey);
-      return () => window.removeEventListener('keydown', onKey);
-    }, [open, onClose]);
-
-    if (!open || !detail) return null;
-
-    const typeLabel = detail?.type ? detail.type.charAt(0).toUpperCase() + detail.type.slice(1) : 'Content';
-    let flaggedAt = '';
-    if (item?.flagged_at) {
-      const dt = new Date(item.flagged_at);
-      flaggedAt = Number.isFinite(dt.getTime()) ? dt.toLocaleString() : item.flagged_at;
-    }
-
-    const handleOuterClick = (event) => {
-      if (event.target.classList?.contains('modal')) onClose?.();
-    };
-
-    const scoreEntries = scores ? Object.entries(scores).filter(([key, value]) => key && value != null) : [];
-
-    return ReactDOM.createPortal(
-      H('div', {
-        className: 'modal open',
-        onClick: handleOuterClick
-      },
-        H('div', {
-          className: 'modal-inner',
-          style: {
-            maxWidth: isImage ? '720px' : '520px',
-            width: '90%',
-            padding: '24px',
-            background: '#fff',
-            color: '#111',
-            display: 'grid',
-            gap: 16
-          }
-        },
-          H('button', { className: 'close', onClick: onClose }, '×'),
-          H('div', { style: { display: 'grid', gap: 4 } },
-            H('h3', { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, 'Flagged content'),
-            item?.username && H('div', { className: 'muted', style: { fontSize: 13 } }, `User: ${item.username}`),
-            item?.listing_title && H('div', { className: 'muted', style: { fontSize: 13 } }, `Listing: ${item.listing_title}`),
-            flaggedAt && H('div', { className: 'muted', style: { fontSize: 12 } }, `Flagged: ${flaggedAt}`),
-            H('div', { className: 'muted', style: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 } }, typeLabel)
-          ),
-          categories.length ? H('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
-            categories.map((category) => H('span', {
-              key: category,
-              style: {
-                padding: '4px 10px',
-                borderRadius: 999,
-                background: '#fee2e2',
-                color: '#b91c1c',
-                fontSize: 12,
-                fontWeight: 600
-              }
-            }, category))
-          ) : null,
-          isImage
-            ? (target
-              ? H('div', {
-                  style: {
-                    display: 'grid',
-                    gap: 8
-                  }
-                },
-                  H('img', {
-                    src: target,
-                    alt: 'Flagged content preview',
-                    style: {
-                      maxWidth: '100%',
-                      borderRadius: 12,
-                      border: '1px solid #e5e7eb',
-                      background: '#f8fafc'
-                    }
-                  }),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Right-click or long-press to save this image if needed.')
-                )
-              : H('div', { className: 'muted', style: { fontSize: 13 } }, 'No image preview available.'))
-            : H('div', {
-                style: {
-                  whiteSpace: 'pre-wrap',
-                  fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: '1px solid #e5e7eb',
-                  background: '#f8fafc'
-                }
-              }, target ? target : 'No text was captured for this entry.'),
-          scoreEntries.length ? H('div', { style: { display: 'grid', gap: 6 } },
-            H('div', { style: { fontSize: 12, fontWeight: 600, textTransform: 'uppercase', color: '#111' } }, 'Confidence scores'),
-            H('div', { style: { display: 'grid', gap: 4 } },
-              scoreEntries.map(([category, value]) => {
-                const numeric = Number(value);
-                if (!Number.isFinite(numeric)) return null;
-                return H('div', { key: category, className: 'muted', style: { fontSize: 12 } }, `${category}: ${(numeric * 100).toFixed(1)}%`);
-              }).filter(Boolean)
-            )
-          ) : null
-        )
-      ),
-      document.body
-    );
   }
 
 
@@ -2022,12 +2991,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
   const [topDays, setTopDays] = useState(7);
   const [topMin, setTopMin] = useState(1);
 
-  const [flaggedList, setFlaggedList] = useState([]);
-  const [flaggedLoading, setFlaggedLoading] = useState(false);
-  const [flaggedError, setFlaggedError] = useState('');
-  const [dismissingFlaggedId, setDismissingFlaggedId] = useState(null);
-  const [flaggedDetailModal, setFlaggedDetailModal] = useState(null);
-
   const [adsList, setAdsList] = useState([]);
   const [adsLoading, setAdsLoading] = useState(false);
   const [adsError, setAdsError] = useState('');
@@ -2056,29 +3019,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     searchTimer.current = setTimeout(() => { fetchSearch(term); }, 300);
   }, [searchTerm]);
 
-  const loadFlagged = useCallback(async () => {
-    setFlaggedLoading(true);
-    setFlaggedError('');
-    try {
-      const rows = await api.adminListFlagged({ silent: true });
-      setFlaggedList(Array.isArray(rows) ? rows : []);
-    } catch (err) {
-      setFlaggedError(err?.message || 'Failed to load flagged uploads');
-      setFlaggedList([]);
-    } finally {
-      setFlaggedLoading(false);
-    }
-  }, []);
-
-  const openFlaggedDetail = useCallback((item, detail) => {
-    if (!detail || typeof detail !== 'object') return;
-    setFlaggedDetailModal({ item, detail });
-  }, []);
-
-  const closeFlaggedDetail = useCallback(() => {
-    setFlaggedDetailModal(null);
-  }, []);
-
   const loadAds = useCallback(async () => {
     setAdsLoading(true);
     setAdsError('');
@@ -2098,12 +3038,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       loadAds();
     }
   }, [tab, loadAds]);
-
-  useEffect(() => {
-    if (tab === 'flagged') {
-      loadFlagged();
-    }
-  }, [tab, loadFlagged]);
 
   async function handleSeedListings() {
     if (seedBusy || seedDeleteBusy) return;
@@ -2417,32 +3351,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     }
   }
 
-  async function handleMessageFlagged(userId) {
-    if (!onMessageUser) return;
-    const targetId = Number(userId);
-    if (!Number.isFinite(targetId)) return;
-    try {
-      await onMessageUser(targetId);
-    } catch (err) {
-      alert(err?.message || 'Failed to open conversation.');
-    }
-  }
-
-  async function handleDismissFlagged(id) {
-    const numericId = Number(id);
-    if (!Number.isFinite(numericId)) return;
-    if (dismissingFlaggedId === numericId) return;
-    try {
-      setDismissingFlaggedId(numericId);
-      await api.adminDeleteFlagged(numericId);
-      setFlaggedList(list => list.filter(item => Number(item.id) !== numericId));
-    } catch (err) {
-      alert(err?.message || 'Failed to dismiss flagged attempt.');
-    } finally {
-      setDismissingFlaggedId(null);
-    }
-  }
-
   const reportsList = userReports.length
     ? H('div', { style: { display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto', marginTop: 12 } },
         userReports.map(r => H('div', {
@@ -2491,7 +3399,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
     H('div', { className: 'row', style: { gap: 8 } },
       H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
       H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
-      H('button', { className: `btn ${tab === 'flagged' ? 'primary' : ''}`, onClick: () => setTab('flagged') }, 'Flagged'),
       H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
       H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing')
     ),
@@ -2575,80 +3482,6 @@ function AdminDashboard({ onViewSeller, onMessageUser, onAdsUpdated }) {
       topList
     ),
 
-    tab === 'flagged' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
-      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
-        H('h3', { style: { margin: 0, fontSize: 18 } }, 'Flagged uploads'),
-        H('button', { className: 'btn', onClick: loadFlagged, disabled: flaggedLoading }, flaggedLoading ? 'Refreshing…' : 'Refresh')
-      ),
-      flaggedError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, flaggedError),
-      flaggedLoading && !flaggedList.length ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading flagged uploads…') : null,
-      flaggedList.length
-        ? H('div', { style: { display: 'grid', gap: 12 } },
-            flaggedList.map(item => {
-              const details = Array.isArray(item?.details) ? item.details : [];
-              return H('div', {
-                key: item.id,
-                className: 'card',
-                style: { padding: 12, border: '1px solid #e5e7eb', display: 'grid', gap: 8 }
-              },
-                H('div', { style: { display: 'grid', gap: 4 } },
-                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                    H('span', { style: { fontWeight: 600 } }, item?.username || '(no username)'),
-                    item?.flagged_at && H('span', { className: 'muted', style: { fontSize: 12 } }, formatDateTime(item.flagged_at))
-                  ),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, item?.email || 'No email on file'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, item?.listing_title ? `Title: ${item.listing_title}` : 'Title not provided'),
-                  details.length ? H('div', { style: { display: 'grid', gap: 6 } },
-                    details.map((detail, idx) => {
-                      if (!detail || typeof detail !== 'object') return null;
-                      const categories = Array.isArray(detail.categories) ? detail.categories.filter(Boolean) : [];
-                      const tags = categories.length ? categories : ['Flagged'];
-                      const rawType = typeof detail.type === 'string' && detail.type ? detail.type : 'content';
-                      const typeLabel = rawType.charAt(0).toUpperCase() + rawType.slice(1);
-                      const target = typeof detail.target === 'string' ? detail.target.trim() : '';
-                      const isImage = rawType.toLowerCase() === 'image';
-                      const textPreview = target.length > 120 ? `${target.slice(0, 117)}…` : target;
-                      const preview = isImage
-                        ? (target ? 'Image flagged — click to view the full capture.' : 'Image flagged — preview unavailable.')
-                        : (textPreview || 'No text captured. Click to open details.');
-                      return H('button', {
-                        key: `${item.id}-${idx}`,
-                        type: 'button',
-                        className: 'flagged-detail-button',
-                        onClick: () => openFlaggedDetail(item, detail),
-                        title: target
-                      },
-                        H('div', { className: 'flagged-detail-type' }, typeLabel),
-                        H('div', { className: 'flagged-detail-tags' },
-                          tags.map((tag) => H('span', { key: tag, className: 'flagged-tag' }, tag))
-                        ),
-                        H('div', { className: 'flagged-detail-preview' }, preview)
-                      );
-                    }).filter(Boolean)
-                  ) : null
-                ),
-                H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
-                  onMessageUser && H('button', { className: 'btn', onClick: () => handleMessageFlagged(item.user_id) }, 'Message'),
-                  H('button', {
-                    className: 'btn',
-                    onClick: () => handleDismissFlagged(item.id),
-                    disabled: dismissingFlaggedId === Number(item.id)
-                  }, dismissingFlaggedId === Number(item.id) ? 'Removing…' : 'Dismiss')
-                )
-              );
-            })
-          )
-        : (!flaggedLoading && !flaggedError
-            ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'No flagged uploads yet.')
-            : null)
-    ),
-
-    H(FlaggedDetailsModal, {
-      open: Boolean(flaggedDetailModal?.detail),
-      detail: flaggedDetailModal?.detail || null,
-      item: flaggedDetailModal?.item || null,
-      onClose: closeFlaggedDetail
-    }),
 
 
     tab === 'ads' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 16 } },
@@ -3153,7 +3986,7 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
 
 
   // --- Messages (S3 URLs; supports PASTE + DRAG/DROP attachments) ---
-function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpdate }) {
+function MessagesPanel({ user, initialActiveId, onSeenChange }) {
   if (!user) return H('div', { className:'muted' }, 'Please log in to view messages.');
 
   const [convos, setConvos] = useState([]);
@@ -3336,13 +4169,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
 
   useEffect(() => { if (initialActiveId) setActiveId(initialActiveId); }, [initialActiveId]);
 
-  async function fetchConvos(){
-    try{
-      const list = await api.listConversations({ silent:true });
-      setConvos(list);
-      onConversationsUpdate?.(list);
-    } catch(_){}
-  }
+  async function fetchConvos(){ try{ setConvos(await api.listConversations({ silent:true })); } catch(_){} }
   async function fetchMsgs(){
     if(!activeId) return;
     try{
@@ -3587,8 +4414,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const [selected, setSelected] = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
-    const [search, setSearch] = useState('');
-    const [sort, setSort] = useState('new');
     const storedCoords = useMemo(() => {
       try {
         const raw = localStorage.getItem('listit_nearby_coords');
@@ -3607,62 +4432,36 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     const coordsTsRef = useRef(storedCoords?.ts || 0);
     const abortRef = useRef(null);
 
-    const isMobile = useMemo(() => isMobileDevice(), []);
-    const columns = isMobile ? 3 : 4;
-    const gridGap = isMobile ? 8 : 12;
+    // NEW: masonry container ref + live column-count
+    const masonRef = useRef(null);
+    const [nearbyCols, setNearbyCols] = useState(3);
+    useEffect(() => {
+      if (!masonRef.current) return;
+      const el = masonRef.current;
 
-    const filteredItems = useMemo(() => {
-      const base = Array.isArray(items) ? items.slice() : [];
-      const query = search.trim().toLowerCase();
-      let working = base;
+      const readCols = () => {
+        const cs = getComputedStyle(el);
+        const n = parseInt(cs.columnCount, 10);
+        setNearbyCols(Number.isFinite(n) && n > 0 ? n : 3);
+      };
+      readCols();
 
-      if (query) {
-        working = base.filter((item) => {
-          const haystack = [
-            item?.title,
-            item?.description,
-            item?.location,
-            item?.owner_username
-          ].filter(Boolean).map(value => String(value).toLowerCase()).join(' ');
-          return haystack.includes(query);
-        });
-      } else {
-        working = [...working];
+      const ro = new ResizeObserver(readCols);
+      ro.observe(el);
+      window.addEventListener('resize', readCols);
+      return () => { ro.disconnect(); window.removeEventListener('resize', readCols); };
+    }, []);
+
+    // NEW: interleave helper (row-wise ordering for CSS column masonry)
+    const interleaved = useMemo(() => {
+      const arr = items || [];
+      if (!Array.isArray(arr) || arr.length === 0 || nearbyCols <= 1) return arr;
+      const out = [];
+      for (let c = 0; c < nearbyCols; c++) {
+        for (let i = c; i < arr.length; i += nearbyCols) out.push(arr[i]);
       }
-
-      const parseDate = (value) => {
-        if (!value) return 0;
-        const ts = new Date(value).getTime();
-        return Number.isFinite(ts) ? ts : 0;
-      };
-
-      const parsePrice = (item) => {
-        const val = Number(item?.price);
-        return Number.isFinite(val) ? val : 0;
-      };
-
-      working.sort((a, b) => {
-        if (sort === 'price_asc') {
-          const diff = parsePrice(a) - parsePrice(b);
-          if (diff !== 0) return diff;
-        } else if (sort === 'price_desc') {
-          const diff = parsePrice(b) - parsePrice(a);
-          if (diff !== 0) return diff;
-        } else {
-          const tb = parseDate(b?.created_at || b?.updated_at);
-          const ta = parseDate(a?.created_at || a?.updated_at);
-          const diff = tb - ta;
-          if (diff !== 0) return diff;
-        }
-
-        // Fallback tie-breakers
-        const createdDiff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
-        if (createdDiff !== 0) return createdDiff;
-        return Number(b?.id || 0) - Number(a?.id || 0);
-      });
-
-      return working;
-    }, [items, search, sort]);
+      return out;
+    }, [items, nearbyCols]);
 
     const ensureCoords = useCallback(async (force = false) => {
       const cached = coordsRef.current;
@@ -3768,68 +4567,41 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
 
     return H('div', { id: 'tab-nearby' },
       H('section', { className:'card', style:{ padding:12, margin:'12px 0 16px' } },
-        H('div', { className:'row nearby-filter', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
-          H('input', {
-            type:'search',
-            placeholder:'Search nearby listings...',
-            value: search,
-            onChange: e => setSearch(e.target.value),
-            style:{ flex:'1 1 220px', minWidth:180 }
-          }),
-          H('select', {
-            value: sort,
-            onChange: e => setSort(e.target.value),
-            style:{ width:'auto' }
-          },
-            H('option', { value:'new' }, 'Newest'),
-            H('option', { value:'price_asc' }, 'Price: Low -> High'),
-            H('option', { value:'price_desc' }, 'Price: High -> Low')
-          ),
-          H('label', { htmlFor:'radius' }, 'Filter radius:'),
-          H('select', {
-            id:'radius',
-            value: radius,
-            onChange: e => setRadius(Number(e.target.value)),
-            style:{ width:'auto' }
-          },
-            H('option', { value:150 }, '~500 ft'),
-            H('option', { value:402 }, '0.25 mi'),
-            H('option', { value:805 }, '0.5 mi'),
-            H('option', { value:1609 }, '1 mi')
-          ),
-          H('button', { className:'btn', onClick: () => load(true), disabled:busy }, busy ? 'Refreshing...' : 'Reload'),
-          lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
+        H('div', { className:'row', style:{ gap:10, alignItems:'center', flexWrap:'wrap' } },
+        H('label', { htmlFor:'radius' }, 'Filter radius:'),
+        H('select', {
+          id:'radius',
+          value: radius,
+          onChange: e => setRadius(Number(e.target.value)),
+          style:{ width:'auto' }
+        },
+          H('option', { value:150 }, '~500 ft'),
+          H('option', { value:402 }, '0.25 mi'),
+          H('option', { value:805 }, '0.5 mi'),
+          H('option', { value:1609 }, '1 mi')
         ),
+        H('button', { className:'btn', onClick: () => load(true), disabled:busy }, busy ? 'Refreshing...' : 'Reload'),
+        lastUpdatedLabel && H('span', { className:'muted', style:{ marginLeft:'auto', fontSize:11 } }, lastUpdatedLabel)
+      ),
 
       errorMsg && H('div', { className:'muted', style:{ color:'#b91c1c', marginTop:8, fontSize:12 } }, errorMsg),
 
-      H('section', {
-        className:'nearby-grid',
-        style:{
-          display:'grid',
-          gridTemplateColumns:`repeat(${columns}, minmax(0, 1fr))`,
-          gap:gridGap
-        }
-      },
-        filteredItems.map(item => {
+      // NOTE: add ref so we can read computed column-count
+      H('section', { className:'masonry', ref: masonRef },
+        interleaved.map(item => {
           const cover = selectPrimaryListingImage(item, item?.image_data);
-          return H('div', { key:item.id, className:'card', style:{ padding:0, overflow:'hidden', borderRadius:8 } },
-            H('div', { style:{ position:'relative', width:'100%', aspectRatio:'1 / 1', background:'#f3f4f6' } },
-              cover && H(ImageWithSkeleton, {
-                src: cover,
-                loading:'lazy',
-                decoding:'async',
-                onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
-                style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', display:'block', cursor:'pointer' },
-                disableSkeleton: true
-              })
-            )
+          return H('div', { key:item.id, className:'masonry-item' },
+            cover && H(ImageWithSkeleton, {
+              src: cover,
+              loading:'lazy',
+              decoding:'async',
+              onClick: (evt) => handleSelectListingFromEvent(evt, item, cover),
+              style: { cursor: 'pointer' },
+              disableSkeleton: true
+            })
           );
         })
       ),
-
-      (filteredItems.length === 0 && items.length > 0 && !busy && !errorMsg) &&
-        H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings match your search.'),
 
       (!items.length && !busy && !errorMsg) && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No nearby listings found in this radius.'),
 
@@ -3895,7 +4667,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
       let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
       if (autoPostNearbyEnabled) {
         try {
-          const c = await fetchCoordsAndReverse(api);
+          const c = await fetchCoordsAndReverse();
           sharedNearby = { ok:true, lat:c.lat, lon:c.lon, display:c.display };
         } catch (_) {
           sharedNearby = { ok:false, lat:null, lon:null, display:'' };
@@ -3907,7 +4679,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
       const jobs = filesSnapshot.map((file) => limiter(async () => {
         let encounteredError = false;
         try {
-          const upload = await uploadFileDraft(api, file);
+          const upload = await uploadFileDraft(file);
 
           let ai = {};
           let aiDescription = '';
@@ -4047,6 +4819,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     autoListEnabled, setAutoListEnabled,
     aiDescriptionEnabled, setAiDescriptionEnabled,
     autoPostNearbyEnabled, setAutoPostNearbyEnabled,
+    backgroundQueueEnabled, setBackgroundQueueEnabled,
     isMobile,
     onViewSeller, // ADD THIS PARAMETER
     onToggleSold
@@ -4138,6 +4911,28 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
                 type:'button',
                 onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
                 title:'AI description tips',
+                style:{
+                  marginLeft:6, width:24, height:24, lineHeight:'22px',
+                  borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+                }
+              }, '?')
+            ),
+            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
+              H('input', {
+                type:'checkbox',
+                className:'toggle-input',
+                checked: !!backgroundQueueEnabled,
+                onChange: (e) => setBackgroundQueueEnabled(e.target.checked)
+              }),
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
+                H('div', { style:{ fontWeight:700 } }, 'Background queue'),
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'listings run in background')
+              ),
+              H('button', {
+                type:'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('bgqueue'); },
+                title:'Background queue info',
                 style:{
                   marginLeft:6, width:24, height:24, lineHeight:'22px',
                   borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
@@ -4294,6 +5089,7 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
 
       helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
       helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
+      helpModal === 'bgqueue' && H(BackgroundQueueHelpModal, { onClose: () => setHelpModal(null) }),
 
       H(ListingModal, {
         open: !!profileSelected,
@@ -4313,10 +5109,9 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
     );
   }
 
-
-  function App(){
-
   // ---------- App ----------
+  const PAGE_SIZE = 75;
+
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
@@ -4924,90 +5719,23 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 // Then your existing ListingForm component stays the same...
 
 function App(){
-
-    const { user, setUser, pushMeta, authModal, setAuthModal } = useAuth();
-    const {
-      tab,
-      setTab,
-      tabRef,
-      all,
-      setAll,
-      mine,
-      setMine,
-      query,
-      setQuery,
-      locationQuery,
-      setLocationQuery,
-      sort,
-      setSort,
-      ads,
-      setAds,
-      viewingSeller,
-      setViewingSeller,
-      hasNext,
-      setHasNext,
-      isFetchingListings,
-      setIsFetchingListings,
-      sentinelRef,
-      loadingListingsRef,
-      nextCursorRef,
-      reloadReqRef,
-      selectedListing,
-      setSelectedListing,
-      editing,
-      setEditing,
-      debouncedQuery,
-      debouncedLocation,
-      coverById,
-      ensureCover,
-      loadListingsPage,
-      refreshListings,
-      reloadMineOnly,
-      toggleSold
-    } = useListings();
-    const {
-      showForm,
-      setShowForm,
-      showMassList,
-      setShowMassList,
-      autoListEnabled,
-      setAutoListEnabled,
-      aiDescriptionEnabled,
-      setAiDescriptionEnabled,
-      autoPostNearbyEnabled,
-      setAutoPostNearbyEnabled,
-      showQueueToast,
-      queuePendingCount,
-      enqueueListingJob
-    } = useUploads();
-    const {
-      banner,
-      setBanner,
-      messageToasts,
-      setMessageToasts,
-      pushSetupRef,
-      toastTimersRef,
-      conversationMapRef,
-      audioCtxRef,
-      windowFocused,
-      setWindowFocused,
-      windowFocusedRef,
-      unreadCount,
-      setUnreadCount,
-      hasAdminUnread,
-      setHasAdminUnread,
-      loadingCount,
-      setLoadingCount,
-      activeConvoId,
-      setActiveConvoId,
-      activeConvoIdRef
-    } = useNotifications();
+    const { user, setUser } = useAuth();
+    const [tab, setTab] = useState('browse');
+    const [all, setAll] = useState([]);      // current page rows (thin)
+    const [mine, setMine] = useState([]);
+    const [query, setQuery] = useState('');
+    const [locationQuery, setLocationQuery] = useState('');
+    const [sort, setSort] = useState('new'); // default: Newest
+    const [showForm, setShowForm] = useState(false);
+    const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
+    const [banner, setBanner] = useState(null);
+    const [ads, setAds] = useState([]);
 
     const showLockedBanner = useCallback(() => {
       setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
-    }, [setBanner]);
+    }, []);
 
-    const dismissBanner = useCallback(() => setBanner(null), [setBanner]);
+    const dismissBanner = useCallback(() => setBanner(null), []);
 
     const handleTabChange = (newTab) => {
     if (newTab === 'admin' && !user?.is_admin) {
@@ -5017,9 +5745,98 @@ function App(){
     setViewingSeller(null); // Clear seller view when switching tabs
   };
 
-    const backgroundQueueEnabled = true;
+    // NEW: Seller profile state
+    const [viewingSeller, setViewingSeller] = useState(null);
+    
+    // Pagination / infinite scroll
+    const [hasNext, setHasNext] = useState(false);
+    const [isFetchingListings, setIsFetchingListings] = useState(false);
+    const sentinelRef = useRef(null);
+    const loadingListingsRef = useRef(false);
+    const nextCursorRef = useRef(null);
+
+    // Modal selection for full listing card
+    const [selectedListing, setSelectedListing] = useState(null);
+    const [editing, setEditing] = useState(null);
+    const [activeConvoId, setActiveConvoId] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [hasAdminUnread, setHasAdminUnread] = useState(false);
+    const [loadingCount, setLoadingCount] = useState(0);
+
+    // MassList modal
+    const [showMassList, setShowMassList] = useState(false);
+
+    // Auto-list toggles (persisted)
+    const AUTO_KEY = 'listit_auto_list';
+    const [autoListEnabled, setAutoListEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
+
+    const AI_DESC_KEY = 'listit_ai_descriptions';
+    const [aiDescriptionEnabled, setAiDescriptionEnabled] = useState(() => {
+      try { return localStorage.getItem(AI_DESC_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AI_DESC_KEY, aiDescriptionEnabled ? '1' : '0'); } catch {} }, [aiDescriptionEnabled]);
+
+    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
+    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
+      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
+
+    const BG_QUEUE_KEY = 'listit_background_queue';
+    const [backgroundQueueEnabled, setBackgroundQueueEnabled] = useState(() => {
+      try { return localStorage.getItem(BG_QUEUE_KEY) === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem(BG_QUEUE_KEY, backgroundQueueEnabled ? '1' : '0'); } catch {} }, [backgroundQueueEnabled]);
 
     const isMobile = isMobileDevice();
+
+    const listingQueueRef = useRef([]);
+    const listingQueueProcessingRef = useRef(false);
+    const [showQueueToast, setShowQueueToast] = useState(false);
+    const toastTimerRef = useRef(null);
+    const [queuePendingCount, setQueuePendingCount] = useState(0);
+
+    const showQueueReminder = useCallback(() => {
+      setShowQueueToast(true);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
+    }, []);
+
+    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+
+    useEffect(() => () => {
+      listingQueueRef.current = [];
+      listingQueueProcessingRef.current = false;
+    }, []);
+
+    const processNextListingJob = useCallback(() => {
+      if (listingQueueProcessingRef.current) return;
+      const job = listingQueueRef.current.shift();
+      if (!job) {
+        setQueuePendingCount(0);
+        return;
+      }
+      listingQueueProcessingRef.current = true;
+      Promise.resolve()
+        .then(() => job())
+        .catch((err) => { console.error('Background listing job failed:', err); })
+        .finally(() => {
+          listingQueueProcessingRef.current = false;
+          setQueuePendingCount(listingQueueRef.current.length);
+          processNextListingJob();
+        });
+    }, []);
+
+    const enqueueListingJob = useCallback((job) => {
+      if (typeof job !== 'function') return;
+      listingQueueRef.current.push(job);
+      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
+      if (backgroundQueueEnabled) showQueueReminder();
+      processNextListingJob();
+    }, [backgroundQueueEnabled, processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {
@@ -5029,160 +5846,6 @@ function App(){
         console.error('Failed to load ads', err);
         setAds([]);
       }
-    }, []);
-
-    const removePushSubscription = useCallback(async () => {
-      if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-      try {
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (!registration || !registration.pushManager) return;
-        const subscription = await registration.pushManager.getSubscription();
-        if (!subscription) return;
-        const serialized = serializePushSubscription(subscription);
-        if (serialized) {
-          try {
-            await api.pushUnsubscribe(serialized, { silent: true });
-          } catch (err) {
-            console.warn('Push unsubscribe request failed:', err);
-          }
-        }
-        try {
-          await subscription.unsubscribe();
-        } catch (err) {
-          console.warn('Push unsubscribe failed:', err);
-        }
-      } catch (err) {
-        console.warn('Push cleanup failed:', err);
-      }
-    }, []);
-
-    const ensureAudioContext = useCallback(() => {
-      if (typeof window === 'undefined') return null;
-      const Ctor = window.AudioContext || window.webkitAudioContext;
-      if (!Ctor) return null;
-      if (!audioCtxRef.current) {
-        try {
-          audioCtxRef.current = new Ctor();
-        } catch (err) {
-          console.warn('Audio context initialization failed:', err);
-          return null;
-        }
-      }
-      return audioCtxRef.current;
-    }, []);
-
-    const playNotificationTone = useCallback(() => {
-      const ctx = ensureAudioContext();
-      if (!ctx) return;
-      const start = ctx.currentTime || 0;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-      try {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, start);
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.08, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + 0.5);
-      } catch (err) {
-        console.warn('Notification sound failed:', err);
-      }
-    }, [ensureAudioContext]);
-
-    useEffect(() => {
-      if (typeof window === 'undefined') return;
-      const unlock = () => {
-        const ctx = ensureAudioContext();
-        if (ctx && ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-      };
-      window.addEventListener('click', unlock);
-      window.addEventListener('keydown', unlock);
-      return () => {
-        window.removeEventListener('click', unlock);
-        window.removeEventListener('keydown', unlock);
-      };
-    }, [ensureAudioContext]);
-
-    const removeToast = useCallback((id) => {
-      if (!id) return;
-      const timers = toastTimersRef.current;
-      if (timers.has(id)) {
-        clearTimeout(timers.get(id));
-        timers.delete(id);
-      }
-      setMessageToasts(prev => prev.filter(t => t.id !== id));
-    }, []);
-
-    const showMessageToast = useCallback((payload = {}) => {
-      if (typeof window === 'undefined') return;
-      const now = Date.now();
-      const id = payload.id || `msg:${payload.messageId || now}`;
-      const senderName = (payload.senderName || '').toString().trim();
-      const listingTitle = (payload.listingTitle || '').toString().trim();
-      const imageCount = Number.isFinite(payload.imageCount)
-        ? Number(payload.imageCount)
-        : (payload.hasImages ? 1 : 0);
-      let preview = typeof payload.preview === 'string' ? payload.preview.trim() : '';
-      if (preview) preview = preview.replace(/\s+/g, ' ');
-      if (!preview) {
-        if (imageCount > 1) preview = 'Sent you photos.';
-        else if (imageCount === 1) preview = 'Sent you a photo.';
-        else preview = 'Tap to open the conversation.';
-      }
-      if (preview.length > 120) preview = `${preview.slice(0, 117)}…`;
-      const titleParts = [];
-      if (senderName) titleParts.push(senderName);
-      if (listingTitle) titleParts.push(listingTitle);
-      const title = titleParts.join(' · ') || 'New message';
-      const toast = {
-        id,
-        conversationId: payload.conversationId || null,
-        title,
-        preview,
-        ts: now
-      };
-      setMessageToasts(prev => {
-        const trimmed = prev.filter(item => now - item.ts < 5500 && item.id !== toast.id);
-        return [...trimmed, toast];
-      });
-      const duration = Number.isFinite(payload.durationMs) ? Number(payload.durationMs) : 6000;
-      const timers = toastTimersRef.current;
-      if (timers.has(id)) {
-        clearTimeout(timers.get(id));
-      }
-      const timerId = window.setTimeout(() => removeToast(id), duration);
-      timers.set(id, timerId);
-    }, [removeToast]);
-
-    const handleToastClick = useCallback((toast) => {
-      if (!toast) return;
-      setTab('messages');
-      if (toast.conversationId) {
-        setActiveConvoId(toast.conversationId);
-      }
-      removeToast(toast.id);
-    }, [removeToast]);
-
-    const handleConversationsUpdate = useCallback((list) => {
-      if (!Array.isArray(list)) {
-        conversationMapRef.current = new Map();
-        return;
-      }
-      const map = new Map();
-      for (const convo of list) {
-        if (!convo || convo.id == null) continue;
-        map.set(convo.id, convo);
-      }
-      conversationMapRef.current = map;
     }, []);
 
     useEffect(() => { refreshAds(); }, [refreshAds]);
@@ -5200,21 +5863,13 @@ function App(){
     useEffect(() => {
       AppNav.incLoad = () => setLoadingCount(c => c + 1);
       AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-    }, [setLoadingCount]);
+    }, []);
 
     useEffect(() => {
       if (!user?.is_admin && tab === 'admin') {
         setTab('browse');
       }
     }, [user, tab]);
-
-    useEffect(() => {
-      if (user?.id) return;
-      toastTimersRef.current.forEach(clearTimeout);
-      toastTimersRef.current.clear();
-      setMessageToasts([]);
-      conversationMapRef.current = new Map();
-    }, [user?.id]);
 
     const mineById = useMemo(() => {
       const map = Object.create(null);
@@ -5232,6 +5887,114 @@ function App(){
       setViewingSeller(null);
     }
 
+    // Debounce: search + city
+    const [debouncedQuery, setDebouncedQuery] = useState(query);
+    useEffect(() => {
+      const t = setTimeout(() => setDebouncedQuery(query), 250);
+      return () => clearTimeout(t);
+    }, [query]);
+
+    const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
+    useEffect(() => {
+      const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
+      return () => clearTimeout(t);
+    }, [locationQuery]);
+
+    // Reload helpers
+    async function reloadMineOnly(){
+      if (!user) { setMine([]); return; }
+      const m = await api.listMine();
+      setMine(asArray(m)||[]);
+    }
+
+    const reloadReqRef = useRef(0);
+
+    const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
+      const req = ++reloadReqRef.current;
+      loadingListingsRef.current = true;
+      setIsFetchingListings(true);
+      try {
+        const res = await api.listAll({
+          q: debouncedQuery.trim() || '',
+          loc: debouncedLocation.trim() || '',
+          cursor,
+          limit: PAGE_SIZE,
+          sort
+        });
+
+        if (req !== reloadReqRef.current) return;
+
+        const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, PAGE_SIZE);
+        const newRows = rows || [];
+        setHasNext(!!hasNext);
+
+        setAll(prev => {
+          if (replace || cursor == null) return newRows;
+          if (!prev || !prev.length) return newRows;
+          const existing = new Set(prev.map(r => r.id));
+          const appended = newRows.filter(r => !existing.has(r.id));
+          return appended.length ? [...prev, ...appended] : prev;
+        });
+
+        if (cursor == null) {
+          if (user) {
+            try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
+          } else {
+            setMine([]);
+          }
+        }
+
+        if (newRows.length) {
+          try {
+            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
+            if (ids.length) {
+              const covers = await api.getCoversBatch(ids, { silent: true });
+              if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
+                const patch = {};
+                covers.forEach(r => {
+                  if (!r || r.id == null) return;
+                  if (r.image_data) patch[r.id] = { url: r.image_data };
+                });
+                if (Object.keys(patch).length) {
+                  setCoverById(prev => ({ ...prev, ...patch }));
+                }
+              }
+            }
+          } catch {}
+        }
+
+        nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
+      } catch (e) {
+        if (req === reloadReqRef.current) {
+          console.error('load listings failed', e);
+          if (replace || cursor == null) setAll([]);
+          setHasNext(false);
+          if (cursor == null && !user) setMine([]);
+        }
+      } finally {
+        if (req === reloadReqRef.current) {
+          loadingListingsRef.current = false;
+          setIsFetchingListings(false);
+        }
+      }
+    }, [debouncedQuery, debouncedLocation, sort, user?.id]);
+
+    useEffect(() => {
+      nextCursorRef.current = null;
+      setAll([]);
+      setHasNext(false);
+      loadListings({ cursor: null, replace: true });
+    }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
+
+    const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
+      nextCursorRef.current = null;
+      if (!preserveExisting) {
+        setAll([]);
+        setHasNext(false);
+      }
+      await loadListings({ cursor: null, replace: true });
+    }, [loadListings]);
+
     useEffect(() => {
       if (tab !== 'browse') return;
       const el = sentinelRef.current;
@@ -5241,13 +6004,36 @@ function App(){
         if (!entry || !entry.isIntersecting) return;
         if (!hasNext || loadingListingsRef.current) return;
         if (!nextCursorRef.current) return;
-        loadListingsPage({ cursor: nextCursorRef.current, replace: false });
+        loadListings({ cursor: nextCursorRef.current, replace: false });
       }, { rootMargin: '200px' });
       observer.observe(el);
       return () => observer.disconnect();
-    }, [hasNext, loadListingsPage, tab]);
+    }, [hasNext, loadListings, tab]);
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+
+    const toggleSold = useCallback(async (listing, makeSold) => {
+      try {
+        await api.markListingSold(listing.id, makeSold);
+        try {
+          const mineRes = await api.listMine({ silent: true });
+          setMine(asArray(mineRes) || []);
+        } catch {}
+        setSelectedListing(prev => {
+          if (prev && prev.id === listing.id) {
+            return { ...prev, sold: makeSold ? 1 : 0 };
+          }
+          return prev;
+        });
+        if (makeSold) {
+          setAll(prev => Array.isArray(prev) ? prev.filter(it => it.id !== listing.id) : prev);
+        }
+        await refreshListings();
+      } catch (e) {
+        console.error('toggle sold failed', e);
+        alert('Failed to update sold status. Please try again.');
+      }
+    }, [refreshListings]);
 
     // Unread poll
     async function recomputeUnread() {
@@ -5258,7 +6044,6 @@ function App(){
           return;
         }
         const convos = await api.listConversations({ silent:true });
-        handleConversationsUpdate(convos);
         const seen = loadSeen(user.id);
 
         let unreadCount = 0;
@@ -5313,34 +6098,13 @@ function App(){
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-
-            if (data.type === 'new_message') {
-              if (data.sender_id !== user.id) {
-                recomputeUnread();
-                const shouldNotify =
-                  tabRef.current !== 'messages' ||
-                  activeConvoIdRef.current !== data.conversation_id ||
-                  !windowFocusedRef.current;
-                if (shouldNotify) {
-                  const bodyText = typeof data?.message?.body === 'string' ? data.message.body : '';
-                  const images = Array.isArray(data?.message?.images) ? data.message.images : [];
-                  const convoMeta = conversationMapRef.current.get(data.conversation_id);
-                  const senderName = data.sender_username || convoMeta?.other_user_username || '';
-                  const listingTitle = convoMeta?.listing_title || '';
-                  showMessageToast({
-                    conversationId: data.conversation_id,
-                    messageId: data.message?.id || null,
-                    senderName,
-                    listingTitle,
-                    preview: bodyText,
-                    imageCount: images.length
-                  });
-                  playNotificationTone();
-                }
-              }
+            
+            if (data.type === 'new_message' && data.sender_id !== user.id) {
+              // Recompute unread count when new message arrives from another user
+              recomputeUnread();
             }
           } catch (e) {
-            console.error('WebSocket message error (App level):', e);
+            console.error('WebSocket message error:', e);
           }
         };
         
@@ -5383,89 +6147,6 @@ function App(){
         }
       };
     }, [user?.id]);
-
-    useEffect(() => {
-      let aborted = false;
-
-      async function setupPushNotifications() {
-        if (!user?.id) return;
-        if (!pushMeta?.available) return;
-        if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        if (typeof Notification === 'undefined') return;
-
-        const vapidKey = pushMeta?.vapidPublicKey;
-        if (!vapidKey) return;
-
-        const currentPermission = Notification.permission;
-        const last = pushSetupRef.current;
-        if (last && last.userId === user.id && last.permission === 'granted' && currentPermission === 'granted') {
-          return;
-        }
-
-        if (currentPermission === 'denied') {
-          pushSetupRef.current = { userId: user.id, permission: 'denied' };
-          return;
-        }
-
-        try {
-          const registration = await navigator.serviceWorker.register('/sw.js');
-          const readyRegistration = await navigator.serviceWorker.ready.catch(() => registration);
-          if (aborted) return;
-
-          let permission = Notification.permission;
-          if (permission === 'default' && typeof Notification.requestPermission === 'function') {
-            try {
-              permission = await Notification.requestPermission();
-            } catch (err) {
-              console.warn('Notification permission request failed:', err);
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
-              return;
-            }
-          }
-
-          if (permission !== 'granted') {
-            pushSetupRef.current = { userId: user.id, permission };
-            return;
-          }
-
-          const applicationServerKey = base64UrlToUint8Array(vapidKey);
-          if (!applicationServerKey) {
-            pushSetupRef.current = { userId: user.id, permission: 'error' };
-            return;
-          }
-
-          let subscription = await readyRegistration.pushManager.getSubscription();
-          if (!subscription) {
-            subscription = await readyRegistration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey
-            });
-          }
-
-          if (!subscription) {
-            pushSetupRef.current = { userId: user.id, permission: 'error' };
-            return;
-          }
-
-          const serialized = serializePushSubscription(subscription);
-          if (!serialized) {
-            pushSetupRef.current = { userId: user.id, permission: 'error' };
-            return;
-          }
-
-          await api.pushSubscribe(serialized, { silent: true });
-          pushSetupRef.current = { userId: user.id, permission: 'granted' };
-        } catch (err) {
-          console.warn('Push setup failed:', err);
-          pushSetupRef.current = { userId: user.id, permission: 'error' };
-        }
-      }
-
-      setupPushNotifications();
-
-      return () => { aborted = true; };
-    }, [user?.id, pushMeta?.available, pushMeta?.vapidPublicKey]);
 
     useEffect(() => {
       if (!user && tab === 'messages') setTab('browse');
@@ -5551,13 +6232,30 @@ function App(){
     }
 
     async function logoutFromProfile(){
-      await removePushSubscription();
       await api.logout();
       setUser(null);
       setTab('browse');
     }
 
     // Persistent cover cache: coverById[id] = { url, w, h } | null
+    const [coverById, setCoverById] = useState(() => (Object.create(null)));
+    const ensureCover = useCallback(async (id) => {
+      if (id == null) return;
+      if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
+      try {
+        const arr = await api.getListingImages(id, { silent: true });
+        let obj = null;
+        if (Array.isArray(arr) && arr.length) {
+          obj = typeof arr[0] === 'string'
+            ? { url: arr[0], w: null, h: null }
+            : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+        }
+        setCoverById((prev) => ({ ...prev, [id]: obj }));
+      } catch {
+        setCoverById((prev) => ({ ...prev, [id]: null }));
+      }
+    }, [coverById]);
+
     // Build render items with best cover + aspect ratio
     const items = useMemo(() => {
       return (feed || []).map(it => {
@@ -5790,12 +6488,7 @@ function App(){
 
         !viewingSeller && (tab==='messages') &&
           (user
-            ? H(MessagesPanel, {
-                user,
-                initialActiveId: activeConvoId,
-                onSeenChange: handleSeen,
-                onConversationsUpdate: handleConversationsUpdate
-              })
+            ? H(MessagesPanel, { user, initialActiveId: activeConvoId, onSeenChange: handleSeen })
             : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
           ),
 
@@ -5827,6 +6520,8 @@ function App(){
             setAiDescriptionEnabled,
             autoPostNearbyEnabled,
             setAutoPostNearbyEnabled,
+            backgroundQueueEnabled,
+            setBackgroundQueueEnabled,
             onViewSeller: handleViewSeller, // ADD THIS LINE
             onToggleSold: toggleSold
           }),
@@ -5853,7 +6548,15 @@ function App(){
 
       // NEW: Listing Form modal
       showForm && H(ListingFormModal, {
-        backgroundQueueEnabled
+        isOpen: showForm,
+        draft: editing,
+        onClose: () => { setShowForm(false); setEditing(null); },
+        onSaved: async () => { await refreshListings({ preserveExisting: true }); },
+        autoListEnabled,
+        aiDescriptionEnabled,
+        autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+        backgroundQueueEnabled,
+        enqueueListingJob
       }),
 
       // ADD THIS NEW AUTH MODAL:
@@ -5871,54 +6574,26 @@ function App(){
       },
         H('span', { className:'listing-queue-toast__icon', 'aria-hidden': true }, '✓'),
         H('span', { className:'listing-queue-toast__text' }, 'listings in progres')
-      ),
-
-      messageToasts.length > 0 && H('div', {
-        className: 'message-toast-container',
-        'aria-live': 'assertive'
-      },
-        messageToasts.map((toast) => H('div', {
-          key: toast.id,
-          className: 'message-toast',
-          role: 'status',
-          tabIndex: 0,
-          onClick: () => handleToastClick(toast),
-          onKeyDown: (evt) => {
-            if (evt.key === 'Enter' || evt.key === ' ') {
-              evt.preventDefault();
-              handleToastClick(toast);
-            }
-          }
-        },
-          H('div', { className: 'message-toast__title' }, toast.title),
-          H('div', { className: 'message-toast__preview' }, toast.preview)
-        ))
       )
     );
   }
-}
 
-export function AppProviders({ children }) {
-  return H(AuthProvider, { api },
-    H(NotificationsProvider, null,
-      H(ListingsProvider, { api },
-        H(UploadsProvider, null, children))));
-}
+  function useAuth() {
+    const [user, setUser] = useState(null);
+    useEffect(() => { api.me().then(setUser).catch(()=>setUser(null)); }, []);
+    return { user, setUser };
+  }
 
-export function AppRoot() {
-  return H(App);
-}
-
-export function renderApp(rootEl) {
-  if (!rootEl) return;
-  const tree = H(AppProviders, null, H(App));
+  // Robust mount (React 18+ or older)
+  const rootEl = document.getElementById('root');
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
-    root.render(tree);
+    root.render(H(App));
   } else {
-    ReactDOM.render(tree, rootEl);
+    ReactDOM.render(H(App), rootEl);
   }
-}
+
+})();
 
 
 
@@ -5930,6 +6605,7 @@ export function renderApp(rootEl) {
 
 
 
-  
 
-  
+
+
+
