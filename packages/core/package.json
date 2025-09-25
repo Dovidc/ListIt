@@ -1,0 +1,19 @@
+{
+  "name": "@listit/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
+    },
+    "./browser": {
+      "import": "./dist/index.global.js",
+      "default": "./dist/index.global.js"
+    }
+  }
+}
