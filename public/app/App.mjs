@@ -1,4 +1,4 @@
-﻿// public/app.js
+// public/app.js
 //
 // S3-first uploads (presign -> PUT -> finalize) + AI helper via local dataURLs
 // Messages: paste/drag/attach images -> S3 URLs (kept!)
@@ -18,8 +18,34 @@
 //   * Batch prewarm first covers via /api/listings/covers
 //   * Client guards against array OR {rows, hasNext, total, page} responses.
 
-(() => {
-  const { useCallback, useEffect, useMemo, useRef, useState } = React;
+import { AuthProvider, useAuth } from '../features/auth/AuthContext.mjs';
+import { ListingsProvider, useListings } from '../features/listings/ListingsContext.mjs';
+import { NotificationsProvider, useNotifications } from '../features/notifications/NotificationsContext.mjs';
+import { UploadsProvider, useUploads } from '../features/uploads/UploadsContext.mjs';
+import { useListingsController } from '../features/listings/useListingsController.mjs';
+import {
+  H,
+  arrayBufferToBase64Url,
+  asArray,
+  base64UrlToUint8Array,
+  getUserCoordsOnce,
+  interleaveByColumns,
+  isMobileDevice,
+  loadSeen,
+  normalizeListingsResponse,
+  pageTop,
+  saveSeen,
+  seenKey,
+  serializePushSubscription,
+  urlToDataUrl,
+  useBodyScrollLock,
+  useColumnCount,
+  useElementWidth,
+  useVirtualMasonry,
+  useWindowScrollY
+} from './shared/utils.mjs';
+
+const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
   const core = window.ListItCore || {};
   const {
@@ -37,311 +63,10 @@
   const fmtDistance = (m) => formatDistance(m);
   const haversineMeters = (...args) => coreHaversineMeters(...args);
 
-  // Device detection
-  // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
-  // - Matches iPhone/Android/Windows Phone
-  // - Also handles iPadOS 13+ which reports a desktop (Mac) UA but has touch
-  function isMobileDevice() {
-    const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
-
-    if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
-      return true;
-    }
-
-    // iPadOS desktop UA workaround
-    if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
-      return true;
-    }
-
-    return false;
-  }
-
   // small bridge so api can redirect UI on 401s + track global loading
   const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
 
-  // --- Helpers ---
-  function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
-  function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
-  function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
-  function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
   
-  // NEW: Convert S3 URL to data URL for AI analysis
-  async function urlToDataUrl(url) {
-    if (!url || !url.startsWith('http')) return null;
-    try {
-      const response = await fetch(url, { mode: 'cors' });
-      if (!response.ok) throw new Error('Failed to fetch');
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (error) {
-      console.error('Failed to convert URL to data URL:', error);
-      return null;
-    }
-  }
-
-  function base64UrlToUint8Array(base64String) {
-    if (!base64String || typeof base64String !== 'string') return null;
-    try {
-      const padded = base64String + '='.repeat((4 - (base64String.length % 4)) % 4);
-      const base64 = padded.replace(/-/g, '+').replace(/_/g, '/');
-      const raw = window.atob(base64);
-      const output = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
-      return output;
-    } catch (err) {
-      console.warn('Failed to decode VAPID key:', err);
-      return null;
-    }
-  }
-
-  function arrayBufferToBase64Url(buf) {
-    if (!buf) return '';
-    try {
-      const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || []);
-      let binary = '';
-      bytes.forEach(b => { binary += String.fromCharCode(b); });
-      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    } catch {
-      return '';
-    }
-  }
-
-  function serializePushSubscription(sub) {
-    if (!sub) return null;
-    try {
-      const json = typeof sub.toJSON === 'function' ? sub.toJSON() : null;
-      if (json) return json;
-    } catch {}
-
-    const payload = {
-      endpoint: sub.endpoint,
-      expirationTime: sub.expirationTime ?? null,
-      keys: {}
-    };
-
-    if (typeof sub.getKey === 'function') {
-      const auth = sub.getKey('auth');
-      const p256dh = sub.getKey('p256dh');
-      if (auth) payload.keys.auth = arrayBufferToBase64Url(auth);
-      if (p256dh) payload.keys.p256dh = arrayBufferToBase64Url(p256dh);
-    }
-
-    if (!payload.keys.auth || !payload.keys.p256dh) {
-      if (sub.keys && typeof sub.keys === 'object') {
-        if (!payload.keys.auth && typeof sub.keys.auth === 'string') payload.keys.auth = sub.keys.auth;
-        if (!payload.keys.p256dh && typeof sub.keys.p256dh === 'string') payload.keys.p256dh = sub.keys.p256dh;
-      }
-    }
-
-    if (!payload.endpoint || !payload.keys.auth || !payload.keys.p256dh) return null;
-    return payload;
-  }
-  
-  let _coordsPromise = null;
-  function getUserCoordsOnce() {
-    if (_coordsPromise) return _coordsPromise;
-    if (!('geolocation' in navigator)) return Promise.resolve(null);
-    _coordsPromise = new Promise(resolve => {
-      navigator.geolocation.getCurrentPosition(
-        p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude } ),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-      );
-    });
-    return _coordsPromise;
-  }
-
-  // Arrange items so rows read left->right in a CSS multi-column layout
-  function interleaveByColumns(arr, cols) {
-    if (!Array.isArray(arr) || arr.length === 0 || !cols || cols <= 1) return arr || [];
-    const out = [];
-    for (let c = 0; c < cols; c++) {
-      for (let i = c; i < arr.length; i += cols) out.push(arr[i]);
-    }
-    return out;
-  }
-
-  // Read actual column-count from the masonry container (responds to CSS + inline styles)
-  function useColumnCount(ref, fallbackCols = 3) {
-    const [cols, setCols] = React.useState(fallbackCols);
-    React.useEffect(() => {
-      if (!ref.current) return;
-      const el = ref.current;
-      const read = () => {
-        const cs = getComputedStyle(el);
-        const n = parseInt(cs.columnCount, 10);
-        setCols(Number.isFinite(n) && n > 0 ? n : fallbackCols);
-      };
-      read();
-      const ro = new ResizeObserver(read);
-      ro.observe(el);
-      window.addEventListener('resize', read);
-      return () => { ro.disconnect(); window.removeEventListener('resize', read); };
-    }, [ref, fallbackCols]);
-    return cols;
-  }
-
-  // --- NEW: tiny helpers for virtualization (kept; used by Nearby) ---
-  function useElementWidth(ref) {
-    const [w, setW] = useState(0);
-    useEffect(() => {
-      if (!ref.current) return;
-      const el = ref.current;
-      const update = () => setW(el.clientWidth || 0);
-      update();
-      const ro = new ResizeObserver(update);
-      ro.observe(el);
-      window.addEventListener('resize', update);
-      return () => { ro.disconnect(); window.removeEventListener('resize', update); };
-    }, [ref]);
-    return w;
-  }
-
-  function useWindowScrollY() {
-    const [y, setY] = useState(window.scrollY || 0);
-    useEffect(() => {
-      let ticking = false;
-      const onScroll = () => {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            setY(window.scrollY || 0);
-            ticking = false;
-          });
-          ticking = true;
-        }
-      };
-      window.addEventListener('scroll', onScroll, { passive: true });
-      return () => window.removeEventListener('scroll', onScroll);
-    }, []);
-    return y;
-  }
-
-  function useBodyScrollLock(active) {
-    useEffect(() => {
-      if (!active) return undefined;
-      const { style } = document.body;
-      const previousOverflow = style.overflow;
-      const previousPaddingRight = style.paddingRight;
-      const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
-      style.overflow = 'hidden';
-      if (scrollBarWidth > 0) {
-        const computed = window.getComputedStyle(document.body);
-        const currentPadding = parseFloat(computed.paddingRight || '0') || 0;
-        style.paddingRight = `${currentPadding + scrollBarWidth}px`;
-      }
-      return () => {
-        style.overflow = previousOverflow || '';
-        style.paddingRight = previousPaddingRight || '';
-      };
-    }, [active]);
-  }
-
-  // Compute absolute pageY of an element
-  function pageTop(el) {
-    const r = el.getBoundingClientRect();
-    return r.top + (window.scrollY || 0);
-  }
-
-  // --- NEW: robust response guards for listings / pagination ---
-  function normalizeListingsResponse(res, limit = 75) {
-    let rows = [];
-    if (Array.isArray(res)) rows = res;
-    else if (res && typeof res === 'object') {
-      if (Array.isArray(res.rows)) rows = res.rows;
-      else if (Array.isArray(res.items)) rows = res.items;
-      else if (Array.isArray(res.listings)) rows = res.listings;
-      else if (Array.isArray(res.data)) rows = res.data;
-    }
-    let hasNext = false;
-    let nextCursor = null;
-    if (res && typeof res === 'object') {
-      if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
-      else if (typeof res.next === 'boolean') hasNext = res.next;
-      else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
-        const shown = (res.page - 1) * limit + rows.length;
-        hasNext = shown < res.total;
-      } else {
-        hasNext = rows.length === limit;
-      }
-      if (res.next_cursor != null) nextCursor = res.next_cursor;
-      else if (res.cursor != null) nextCursor = res.cursor;
-    } else {
-      hasNext = rows.length === limit;
-    }
-    return { rows, hasNext, nextCursor };
-  }
-  const asArray = (x) =>
-    Array.isArray(x) ? x
-    : (x && typeof x === 'object' && (Array.isArray(x.rows) || Array.isArray(x.items) || Array.isArray(x.listings) || Array.isArray(x.data)))
-      ? normalizeListingsResponse(x).rows
-      : [];
-
-  // --- NEW: zero-dependency virtualized masonry (kept; used by Nearby) ---
-  function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
-    const scrollY = useWindowScrollY();
-    const containerW = useElementWidth(containerRef);
-
-    const [heightMap, setHeightMap] = useState(() => Object.create(null)); // id->height
-    const registerHeight = React.useCallback((id, h) => {
-      if (!id || !Number.isFinite(h) || h <= 0) return;
-      setHeightMap(m => (m[id] === h ? m : { ...m, [id]: h }));
-    }, []);
-
-    const layout = useMemo(() => {
-      const cols = Math.max(1, columnCount || 1);
-      const gap = columnGap;
-      const w = Math.max(1, containerW);
-      const colW = (w - gap * (cols - 1)) / cols;
-
-      const colHeights = new Array(cols).fill(0);
-      const pos = new Array(items.length);
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const h = heightMap[it.id] || estimateHeight;
-        // pick shortest column
-        let targetCol = 0;
-        for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
-        const top = colHeights[targetCol];
-        const left = (colW + gap) * targetCol;
-        colHeights[targetCol] = top + h + gap;
-        pos[i] = { top, left, width: colW, height: h };
-      }
-      const containerHeight = Math.max(...colHeights, 0);
-      return { positions: pos, containerHeight, colWidth: colW, gap };
-    }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
-
-    const viewport = useMemo(() => {
-      const el = containerRef.current;
-      if (!el) return { top: 0, bottom: 0 };
-      const cTop = pageTop(el);
-      const over = (window.innerHeight || 0) * overscanVH;
-      const top = (scrollY - cTop) - over;
-      const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
-      return { top, bottom };
-    }, [containerRef, scrollY, overscanVH]);
-
-    const visible = useMemo(() => {
-      const out = [];
-      const { positions } = layout;
-      if (!positions || positions.length === 0) return out;
-      for (let i = 0; i < positions.length; i++) {
-        const p = positions[i];
-        if (!p) continue;
-        const pBottom = p.top + p.height;
-        if (pBottom >= viewport.top && p.top <= viewport.bottom) {
-          out.push({ index: i, item: items[i], pos: p });
-        }
-      }
-      return out;
-    }, [items, layout, viewport]);
-
-    return { ...layout, visible, registerHeight };
-  }
 
   // --- Helper: fetch coords and reverse-geocode into a display string
   async function fetchCoordsAndReverse() {
@@ -5180,8 +4905,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
   }
 
   // ---------- App ----------
-  const PAGE_SIZE = 75;
-
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
@@ -5789,23 +5512,99 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 // Then your existing ListingForm component stays the same...
 
 function App(){
-    const { user, setUser, pushMeta } = useAuth();
-    const [tab, setTab] = useState('browse');
-    const [all, setAll] = useState([]);      // current page rows (thin)
-    const [mine, setMine] = useState([]);
-    const [query, setQuery] = useState('');
-    const [locationQuery, setLocationQuery] = useState('');
-    const [sort, setSort] = useState('new'); // default: Newest
-    const [showForm, setShowForm] = useState(false);
-    const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
-    const [banner, setBanner] = useState(null);
-    const [ads, setAds] = useState([]);
+    const { user, setUser, pushMeta, authModal, setAuthModal } = useAuth();
+    const [coverById, setCoverById] = useState(() => (Object.create(null)));
+
+    const listingsController = useListingsController(api, {
+      onCoverPatch: (patch) => {
+        setCoverById((prev) => ({ ...prev, ...patch }));
+      }
+    });
+
+    const {
+      tab,
+      setTab,
+      tabRef,
+      all,
+      setAll,
+      mine,
+      setMine,
+      query,
+      setQuery,
+      locationQuery,
+      setLocationQuery,
+      sort,
+      setSort,
+      ads,
+      refreshAds,
+      viewingSeller,
+      setViewingSeller,
+      handleViewSeller,
+      handleBackFromSeller,
+      hasNext,
+      isFetchingListings,
+      sentinelRef,
+      loadingListingsRef,
+      nextCursorRef,
+      reloadReqRef,
+      selectedListing,
+      setSelectedListing,
+      editing,
+      setEditing,
+      debouncedQuery,
+      debouncedLocation,
+      refreshListings,
+      loadListings,
+      reloadMineOnly
+    } = listingsController;
+    const {
+      showForm,
+      setShowForm,
+      showMassList,
+      setShowMassList,
+      autoListEnabled,
+      setAutoListEnabled,
+      aiDescriptionEnabled,
+      setAiDescriptionEnabled,
+      autoPostNearbyEnabled,
+      setAutoPostNearbyEnabled,
+      showQueueToast,
+      setShowQueueToast,
+      queuePendingCount,
+      setQueuePendingCount,
+      toastTimerRef,
+      showQueueReminder,
+      enqueueListingJob,
+      resetListingQueue
+    } = useUploads();
+    const {
+      banner,
+      setBanner,
+      messageToasts,
+      setMessageToasts,
+      pushSetupRef,
+      toastTimersRef,
+      conversationMapRef,
+      audioCtxRef,
+      windowFocused,
+      setWindowFocused,
+      windowFocusedRef,
+      unreadCount,
+      setUnreadCount,
+      hasAdminUnread,
+      setHasAdminUnread,
+      loadingCount,
+      setLoadingCount,
+      activeConvoId,
+      setActiveConvoId,
+      activeConvoIdRef
+    } = useNotifications();
 
     const showLockedBanner = useCallback(() => {
       setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
-    }, []);
+    }, [setBanner]);
 
-    const dismissBanner = useCallback(() => setBanner(null), []);
+    const dismissBanner = useCallback(() => setBanner(null), [setBanner]);
 
     const handleTabChange = (newTab) => {
     if (newTab === 'admin' && !user?.is_admin) {
@@ -5815,140 +5614,13 @@ function App(){
     setViewingSeller(null); // Clear seller view when switching tabs
   };
 
-    // NEW: Seller profile state
-    const [viewingSeller, setViewingSeller] = useState(null);
-    
-    // Pagination / infinite scroll
-    const [hasNext, setHasNext] = useState(false);
-    const [isFetchingListings, setIsFetchingListings] = useState(false);
-    const sentinelRef = useRef(null);
-    const loadingListingsRef = useRef(false);
-    const nextCursorRef = useRef(null);
-
-    // Modal selection for full listing card
-    const [selectedListing, setSelectedListing] = useState(null);
-    const [editing, setEditing] = useState(null);
-    const [activeConvoId, setActiveConvoId] = useState(null);
-    const tabRef = useRef(tab);
-    const activeConvoIdRef = useRef(activeConvoId);
-    const [windowFocused, setWindowFocused] = useState(() => {
-      if (typeof document === 'undefined') return true;
-      return !document.hidden;
-    });
-    const windowFocusedRef = useRef(windowFocused);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [hasAdminUnread, setHasAdminUnread] = useState(false);
-    const [loadingCount, setLoadingCount] = useState(0);
-
-    // MassList modal
-    const [showMassList, setShowMassList] = useState(false);
-
-    // Auto-list toggles (persisted)
-    const AUTO_KEY = 'listit_auto_list';
-    const [autoListEnabled, setAutoListEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
-
-    const AI_DESC_KEY = 'listit_ai_descriptions';
-    const [aiDescriptionEnabled, setAiDescriptionEnabled] = useState(() => {
-      try { return localStorage.getItem(AI_DESC_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AI_DESC_KEY, aiDescriptionEnabled ? '1' : '0'); } catch {} }, [aiDescriptionEnabled]);
-
-    const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
-    const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
-      try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
-
     const backgroundQueueEnabled = true;
 
     const isMobile = isMobileDevice();
 
-    const listingQueueRef = useRef([]);
-    const listingQueueProcessingRef = useRef(false);
-    const [showQueueToast, setShowQueueToast] = useState(false);
-    const toastTimerRef = useRef(null);
-    const [queuePendingCount, setQueuePendingCount] = useState(0);
-    const [messageToasts, setMessageToasts] = useState([]);
-    const pushSetupRef = useRef({ userId: null, permission: null });
-    const toastTimersRef = useRef(new Map());
-    const conversationMapRef = useRef(new Map());
-    const audioCtxRef = useRef(null);
-
-    const showQueueReminder = useCallback(() => {
-      setShowQueueToast(true);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
-    }, []);
-
-    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
-
     useEffect(() => () => {
-      listingQueueRef.current = [];
-      listingQueueProcessingRef.current = false;
-    }, []);
-
-    useEffect(() => () => {
-      toastTimersRef.current.forEach(clearTimeout);
-      toastTimersRef.current.clear();
-    }, []);
-
-    useEffect(() => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') return;
-      const handleFocus = () => setWindowFocused(true);
-      const handleBlur = () => setWindowFocused(false);
-      const handleVisibility = () => setWindowFocused(!document.hidden);
-      window.addEventListener('focus', handleFocus);
-      window.addEventListener('blur', handleBlur);
-      document.addEventListener('visibilitychange', handleVisibility);
-      return () => {
-        window.removeEventListener('focus', handleFocus);
-        window.removeEventListener('blur', handleBlur);
-        document.removeEventListener('visibilitychange', handleVisibility);
-      };
-    }, []);
-
-    useEffect(() => { tabRef.current = tab; }, [tab]);
-    useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
-    useEffect(() => { windowFocusedRef.current = windowFocused; }, [windowFocused]);
-
-    const processNextListingJob = useCallback(() => {
-      if (listingQueueProcessingRef.current) return;
-      const job = listingQueueRef.current.shift();
-      if (!job) {
-        setQueuePendingCount(0);
-        return;
-      }
-      listingQueueProcessingRef.current = true;
-      Promise.resolve()
-        .then(() => job())
-        .catch((err) => { console.error('Background listing job failed:', err); })
-        .finally(() => {
-          listingQueueProcessingRef.current = false;
-          setQueuePendingCount(listingQueueRef.current.length);
-          processNextListingJob();
-        });
-    }, []);
-
-    const enqueueListingJob = useCallback((job) => {
-      if (typeof job !== 'function') return;
-      listingQueueRef.current.push(job);
-      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
-      showQueueReminder();
-      processNextListingJob();
-    }, [processNextListingJob, showQueueReminder]);
-
-    const refreshAds = useCallback(async () => {
-      try {
-        const rows = await api.listAds({ silent: true });
-        setAds(Array.isArray(rows) ? rows : []);
-      } catch (err) {
-        console.error('Failed to load ads', err);
-        setAds([]);
-      }
-    }, []);
+      resetListingQueue();
+    }, [resetListingQueue]);
 
     const removePushSubscription = useCallback(async () => {
       if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
@@ -6104,8 +5776,6 @@ function App(){
       conversationMapRef.current = map;
     }, []);
 
-    useEffect(() => { refreshAds(); }, [refreshAds]);
-
     useEffect(() => {
       AppNav.setUser = setUser;
       AppNav.setTab = setTab;
@@ -6119,7 +5789,7 @@ function App(){
     useEffect(() => {
       AppNav.incLoad = () => setLoadingCount(c => c + 1);
       AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-    }, []);
+    }, [setLoadingCount]);
 
     useEffect(() => {
       if (!user?.is_admin && tab === 'admin') {
@@ -6141,140 +5811,7 @@ function App(){
       return map;
     }, [mine]);
 
-    // NEW: Handle viewing seller profile
-    function handleViewSeller(userId, username) {
-      setViewingSeller({ id: userId, username });
-      setSelectedListing(null); // Close any open modal
-    }
-
-    function handleBackFromSeller() {
-      setViewingSeller(null);
-    }
-
-    // Debounce: search + city
-    const [debouncedQuery, setDebouncedQuery] = useState(query);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedQuery(query), 250);
-      return () => clearTimeout(t);
-    }, [query]);
-
-    const [debouncedLocation, setDebouncedLocation] = useState(locationQuery);
-    useEffect(() => {
-      const t = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-      return () => clearTimeout(t);
-    }, [locationQuery]);
-
-    // Reload helpers
-    async function reloadMineOnly(){
-      if (!user) { setMine([]); return; }
-      const m = await api.listMine();
-      setMine(asArray(m)||[]);
-    }
-
-    const reloadReqRef = useRef(0);
-
-    const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
-      const req = ++reloadReqRef.current;
-      loadingListingsRef.current = true;
-      setIsFetchingListings(true);
-      try {
-        const res = await api.listAll({
-          q: debouncedQuery.trim() || '',
-          loc: debouncedLocation.trim() || '',
-          cursor,
-          limit: PAGE_SIZE,
-          sort
-        });
-
-        if (req !== reloadReqRef.current) return;
-
-        const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, PAGE_SIZE);
-        const newRows = rows || [];
-        setHasNext(!!hasNext);
-
-        setAll(prev => {
-          if (replace || cursor == null) return newRows;
-          if (!prev || !prev.length) return newRows;
-          const existing = new Set(prev.map(r => r.id));
-          const appended = newRows.filter(r => !existing.has(r.id));
-          return appended.length ? [...prev, ...appended] : prev;
-        });
-
-        if (cursor == null) {
-          if (user) {
-            try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
-          } else {
-            setMine([]);
-          }
-        }
-
-        if (newRows.length) {
-          try {
-            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
-            if (ids.length) {
-              const covers = await api.getCoversBatch(ids, { silent: true });
-              if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
-                const patch = {};
-                covers.forEach(r => {
-                  if (!r || r.id == null) return;
-                  if (r.image_data) patch[r.id] = { url: r.image_data };
-                });
-                if (Object.keys(patch).length) {
-                  setCoverById(prev => ({ ...prev, ...patch }));
-                }
-              }
-            }
-          } catch {}
-        }
-
-        nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
-      } catch (e) {
-        if (req === reloadReqRef.current) {
-          console.error('load listings failed', e);
-          if (replace || cursor == null) setAll([]);
-          setHasNext(false);
-          if (cursor == null && !user) setMine([]);
-        }
-      } finally {
-        if (req === reloadReqRef.current) {
-          loadingListingsRef.current = false;
-          setIsFetchingListings(false);
-        }
-      }
-    }, [debouncedQuery, debouncedLocation, sort, user?.id]);
-
-    useEffect(() => {
-      nextCursorRef.current = null;
-      setAll([]);
-      setHasNext(false);
-      loadListings({ cursor: null, replace: true });
-    }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
-
-    const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
-      nextCursorRef.current = null;
-      if (!preserveExisting) {
-        setAll([]);
-        setHasNext(false);
-      }
-      await loadListings({ cursor: null, replace: true });
-    }, [loadListings]);
-
-    useEffect(() => {
-      if (tab !== 'browse') return;
-      const el = sentinelRef.current;
-      if (!el) return;
-      const observer = new IntersectionObserver(entries => {
-        const entry = entries[0];
-        if (!entry || !entry.isIntersecting) return;
-        if (!hasNext || loadingListingsRef.current) return;
-        if (!nextCursorRef.current) return;
-        loadListings({ cursor: nextCursorRef.current, replace: false });
-      }, { rootMargin: '200px' });
-      observer.observe(el);
-      return () => observer.disconnect();
-    }, [hasNext, loadListings, tab]);
-
-    useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
+    useEffect(() => { if (!user) resetListingQueue(); }, [user?.id, resetListingQueue]);
 
     const toggleSold = useCallback(async (listing, makeSold) => {
       try {
@@ -6608,7 +6145,6 @@ function App(){
     }
 
     // Persistent cover cache: coverById[id] = { url, w, h } | null
-    const [coverById, setCoverById] = useState(() => (Object.create(null)));
     const ensureCover = useCallback(async (id) => {
       if (id == null) return;
       if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
@@ -6973,59 +6509,27 @@ function App(){
     );
   }
 
-  function normalizePushMeta(value) {
-    const source = value && typeof value === 'object'
-      ? (value.push_meta && typeof value.push_meta === 'object'
-          ? value.push_meta
-          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
-      : null;
-    const available = !!source?.available;
-    const vapid = typeof source?.vapid_public_key === 'string'
-      ? source.vapid_public_key.trim()
-      : (typeof source?.vapidPublicKey === 'string' ? source.vapidPublicKey.trim() : '');
-    return {
-      available: available && !!vapid,
-      vapidPublicKey: vapid || null
-    };
-  }
+export function AppProviders({ children }) {
+  return H(AuthProvider, { api },
+    H(NotificationsProvider, null,
+      H(ListingsProvider, null,
+        H(UploadsProvider, null, children))));
+}
 
-  function useAuth() {
-    const [user, setUserState] = useState(null);
-    const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
+export function AppRoot() {
+  return H(App);
+}
 
-    const setUser = useCallback((next) => {
-      setUserState(next || null);
-      setPushMeta(normalizePushMeta(next));
-    }, []);
-
-    useEffect(() => {
-      let alive = true;
-      (async () => {
-        try {
-          const me = await api.me();
-          if (!alive) return;
-          setUser(me);
-        } catch {
-          if (!alive) return;
-          setUser(null);
-        }
-      })();
-      return () => { alive = false; };
-    }, [setUser]);
-
-    return { user, setUser, pushMeta };
-  }
-
-  // Robust mount (React 18+ or older)
-  const rootEl = document.getElementById('root');
+export function renderApp(rootEl) {
+  if (!rootEl) return;
+  const tree = H(AppProviders, null, H(App));
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
-    root.render(H(App));
+    root.render(tree);
   } else {
-    ReactDOM.render(H(App), rootEl);
+    ReactDOM.render(tree, rootEl);
   }
-
-})();
+}
 
 
 
