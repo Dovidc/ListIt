@@ -21,6 +21,22 @@
 (() => {
   const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
+  const core = window.ListItCore || {};
+  const {
+    createApiClient,
+    formatCurrency,
+    formatDistance,
+    haversineMeters: coreHaversineMeters
+  } = core;
+
+  if (typeof createApiClient !== 'function') {
+    throw new Error('ListIt core bundle failed to load.');
+  }
+
+  const price = (n) => formatCurrency(n ?? 0);
+  const fmtDistance = (m) => formatDistance(m);
+  const haversineMeters = (...args) => coreHaversineMeters(...args);
+
   // Device detection
   // Strict mobile check (keeps Nearby off PCs but ON for phones/tablets)
   // - Matches iPhone/Android/Windows Phone
@@ -45,28 +61,9 @@
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
-  function price(n) { return Number(n ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
   function seenKey(userId){ return `listit_seen_${userId||'anon'}`; }
   function loadSeen(userId){ try{ return JSON.parse(localStorage.getItem(seenKey(userId))||'{}'); }catch{ return {}; } }
   function saveSeen(userId, map){ try{ localStorage.setItem(seenKey(userId), JSON.stringify(map||{})); }catch{} }
-  function fmtDistance(m){
-    if (!Number.isFinite(m)) return '';
-    if (m < 1609.344 * 0.3) {
-      const ft = m * 3.28084;
-      if (ft < 1000) return `${Math.round(ft)} ft`;
-      return `${Math.round(ft/100)/10}k ft`;
-    }
-    const mi = m / 1609.344;
-    return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
-  }
-  const _toRad = d => d * Math.PI / 180;
-  function haversineMeters(aLat, aLon, bLat, bLon) {
-    const R = 6371000;
-    const dLat = _toRad(bLat - aLat);
-    const dLon = _toRad(bLon - aLon);
-    const s1 = Math.sin(dLat/2), s2 = Math.sin(dLon/2);
-    return 2 * R * Math.asin(Math.sqrt(s1*s1 + Math.cos(_toRad(aLat))*Math.cos(_toRad(bLat)) * s2*s2));
-  }
   
   // NEW: Convert S3 URL to data URL for AI analysis
   async function urlToDataUrl(url) {
@@ -414,311 +411,18 @@
   }
 
   // --- API ---
-const api = {
-  async _fetch(url, opts = {}, meta = {}) {
-    const silent = !!meta.silent;
-    if (!silent) AppNav.incLoad();
-    try {
-      const res = await fetch(url, { credentials: 'include', ...opts });
-      if (res.status === 401) {
-        AppNav.setUser(null);
-        AppNav.setTab('browse');
-        throw new Error('auth');
-      }
-      if (res.status === 423) {
-        try { await res.json(); } catch {}
-        AppNav.notifyLocked();
-        throw new Error('account_locked');
-      }
-      if (!res.ok) {
-        let payload = null;
-        try { payload = await res.json(); } catch {}
-        const msg = (payload?.error) || 'request_failed';
-        if (msg === 'account_locked') AppNav.notifyLocked();
-        throw new Error(msg);
-      }
-      const text = await res.text();
-      if (!text) return null;
-      try {
-        return JSON.parse(text);
-      } catch (err) {
-        const parseError = new Error('invalid_json');
-        parseError.cause = err;
-        parseError.responseText = text;
-        throw parseError;
-      }
-    } finally {
-      if (!silent) AppNav.decLoad();
-    }
-  },
+  const api = createApiClient({
+    onRequestStart: () => AppNav.incLoad(),
+    onRequestEnd: () => AppNav.decLoad(),
+    onUnauthorized: () => {
+      AppNav.setUser(null);
+      AppNav.setTab('browse');
+    },
+    onAccountLocked: () => AppNav.notifyLocked(),
+    fetchImpl: (input, init) => fetch(input, init)
+  });
 
-  me(meta) { return this._fetch('/api/me', { method:'GET' }, meta); },
-  
-  // In your api object, update login and register methods:
-login(email, password, meta) {
-  return this._fetch('/api/login', { 
-    method:'POST', 
-    headers:{'Content-Type':'application/json'}, 
-    body:JSON.stringify({ email, password }) 
-  }, meta);
-},
 
-register(payload, meta) { 
-  return this._fetch('/api/register', { 
-    method:'POST', 
-    headers:{'Content-Type':'application/json'}, 
-    body:JSON.stringify(payload) 
-  }, meta);
-},
-  
-  async logout(meta) {
-    try {
-      await this._fetch('/api/logout', { method:'POST' }, meta);
-    } catch {}
-  },
-
-  pushSubscribe(subscription, meta) {
-    if (!subscription) return Promise.resolve(null);
-    return this._fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
-    }, meta);
-  },
-
-  pushUnsubscribe(subscription, meta) {
-    if (!subscription) return Promise.resolve(null);
-    return this._fetch('/api/push/unsubscribe', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
-    }, meta);
-  },
-
-    updatePaypalEmail(paypal_email, meta) {
-      return this._fetch('/api/me/paypal', {
-        method:'PUT',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ paypal_email })
-      }, meta);
-    },
-
-    // NEW: listAll supports legacy (q, loc) or params object { q, loc, page, limit, sort }
-    listAll(a, b, meta) {
-      let q, loc, page, limit, sort, cursor;
-      if (typeof a === 'object' && a !== null) {
-        q = a.q || '';
-        loc = a.loc || '';
-        page = a.page || 1;
-        limit = a.limit || 75;
-        sort = a.sort || 'new';
-        cursor = a.cursor || null;
-        meta = b || {};
-      } else {
-        q = a || '';
-        loc = b || '';
-        page = 1;
-        limit = 75;
-        sort = 'new';
-      }
-      const params = new URLSearchParams();
-      if (q)   params.set('q', q);
-      if (loc) params.set('loc', loc);
-      params.set('noimg', '1'); // thin-fetch
-      if (cursor != null) params.set('cursor', String(cursor));
-      else params.set('page', String(page));
-      params.set('limit', String(limit));
-      params.set('sort', sort);
-      const url = '/api/listings' + (params.toString() ? `?${params.toString()}` : '');
-      return this._fetch(url, { method: 'GET' }, meta);
-    },
-
-        // NEW: Get listings by a specific user
-    listByUser(userId, meta) {
-      return this._fetch(`/api/users/${userId}/listings`, { method:'GET' }, meta);
-    },
-
-    listMine(meta)      { return this._fetch('/api/listings?mine=1', { method:'GET' }, meta); },
-    createListing(payload, meta) {
-      return this._fetch('/api/listings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
-    },
-    updateListing(id, payload, meta) {
-      return this._fetch(`/api/listings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }, meta);
-    },
-    markListingSold(id, sold, meta) {
-      return this.updateListing(id, { sold: !!sold }, meta);
-    },
-    deleteListing(id, meta) { return this._fetch(`/api/listings/${id}`, { method:'DELETE' }, meta); },
-
-    adminDeleteListing(id, meta) { return this._fetch(`/api/admin/listings/${id}`, { method:'DELETE' }, meta); },
-    adminDeleteAll(meta)       { return this._fetch('/api/admin/listings', { method:'DELETE' }, meta); },
-    adminSeedListings(options = {}, meta) {
-      let payload = null;
-      if (options && typeof options === 'object' && options !== null) {
-        const count = Number(options.count);
-        if (Number.isFinite(count) && count > 0) {
-          payload = { count: Math.floor(count) };
-        }
-      }
-      const opts = { method: 'POST' };
-      if (payload) {
-        opts.headers = { 'Content-Type': 'application/json' };
-        opts.body = JSON.stringify(payload);
-      }
-      return this._fetch('/api/admin/listings/seed', opts, meta);
-    },
-    adminDeleteSeedListings(meta) { return this._fetch('/api/admin/listings/seed', { method:'DELETE' }, meta); },
-
-    listAds(meta) { return this._fetch('/api/ads', { method:'GET' }, meta); },
-    adminListFlagged(meta) { return this._fetch('/api/admin/flagged', { method:'GET' }, meta); },
-    adminDeleteFlagged(id, meta) { return this._fetch(`/api/admin/flagged/${id}`, { method:'DELETE' }, meta); },
-    adminListAds(meta) { return this._fetch('/api/admin/ads', { method:'GET' }, meta); },
-    adminCreateAd(payload, meta) {
-      return this._fetch('/api/admin/ads', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
-      }, meta);
-    },
-    adminUpdateAd(id, payload, meta) {
-      return this._fetch(`/api/admin/ads/${id}`, {
-        method:'PUT',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
-      }, meta);
-    },
-    adminDeleteAd(id, meta) {
-      return this._fetch(`/api/admin/ads/${id}`, { method:'DELETE' }, meta);
-    },
-
-    searchCities(q, meta) {
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      const url = '/api/cities' + (params.toString() ? `?${params.toString()}` : '');
-      return this._fetch(url, { method:'GET' }, { ...(meta || {}), silent: true });
-    },
-
-    ensureConversation({ with_user_id, listing_id }, meta) {
-      return this._fetch('/api/conversations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ with_user_id, listing_id }) }, meta);
-    },
-    listConversations(meta) { return this._fetch('/api/conversations', { method:'GET' }, meta); },
-    getMessages(id, meta)     { return this._fetch(`/api/conversations/${id}/messages`, { method:'GET' }, meta); },
-    sendMessage(id, body, images, meta){
-      return this._fetch(`/api/conversations/${id}/messages`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ body, images })
-      }, meta);
-    },
-    // delete a conversation
-    deleteConversation(id, meta) {
-      return this._fetch(`/api/conversations/${id}`, { method:'DELETE' }, meta);
-    },
-
-    getListingImages(id, meta){ return this._fetch(`/api/listings/${id}/images`, { method:'GET' }, meta); },
-
-    // NEW: batch cover prewarm
-    getCoversBatch(ids = [], meta) {
-      const idsStr = Array.from(new Set(ids.filter(Number.isFinite))).slice(0, 200).join(',');
-      if (!idsStr) return Promise.resolve([]);
-      return this._fetch(`/api/listings/covers?ids=${idsStr}`, { method:'GET' }, meta);
-    },
-
-    aiAnalyze({ images, hint }, meta) {
-      return this._fetch('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ images, hint }) }, meta);
-    },
-
-    reverseGeocode(lat, lon, meta) {
-      return this._fetch(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
-    },
-
-    // Nearby
-    listNearby(lat, lon, radius_m = 150, meta) {
-      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radius_m)}`;
-      return this._fetch(url, { method:'GET' }, meta);
-    },
-
-    reportSeller(payload, meta) {
-      return this._fetch('/api/reports', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(payload || {})
-      }, meta);
-    },
-
-    adminSearchUsers(params = {}, meta) {
-      const q = params.q ?? params.query ?? '';
-      const limit = params.limit;
-      const searchParams = new URLSearchParams();
-      if (q) searchParams.set('q', q);
-      if (limit) searchParams.set('limit', String(limit));
-      const url = '/api/admin/users/search' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-      return this._fetch(url, { method:'GET' }, meta);
-    },
-
-    adminGetUser(id, meta) {
-      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
-      return this._fetch(`/api/admin/users/${id}`, { method:'GET' }, meta);
-    },
-
-    adminGetUserReports(id, params = {}, meta) {
-      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
-      const searchParams = new URLSearchParams();
-      if (params.limit) searchParams.set('limit', String(params.limit));
-      const url = `/api/admin/users/${id}/reports` + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-      return this._fetch(url, { method:'GET' }, meta);
-    },
-
-    adminUpdateUserStatus(id, payload = {}, meta) {
-      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
-      return this._fetch(`/api/admin/users/${id}/status`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(payload || {})
-      }, meta);
-    },
-
-    adminTopReports(params = {}, meta) {
-      const searchParams = new URLSearchParams();
-      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));
-      if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));
-      if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));
-      const url = '/api/admin/reports/top' + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-      return this._fetch(url, { method:'GET' }, meta);
-    },
-
-    adminClearUserReports(id, payload = {}, meta) {
-      if (!Number.isFinite(Number(id))) return Promise.reject(new Error('invalid_user'));
-      return this._fetch(`/api/admin/users/${id}/reports/clear`, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify(payload || {})
-      }, meta);
-    },
-
-    // --- S3 upload helpers ---
-    signUpload({ filename, contentType, bytes }, meta) {
-      return this._fetch('/api/uploads/sign', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ filename, contentType, bytes })
-      }, meta);
-    },
-    finalizeUpload({ listingId, key, url, width, height, bytes }, meta) {
-      const payload = {};
-      if (listingId != null) payload.listingId = listingId;
-      if (key != null) payload.key = key;
-      if (url != null) payload.url = url;
-      if (width != null) payload.width = width;
-      if (height != null) payload.height = height;
-      if (bytes != null) payload.bytes = bytes;
-      return this._fetch('/api/uploads/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
-      }, meta);
-    }
-  };
 
   function createConcurrencyLimiter(maxConcurrent = 3) {
     let active = 0;
