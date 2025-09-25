@@ -12,20 +12,24 @@ self.addEventListener('activate', (event) => {
   }
 });
 
-function parsePushData(data) {
+async function parsePushData(data) {
   if (!data) return {};
   try {
-    return data.json();
+    return await data.json();
   } catch (err) {
+    let text = '';
     try {
-      const text = data.text();
-      return text ? JSON.parse(text) : {};
+      text = await data.text();
     } catch {
-      try {
-        return { body: data.text() };
-      } catch {
-        return {};
-      }
+      return {};
+    }
+
+    if (!text) return {};
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { body: text };
     }
   }
 }
@@ -78,12 +82,16 @@ function buildNotification(payload = {}) {
 }
 
 self.addEventListener('push', (event) => {
-  const payload = parsePushData(event.data);
-  const { title, options } = buildNotification(payload);
+  const promise = (async () => {
+    const payload = await parsePushData(event.data);
+    const { title, options } = buildNotification(payload);
+    return self.registration.showNotification(title, options);
+  })();
+
   if (event.waitUntil) {
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(promise);
   } else {
-    self.registration.showNotification(title, options);
+    promise.catch(() => {});
   }
 });
 
