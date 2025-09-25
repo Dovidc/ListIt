@@ -46,31 +46,34 @@ describe('web feature contexts', () => {
 
   test('listings store mirrors API responses', async () => {
     const listings = [{ id: 1, title: 'Bike' }, { id: 2, title: 'Desk' }];
-    const fetchImpl = jest.fn(async (input) => {
-      if (typeof input === 'string' && input.startsWith('/api/listings')) {
-        return {
-          ok: true,
-          status: 200,
-          text: async () => JSON.stringify({ rows: listings, hasNext: true })
-        };
-      }
-      throw new Error(`unexpected fetch: ${input}`);
-    });
+    const mine = [{ id: 2, title: 'Desk' }];
+    const covers = [{ id: 1, image_data: 'https://cdn.test/1.jpg' }];
 
-    const api = core.createApiClient({ fetchImpl });
+    const api = {
+      listAll: jest.fn(async () => ({ rows: listings, hasNext: true, next_cursor: 'next' })),
+      listMine: jest.fn(async () => mine),
+      getCoversBatch: jest.fn(async () => covers),
+      markListingSold: jest.fn(async () => {})
+    };
+
     const { createListingsStateForTest } = await import(fileUrl('../public/features/listings/ListingsContext.mjs'));
 
-    const store = createListingsStateForTest();
-    const response = await api.listAll({ q: 'bike' });
+    const store = createListingsStateForTest(api);
+    await store.loadListingsPage();
 
-    store.setQuery('bike');
-    store.setAll(response.rows);
-    store.setHasNext(response.hasNext);
-
-    expect(store.state.query).toBe('bike');
-    expect(store.state.debouncedQuery).toBe('bike');
+    expect(api.listAll).toHaveBeenCalledWith({ cursor: null, limit: 75 });
     expect(store.state.all).toEqual(listings);
+    expect(store.state.mine).toEqual(mine);
     expect(store.state.hasNext).toBe(true);
+    expect(store.state.nextCursor).toBe('next');
+    expect(store.state.coverById[1]).toEqual({ url: 'https://cdn.test/1.jpg' });
+
+    await store.refreshListings({ preserveExisting: true });
+    expect(api.listAll).toHaveBeenCalledTimes(2);
+
+    await store.toggleSold({ id: 1 }, true);
+    expect(api.markListingSold).toHaveBeenCalledWith(1, true);
+    expect(store.state.all).toEqual([{ id: 2, title: 'Desk' }]);
   });
 
   test('uploads preferences persist to storage', async () => {
