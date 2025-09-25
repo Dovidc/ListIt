@@ -6,7 +6,7 @@ This roadmap outlines the major workstreams required to evolve ListIt from a bro
 - Extract reusable business logic (API client, validation, model transformers, feature services) from `public/app.js` into framework-agnostic modules published under a new `shared/` or `packages/core/` workspace.
 - Convert the extracted modules to TypeScript or modern ES modules, add unit tests, and expose typed entry points that can be consumed by both the web bundler and native build tooling.
 - Introduce a bundling step (e.g., Vite, Rollup, or tsup) that can output both browser-friendly bundles and Node-compatible builds for reuse in native bridge layers.
-- Ship an initial shared build that exposes a stable global (e.g., `window.ListItShared.createApiClient`) for the legacy web bundle while emitting CommonJS/ESM outputs native tooling can import during early integration work.
+
 
 ## 2. Modularize the Web Client
 - Split the monolithic React bundle into feature folders (auth, listings, uploads, notifications) that import the shared core instead of duplicating logic.

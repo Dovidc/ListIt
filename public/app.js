@@ -414,16 +414,7 @@
   }
 
   // --- API ---
-  const api = (window.ListItShared && typeof window.ListItShared.createApiClient === 'function')
-    ? window.ListItShared.createApiClient({
-        onRequestStart: () => AppNav.incLoad(),
-        onRequestEnd: () => AppNav.decLoad(),
-        onAuthError: () => {
-          AppNav.setUser(null);
-          AppNav.setTab('browse');
-        },
-        onAccountLocked: () => {
-          AppNav.notifyLocked();
+
         }
       })
     : (() => { throw new Error('ListItShared.createApiClient not available'); })();
