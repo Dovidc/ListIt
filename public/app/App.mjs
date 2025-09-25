@@ -251,39 +251,15 @@ const { useCallback, useEffect, useMemo, useRef, useState } = React;
     return r.top + (window.scrollY || 0);
   }
 
-  // --- NEW: robust response guards for listings / pagination ---
-  function normalizeListingsResponse(res, limit = 75) {
-    let rows = [];
-    if (Array.isArray(res)) rows = res;
-    else if (res && typeof res === 'object') {
-      if (Array.isArray(res.rows)) rows = res.rows;
-      else if (Array.isArray(res.items)) rows = res.items;
-      else if (Array.isArray(res.listings)) rows = res.listings;
-      else if (Array.isArray(res.data)) rows = res.data;
-    }
-    let hasNext = false;
-    let nextCursor = null;
-    if (res && typeof res === 'object') {
-      if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
-      else if (typeof res.next === 'boolean') hasNext = res.next;
-      else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
-        const shown = (res.page - 1) * limit + rows.length;
-        hasNext = shown < res.total;
-      } else {
-        hasNext = rows.length === limit;
-      }
-      if (res.next_cursor != null) nextCursor = res.next_cursor;
-      else if (res.cursor != null) nextCursor = res.cursor;
-    } else {
-      hasNext = rows.length === limit;
-    }
-    return { rows, hasNext, nextCursor };
-  }
-  const asArray = (x) =>
-    Array.isArray(x) ? x
-    : (x && typeof x === 'object' && (Array.isArray(x.rows) || Array.isArray(x.items) || Array.isArray(x.listings) || Array.isArray(x.data)))
-      ? normalizeListingsResponse(x).rows
-      : [];
+  const asArray = (x) => {
+    if (Array.isArray(x)) return x;
+    if (!x || typeof x !== 'object') return [];
+    if (Array.isArray(x.rows)) return x.rows;
+    if (Array.isArray(x.items)) return x.items;
+    if (Array.isArray(x.listings)) return x.listings;
+    if (Array.isArray(x.data)) return x.data;
+    return [];
+  };
 
   // --- NEW: zero-dependency virtualized masonry (kept; used by Nearby) ---
   function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
@@ -5184,8 +5160,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
   }
 
   // ---------- App ----------
-  const PAGE_SIZE = 75;
-
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
@@ -5825,7 +5799,13 @@ function App(){
       editing,
       setEditing,
       debouncedQuery,
-      debouncedLocation
+      debouncedLocation,
+      coverById,
+      ensureCover,
+      loadListingsPage,
+      refreshListings,
+      reloadMineOnly,
+      toggleSold
     } = useListings();
     const {
       showForm,
@@ -5838,14 +5818,9 @@ function App(){
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
-      listingQueueRef,
-      listingQueueProcessingRef,
       showQueueToast,
-      setShowQueueToast,
       queuePendingCount,
-      setQueuePendingCount,
-      toastTimerRef,
-      showQueueReminder
+      enqueueListingJob
     } = useUploads();
     const {
       banner,
@@ -5887,37 +5862,6 @@ function App(){
     const backgroundQueueEnabled = true;
 
     const isMobile = isMobileDevice();
-
-    useEffect(() => () => {
-      listingQueueRef.current = [];
-      listingQueueProcessingRef.current = false;
-    }, [listingQueueRef, listingQueueProcessingRef]);
-
-    const processNextListingJob = useCallback(() => {
-      if (listingQueueProcessingRef.current) return;
-      const job = listingQueueRef.current.shift();
-      if (!job) {
-        setQueuePendingCount(0);
-        return;
-      }
-      listingQueueProcessingRef.current = true;
-      Promise.resolve()
-        .then(() => job())
-        .catch((err) => { console.error('Background listing job failed:', err); })
-        .finally(() => {
-          listingQueueProcessingRef.current = false;
-          setQueuePendingCount(listingQueueRef.current.length);
-          processNextListingJob();
-        });
-    }, []);
-
-    const enqueueListingJob = useCallback((job) => {
-      if (typeof job !== 'function') return;
-      listingQueueRef.current.push(job);
-      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
-      showQueueReminder();
-      processNextListingJob();
-    }, [processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {
@@ -6130,99 +6074,6 @@ function App(){
       setViewingSeller(null);
     }
 
-    // Reload helpers
-    async function reloadMineOnly(){
-      if (!user) { setMine([]); return; }
-      const m = await api.listMine();
-      setMine(asArray(m)||[]);
-    }
-
-    const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
-      const req = ++reloadReqRef.current;
-      loadingListingsRef.current = true;
-      setIsFetchingListings(true);
-      try {
-        const res = await api.listAll({
-          q: debouncedQuery.trim() || '',
-          loc: debouncedLocation.trim() || '',
-          cursor,
-          limit: PAGE_SIZE,
-          sort
-        });
-
-        if (req !== reloadReqRef.current) return;
-
-        const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, PAGE_SIZE);
-        const newRows = rows || [];
-        setHasNext(!!hasNext);
-
-        setAll(prev => {
-          if (replace || cursor == null) return newRows;
-          if (!prev || !prev.length) return newRows;
-          const existing = new Set(prev.map(r => r.id));
-          const appended = newRows.filter(r => !existing.has(r.id));
-          return appended.length ? [...prev, ...appended] : prev;
-        });
-
-        if (cursor == null) {
-          if (user) {
-            try { const m = await api.listMine({ silent: true }); setMine(asArray(m)); } catch {}
-          } else {
-            setMine([]);
-          }
-        }
-
-        if (newRows.length) {
-          try {
-            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
-            if (ids.length) {
-              const covers = await api.getCoversBatch(ids, { silent: true });
-              if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
-                const patch = {};
-                covers.forEach(r => {
-                  if (!r || r.id == null) return;
-                  if (r.image_data) patch[r.id] = { url: r.image_data };
-                });
-                if (Object.keys(patch).length) {
-                  setCoverById(prev => ({ ...prev, ...patch }));
-                }
-              }
-            }
-          } catch {}
-        }
-
-        nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
-      } catch (e) {
-        if (req === reloadReqRef.current) {
-          console.error('load listings failed', e);
-          if (replace || cursor == null) setAll([]);
-          setHasNext(false);
-          if (cursor == null && !user) setMine([]);
-        }
-      } finally {
-        if (req === reloadReqRef.current) {
-          loadingListingsRef.current = false;
-          setIsFetchingListings(false);
-        }
-      }
-    }, [debouncedQuery, debouncedLocation, sort, user?.id]);
-
-    useEffect(() => {
-      nextCursorRef.current = null;
-      setAll([]);
-      setHasNext(false);
-      loadListings({ cursor: null, replace: true });
-    }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
-
-    const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
-      nextCursorRef.current = null;
-      if (!preserveExisting) {
-        setAll([]);
-        setHasNext(false);
-      }
-      await loadListings({ cursor: null, replace: true });
-    }, [loadListings]);
-
     useEffect(() => {
       if (tab !== 'browse') return;
       const el = sentinelRef.current;
@@ -6232,36 +6083,13 @@ function App(){
         if (!entry || !entry.isIntersecting) return;
         if (!hasNext || loadingListingsRef.current) return;
         if (!nextCursorRef.current) return;
-        loadListings({ cursor: nextCursorRef.current, replace: false });
+        loadListingsPage({ cursor: nextCursorRef.current, replace: false });
       }, { rootMargin: '200px' });
       observer.observe(el);
       return () => observer.disconnect();
-    }, [hasNext, loadListings, tab]);
+    }, [hasNext, loadListingsPage, tab]);
 
     useEffect(() => { if (tab === 'profile') reloadMineOnly(); }, [tab, user?.id]);
-
-    const toggleSold = useCallback(async (listing, makeSold) => {
-      try {
-        await api.markListingSold(listing.id, makeSold);
-        try {
-          const mineRes = await api.listMine({ silent: true });
-          setMine(asArray(mineRes) || []);
-        } catch {}
-        setSelectedListing(prev => {
-          if (prev && prev.id === listing.id) {
-            return { ...prev, sold: makeSold ? 1 : 0 };
-          }
-          return prev;
-        });
-        if (makeSold) {
-          setAll(prev => Array.isArray(prev) ? prev.filter(it => it.id !== listing.id) : prev);
-        }
-        await refreshListings();
-      } catch (e) {
-        console.error('toggle sold failed', e);
-        alert('Failed to update sold status. Please try again.');
-      }
-    }, [refreshListings]);
 
     // Unread poll
     async function recomputeUnread() {
@@ -6572,24 +6400,6 @@ function App(){
     }
 
     // Persistent cover cache: coverById[id] = { url, w, h } | null
-    const [coverById, setCoverById] = useState(() => (Object.create(null)));
-    const ensureCover = useCallback(async (id) => {
-      if (id == null) return;
-      if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
-      try {
-        const arr = await api.getListingImages(id, { silent: true });
-        let obj = null;
-        if (Array.isArray(arr) && arr.length) {
-          obj = typeof arr[0] === 'string'
-            ? { url: arr[0], w: null, h: null }
-            : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
-        }
-        setCoverById((prev) => ({ ...prev, [id]: obj }));
-      } catch {
-        setCoverById((prev) => ({ ...prev, [id]: null }));
-      }
-    }, [coverById]);
-
     // Build render items with best cover + aspect ratio
     const items = useMemo(() => {
       return (feed || []).map(it => {
@@ -6940,7 +6750,7 @@ function App(){
 export function AppProviders({ children }) {
   return H(AuthProvider, { api },
     H(NotificationsProvider, null,
-      H(ListingsProvider, null,
+      H(ListingsProvider, { api },
         H(UploadsProvider, null, children))));
 }
 
