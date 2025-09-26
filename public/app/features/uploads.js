@@ -304,7 +304,9 @@
       prepareListingForModal,
       warmListingImages,
       uploadFilesForListing,
-      uploadOneMessageImage
+      uploadOneMessageImage,
+      listingImageCache,
+      listingImageInFlight
     };
   }
 
