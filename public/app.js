@@ -5494,10 +5494,9 @@ function App(){
       getConversationMeta
     } = useMessageNotifications({
       onSelectConversation: (conversationId) => {
+        setViewingSeller(null);
         setTab('messages');
-        if (conversationId) {
-          setActiveConvoId(conversationId);
-        }
+        setActiveConvoId(conversationId || null);
       }
     });
 
