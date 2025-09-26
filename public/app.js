@@ -58,6 +58,7 @@
 
   // small bridge so api can redirect UI on 401s + track global loading
   const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
+  const PAGE_SIZE = 75;
 
   // --- Helpers ---
   function H(tag, props, ...children) { return React.createElement(tag, props || null, ...children); }
@@ -5045,8 +5046,6 @@ function MessagesPanel({ user, initialActiveId, onSeenChange, onConversationsUpd
   }
 
   // ---------- App ----------
-  const PAGE_SIZE = 75;
-
 // Add this new component BEFORE the ListingForm component definition
 // --- Listing Form Modal ---
 // --- Listing Form Modal ---
