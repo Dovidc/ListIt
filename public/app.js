@@ -357,15 +357,6 @@
     };
   }
 
-  // --- Global Loader ---
-  function GlobalLoader({ active }) {
-    if (!active) return null;
-    return H('div', { className: 'global-loader' },
-      H('div', { className: 'spinner' }),
-      H('div', { className: 'loader-text' }, 'Loading...')
-    );
-  }
-
   function AdTile({ ad, cols = 4, className, preview = false }) {
     if (!ad) return null;
     const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
@@ -421,6 +412,18 @@
     onAccountLocked: () => AppNav.notifyLocked(),
     fetchImpl: (input, init) => fetch(input, init)
   });
+
+  const authFeatureFactory = window.ListItApp?.features?.auth?.createAuthFeature;
+  if (typeof authFeatureFactory !== 'function') {
+    throw new Error('Auth feature bundle failed to load.');
+  }
+  const { AuthProvider, useAuth, AuthModal } = authFeatureFactory({ api, ReactDOM });
+
+  const loadingFeatureFactory = window.ListItApp?.features?.loading?.createLoadingFeature;
+  if (typeof loadingFeatureFactory !== 'function') {
+    throw new Error('Loading feature bundle failed to load.');
+  }
+  const { GlobalLoadingProvider, useGlobalLoading } = loadingFeatureFactory({ AppNav });
 
 
 
@@ -890,162 +893,6 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
     )
   );
 }
-
-  // --- Auth Modal Component (NEW) ---
-function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
-  const [mode, setMode] = useState(initialMode);
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  useEffect(() => {
-    if (isOpen) {
-      setMode(initialMode);
-      setError('');
-      setUsername('');
-      setEmail('');
-      setPassword('');
-    }
-  }, [isOpen, initialMode]);
-  
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    try {
-      let user;
-      if (mode === 'login') {
-        user = await api.login(email, password);
-      } else {
-        user = await api.register({ username, email, password });
-      }
-      onSuccess(user);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  }
-  
-  if (!isOpen) return null;
-  
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    try {
-      let user;
-      if (mode === 'login') {
-        user = await api.login(email, password);
-      } else {
-        user = await api.register({ username, email, password });
-      }
-      onSuccess(user);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  }
-  
-  if (!isOpen) return null;
-  
-  return ReactDOM.createPortal(
-    H('div', { 
-      className: 'modal open',
-      onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
-    },
-      H('div', { className: 'modal-inner', style: { maxWidth: '420px', padding: '32px', background: '#fff', color: '#111' } },
-        H('button', { className: 'close', onClick: onClose }, 'x'),
-        H('h2', { style: { margin: '0 0 24px', fontSize: '28px', color: '#111' } }, 
-          mode === 'login' ? 'Welcome Back' : 'Create Account'),
-        
-        H('form', { onSubmit: handleSubmit },
-          mode === 'register' && H('div', { style: { marginBottom: '16px' } },
-            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Username'),
-            H('input', {
-              type: 'text',
-              value: username,
-              onChange: e => setUsername(e.target.value),
-              placeholder: 'johndoe',
-              required: true,
-              disabled: loading
-            })
-          ),
-          
-          H('div', { style: { marginBottom: '16px' } },
-            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color:'#111' } }, 'Email'),
-            H('input', {
-              type: 'email',
-              value: email,
-              onChange: e => setEmail(e.target.value),
-              placeholder: 'john@example.com',
-              required: true,
-              disabled: loading
-            })
-          ),
-          
-          H('div', { style: { marginBottom: '16px' } },
-            H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
-            H('input', {
-              type: 'password',
-              value: password,
-              onChange: e => setPassword(e.target.value),
-              placeholder: '--------',
-              required: true,
-              disabled: loading
-            })
-          ),
-          
-          error && H('div', { style: { color: '#be123c', margin: '12px 0' } }, error),
-          
-          H('button', {
-            type: 'submit',
-            className: 'btn primary',
-            style: { width: '100%', marginTop: '16px' },
-            disabled: loading
-          }, loading ? 'Loading...' : (mode === 'login' ? 'Log In' : 'Create Account')),
-          
-          H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
-            mode === 'login' 
-              ? H(React.Fragment, null,
-                  "Don't have an account? ",
-                  H('button', {
-                    type: 'button',
-                    onClick: () => setMode('register'),
-                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
-                  }, 'Register')
-                )
-              : H(React.Fragment, null,
-                  "Already have an account? ",
-                  H('button', {
-                    type: 'button',
-                    onClick: () => setMode('login'),
-                    style: { color: '#111', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontWeight: '600' }
-                  }, 'Log In')
-                )
-          )
-        )
-      )
-    ),
-    document.body
-  );
-}
-
 
   // --- MultiFilePicker (for S3 uploads) ---
   function MultiFilePicker({ files, onChange }) {
@@ -5790,6 +5637,7 @@ function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescr
 
 function App(){
     const { user, setUser, pushMeta } = useAuth();
+    const { isLoading } = useGlobalLoading();
     const [tab, setTab] = useState('browse');
     const [all, setAll] = useState([]);      // current page rows (thin)
     const [mine, setMine] = useState([]);
@@ -5838,7 +5686,6 @@ function App(){
     const windowFocusedRef = useRef(windowFocused);
     const [unreadCount, setUnreadCount] = useState(0);
     const [hasAdminUnread, setHasAdminUnread] = useState(false);
-    const [loadingCount, setLoadingCount] = useState(0);
 
     // MassList modal
     const [showMassList, setShowMassList] = useState(false);
@@ -6116,11 +5963,6 @@ function App(){
         AppNav.notifyLocked = () => {};
       };
     }, [setUser, setTab, showLockedBanner]);
-    useEffect(() => {
-      AppNav.incLoad = () => setLoadingCount(c => c + 1);
-      AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
-    }, []);
-
     useEffect(() => {
       if (!user?.is_admin && tab === 'admin') {
         setTab('browse');
@@ -6696,9 +6538,8 @@ function App(){
           'aria-label': 'Dismiss locked account notice'
         }, 'Dismiss')
       ),
-      H(GlobalLoader, { active: loadingCount > 0 }),
 
-      H('main', { className:'container' },
+      H('main', { className:'container', 'aria-busy': isLoading ? 'true' : 'false' },
         // NEW: Show seller profile if viewing
         viewingSeller && H(SellerProfile, {
           sellerId: viewingSeller.id,
@@ -6973,56 +6814,17 @@ function App(){
     );
   }
 
-  function normalizePushMeta(value) {
-    const source = value && typeof value === 'object'
-      ? (value.push_meta && typeof value.push_meta === 'object'
-          ? value.push_meta
-          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
-      : null;
-    const available = !!source?.available;
-    const vapid = typeof source?.vapid_public_key === 'string'
-      ? source.vapid_public_key.trim()
-      : (typeof source?.vapidPublicKey === 'string' ? source.vapidPublicKey.trim() : '');
-    return {
-      available: available && !!vapid,
-      vapidPublicKey: vapid || null
-    };
-  }
-
-  function useAuth() {
-    const [user, setUserState] = useState(null);
-    const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
-
-    const setUser = useCallback((next) => {
-      setUserState(next || null);
-      setPushMeta(normalizePushMeta(next));
-    }, []);
-
-    useEffect(() => {
-      let alive = true;
-      (async () => {
-        try {
-          const me = await api.me();
-          if (!alive) return;
-          setUser(me);
-        } catch {
-          if (!alive) return;
-          setUser(null);
-        }
-      })();
-      return () => { alive = false; };
-    }, [setUser]);
-
-    return { user, setUser, pushMeta };
+  function Root() {
+    return H(GlobalLoadingProvider, null, H(AuthProvider, null, H(App)));
   }
 
   // Robust mount (React 18+ or older)
   const rootEl = document.getElementById('root');
   if (ReactDOM.createRoot) {
     const root = ReactDOM.createRoot(rootEl);
-    root.render(H(App));
+    root.render(H(Root));
   } else {
-    ReactDOM.render(H(App), rootEl);
+    ReactDOM.render(H(Root), rootEl);
   }
 
 })();
