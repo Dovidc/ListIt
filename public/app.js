@@ -497,8 +497,12 @@
     uploadFilesForListing,
     uploadOneMessageImage,
     listingImageCache,
-    listingImageInFlight
-  } = uploadsFeatureFactory({ api });
+    listingImageInFlight,
+    useFilePreviews,
+    filesToDataUrls,
+    fileToDataUrl,
+    AI_IMAGE_LIMIT
+  } = uploadsFeatureFactory({ api, React });
 
   const listingsFeatureFactory = window.ListItApp?.features?.listings?.createListingsFeature;
   if (typeof listingsFeatureFactory !== 'function') {
@@ -706,44 +710,6 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
       ))
     )
     );
-  }
-
-  // Helper: convert File[] to dataURLs for AI analysis only
-  const AI_IMAGE_LIMIT = 8;
-
-  async function filesToDataUrls(files = []) {
-    async function toB64(file) {
-      return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-    }
-    const out = [];
-    for (const f of files.slice(0, AI_IMAGE_LIMIT)) out.push(await toB64(f));
-    return out;
-  }
-  async function fileToDataUrl(file) {
-    const arr = await filesToDataUrls([file]);
-    return arr && arr[0];
-  }
-
-  function useFilePreviews(files = []) {
-    const [previews, setPreviews] = useState([]);
-
-    useEffect(() => {
-      if (!files || files.length === 0) {
-        setPreviews([]);
-        return;
-      }
-
-      const entries = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
-      setPreviews(entries);
-
-      return () => {
-        for (const entry of entries) {
-          try { URL.revokeObjectURL(entry.url); } catch (_) {}
-        }
-      };
-    }, [files]);
-
-    return previews;
   }
 
   // --- Shared help modal shell (high-contrast layout) ---
