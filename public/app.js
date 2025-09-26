@@ -469,6 +469,22 @@
   }
   const { useMessageNotifications } = notificationsFeatureFactory({ React });
 
+  const listingsContextFactory = window.ListItApp?.contexts?.listings?.createListingsContext;
+  if (typeof listingsContextFactory !== 'function') {
+    throw new Error('Listings context bundle failed to load.');
+  }
+  const { ListingsProvider, useListings } = listingsContextFactory({ React });
+
+  const notificationsContextFactory = window.ListItApp?.contexts?.notifications?.createNotificationsContext;
+  if (typeof notificationsContextFactory !== 'function') {
+    throw new Error('Notifications context bundle failed to load.');
+  }
+  const { NotificationsProvider, useNotifications } = notificationsContextFactory({ React });
+
+  window.ListItApp.hooks = window.ListItApp.hooks || {};
+  window.ListItApp.hooks.useListings = useListings;
+  window.ListItApp.hooks.useNotifications = useNotifications;
+
 
 
 
@@ -5394,6 +5410,7 @@ function App(){
     const [banner, setBanner] = useState(null);
     const [ads, setAds] = useState([]);
 
+    const listings = useListingsFeature({ user, currentTab: tab });
     const {
       listings: all,
       setListings: setAll,
@@ -5420,7 +5437,7 @@ function App(){
       cityOptions,
       items,
       ensureCover
-    } = useListingsFeature({ user, currentTab: tab });
+    } = listings;
 
     const showLockedBanner = useCallback(() => {
       setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
@@ -5483,6 +5500,14 @@ function App(){
     const [queuePendingCount, setQueuePendingCount] = useState(0);
     const pushSetupRef = useRef({ userId: null, permission: null });
 
+    const notifications = useMessageNotifications({
+      onSelectConversation: (conversationId) => {
+        setViewingSeller(null);
+        setTab('messages');
+        setActiveConvoId(conversationId || null);
+      }
+    });
+
     const {
       messageToasts,
       showMessageToast,
@@ -5492,13 +5517,7 @@ function App(){
       playNotificationTone,
       resetNotifications,
       getConversationMeta
-    } = useMessageNotifications({
-      onSelectConversation: (conversationId) => {
-        setViewingSeller(null);
-        setTab('messages');
-        setActiveConvoId(conversationId || null);
-      }
-    });
+    } = notifications;
 
     const showQueueReminder = useCallback(() => {
       setShowQueueToast(true);
@@ -5974,7 +5993,9 @@ function App(){
     }, [openListingModal]);
 
     // ---------- RENDER ----------
-    return H(React.Fragment, null,
+    return H(ListingsProvider, { value: listings },
+      H(NotificationsProvider, { value: notifications },
+        H(React.Fragment, null,
       H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
       banner && H('div', { className:'global-banner', role:'status' },
         H('span', { className:'banner-text' }, banner.message),
@@ -6258,6 +6279,8 @@ function App(){
           H('div', { className: 'message-toast__title' }, toast.title),
           H('div', { className: 'message-toast__preview' }, toast.preview)
         ))
+      )
+        )
       )
     );
   }
