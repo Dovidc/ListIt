@@ -527,6 +527,15 @@
   }
   const { useListingQueue } = listingQueueFeatureFactory({ React });
 
+  const listingQueueContextFactory = window.ListItApp?.contexts?.listingQueue?.createListingQueueContext;
+  if (typeof listingQueueContextFactory !== 'function') {
+    throw new Error('Listing queue context bundle failed to load.');
+  }
+  const { ListingQueueProvider, useListingQueueState, ListingQueueToast } = listingQueueContextFactory({
+    React,
+    useListingQueue
+  });
+
   const listingsContextFactory = window.ListItApp?.contexts?.listings?.createListingsContext;
   if (typeof listingsContextFactory !== 'function') {
     throw new Error('Listings context bundle failed to load.');
@@ -543,6 +552,7 @@
   window.ListItApp.hooks.useListings = useListings;
   window.ListItApp.hooks.useNotifications = useNotifications;
   window.ListItApp.hooks.useListingQueue = useListingQueue;
+  window.ListItApp.hooks.useListingQueueState = useListingQueueState;
 
 
 
@@ -5487,10 +5497,8 @@ function App(){
 
     const {
       backgroundQueueEnabled,
-      showQueueToast,
-      queuePendingCount,
       enqueueListingJob
-    } = useListingQueue();
+    } = useListingQueueState();
 
     const pushSetupRef = useRef({ userId: null, permission: null });
 
@@ -6205,14 +6213,7 @@ function App(){
         onSuccess: handleAuthSuccess
       }),
 
-      H('div', {
-        className: `listing-queue-toast${showQueueToast ? ' show' : ''}`,
-        'aria-live': 'polite',
-        'data-count': queuePendingCount > 0 ? queuePendingCount : undefined
-      },
-        H('span', { className:'listing-queue-toast__icon', 'aria-hidden': true }, '✓'),
-        H('span', { className:'listing-queue-toast__text' }, 'listings in progres')
-      ),
+      H(ListingQueueToast, null),
 
       messageToasts.length > 0 && H('div', {
         className: 'message-toast-container',
@@ -6241,7 +6242,11 @@ function App(){
   }
 
   function Root() {
-    return H(AuthProvider, null, H(App));
+    return H(AuthProvider, null,
+      H(ListingQueueProvider, null,
+        H(App)
+      )
+    );
   }
 
   // Robust mount (React 18+ or older)
