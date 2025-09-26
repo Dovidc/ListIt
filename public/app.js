@@ -443,7 +443,9 @@
     prepareListingForModal,
     warmListingImages,
     uploadFilesForListing,
-    uploadOneMessageImage
+    uploadOneMessageImage,
+    listingImageCache,
+    listingImageInFlight
   } = uploadsFeatureFactory({ api });
 
   const listingsFeatureFactory = window.ListItApp?.features?.listings?.createListingsFeature;
