@@ -429,6 +429,23 @@
   }
   const { AuthProvider, useAuth, AuthModal } = authFeatureFactory({ api, ReactDOM });
 
+  const uploadsFeatureFactory = window.ListItApp?.features?.uploads?.createUploadsFeature;
+  if (typeof uploadsFeatureFactory !== 'function') {
+    throw new Error('Uploads feature bundle failed to load.');
+  }
+  const {
+    dedupeImageUrls,
+    collectListingImages,
+    selectPrimaryListingImage,
+    clearDraftCacheForFile,
+    uploadFileDraft,
+    fetchListingImagesCached,
+    prepareListingForModal,
+    warmListingImages,
+    uploadFilesForListing,
+    uploadOneMessageImage
+  } = uploadsFeatureFactory({ api });
+
   const listingsFeatureFactory = window.ListItApp?.features?.listings?.createListingsFeature;
   if (typeof listingsFeatureFactory !== 'function') {
     throw new Error('Listings feature bundle failed to load.');
@@ -444,299 +461,14 @@
     }
   });
 
-
-
-  function createConcurrencyLimiter(maxConcurrent = 3) {
-    let active = 0;
-    const queue = [];
-
-    const next = () => {
-      if (active >= maxConcurrent || queue.length === 0) return;
-      const { fn, resolve, reject } = queue.shift();
-      active += 1;
-
-      let finished = false;
-      const finalize = () => {
-        if (!finished) {
-          finished = true;
-          active -= 1;
-          next();
-        }
-      };
-
-      try {
-        Promise.resolve(fn()).then(
-          (value) => {
-            finalize();
-            resolve(value);
-          },
-          (err) => {
-            finalize();
-            reject(err);
-          }
-        );
-      } catch (err) {
-        finalize();
-        reject(err);
-      }
-    };
-
-    return function schedule(fn) {
-      return new Promise((resolve, reject) => {
-        queue.push({ fn, resolve, reject });
-        next();
-      });
-    };
+  const notificationsFeatureFactory = window.ListItApp?.features?.notifications?.createNotificationsFeature;
+  if (typeof notificationsFeatureFactory !== 'function') {
+    throw new Error('Notifications feature bundle failed to load.');
   }
+  const { useMessageNotifications } = notificationsFeatureFactory({ React });
 
-  const uploadDraftCache = new WeakMap();
-  const s3UploadLimiter = createConcurrencyLimiter(3);
-  const listingImageCache = new Map();
-  const listingImageInFlight = new Map();
 
-  function dedupeImageUrls(input) {
-    if (!Array.isArray(input)) return [];
-    const seen = new Set();
-    const out = [];
-    for (const raw of input) {
-      if (typeof raw !== 'string') continue;
-      const trimmed = raw.trim();
-      if (!trimmed) continue;
-      const key = trimmed.split('?')[0];
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(trimmed);
-    }
-    return out;
-  }
 
-  function collectListingImages(listing, primarySrc, options = {}) {
-    const { includeDataFallback = true, includeListingFallbackFields = true, extra = [] } = options;
-    const remote = [];
-    let dataFallback = null;
-
-    function push(url) {
-      if (!url || typeof url !== 'string') return;
-      const trimmed = url.trim();
-      if (!trimmed) return;
-      if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
-        if (includeDataFallback && !dataFallback) dataFallback = trimmed;
-      } else {
-        remote.push(trimmed);
-      }
-    }
-
-    const extras = Array.isArray(extra) ? extra : [extra];
-    extras.forEach(push);
-    push(primarySrc);
-
-    if (listing) {
-      if (Array.isArray(listing.images)) listing.images.forEach(push);
-      if (includeListingFallbackFields) {
-        push(listing.image_data);
-        push(listing.thumb_url);
-      }
-    }
-
-    const dedupedRemote = dedupeImageUrls(remote);
-    if (dedupedRemote.length) return dedupedRemote;
-    if (includeDataFallback && dataFallback) return [dataFallback];
-    return [];
-  }
-
-  function selectPrimaryListingImage(listing, primarySrc) {
-    const list = collectListingImages(listing, primarySrc, {
-      includeListingFallbackFields: true,
-      includeDataFallback: true
-    });
-    return Array.isArray(list) && list.length ? list[0] : '';
-  }
-
-  async function measureImageFile(file) {
-    if (!(file instanceof File)) {
-      return { width: null, height: null };
-    }
-    return new Promise((resolve) => {
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        const dims = { width: img.naturalWidth || null, height: img.naturalHeight || null };
-        URL.revokeObjectURL(objectUrl);
-        resolve(dims);
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve({ width: null, height: null });
-      };
-      img.src = objectUrl;
-    });
-  }
-
-  function clearDraftCacheForFile(file) {
-    if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
-  }
-
-  async function uploadFileDraft(file) {
-    if (!file) throw new Error('file_required');
-
-    if (!uploadDraftCache.has(file)) {
-      const uploadPromise = s3UploadLimiter(async () => {
-        const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-        if (sig?.error) throw new Error(sig.error);
-        if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
-
-        const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-        if (!putRes.ok) throw new Error('s3_put_failed');
-
-        const dims = await measureImageFile(file);
-
-        const finalizeRes = await api.finalizeUpload({
-          key: sig.Key,
-          url: sig.publicUrl,
-          width: dims.width,
-          height: dims.height,
-          bytes: file.size
-        }, { silent: true });
-
-        if (finalizeRes?.error) throw new Error(finalizeRes.error);
-        if (!finalizeRes?.uploadToken) throw new Error('missing_upload_token');
-
-        return {
-          uploadToken: finalizeRes.uploadToken,
-          publicUrl: finalizeRes.url || sig.publicUrl,
-          width: finalizeRes.width ?? dims.width ?? null,
-          height: finalizeRes.height ?? dims.height ?? null,
-          bytes: finalizeRes.bytes ?? file.size
-        };
-      }).catch((err) => {
-        clearDraftCacheForFile(file);
-        throw err;
-      });
-
-      uploadDraftCache.set(file, uploadPromise);
-    }
-
-    return uploadDraftCache.get(file);
-  }
-
-  async function fetchListingImagesCached(listingId, options = {}) {
-    const minCount = Number(options.minCount) || 0;
-    if (!Number.isFinite(Number(listingId))) return [];
-    if (listingImageInFlight.has(listingId)) {
-      return listingImageInFlight.get(listingId);
-    }
-    if (listingImageCache.has(listingId)) {
-      const cached = listingImageCache.get(listingId);
-      if (Array.isArray(cached) && cached.length >= minCount) {
-        return cached;
-      }
-    }
-    const promise = (async () => {
-      try {
-        const arr = await api.getListingImages(listingId);
-        const safe = Array.isArray(arr) ? arr.filter(Boolean) : [];
-        const deduped = dedupeImageUrls(safe);
-        if (deduped.length) {
-          listingImageCache.set(listingId, deduped);
-        } else {
-          listingImageCache.delete(listingId);
-        }
-        return deduped;
-      } catch {
-        listingImageCache.delete(listingId);
-        return [];
-      } finally {
-        listingImageInFlight.delete(listingId);
-      }
-    })();
-    listingImageInFlight.set(listingId, promise);
-    return promise;
-  }
-
-  function prepareListingForModal(listing, coverHint) {
-    if (!listing || typeof listing !== 'object') {
-      return { payload: null, images: [], cover: '' };
-    }
-
-    const candidateSources = [];
-    if (typeof coverHint === 'string') candidateSources.push(coverHint);
-    if (typeof listing.image_data === 'string') candidateSources.push(listing.image_data);
-    if (typeof listing.__cover === 'string') candidateSources.push(listing.__cover);
-    if (typeof listing.thumb_url === 'string') candidateSources.push(listing.thumb_url);
-
-    let cover = '';
-    for (const src of candidateSources) {
-      if (typeof src !== 'string') continue;
-      const trimmed = src.trim();
-      if (trimmed) {
-        cover = trimmed;
-        break;
-      }
-    }
-
-    const payload = { ...listing };
-    if (cover) payload.image_data = cover;
-
-    const inline = collectListingImages(payload, cover);
-    if (inline.length) {
-      payload.images = inline;
-      if (listing?.id) {
-        listingImageCache.set(listing.id, inline);
-      }
-    }
-
-    return { payload, images: inline, cover };
-  }
-
-  function warmListingImages(listingId, baseImages) {
-    if (!Number.isFinite(Number(listingId))) return;
-    const baseCount = Array.isArray(baseImages)
-      ? baseImages.length
-      : (Number.isFinite(Number(baseImages)) ? Number(baseImages) : 0);
-    const minCount = baseCount + 1;
-    fetchListingImagesCached(listingId, { minCount }).catch(() => {});
-  }
-
-  // Upload a single file to S3 then finalize in DB (for listings)
-  async function uploadOneImage(listingId, file) {
-    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-    if (sig?.error) throw new Error(sig.error);
-    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
-    if (!putRes.ok) throw new Error('s3_put_failed');
-
-    const dims = await measureImageFile(file);
-
-    await api.finalizeUpload({
-      listingId,
-      key: sig.Key,
-      url: sig.publicUrl,
-      width: dims.width,
-      height: dims.height,
-      bytes: file.size
-    });
-
-    return sig.publicUrl;
-  }
-
-  async function uploadFilesForListing(listingId, files = []) {
-    const out = [];
-    for (const f of files) {
-      const url = await uploadOneImage(listingId, f);
-      out.push(url);
-    }
-    return out;
-  }
-
-  // Upload a single file to S3 (for messages; no finalize, just return public URL)
-  async function uploadOneMessageImage(file) {
-    const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-    if (sig.error) throw new Error(sig.error);
-
-    const putRes = await fetch(sig.uploadUrl, { method:'PUT', body:file, headers:{ 'Content-Type': file.type } });
-    if (!putRes.ok) throw new Error('s3_put_failed');
-
-    return sig.publicUrl;
-  }
 
   // --- Attach icon button (Messages) ---
   function AttachButton({ onClick, title = 'Attach images', variant = 'library' }) {
@@ -5747,11 +5479,25 @@ function App(){
     const [showQueueToast, setShowQueueToast] = useState(false);
     const toastTimerRef = useRef(null);
     const [queuePendingCount, setQueuePendingCount] = useState(0);
-    const [messageToasts, setMessageToasts] = useState([]);
     const pushSetupRef = useRef({ userId: null, permission: null });
-    const toastTimersRef = useRef(new Map());
-    const conversationMapRef = useRef(new Map());
-    const audioCtxRef = useRef(null);
+
+    const {
+      messageToasts,
+      showMessageToast,
+      removeToast,
+      handleToastClick,
+      handleConversationsUpdate,
+      playNotificationTone,
+      resetNotifications,
+      getConversationMeta
+    } = useMessageNotifications({
+      onSelectConversation: (conversationId) => {
+        setTab('messages');
+        if (conversationId) {
+          setActiveConvoId(conversationId);
+        }
+      }
+    });
 
     const showQueueReminder = useCallback(() => {
       setShowQueueToast(true);
@@ -5764,11 +5510,6 @@ function App(){
     useEffect(() => () => {
       listingQueueRef.current = [];
       listingQueueProcessingRef.current = false;
-    }, []);
-
-    useEffect(() => () => {
-      toastTimersRef.current.forEach(clearTimeout);
-      toastTimersRef.current.clear();
     }, []);
 
     useEffect(() => {
@@ -5852,133 +5593,6 @@ function App(){
       }
     }, []);
 
-    const ensureAudioContext = useCallback(() => {
-      if (typeof window === 'undefined') return null;
-      const Ctor = window.AudioContext || window.webkitAudioContext;
-      if (!Ctor) return null;
-      if (!audioCtxRef.current) {
-        try {
-          audioCtxRef.current = new Ctor();
-        } catch (err) {
-          console.warn('Audio context initialization failed:', err);
-          return null;
-        }
-      }
-      return audioCtxRef.current;
-    }, []);
-
-    const playNotificationTone = useCallback(() => {
-      const ctx = ensureAudioContext();
-      if (!ctx) return;
-      const start = ctx.currentTime || 0;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-      try {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, start);
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.08, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + 0.5);
-      } catch (err) {
-        console.warn('Notification sound failed:', err);
-      }
-    }, [ensureAudioContext]);
-
-    useEffect(() => {
-      if (typeof window === 'undefined') return;
-      const unlock = () => {
-        const ctx = ensureAudioContext();
-        if (ctx && ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-      };
-      window.addEventListener('click', unlock);
-      window.addEventListener('keydown', unlock);
-      return () => {
-        window.removeEventListener('click', unlock);
-        window.removeEventListener('keydown', unlock);
-      };
-    }, [ensureAudioContext]);
-
-    const removeToast = useCallback((id) => {
-      if (!id) return;
-      const timers = toastTimersRef.current;
-      if (timers.has(id)) {
-        clearTimeout(timers.get(id));
-        timers.delete(id);
-      }
-      setMessageToasts(prev => prev.filter(t => t.id !== id));
-    }, []);
-
-    const showMessageToast = useCallback((payload = {}) => {
-      if (typeof window === 'undefined') return;
-      const now = Date.now();
-      const id = payload.id || `msg:${payload.messageId || now}`;
-      const senderName = (payload.senderName || '').toString().trim();
-      const listingTitle = (payload.listingTitle || '').toString().trim();
-      const imageCount = Number.isFinite(payload.imageCount)
-        ? Number(payload.imageCount)
-        : (payload.hasImages ? 1 : 0);
-      let preview = typeof payload.preview === 'string' ? payload.preview.trim() : '';
-      if (preview) preview = preview.replace(/\s+/g, ' ');
-      if (!preview) {
-        if (imageCount > 1) preview = 'Sent you photos.';
-        else if (imageCount === 1) preview = 'Sent you a photo.';
-        else preview = 'Tap to open the conversation.';
-      }
-      if (preview.length > 120) preview = `${preview.slice(0, 117)}…`;
-      const titleParts = [];
-      if (senderName) titleParts.push(senderName);
-      if (listingTitle) titleParts.push(listingTitle);
-      const title = titleParts.join(' · ') || 'New message';
-      const toast = {
-        id,
-        conversationId: payload.conversationId || null,
-        title,
-        preview,
-        ts: now
-      };
-      setMessageToasts(prev => {
-        const trimmed = prev.filter(item => now - item.ts < 5500 && item.id !== toast.id);
-        return [...trimmed, toast];
-      });
-      const duration = Number.isFinite(payload.durationMs) ? Number(payload.durationMs) : 6000;
-      const timers = toastTimersRef.current;
-      if (timers.has(id)) {
-        clearTimeout(timers.get(id));
-      }
-      const timerId = window.setTimeout(() => removeToast(id), duration);
-      timers.set(id, timerId);
-    }, [removeToast]);
-
-    const handleToastClick = useCallback((toast) => {
-      if (!toast) return;
-      setTab('messages');
-      if (toast.conversationId) {
-        setActiveConvoId(toast.conversationId);
-      }
-      removeToast(toast.id);
-    }, [removeToast]);
-
-    const handleConversationsUpdate = useCallback((list) => {
-      if (!Array.isArray(list)) {
-        conversationMapRef.current = new Map();
-        return;
-      }
-      const map = new Map();
-      for (const convo of list) {
-        if (!convo || convo.id == null) continue;
-        map.set(convo.id, convo);
-      }
-      conversationMapRef.current = map;
-    }, []);
 
     useEffect(() => { refreshAds(); }, [refreshAds]);
 
@@ -6005,11 +5619,8 @@ function App(){
 
     useEffect(() => {
       if (user?.id) return;
-      toastTimersRef.current.forEach(clearTimeout);
-      toastTimersRef.current.clear();
-      setMessageToasts([]);
-      conversationMapRef.current = new Map();
-    }, [user?.id]);
+      resetNotifications();
+    }, [user?.id, resetNotifications]);
 
     const mineById = useMemo(() => {
       const map = Object.create(null);
@@ -6102,7 +5713,7 @@ function App(){
                 if (shouldNotify) {
                   const bodyText = typeof data?.message?.body === 'string' ? data.message.body : '';
                   const images = Array.isArray(data?.message?.images) ? data.message.images : [];
-                  const convoMeta = conversationMapRef.current.get(data.conversation_id);
+                  const convoMeta = getConversationMeta(data.conversation_id);
                   const senderName = data.sender_username || convoMeta?.other_user_username || '';
                   const listingTitle = convoMeta?.listing_title || '';
                   showMessageToast({
