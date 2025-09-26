@@ -6402,15 +6402,55 @@ function App(){
                 onChange: setLocationQuery,
                 options: cityOptions,
                 onUseMyLocation: async () => {
+                  const buildErrorMessage = (err) => {
+                    if (err && typeof err === 'object') {
+                      if (typeof err.code === 'number') {
+                        if (err.code === 1) return 'Location permission denied. Please enable it in your browser settings.';
+                        if (err.code === 2) return 'Unable to determine your location. Please try again.';
+                        if (err.code === 3) return 'Location lookup timed out. Please try again.';
+                      }
+                      if (typeof err.message === 'string') {
+                        const lower = err.message.toLowerCase();
+                        if (lower.includes('denied')) return 'Location permission denied. Please enable it in your browser settings.';
+                        if (lower.includes('timeout')) return 'Location lookup timed out. Please try again.';
+                      }
+                    }
+                    return 'Could not determine your location.';
+                  };
+
+                  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                    alert('Geolocation not supported');
+                    return;
+                  }
+
+                  let coords;
                   try {
-                    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                    const { coords } = await new Promise((res, rej)=>
-                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                    const position = await new Promise((res, rej) =>
+                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
                     );
+                    coords = position?.coords;
+                  } catch (err) {
+                    alert(buildErrorMessage(err));
+                    return;
+                  }
+
+                  if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number') {
+                    alert('Could not determine your location.');
+                    return;
+                  }
+
+                  try {
                     const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-                    const city = r?.city || (r?.display || '').split(',')[0];
-                    if (city) setLocationQuery(city);
-                  } catch { alert('Could not determine your location'); }
+                    const display = typeof r?.display === 'string' ? r.display : '';
+                    const city = typeof r?.city === 'string' && r.city ? r.city : display.split(',')[0];
+                    if (city) {
+                      setLocationQuery(city);
+                    } else {
+                      alert('We could not infer your city from that location.');
+                    }
+                  } catch (err) {
+                    alert(buildErrorMessage(err));
+                  }
                 }
               }),
               H('select', { value:sort, onChange:e=>setSort(e.target.value) },
