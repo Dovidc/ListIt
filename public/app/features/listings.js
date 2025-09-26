@@ -14,6 +14,8 @@
       useCallback
     } = React;
 
+    const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+
     const normalizeListingsResponse = helpers?.normalizeListingsResponse;
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
@@ -27,6 +29,70 @@
     }
     if (typeof selectPrimaryListingImage !== 'function') {
       throw new Error('Listings feature requires selectPrimaryListingImage helper.');
+    }
+
+    function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
+      const [open, setOpen] = useState(false);
+      const [hover, setHover] = useState(0);
+      const boxRef = useRef(null);
+
+      const list = useMemo(() => {
+        const v = (value || '').trim().toLowerCase();
+        const opts = Array.isArray(options) ? options : [];
+        if (!v) return opts.slice(0, 8);
+        return opts.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
+      }, [value, options]);
+
+      function pick(s) {
+        onChange(s);
+        setOpen(false);
+        setHover(0);
+        setTimeout(() => boxRef.current && boxRef.current.querySelector('input')?.focus(), 0);
+      }
+
+      function onKeyDown(e) {
+        if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) {
+          setOpen(true);
+          return;
+        }
+        if (!open) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); setHover(h => Math.min(h + 1, list.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setHover(h => Math.max(h - 1, 0)); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (list[hover]) pick(list[hover]); }
+        else if (e.key === 'Escape') { setOpen(false); }
+      }
+
+      function onFocus() { if (list.length) setOpen(true); }
+      function onBlur() { setTimeout(() => setOpen(false), 100); }
+
+      return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
+        H('input', {
+          placeholder:'City...',
+          value: value,
+          onChange: e => { onChange(e.target.value); setOpen(true); },
+          onKeyDown, onFocus, onBlur,
+          style:{ maxWidth:220 }
+        }),
+        H('button', { type:'button', className:'btn', onClick:onUseMyLocation }, 'Use my location'),
+        open && list.length > 0 && H('div', {
+          style: {
+            position:'absolute', top:'100%', left:0, right:0, zIndex: 50,
+            background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, marginTop:6,
+            boxShadow:'0 6px 20px rgba(0,0,0,0.08)', overflow:'hidden'
+          }
+        },
+          ...list.map((s, i) => H('div', {
+            key:s,
+            onMouseEnter:()=>setHover(i),
+            onMouseDown:(e)=>{ e.preventDefault(); pick(s); },
+            style:{
+              padding:'10px 12px',
+              background: i===hover ? '#f3f4f6' : 'transparent',
+              cursor:'pointer'
+            }
+          }, s))
+        )
+      );
     }
 
     function useListingsFeature({ user, currentTab }) {
@@ -276,7 +342,8 @@
     }
 
     return {
-      useListingsFeature
+      useListingsFeature,
+      CityAutocomplete
     };
   }
 
