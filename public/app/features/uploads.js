@@ -1,5 +1,5 @@
 (() => {
-  function createUploadsFeature({ api }) {
+  function createUploadsFeature({ api, React } = {}) {
     if (!api) {
       throw new Error('Uploads feature requires an API client.');
     }
@@ -8,6 +8,64 @@
     const listingImageCache = new Map();
     const listingImageInFlight = new Map();
     const s3UploadLimiter = createConcurrencyLimiter(3);
+
+    const hasReact = !!(React && typeof React.useState === 'function' && typeof React.useEffect === 'function');
+    let useFilePreviews = () => {
+      throw new Error('useFilePreviews requires React to be provided to createUploadsFeature.');
+    };
+
+    if (hasReact) {
+      const { useState, useEffect } = React;
+      useFilePreviews = function useFilePreviews(files = []) {
+        const [previews, setPreviews] = useState([]);
+
+        useEffect(() => {
+          const list = Array.isArray(files) ? files : [];
+          if (list.length === 0) {
+            setPreviews([]);
+            return undefined;
+          }
+
+          const entries = list.map((file) => ({ file, url: URL.createObjectURL(file) }));
+          setPreviews(entries);
+
+          return () => {
+            for (const entry of entries) {
+              try {
+                URL.revokeObjectURL(entry.url);
+              } catch {
+                // ignore revoke failures
+              }
+            }
+          };
+        }, [files]);
+
+        return previews;
+      };
+    }
+
+    const AI_IMAGE_LIMIT = 8;
+
+    async function filesToDataUrls(files = []) {
+      const toBase64 = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+      });
+
+      const list = Array.isArray(files) ? files.slice(0, AI_IMAGE_LIMIT) : [];
+      const out = [];
+      for (const file of list) {
+        out.push(await toBase64(file));
+      }
+      return out;
+    }
+
+    async function fileToDataUrl(file) {
+      const list = await filesToDataUrls(file ? [file] : []);
+      return Array.isArray(list) && list.length > 0 ? list[0] : undefined;
+    }
 
     function createConcurrencyLimiter(maxConcurrent = 3) {
       let active = 0;
@@ -306,7 +364,11 @@
       uploadFilesForListing,
       uploadOneMessageImage,
       listingImageCache,
-      listingImageInFlight
+      listingImageInFlight,
+      useFilePreviews,
+      filesToDataUrls,
+      fileToDataUrl,
+      AI_IMAGE_LIMIT
     };
   }
 
