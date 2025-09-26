@@ -142,7 +142,59 @@
     if (!payload.endpoint || !payload.keys.auth || !payload.keys.p256dh) return null;
     return payload;
   }
-  
+
+  function createConcurrencyLimiter(maxConcurrent = 3) {
+    const limit = Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+    let active = 0;
+    const queue = [];
+
+    const runNext = () => {
+      if (active >= limit) return;
+      const nextJob = queue.shift();
+      if (!nextJob) return;
+
+      const { fn, resolve, reject } = nextJob;
+      active += 1;
+      let finished = false;
+
+      const finalize = () => {
+        if (finished) return;
+        finished = true;
+        active -= 1;
+        runNext();
+      };
+
+      let result;
+      try {
+        result = fn();
+      } catch (err) {
+        finalize();
+        reject(err);
+        return;
+      }
+
+      Promise.resolve(result).then(
+        (value) => {
+          finalize();
+          resolve(value);
+        },
+        (err) => {
+          finalize();
+          reject(err);
+        }
+      );
+    };
+
+    return (fn) => new Promise((resolve, reject) => {
+      if (typeof fn !== 'function') {
+        reject(new TypeError('Limiter expects a function'));
+        return;
+      }
+      queue.push({ fn, resolve, reject });
+      runNext();
+    });
+  }
+
   let _coordsPromise = null;
   function getUserCoordsOnce() {
     if (_coordsPromise) return _coordsPromise;
