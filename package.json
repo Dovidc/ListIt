@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "npm run build:core && NODE_ENV=test node node_modules/jest/bin/jest.js --runInBand",
+    "test": "npm run build:core && NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --runInBand",
     "postinstall": "npm rebuild better-sqlite3 --build-from-source || echo \"better-sqlite3 rebuild skipped\"",
     "build:core": "node scripts/build-core.js"
   },
