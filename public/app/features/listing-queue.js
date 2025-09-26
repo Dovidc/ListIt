@@ -4,7 +4,7 @@
       throw new Error('Listing queue feature requires React.');
     }
 
-    const { useState, useRef, useCallback, useEffect } = React;
+    const { useState, useRef, useCallback, useEffect, useMemo } = React;
 
     function useListingQueue(options = {}) {
       const reminderDuration = Number.isFinite(options.reminderDuration)
@@ -62,12 +62,12 @@
         processNextListingJob();
       }, [processNextListingJob, showQueueReminder]);
 
-      return {
+      return useMemo(() => ({
         backgroundQueueEnabled,
         showQueueToast,
         queuePendingCount,
         enqueueListingJob
-      };
+      }), [backgroundQueueEnabled, showQueueToast, queuePendingCount, enqueueListingJob]);
     }
 
     return {
