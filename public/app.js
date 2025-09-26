@@ -469,6 +469,12 @@
   }
   const { useMessageNotifications } = notificationsFeatureFactory({ React });
 
+  const listingQueueFeatureFactory = window.ListItApp?.features?.listingQueue?.createListingQueueFeature;
+  if (typeof listingQueueFeatureFactory !== 'function') {
+    throw new Error('Listing queue feature bundle failed to load.');
+  }
+  const { useListingQueue } = listingQueueFeatureFactory({ React });
+
   const listingsContextFactory = window.ListItApp?.contexts?.listings?.createListingsContext;
   if (typeof listingsContextFactory !== 'function') {
     throw new Error('Listings context bundle failed to load.');
@@ -484,6 +490,7 @@
   window.ListItApp.hooks = window.ListItApp.hooks || {};
   window.ListItApp.hooks.useListings = useListings;
   window.ListItApp.hooks.useNotifications = useNotifications;
+  window.ListItApp.hooks.useListingQueue = useListingQueue;
 
 
 
@@ -5489,15 +5496,15 @@ function App(){
     });
     useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
 
-    const backgroundQueueEnabled = true;
-
     const isMobile = isMobileDevice();
 
-    const listingQueueRef = useRef([]);
-    const listingQueueProcessingRef = useRef(false);
-    const [showQueueToast, setShowQueueToast] = useState(false);
-    const toastTimerRef = useRef(null);
-    const [queuePendingCount, setQueuePendingCount] = useState(0);
+    const {
+      backgroundQueueEnabled,
+      showQueueToast,
+      queuePendingCount,
+      enqueueListingJob
+    } = useListingQueue();
+
     const pushSetupRef = useRef({ userId: null, permission: null });
 
     const notifications = useMessageNotifications({
@@ -5519,19 +5526,6 @@ function App(){
       getConversationMeta
     } = notifications;
 
-    const showQueueReminder = useCallback(() => {
-      setShowQueueToast(true);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setShowQueueToast(false), 2000);
-    }, []);
-
-    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
-
-    useEffect(() => () => {
-      listingQueueRef.current = [];
-      listingQueueProcessingRef.current = false;
-    }, []);
-
     useEffect(() => {
       if (typeof window === 'undefined' || typeof document === 'undefined') return;
       const handleFocus = () => setWindowFocused(true);
@@ -5550,32 +5544,6 @@ function App(){
     useEffect(() => { tabRef.current = tab; }, [tab]);
     useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
     useEffect(() => { windowFocusedRef.current = windowFocused; }, [windowFocused]);
-
-    const processNextListingJob = useCallback(() => {
-      if (listingQueueProcessingRef.current) return;
-      const job = listingQueueRef.current.shift();
-      if (!job) {
-        setQueuePendingCount(0);
-        return;
-      }
-      listingQueueProcessingRef.current = true;
-      Promise.resolve()
-        .then(() => job())
-        .catch((err) => { console.error('Background listing job failed:', err); })
-        .finally(() => {
-          listingQueueProcessingRef.current = false;
-          setQueuePendingCount(listingQueueRef.current.length);
-          processNextListingJob();
-        });
-    }, []);
-
-    const enqueueListingJob = useCallback((job) => {
-      if (typeof job !== 'function') return;
-      listingQueueRef.current.push(job);
-      setQueuePendingCount(listingQueueRef.current.length + (listingQueueProcessingRef.current ? 1 : 0));
-      showQueueReminder();
-      processNextListingJob();
-    }, [processNextListingJob, showQueueReminder]);
 
     const refreshAds = useCallback(async () => {
       try {
