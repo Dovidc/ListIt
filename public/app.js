@@ -181,6 +181,17 @@
   }
   const { useMessageNotifications } = notificationsFeatureFactory({ React });
 
+  const messageCenterFeatureFactory = window.ListItApp?.features?.messageCenter?.createMessageCenterFeature;
+  if (typeof messageCenterFeatureFactory !== 'function') {
+    throw new Error('Message center feature bundle failed to load.');
+  }
+  const { useMessageCenter } = messageCenterFeatureFactory({
+    React,
+    api,
+    helpers: { loadSeen, saveSeen },
+    notifications: { useMessageNotifications }
+  });
+
   const messagesFeatureFactory = window.ListItApp?.features?.messages?.createMessagesFeature;
   if (typeof messagesFeatureFactory !== 'function') {
     throw new Error('Messages feature bundle failed to load.');
@@ -431,16 +442,19 @@
     // Pagination / infinite scroll handled via listings feature
 
     // Modal selection for full listing card comes from listings feature
-    const [activeConvoId, setActiveConvoId] = useState(null);
-    const tabRef = useRef(tab);
-    const activeConvoIdRef = useRef(activeConvoId);
-    const [windowFocused, setWindowFocused] = useState(() => {
-      if (typeof document === 'undefined') return true;
-      return !document.hidden;
+    const {
+      activeConvoId,
+      setActiveConvoId,
+      unreadCount,
+      hasAdminUnread,
+      recomputeUnread,
+      notifications
+    } = useMessageCenter({
+      user,
+      tab,
+      onTabChange: setTab,
+      onClearSeller: () => setViewingSeller(null)
     });
-    const windowFocusedRef = useRef(windowFocused);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [hasAdminUnread, setHasAdminUnread] = useState(false);
     const [loadingCount, setLoadingCount] = useState(0);
     // Auto-list toggles (persisted)
     const AUTO_KEY = 'listit_auto_list';
@@ -468,43 +482,11 @@
 
     const pushSetupRef = useRef({ userId: null, permission: null });
 
-    const notifications = useMessageNotifications({
-      onSelectConversation: (conversationId) => {
-        setViewingSeller(null);
-        setTab('messages');
-        setActiveConvoId(conversationId || null);
-      }
-    });
-
     const {
       messageToasts,
-      showMessageToast,
-      removeToast,
       handleToastClick,
-      handleConversationsUpdate,
-      playNotificationTone,
-      resetNotifications,
-      getConversationMeta
+      handleConversationsUpdate
     } = notifications;
-
-    useEffect(() => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') return;
-      const handleFocus = () => setWindowFocused(true);
-      const handleBlur = () => setWindowFocused(false);
-      const handleVisibility = () => setWindowFocused(!document.hidden);
-      window.addEventListener('focus', handleFocus);
-      window.addEventListener('blur', handleBlur);
-      document.addEventListener('visibilitychange', handleVisibility);
-      return () => {
-        window.removeEventListener('focus', handleFocus);
-        window.removeEventListener('blur', handleBlur);
-        document.removeEventListener('visibilitychange', handleVisibility);
-      };
-    }, []);
-
-    useEffect(() => { tabRef.current = tab; }, [tab]);
-    useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
-    useEffect(() => { windowFocusedRef.current = windowFocused; }, [windowFocused]);
 
     const refreshAds = useCallback(async () => {
       try {
@@ -566,11 +548,6 @@
       }
     }, [user, tab]);
 
-    useEffect(() => {
-      if (user?.id) return;
-      resetNotifications();
-    }, [user?.id, resetNotifications]);
-
     const mineById = useMemo(() => {
       const map = Object.create(null);
       (mine || []).forEach(m => { map[m.id] = m; });
@@ -588,140 +565,6 @@
     }
 
     // Unread poll
-    async function recomputeUnread() {
-      try {
-        if (!user) {
-          setUnreadCount(0);
-          setHasAdminUnread(false);
-          return;
-        }
-        const convos = await api.listConversations({ silent:true });
-        handleConversationsUpdate(convos);
-        const seen = loadSeen(user.id);
-
-        let unreadCount = 0;
-        let adminUnread = false;
-
-        for (const c of convos) {
-          const lastId = c.last_message_id;
-          const lastSender = c.last_message_sender_id;
-          const seenValue = seen[c.id] || 0;
-          let isUnread = false;
-
-          if (lastId && lastSender && lastSender !== user.id) {
-            if (!seenValue || lastId > seenValue) {
-              isUnread = true;
-            }
-          }
-
-          if (isUnread) {
-            unreadCount++;
-            if (c.last_message_is_admin) {
-              adminUnread = true;
-            }
-          }
-        }
-
-        setUnreadCount(unreadCount);
-        setHasAdminUnread(adminUnread);
-      } catch {}
-    }
-
-    useEffect(() => {
-      recomputeUnread();
-    }, [user?.id]);
-
-    useEffect(() => {
-      if (!user) return;
-      
-      let ws = null;
-      let reconnectTimeout = null;
-      
-      function connectWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          console.log('WebSocket connected (App level)');
-          clearTimeout(reconnectTimeout);
-        };
-        
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'new_message') {
-              if (data.sender_id !== user.id) {
-                recomputeUnread();
-                const shouldNotify =
-                  tabRef.current !== 'messages' ||
-                  activeConvoIdRef.current !== data.conversation_id ||
-                  !windowFocusedRef.current;
-                if (shouldNotify) {
-                  const bodyText = typeof data?.message?.body === 'string' ? data.message.body : '';
-                  const images = Array.isArray(data?.message?.images) ? data.message.images : [];
-                  const convoMeta = getConversationMeta(data.conversation_id);
-                  const senderName = data.sender_username || convoMeta?.other_user_username || '';
-                  const listingTitle = convoMeta?.listing_title || '';
-                  showMessageToast({
-                    conversationId: data.conversation_id,
-                    messageId: data.message?.id || null,
-                    senderName,
-                    listingTitle,
-                    preview: bodyText,
-                    imageCount: images.length
-                  });
-                  playNotificationTone();
-                }
-              }
-            }
-          } catch (e) {
-            console.error('WebSocket message error (App level):', e);
-          }
-        };
-        
-        ws.onerror = (error) => {
-          console.error('WebSocket error (App level):', error);
-        };
-        
-        ws.onclose = (event) => {
-          console.log('WebSocket disconnected (App level)', event?.code);
-          ws = null;
-
-          if (event?.code !== 1008) {
-            // Reconnect after 3 seconds
-            reconnectTimeout = setTimeout(() => {
-              if (user) connectWebSocket();
-            }, 3000);
-          }
-        };
-        
-        // Send ping every 25 seconds to keep connection alive
-        const pingInterval = setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, 25000);
-        
-        return () => {
-          clearInterval(pingInterval);
-          if (ws) ws.close();
-        };
-      }
-      
-      connectWebSocket();
-      
-      return () => {
-        clearTimeout(reconnectTimeout);
-        if (ws) {
-          ws.close();
-          ws = null;
-        }
-      };
-    }, [user?.id]);
-
     useEffect(() => {
       let aborted = false;
 
