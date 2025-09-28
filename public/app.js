@@ -261,7 +261,8 @@
     ReportSellerModal,
     ListingModal,
     ListingCard,
-    ListingGalleryModal
+    ListingGalleryModal,
+    SellerProfile
   } = listingComponentsFactory({
     React,
     ReactDOM,
@@ -284,7 +285,8 @@
       fetchCoordsAndReverse,
       getUserCoordsOnce,
       useBodyScrollLock,
-      haversineMeters
+      haversineMeters,
+      asArray
     },
     components: {
       ImageWithSkeleton,

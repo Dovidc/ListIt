@@ -65,7 +65,8 @@
       fetchCoordsAndReverse,
       getUserCoordsOnce,
       useBodyScrollLock,
-      haversineMeters
+      haversineMeters,
+      asArray
     } = helpers;
 
     if (typeof isMobileDevice !== 'function') {
@@ -82,6 +83,9 @@
     }
     if (typeof haversineMeters !== 'function') {
       throw new Error('Listing components require haversineMeters helper.');
+    }
+    if (typeof asArray !== 'function') {
+      throw new Error('Listing components require asArray helper.');
     }
 
     const { ImageWithSkeleton, ResponsiveImage } = components;
@@ -1525,6 +1529,277 @@
       );
     }
 
+    function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete }) {
+      const [listings, setListings] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [selectedListing, setSelectedListing] = useState(null);
+      const [error, setError] = useState(null);
+      const [tab, setTab] = useState('active');
+
+      useEffect(() => {
+        let mounted = true;
+
+        async function fetchSellerListings() {
+          if (!Number.isFinite(Number(sellerId))) {
+            setListings([]);
+            setError('User not found');
+            setLoading(false);
+            return;
+          }
+
+          try {
+            setLoading(true);
+            const items = await api.listByUser(sellerId);
+            if (!mounted) return;
+            setListings(asArray(items));
+            setError(null);
+          } catch (err) {
+            if (!mounted) return;
+            console.error('Failed to fetch seller listings:', err);
+            const message = (err && err.message) ? String(err.message) : '';
+            if (message.toLowerCase().includes('not found')) {
+              setError('User not found');
+            } else {
+              setError('Failed to load listings');
+            }
+            setListings([]);
+          } finally {
+            if (mounted) setLoading(false);
+          }
+        }
+
+        fetchSellerListings();
+
+        return () => { mounted = false; };
+      }, [sellerId]);
+
+      useEffect(() => {
+        if (!selectedListing) return undefined;
+        const onKey = (evt) => {
+          if (evt.key === 'Escape') {
+            evt.preventDefault();
+            setSelectedListing(null);
+          }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [selectedListing]);
+
+      useEffect(() => {
+        setTab('active');
+      }, [sellerId]);
+
+      const activeListings = useMemo(
+        () => listings.filter((item) => !item?.sold),
+        [listings]
+      );
+      const soldListings = useMemo(
+        () => listings.filter((item) => !!item?.sold),
+        [listings]
+      );
+      const shownListings = tab === 'sold' ? soldListings : activeListings;
+
+      const handleListingSelected = useCallback((item) => {
+        if (!item) return;
+        const cover = item.image_data || item.__cover || '';
+        const inlineImages = collectListingImages(item, cover);
+        const payload = { ...item };
+        if (inlineImages.length) payload.images = inlineImages;
+        if (cover) payload.image_data = cover;
+        setSelectedListing(payload);
+        if (item.id) {
+          const cacheList = inlineImages.length ? inlineImages : null;
+          if (cacheList && cacheList.length) {
+            listingImageCache.set(item.id, cacheList);
+          }
+          fetchListingImagesCached(item.id).then((arr) => {
+            if (Array.isArray(arr) && arr.length) {
+              listingImageCache.set(item.id, arr);
+            }
+          }).catch(() => {});
+        }
+      }, []);
+
+      const handleAdminDeleteInternal = useCallback((id) => {
+        setListings((prev) => prev.filter((it) => it.id !== id));
+        if (typeof onAdminDelete === 'function') {
+          onAdminDelete(id);
+        }
+      }, [onAdminDelete]);
+
+      const modalContent = selectedListing
+        ? H('div', {
+            className: 'modal open',
+            onClick: (evt) => {
+              if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+                setSelectedListing(null);
+              }
+            }
+          },
+            H('div', { className: 'modal-inner listing-modal' },
+              H('button', { className: 'close', onClick: () => setSelectedListing(null) }, 'x'),
+              H(ListingCard, {
+                item: selectedListing,
+                user,
+                canEdit: false,
+                onMessage: (listing) => {
+                  setSelectedListing(null);
+                  onMessage?.(listing);
+                },
+                onAdminDelete: (id) => {
+                  handleAdminDeleteInternal(id);
+                  setSelectedListing(null);
+                },
+                showDistance: false,
+                onViewSeller: null,
+                viewContext: 'modal'
+              })
+            )
+          )
+        : null;
+
+      if (loading) {
+        return H('div', { style: { padding: '24px', textAlign: 'center' } },
+          H('div', { className: 'spinner' }),
+          H('div', { style: { marginTop: '12px' } }, 'Loading seller profile...')
+        );
+      }
+
+      if (error) {
+        return H('div', { style: { padding: '24px', textAlign: 'center' } },
+          H('div', { className: 'muted' }, error),
+          H('button', { className: 'btn', onClick: onBack }, '<- Back')
+        );
+      }
+
+      const isMobile = isMobileDevice();
+      const gridColumns = isMobile ? 3 : 4;
+
+      return H(React.Fragment, null,
+        H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
+          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
+            H('div', null,
+              H('div', { style: { fontWeight: 800, fontSize: 20 } }, sellerUsername ? `@${sellerUsername}` : 'Seller'),
+              H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`)
+            ),
+            H('button', { className: 'btn', onClick: onBack }, '<- Back')
+          )
+        ),
+
+        H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
+          H('button', {
+            className: `btn ${tab === 'active' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setTab('active')
+          }, 'Active listings'),
+          H('button', {
+            className: `btn ${tab === 'sold' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setTab('sold')
+          }, 'Sold listings')
+        ),
+
+        shownListings.length === 0
+          ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } },
+              tab === 'sold' ? 'No sold listings yet.' : 'No listings from this seller.')
+          : H('section', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+                gap: 12
+              }
+            },
+              shownListings.map((item) => {
+                const cover = item.image_data || item.__cover || '';
+                return H('div', {
+                  key: item.id,
+                  className: 'card',
+                  style: { padding: 0, overflow: 'hidden', borderRadius: 8 }
+                },
+                  H('div', {
+                    style: {
+                      position: 'relative',
+                      width: '100%',
+                      aspectRatio: '1 / 1',
+                      background: '#f3f4f6'
+                    }
+                  },
+                    cover && H('img', {
+                      src: cover,
+                      alt: item.title || 'Item',
+                      loading: 'lazy',
+                      decoding: 'async',
+                      fetchPriority: 'low',
+                      style: {
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                        cursor: 'pointer'
+                      },
+                      onClick: () => handleListingSelected(item)
+                    }),
+                    item.sold ? H('div', {
+                      style: {
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'none'
+                      }
+                    },
+                      H('div', {
+                        style: {
+                          transform: 'rotate(-18deg)',
+                          padding: '4px 14px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '6px',
+                          fontWeight: 800,
+                          fontSize: 22,
+                          color: 'rgba(4, 120, 87, 0.85)',
+                          border: '3px solid rgba(16, 185, 129, 0.55)',
+                          background: 'rgba(229, 255, 244, 0.82)',
+                          borderRadius: 999
+                        }
+                      }, 'Sold')
+                    ) : null
+                  ),
+                  H('div', { style: { padding: 16, display: 'grid', gap: 8 } },
+                    H('div', { style: { fontWeight: 700 } }, item.title || 'Item for sale'),
+                    H('div', { className: 'muted', style: { minHeight: 32 } }, item.description || 'No description provided.'),
+                    H('div', { className: 'muted' }, item.location || 'No location'),
+                    H('div', {
+                      style: {
+                        fontWeight: 800,
+                        color: Number(item?.price ?? 0) === 0 ? '#16a34a' : '#111'
+                      }
+                    }, price(item.price))
+                  ),
+                  H('div', { className: 'row', style: { padding: '0 16px 16px', gap: 8 } },
+                    H('button', {
+                      className: 'btn primary',
+                      onClick: () => onMessage?.(item)
+                    }, 'Message seller'),
+                    user?.is_admin && H('button', {
+                      className: 'btn danger',
+                      onClick: async () => {
+                        if (!confirm('Admin: Delete this listing?')) return;
+                        await api.adminDeleteListing(item.id);
+                        handleAdminDeleteInternal(item.id);
+                      }
+                    }, 'Admin Delete')
+                  )
+                );
+              })
+            ),
+
+        modalContent
+      );
+    }
+
     return {
       MultiFilePicker,
       InfoHelpModal,
@@ -1535,7 +1810,8 @@
       ReportSellerModal,
       ListingModal,
       ListingCard,
-      ListingGalleryModal
+      ListingGalleryModal,
+      SellerProfile
     };
   }
 
