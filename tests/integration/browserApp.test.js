@@ -285,6 +285,26 @@ describe('browser app integration', () => {
     };
   }
 
+  function createDependencies() {
+    const helpers = stubHelpers();
+    const appNav = createAppNav();
+    const appBundles = createAppBundles(helpers, appNav);
+    const core = createCore();
+    const reactDOM = createReactDOM();
+
+    return {
+      React: {},
+      ReactDOM: reactDOM.instance,
+      core,
+      appBundles,
+      __mocks: {
+        helpers,
+        appNav,
+        reactDOM
+      }
+    };
+  }
+
   test('wires bundles into the app shell and exposes runtime utilities', () => {
     const helpers = stubHelpers();
     const appNav = createAppNav();
@@ -329,6 +349,7 @@ describe('browser app integration', () => {
     expect(appBundles.hooks.useListings()).toBe('listingsHook');
     expect(appBundles.hooks.useNotifications()).toBe('notificationsHook');
     expect(appBundles.hooks.useListingQueue()).toBe('listingQueueHook');
+    expect(appBundles.hooks.useListingQueueState()).toBe('queueState');
 
     expect(browserApp.AppNav).toBe(appNav);
     expect(browserApp.api).toBe(core.api);
@@ -363,5 +384,66 @@ describe('browser app integration', () => {
     expect(reactDOM.instance.createRoot).toHaveBeenCalledWith(mountTarget);
     expect(helpers.H).toHaveBeenCalledWith(rootComponent);
     expect(reactDOM.root.render).toHaveBeenCalledWith('element');
+  });
+
+  test('mount falls back to ReactDOM.render when createRoot is unavailable', () => {
+    const dependencies = createDependencies();
+    const { helpers, reactDOM } = dependencies.__mocks;
+    const rootComponent = jest.fn();
+
+    delete reactDOM.instance.createRoot;
+    reactDOM.instance.render = jest.fn();
+    dependencies.appBundles.app.createAppShell.mockReturnValue({ Root: rootComponent });
+
+    const browserApp = createBrowserApp(dependencies);
+
+    const mountTarget = { id: 'target' };
+    const mountResult = browserApp.mount(mountTarget);
+
+    expect(reactDOM.instance.render).toHaveBeenCalledWith('element', mountTarget);
+    expect(helpers.H).toHaveBeenCalledWith(rootComponent);
+    expect(mountResult).toBeNull();
+  });
+
+  test('mount throws when no target element can be resolved', () => {
+    const dependencies = createDependencies();
+    const browserApp = createBrowserApp(dependencies);
+
+    expect(() => browserApp.mount()).toThrow('Root element not found.');
+  });
+
+  test('throws helpful errors when critical bundles fail to load', () => {
+    const dependencies = createDependencies();
+
+    expect(() => createBrowserApp({
+      ...dependencies,
+      React: null
+    })).toThrow('React bundle failed to load.');
+
+    expect(() => createBrowserApp({
+      ...dependencies,
+      ReactDOM: null
+    })).toThrow('ReactDOM bundle failed to load.');
+
+    expect(() => createBrowserApp({
+      ...dependencies,
+      core: { ...dependencies.core, createApiClient: undefined }
+    })).toThrow('ListIt core bundle failed to load.');
+
+    expect(() => createBrowserApp({
+      ...dependencies,
+      appBundles: {
+        ...dependencies.appBundles,
+        bootstrap: { ...dependencies.appBundles.bootstrap, createAppNav: null }
+      }
+    })).toThrow('App nav bundle failed to load.');
+
+    expect(() => createBrowserApp({
+      ...dependencies,
+      appBundles: {
+        ...dependencies.appBundles,
+        helpers: { ...dependencies.appBundles.helpers, createHelpers: null }
+      }
+    })).toThrow('Helpers bundle failed to load.');
   });
 });
