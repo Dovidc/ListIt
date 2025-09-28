@@ -38,14 +38,12 @@
 
     const {
       H,
-      isMobileDevice,
       loadSeen,
       saveSeen,
       asArray
     } = helpers || {};
 
     assertFunction(H, 'helpers.H');
-    assertFunction(isMobileDevice, 'helpers.isMobileDevice');
     assertFunction(loadSeen, 'helpers.loadSeen');
     assertFunction(saveSeen, 'helpers.saveSeen');
     assertFunction(asArray, 'helpers.asArray');
@@ -63,6 +61,7 @@
     const preferencesFeature = features?.preferences || {};
     const pushFeature = features?.push || {};
     const adsFeature = features?.ads || {};
+    const appViewFeature = features?.appView || {};
 
     const {
       AuthProvider,
@@ -84,6 +83,7 @@
     const { useAppPreferences } = preferencesFeature;
     const { usePushNotifications } = pushFeature;
     const { useAds } = adsFeature;
+    const { useAppView } = appViewFeature;
 
     assertFunction(AuthProvider, 'features.auth.AuthProvider');
     assertFunction(useAuth, 'features.auth.useAuth');
@@ -99,6 +99,7 @@
     assertFunction(useAppPreferences, 'features.preferences.useAppPreferences');
     assertFunction(usePushNotifications, 'features.push.usePushNotifications');
     assertFunction(useAds, 'features.ads.useAds');
+    assertFunction(useAppView, 'features.appView.useAppView');
 
     const listingContext = contexts?.listings || {};
     const notificationsContext = contexts?.notifications || {};
@@ -151,10 +152,22 @@
 
     const App = React.memo(function AppComponent(){
       const { user, setUser, pushMeta } = useAuth();
-      const [tab, setTab] = useState('browse');
+      const appView = useAppView({ user });
+      const {
+        tab,
+        setTab,
+        banner,
+        showLockedBanner,
+        dismissBanner,
+        viewingSeller,
+        setViewingSeller,
+        authModal,
+        setAuthModal,
+        handleTabChange,
+        openAuthModal,
+        isMobile
+      } = appView;
       const [showForm, setShowForm] = useState(false);
-      const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
-      const [banner, setBanner] = useState(null);
       const {
         autoListEnabled,
         setAutoListEnabled,
@@ -194,27 +207,6 @@
         items,
         ensureCover
       } = listings;
-
-      const showLockedBanner = useCallback(() => {
-        setBanner({ type: 'locked', message: 'Your account is locked. Please message an admin for help.', ts: Date.now() });
-      }, []);
-
-      const dismissBanner = useCallback(() => setBanner(null), []);
-
-      const isMobile = isMobileDevice();
-
-      const handleTabChange = (newTab) => {
-        if (newTab === 'admin' && !user?.is_admin) {
-          return;
-        }
-        if (newTab === 'nearby' && !isMobile) {
-          return;
-        }
-        setTab(newTab);
-        setViewingSeller(null);
-      };
-
-      const [viewingSeller, setViewingSeller] = useState(null);
 
       const {
         activeConvoId,
@@ -258,12 +250,6 @@
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
       }, []);
 
-      useEffect(() => {
-        if (!user?.is_admin && tab === 'admin') {
-          setTab('browse');
-        }
-      }, [user, tab]);
-
       const mineById = useMemo(() => {
         const map = Object.create(null);
         (mine || []).forEach(m => { map[m.id] = m; });
@@ -279,10 +265,6 @@
         setViewingSeller(null);
       }
 
-      useEffect(() => {
-        if (!user && tab === 'messages') setTab('browse');
-        if (!isMobile && tab === 'nearby') setTab('browse');
-      }, [user, tab, isMobile]);
 
       async function startMessage(item){
         if(!user){ alert('Log in to message a seller.'); return; }
@@ -330,7 +312,7 @@
       }
 
       function handleAuthClick(mode) {
-        setAuthModal({ isOpen: true, mode });
+        openAuthModal(mode);
       }
 
       function handleAuthSuccess(newUser) {
