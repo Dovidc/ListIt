@@ -125,6 +125,7 @@
       onSelect,
       columns,
       gap = 12,
+      enableVirtualization = false,
       className,
       style
     }) {
@@ -160,8 +161,10 @@
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
       const containerRef = useRef(null);
+      const virtualizationAvailable = enableVirtualization && hasVirtualMasonry;
+
       const virtualItems = useMemo(() => {
-        if (!hasVirtualMasonry) return [];
+        if (!virtualizationAvailable) return [];
         return entries.map((entry, index) => {
           const dataId = entry?.data?.id;
           const baseId = dataId != null ? String(dataId) : String(index);
@@ -172,11 +175,11 @@
             index
           };
         });
-      }, [entries]);
+      }, [entries, virtualizationAvailable]);
 
-      const shouldVirtualize = hasVirtualMasonry && entries.length >= 120;
+      const shouldVirtualize = virtualizationAvailable && entries.length >= 120;
       const virtualizationEstimate = isMobile ? 210 : 240;
-      const virtualizationState = hasVirtualMasonry
+      const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({
             containerRef,
             items: virtualItems,
