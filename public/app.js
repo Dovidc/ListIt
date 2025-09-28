@@ -41,12 +41,13 @@
   const price = (n) => formatCurrency(n ?? 0);
   const fmtDistance = (m) => formatDistance(m);
   const haversineMeters = (...args) => coreHaversineMeters(...args);
-
-  // Device detection helper provided by modular helpers bundle
-
-  // small bridge so api can redirect UI on 401s + track global loading
-  const AppNav = { setUser: () => {}, setTab: () => {}, incLoad: () => {}, decLoad: () => {}, notifyLocked: () => {} };
   const PAGE_SIZE = 75;
+
+  const appNavFactory = window.ListItApp?.bootstrap?.createAppNav;
+  if (typeof appNavFactory !== 'function') {
+    throw new Error('App nav bundle failed to load.');
+  }
+  const AppNav = appNavFactory();
 
   const helpersFactory = window.ListItApp?.helpers?.createHelpers;
   if (typeof helpersFactory !== 'function') {
@@ -75,20 +76,6 @@
     useVirtualMasonry
   } = helpersFactory({ React });
 
-  // --- Helper: fetch coords and reverse-geocode into a display string
-  async function fetchCoordsAndReverse() {
-    if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
-    const { coords } = await new Promise((res, rej)=>
-      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-    );
-    const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-    return {
-      lat: r?.lat ?? coords.latitude,
-      lon: r?.lon ?? coords.longitude,
-      display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
-    };
-  }
-
   // --- API ---
   const api = createApiClient({
     onRequestStart: () => AppNav.incLoad(),
@@ -100,6 +87,12 @@
     onAccountLocked: () => AppNav.notifyLocked(),
     fetchImpl: (input, init) => fetch(input, init)
   });
+
+  const locationHelpersFactory = window.ListItApp?.bootstrap?.createLocationHelpers;
+  if (typeof locationHelpersFactory !== 'function') {
+    throw new Error('Location helpers bundle failed to load.');
+  }
+  const { fetchCoordsAndReverse } = locationHelpersFactory({ api });
 
   const authFeatureFactory = window.ListItApp?.features?.auth?.createAuthFeature;
   if (typeof authFeatureFactory !== 'function') {
