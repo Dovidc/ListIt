@@ -1,0 +1,68 @@
+(() => {
+  function createAdsComponents({ React, components = {} } = {}) {
+    if (!React || typeof React.createElement !== 'function') {
+      throw new Error('Ads components require React.');
+    }
+
+    const { ImageWithSkeleton } = components;
+    if (typeof ImageWithSkeleton !== 'function') {
+      throw new Error('Ads components require ImageWithSkeleton component.');
+    }
+
+    const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+
+    function AdTile({ ad, cols = 4, className, preview = false }) {
+      if (!ad) return null;
+      const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
+      const hasImage = !!ad.image_url;
+      const href = ad.target_url || '#';
+      const ctaLabel = (ad.cta_label || 'Visit site').slice(0, 40);
+      const style = { gridColumn: `span ${spanCols}` };
+      if (ad.background) style.background = ad.background;
+      if (preview) style.cursor = 'default';
+      const cardClass = `card ad-card${hasImage ? '' : ' no-art'}${className ? ` ${className}` : ''}`;
+      const anchorProps = {
+        className: cardClass,
+        href,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        style
+      };
+      if (preview) {
+        anchorProps.onClick = (e) => e.preventDefault();
+        anchorProps.target = '_self';
+        anchorProps.rel = 'noopener';
+        anchorProps.tabIndex = -1;
+      }
+      return H('a', anchorProps,
+        H('div', { className: 'ad-card__content' },
+          H('span', { className: 'ad-card__tag' }, 'Sponsored'),
+          H('div', { className: 'ad-card__title' }, ad.title || 'Advertisement'),
+          ad.subtitle && H('div', { className: 'ad-card__subtitle' }, ad.subtitle),
+          H('div', { className: 'ad-card__ctaRow' },
+            H('span', { className: 'ad-card__cta' }, ctaLabel),
+            H('span', { className: 'ad-card__arrow' }, '>')
+          )
+        ),
+        hasImage && H('div', { className: 'ad-card__art' },
+          H(ImageWithSkeleton, {
+            src: ad.image_url,
+            alt: ad.title ? `${ad.title} artwork` : 'Advertisement art',
+            loading: 'lazy',
+            decoding: 'async'
+          })
+        )
+      );
+    }
+
+    return {
+      AdTile
+    };
+  }
+
+  window.ListItApp = window.ListItApp || {};
+  window.ListItApp.components = window.ListItApp.components || {};
+  window.ListItApp.components.ads = {
+    createAdsComponents
+  };
+})();
