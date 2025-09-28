@@ -396,6 +396,8 @@
     const [selected, setSelected] = useState(null);
     const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
     const [locationLabel, setLocationLabel] = useState(() => storedCoords?.display || '');
+    const [search, setSearch] = useState('');
+    const [sort, setSort] = useState('new');
 
     const coordsRef = useRef(storedCoords ? { lat: storedCoords.lat, lon: storedCoords.lon } : null);
     const coordsTsRef = useRef(storedCoords?.ts || 0);
@@ -413,9 +415,62 @@
       });
     }, [selectPrimaryListingImage, asArray]);
 
+    const filteredItems = useMemo(() => {
+      const list = Array.isArray(items) ? items.slice() : [];
+      const query = search.trim().toLowerCase();
+
+      let working = list;
+      if (query) {
+        working = list.filter((item) => {
+          const haystack = [
+            item?.title,
+            item?.description,
+            item?.location,
+            item?.owner_username
+          ]
+            .filter(Boolean)
+            .map((value) => String(value).toLowerCase())
+            .join(' ');
+          return haystack.includes(query);
+        });
+      }
+
+      const parseDate = (value) => {
+        if (!value) return 0;
+        const ts = new Date(value).getTime();
+        return Number.isFinite(ts) ? ts : 0;
+      };
+
+      const parsePrice = (item) => {
+        const val = Number(item?.price);
+        return Number.isFinite(val) ? val : 0;
+      };
+
+      const sorted = [...working];
+      sorted.sort((a, b) => {
+        if (sort === 'price_asc') {
+          const diff = parsePrice(a) - parsePrice(b);
+          if (diff !== 0) return diff;
+        } else if (sort === 'price_desc') {
+          const diff = parsePrice(b) - parsePrice(a);
+          if (diff !== 0) return diff;
+        } else {
+          const diff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
+          if (diff !== 0) return diff;
+        }
+
+        const createdDiff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
+        if (createdDiff !== 0) return createdDiff;
+        return Number(b?.id || 0) - Number(a?.id || 0);
+      });
+
+      return sorted;
+    }, [items, search, sort]);
+
     const columnCount = useColumnCount(masonryRef, 3);
-    const orderedItems = useMemo(() => interleaveByColumns(items, columnCount), [items, columnCount]);
+    const orderedItems = useMemo(() => interleaveByColumns(filteredItems, columnCount), [filteredItems, columnCount]);
     const hasItems = orderedItems.length > 0;
+    const hasBaseItems = Array.isArray(items) && items.length > 0;
 
     const ensureCoords = useCallback(async (force = false) => {
       const now = Date.now();
@@ -535,6 +590,24 @@
     return H('div', { id: 'tab-nearby' },
       H('section', { className: 'card', style: { padding: 12, margin: '12px 0 16px' } },
         H('div', { className: 'row nearby-filter', style: { gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+          H('input', {
+            type: 'search',
+            placeholder: 'Search nearby listings…',
+            value: search,
+            onChange: (e) => setSearch(e.target.value),
+            disabled: busy,
+            style: { flex: '1 1 220px', minWidth: 180 }
+          }),
+          H('select', {
+            value: sort,
+            onChange: (e) => setSort(e.target.value),
+            disabled: busy,
+            style: { width: 'auto' }
+          },
+            H('option', { value: 'new' }, 'Newest'),
+            H('option', { value: 'price_asc' }, 'Price: Low → High'),
+            H('option', { value: 'price_desc' }, 'Price: High → Low')
+          ),
           H('label', { htmlFor: 'nearby-radius' }, 'Filter radius:'),
           H('select', {
             id: 'nearby-radius',
@@ -587,7 +660,9 @@
         })
       ),
 
-      (!hasItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings found in this radius.'),
+      (!hasItems && hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
+
+      (!hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings found in this radius.'),
 
       busy && H('p', { className: 'muted', style: { padding: '12px 0' } }, 'Loading nearby listings…'),
 
