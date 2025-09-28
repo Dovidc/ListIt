@@ -9,7 +9,9 @@
       throw new Error('Grid components require ImageWithSkeleton component.');
     }
 
-    const { useEffect, useRef } = React;
+    const AdTile = typeof components.AdTile === 'function' ? components.AdTile : null;
+
+    const { useEffect, useMemo, useRef } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
     const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect }) {
@@ -60,8 +62,83 @@
       );
     });
 
+    const ListingsGrid = React.memo(function ListingsGrid({
+      items = [],
+      ads = [],
+      isMobile = false,
+      onEnsureCover,
+      onSelect,
+      columns,
+      gap = 12,
+      className,
+      style
+    }) {
+      const normalizedAds = useMemo(() => {
+        if (!Array.isArray(ads) || !ads.length) return [];
+        return ads.map((ad) => ({
+          ...ad,
+          position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
+        }));
+      }, [ads]);
+
+      const entries = useMemo(() => {
+        const base = (items || []).map((it) => ({ type: 'listing', data: it }));
+        if (!normalizedAds.length) return base;
+        const result = [...base];
+        const sortedAds = [...normalizedAds].sort((a, b) => {
+          const posDiff = (Number(b.position) || 0) - (Number(a.position) || 0);
+          if (posDiff !== 0) return posDiff;
+          const timeA = a.updated_at || a.created_at || '';
+          const timeB = b.updated_at || b.created_at || '';
+          if (timeA !== timeB) return timeB.localeCompare(timeA);
+          return Number(b.id || 0) - Number(a.id || 0);
+        });
+        sortedAds.forEach((ad) => {
+          const pos = Number.isFinite(ad.position) ? ad.position : 0;
+          const idx = Math.min(Math.max(pos, 0), result.length);
+          result.splice(idx, 0, { type: 'ad', data: ad });
+        });
+        return result;
+      }, [items, normalizedAds]);
+
+      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
+      const resolvedGap = Number.isFinite(gap) ? gap : 12;
+      const sectionStyle = {
+        display: 'grid',
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gap: resolvedGap,
+        ...(style || {})
+      };
+
+      const containerProps = {
+        className,
+        style: sectionStyle
+      };
+
+      return H('section', containerProps,
+        entries.map((entry, index) => {
+          if (entry.type === 'ad') {
+            if (!AdTile) return null;
+            const id = entry.data?.id;
+            const key = id != null ? `ad-${id}` : `ad-${index}`;
+            return H(AdTile, { key, ad: entry.data, cols });
+          }
+          const data = entry.data;
+          const id = data?.id;
+          const key = id != null ? `listing-${id}` : `listing-${index}`;
+          return H(GridTile, {
+            key,
+            item: data,
+            onEnsureCover,
+            onSelect
+          });
+        })
+      );
+    });
+
     return {
-      GridTile
+      GridTile,
+      ListingsGrid
     };
   }
 

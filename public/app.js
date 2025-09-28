@@ -149,9 +149,9 @@
   if (typeof gridComponentsFactory !== 'function') {
     throw new Error('Grid components bundle failed to load.');
   }
-  const { GridTile } = gridComponentsFactory({
+  const { ListingsGrid } = gridComponentsFactory({
     React,
-    components: { ImageWithSkeleton }
+    components: { ImageWithSkeleton, AdTile }
   });
 
   const layoutComponentsFactory = window.ListItApp?.components?.layout?.createLayoutComponents;
@@ -717,34 +717,6 @@
       setTab('browse');
     }
 
-    const adsForGrid = useMemo(() => {
-      if (!Array.isArray(ads) || !ads.length) return [];
-      return ads.map(ad => ({
-        ...ad,
-        position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
-      }));
-    }, [ads]);
-
-    const gridEntries = useMemo(() => {
-      const base = (items || []).map(it => ({ type: 'listing', data: it }));
-      if (!adsForGrid.length) return base;
-      const result = [...base];
-      const sortedAds = [...adsForGrid].sort((a, b) => {
-        const posDiff = (Number(b.position) || 0) - (Number(a.position) || 0);
-        if (posDiff !== 0) return posDiff;
-        const timeA = a.updated_at || a.created_at || '';
-        const timeB = b.updated_at || b.created_at || '';
-        if (timeA !== timeB) return timeB.localeCompare(timeA);
-        return Number(b.id || 0) - Number(a.id || 0);
-      });
-      sortedAds.forEach(ad => {
-        const pos = Number.isFinite(ad.position) ? ad.position : 0;
-        const idx = Math.min(Math.max(pos, 0), result.length);
-        result.splice(idx, 0, { type: 'ad', data: ad });
-      });
-      return result;
-    }, [items, adsForGrid]);
-
     const openListingModal = useCallback((listing, coverSrc) => {
       const { payload, images } = prepareListingForModal(listing, coverSrc);
       if (!payload) return;
@@ -842,29 +814,13 @@
           // REMOVED THE INLINE FORM SECTION HERE
 
           // Grid: 4 across desktop, 3 across mobile
-          (() => {
-            const COLS = isMobile ? 3 : 4;
-            const GAP  = 12;
-            return H('section', {
-              style: {
-                display:'grid',
-                gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-                gap: GAP
-              }
-            },
-              gridEntries.map(entry => {
-                if (entry.type === 'ad') {
-                  return H(AdTile, { key: `ad-${entry.data.id}`, ad: entry.data, cols: COLS });
-                }
-                return H(GridTile, {
-                  key: `listing-${entry.data.id}`,
-                  item: entry.data,
-                  onEnsureCover: ensureCover,
-                  onSelect: handleListingTileEvent
-                });
-              })
-            );
-          })(),
+          H(ListingsGrid, {
+            items,
+            ads,
+            isMobile,
+            onEnsureCover: ensureCover,
+            onSelect: handleListingTileEvent
+          }),
 
           // Infinite scroll status
           H('div', {
