@@ -67,39 +67,73 @@ app.set('trust proxy', 1);
 
 
 
+const IS_TEST = process.env.NODE_ENV === 'test';
+
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+
+
 const http = require('http');
 
 const WebSocket = require('ws');
 
 const server = http.createServer(app);
 
-const wss = new WebSocket.Server({ 
+function createTestWebSocketServerMock() {
 
-  server,
+  const noop = () => {};
 
-  path: '/ws'  // Add explicit path for clarity
+  const mock = {
 
-});
+    options: { path: '/ws' },
+
+    clients: new Set(),
+
+    on: () => mock,
+
+    handleUpgrade: noop
+
+  };
+
+  return mock;
+
+}
+
+const wss = IS_TEST
+
+  ? createTestWebSocketServerMock()
+
+  : new WebSocket.Server({
+
+    server,
+
+    path: '/ws'  // Add explicit path for clarity
+
+  });
 
 
 
-wss.on('error', (error) => {
+if (!IS_TEST) {
 
-  console.error('WebSocket Server Error:', error);
+  wss.on('error', (error) => {
 
-});
+    console.error('WebSocket Server Error:', error);
 
-
-
-server.on('upgrade', (request, socket, head) => {
-
-  console.log('WebSocket upgrade request received for:', request.url);
-
-});
+  });
 
 
 
-console.log('WebSocket server configured on path:', wss.options.path || '/');
+  server.on('upgrade', (request, socket, head) => {
+
+    console.log('WebSocket upgrade request received for:', request.url);
+
+  });
+
+}
+
+
+
+console.log('WebSocket server configured on path:', (wss.options && wss.options.path) || '/');
 
 
 
@@ -128,10 +162,6 @@ try {
 
 
 const PORT = process.env.PORT || 3000;
-
-const IS_TEST = process.env.NODE_ENV === 'test';
-
-const IS_PROD = process.env.NODE_ENV === 'production';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 
@@ -5769,19 +5799,31 @@ wss.on('connection', (ws, req) => {
 
 // Heartbeat to detect disconnected clients
 
-const wsHeartbeat = setInterval(() => {
+let wsHeartbeat = null;
 
-  wss.clients.forEach(ws => {
+if (!IS_TEST) {
 
-    if (ws.isAlive === false) return ws.terminate();
+  wsHeartbeat = setInterval(() => {
 
-    ws.isAlive = false;
+    wss.clients.forEach(ws => {
 
-    ws.ping();
+      if (ws.isAlive === false) return ws.terminate();
 
-  });
+      ws.isAlive = false;
 
-}, 30000);
+      ws.ping();
+
+    });
+
+  }, 30000);
+
+  if (wsHeartbeat && typeof wsHeartbeat.unref === 'function') {
+
+    wsHeartbeat.unref();
+
+  }
+
+}
 
 
 
