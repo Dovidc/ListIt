@@ -33,7 +33,6 @@
       useState,
       useEffect,
       useMemo,
-      useRef,
       useCallback
     } = React;
 
@@ -42,8 +41,6 @@
       isMobileDevice,
       loadSeen,
       saveSeen,
-      serializePushSubscription,
-      base64UrlToUint8Array,
       asArray
     } = helpers || {};
 
@@ -51,8 +48,6 @@
     assertFunction(isMobileDevice, 'helpers.isMobileDevice');
     assertFunction(loadSeen, 'helpers.loadSeen');
     assertFunction(saveSeen, 'helpers.saveSeen');
-    assertFunction(serializePushSubscription, 'helpers.serializePushSubscription');
-    assertFunction(base64UrlToUint8Array, 'helpers.base64UrlToUint8Array');
     assertFunction(asArray, 'helpers.asArray');
 
     const { price, fmtDistance } = utilities || {};
@@ -65,6 +60,9 @@
     const profileFeature = features?.profile || {};
     const nearbyFeature = features?.nearby || {};
     const listingFormsFeature = features?.listingForms || {};
+    const preferencesFeature = features?.preferences || {};
+    const pushFeature = features?.push || {};
+    const adsFeature = features?.ads || {};
 
     const {
       AuthProvider,
@@ -83,6 +81,9 @@
     const { ProfilePanel } = profileFeature;
     const { NearbyPanel } = nearbyFeature;
     const { ListingFormModal } = listingFormsFeature;
+    const { useAppPreferences } = preferencesFeature;
+    const { usePushNotifications } = pushFeature;
+    const { useAds } = adsFeature;
 
     assertFunction(AuthProvider, 'features.auth.AuthProvider');
     assertFunction(useAuth, 'features.auth.useAuth');
@@ -95,6 +96,9 @@
     assertFunction(ProfilePanel, 'features.profile.ProfilePanel');
     assertFunction(NearbyPanel, 'features.nearby.NearbyPanel');
     assertFunction(ListingFormModal, 'features.listingForms.ListingFormModal');
+    assertFunction(useAppPreferences, 'features.preferences.useAppPreferences');
+    assertFunction(usePushNotifications, 'features.push.usePushNotifications');
+    assertFunction(useAds, 'features.ads.useAds');
 
     const listingContext = contexts?.listings || {};
     const notificationsContext = contexts?.notifications || {};
@@ -151,7 +155,16 @@
       const [showForm, setShowForm] = useState(false);
       const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
       const [banner, setBanner] = useState(null);
-      const [ads, setAds] = useState([]);
+      const {
+        autoListEnabled,
+        setAutoListEnabled,
+        aiDescriptionEnabled,
+        setAiDescriptionEnabled,
+        autoPostNearbyEnabled,
+        setAutoPostNearbyEnabled
+      } = useAppPreferences();
+
+      const { ads, refreshAds } = useAds();
 
       const listings = useListingsFeature({ user, currentTab: tab });
       const {
@@ -218,74 +231,17 @@
       });
       const [loadingCount, setLoadingCount] = useState(0);
 
-      const AUTO_KEY = 'listit_auto_list';
-      const [autoListEnabled, setAutoListEnabled] = useState(() => {
-        try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
-      });
-      useEffect(() => { try { localStorage.setItem(AUTO_KEY, autoListEnabled ? '1' : '0'); } catch {} }, [autoListEnabled]);
-
-      const AI_DESC_KEY = 'listit_ai_descriptions';
-      const [aiDescriptionEnabled, setAiDescriptionEnabled] = useState(() => {
-        try { return localStorage.getItem(AI_DESC_KEY) === '1'; } catch { return false; }
-      });
-      useEffect(() => { try { localStorage.setItem(AI_DESC_KEY, aiDescriptionEnabled ? '1' : '0'); } catch {} }, [aiDescriptionEnabled]);
-
-      const AUTO_NEAR_KEY = 'listit_auto_post_nearby';
-      const [autoPostNearbyEnabled, setAutoPostNearbyEnabled] = useState(() => {
-        try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
-      });
-      useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
-
       const {
         backgroundQueueEnabled,
         enqueueListingJob
       } = useListingQueueState();
-
-      const pushSetupRef = useRef({ userId: null, permission: null });
 
       const {
         messageToasts,
         handleToastClick,
         handleConversationsUpdate
       } = notifications;
-
-      const refreshAds = useCallback(async () => {
-        try {
-          const rows = await api.listAds({ silent: true });
-          setAds(Array.isArray(rows) ? rows : []);
-        } catch (err) {
-          console.error('Failed to load ads', err);
-          setAds([]);
-        }
-      }, []);
-
-      const removePushSubscription = useCallback(async () => {
-        if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        try {
-          const registration = await navigator.serviceWorker.getRegistration();
-          if (!registration || !registration.pushManager) return;
-          const subscription = await registration.pushManager.getSubscription();
-          if (!subscription) return;
-          const serialized = serializePushSubscription(subscription);
-          if (serialized) {
-            try {
-              await api.pushUnsubscribe(serialized, { silent: true });
-            } catch (err) {
-              console.warn('Push unsubscribe request failed:', err);
-            }
-          }
-          try {
-            await subscription.unsubscribe();
-          } catch (err) {
-            console.warn('Push unsubscribe failed:', err);
-          }
-        } catch (err) {
-          console.warn('Push cleanup failed:', err);
-        }
-      }, []);
-
-      useEffect(() => { refreshAds(); }, [refreshAds]);
+      const { removePushSubscription } = usePushNotifications({ user, pushMeta });
 
       useEffect(() => {
         AppNav.setUser = setUser;
@@ -322,89 +278,6 @@
       function handleBackFromSeller() {
         setViewingSeller(null);
       }
-
-      useEffect(() => {
-        let aborted = false;
-
-        async function setupPushNotifications() {
-          if (!user?.id) return;
-          if (!pushMeta?.available) return;
-          if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
-          if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-          if (typeof Notification === 'undefined') return;
-
-          const vapidKey = pushMeta?.vapidPublicKey;
-          if (!vapidKey) return;
-
-          const currentPermission = Notification.permission;
-          const last = pushSetupRef.current;
-          if (last && last.userId === user.id && last.permission === 'granted' && currentPermission === 'granted') {
-            return;
-          }
-
-          if (currentPermission === 'denied') {
-            pushSetupRef.current = { userId: user.id, permission: 'denied' };
-            return;
-          }
-
-          try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
-            const readyRegistration = await navigator.serviceWorker.ready.catch(() => registration);
-            if (aborted) return;
-
-            let permission = Notification.permission;
-            if (permission === 'default' && typeof Notification.requestPermission === 'function') {
-              try {
-                permission = await Notification.requestPermission();
-              } catch (err) {
-                console.warn('Notification permission request failed:', err);
-                pushSetupRef.current = { userId: user.id, permission: 'error' };
-                return;
-              }
-            }
-
-            if (permission !== 'granted') {
-              pushSetupRef.current = { userId: user.id, permission };
-              return;
-            }
-
-            const applicationServerKey = base64UrlToUint8Array(vapidKey);
-            if (!applicationServerKey) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
-              return;
-            }
-
-            let subscription = await readyRegistration.pushManager.getSubscription();
-            if (!subscription) {
-              subscription = await readyRegistration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey
-              });
-            }
-
-            if (!subscription) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
-              return;
-            }
-
-            const serialized = serializePushSubscription(subscription);
-            if (!serialized) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
-              return;
-            }
-
-            await api.pushSubscribe(serialized, { silent: true });
-            pushSetupRef.current = { userId: user.id, permission: 'granted' };
-          } catch (err) {
-            console.warn('Push setup failed:', err);
-            pushSetupRef.current = { userId: user.id, permission: 'error' };
-          }
-        }
-
-        setupPushNotifications();
-
-        return () => { aborted = true; };
-      }, [user?.id, pushMeta?.available, pushMeta?.vapidPublicKey]);
 
       useEffect(() => {
         if (!user && tab === 'messages') setTab('browse');

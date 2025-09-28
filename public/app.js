@@ -184,6 +184,28 @@
   }
   const { useMessageNotifications } = notificationsFeatureFactory({ React });
 
+  const preferencesFeatureFactory = window.ListItApp?.features?.preferences?.createPreferencesFeature;
+  if (typeof preferencesFeatureFactory !== 'function') {
+    throw new Error('Preferences feature bundle failed to load.');
+  }
+  const { useAppPreferences } = preferencesFeatureFactory({ React });
+
+  const pushFeatureFactory = window.ListItApp?.features?.push?.createPushFeature;
+  if (typeof pushFeatureFactory !== 'function') {
+    throw new Error('Push feature bundle failed to load.');
+  }
+  const { usePushNotifications } = pushFeatureFactory({
+    React,
+    api,
+    helpers: { serializePushSubscription, base64UrlToUint8Array }
+  });
+
+  const adsFeatureFactory = window.ListItApp?.features?.ads?.createAdsFeature;
+  if (typeof adsFeatureFactory !== 'function') {
+    throw new Error('Ads feature bundle failed to load.');
+  }
+  const { useAds } = adsFeatureFactory({ React, api });
+
   const messageCenterFeatureFactory = window.ListItApp?.features?.messageCenter?.createMessageCenterFeature;
   if (typeof messageCenterFeatureFactory !== 'function') {
     throw new Error('Message center feature bundle failed to load.');
@@ -410,7 +432,10 @@
       admin: { AdminDashboard },
       profile: { ProfilePanel },
       nearby: { NearbyPanel },
-      listingForms: { ListingFormModal }
+      listingForms: { ListingFormModal },
+      preferences: { useAppPreferences },
+      push: { usePushNotifications },
+      ads: { useAds }
     },
     contexts: {
       listings: { ListingsProvider },
