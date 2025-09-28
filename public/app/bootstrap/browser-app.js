@@ -141,6 +141,15 @@
     }
     const { Header, GlobalLoader } = layoutComponentsFactory({ React: runtimeReact });
 
+    const appViewFeatureFactory = bundles?.features?.appView?.createAppViewFeature;
+    if (typeof appViewFeatureFactory !== 'function') {
+      throw new Error('App view feature bundle failed to load.');
+    }
+    const { useAppView } = appViewFeatureFactory({
+      React: runtimeReact,
+      helpers: { isMobileDevice }
+    });
+
     const listingsFeatureFactory = bundles?.features?.listings?.createListingsFeature;
     if (typeof listingsFeatureFactory !== 'function') {
       throw new Error('Listings feature bundle failed to load.');
@@ -415,7 +424,8 @@
         listingForms: { ListingFormModal },
         preferences: { useAppPreferences },
         push: { usePushNotifications },
-        ads: { useAds }
+        ads: { useAds },
+        appView: { useAppView }
       },
       contexts: {
         listings: { ListingsProvider },
