@@ -245,14 +245,26 @@
       return w;
     }
 
+    const readWindowScrollY = () => {
+      if (typeof window === 'undefined') return 0;
+      if (Number.isFinite(window.scrollY)) return window.scrollY;
+      if (Number.isFinite(window.pageYOffset)) return window.pageYOffset;
+      if (typeof document !== 'undefined') {
+        const doc = document;
+        const el = doc.scrollingElement || doc.documentElement || doc.body;
+        if (el && Number.isFinite(el.scrollTop)) return el.scrollTop;
+      }
+      return 0;
+    };
+
     function useWindowScrollY() {
-      const [y, setY] = useState(window.scrollY || 0);
+      const [y, setY] = useState(readWindowScrollY());
       useEffect(() => {
         let ticking = false;
         const onScroll = () => {
           if (!ticking) {
             window.requestAnimationFrame(() => {
-              setY(window.scrollY || 0);
+              setY(readWindowScrollY());
               ticking = false;
             });
             ticking = true;
