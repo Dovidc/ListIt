@@ -23,7 +23,12 @@
       uploadFileDraft,
       uploadFilesForListing,
       useFilePreviews,
-      AI_IMAGE_LIMIT
+      AI_IMAGE_LIMIT,
+      collectListingImages,
+      dedupeImageUrls,
+      fetchListingImagesCached,
+      listingImageCache,
+      listingImageInFlight
     } = uploads;
 
     if (typeof clearDraftCacheForFile !== 'function') {
@@ -38,11 +43,29 @@
     if (typeof useFilePreviews !== 'function') {
       throw new Error('Listing components require useFilePreviews.');
     }
+    if (typeof collectListingImages !== 'function') {
+      throw new Error('Listing components require collectListingImages helper.');
+    }
+    if (typeof dedupeImageUrls !== 'function') {
+      throw new Error('Listing components require dedupeImageUrls helper.');
+    }
+    if (typeof fetchListingImagesCached !== 'function') {
+      throw new Error('Listing components require fetchListingImagesCached helper.');
+    }
+    if (!listingImageCache) {
+      throw new Error('Listing components require listingImageCache.');
+    }
+    if (!listingImageInFlight) {
+      throw new Error('Listing components require listingImageInFlight.');
+    }
 
     const {
       isMobileDevice,
       createConcurrencyLimiter,
-      fetchCoordsAndReverse
+      fetchCoordsAndReverse,
+      getUserCoordsOnce,
+      useBodyScrollLock,
+      haversineMeters
     } = helpers;
 
     if (typeof isMobileDevice !== 'function') {
@@ -51,21 +74,39 @@
     if (typeof createConcurrencyLimiter !== 'function') {
       throw new Error('Listing components require createConcurrencyLimiter helper.');
     }
+    if (typeof getUserCoordsOnce !== 'function') {
+      throw new Error('Listing components require getUserCoordsOnce helper.');
+    }
+    if (typeof useBodyScrollLock !== 'function') {
+      throw new Error('Listing components require useBodyScrollLock helper.');
+    }
+    if (typeof haversineMeters !== 'function') {
+      throw new Error('Listing components require haversineMeters helper.');
+    }
 
-    const { ImageWithSkeleton } = components;
+    const { ImageWithSkeleton, ResponsiveImage } = components;
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Listing components require ImageWithSkeleton component.');
+    }
+    if (typeof ResponsiveImage !== 'function') {
+      throw new Error('Listing components require ResponsiveImage component.');
     }
 
     const price = formatting?.price;
     if (typeof price !== 'function') {
       throw new Error('Listing components require price formatter.');
     }
+    const fmtDistance = formatting?.fmtDistance;
+    if (typeof fmtDistance !== 'function') {
+      throw new Error('Listing components require distance formatter.');
+    }
 
     const {
       useState,
       useEffect,
-      useRef
+      useRef,
+      useMemo,
+      useCallback
     } = React;
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
@@ -819,13 +860,682 @@
       return ReactDOM.createPortal(modal, document.body);
     }
 
+    const REPORT_REASON_OPTIONS = [
+      { value: 'fraud', label: 'Fraud or scam' },
+      { value: 'spam', label: 'Spam or advertising' },
+      { value: 'inappropriate', label: 'Inappropriate content' },
+      { value: 'harassment', label: 'Harassment or abusive behavior' },
+      { value: 'other', label: 'Other' }
+    ];
+
+    function makeReportCaptcha() {
+      return {
+        a: 2 + Math.floor(Math.random() * 7),
+        b: 2 + Math.floor(Math.random() * 7)
+      };
+    }
+
+    function ReportSellerModal({ open, listing, onClose, onReported }) {
+      const [selected, setSelected] = useState(() => new Set());
+      const [details, setDetails] = useState('');
+      const [captcha, setCaptcha] = useState(() => makeReportCaptcha());
+      const [answer, setAnswer] = useState('');
+      const [error, setError] = useState('');
+      const [submitting, setSubmitting] = useState(false);
+      const [submitted, setSubmitted] = useState(false);
+
+      useEffect(() => {
+        if (!open) return;
+        setSelected(new Set());
+        setDetails('');
+        setCaptcha(makeReportCaptcha());
+        setAnswer('');
+        setError('');
+        setSubmitted(false);
+      }, [open, listing?.id]);
+
+      useEffect(() => {
+        if (!open) return;
+        const onKey = (ev) => { if (ev.key === 'Escape') onClose?.(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [open, onClose]);
+
+      const toggleReason = (value) => {
+        setSelected(prev => {
+          const next = new Set(prev);
+          if (next.has(value)) next.delete(value);
+          else next.add(value);
+          return next;
+        });
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (submitting || submitted) return;
+        setError('');
+        const reasons = Array.from(selected);
+        if (!reasons.length) {
+          setError('Select at least one reason.');
+          return;
+        }
+        if (reasons.includes('other') && !details.trim()) {
+          setError('Please include details for "Other".');
+          return;
+        }
+        const expected = captcha.a + captcha.b;
+        if (Number(answer) !== expected) {
+          setError('Captcha answer is incorrect.');
+          setCaptcha(makeReportCaptcha());
+          setAnswer('');
+          return;
+        }
+        setSubmitting(true);
+        try {
+          await api.reportSeller({
+            reported_user_id: listing?.user_id,
+            listing_id: listing?.id,
+            reasons,
+            details: details.trim() || undefined,
+            captcha: { a: captcha.a, b: captcha.b, answer: Number(answer) }
+          });
+          setSubmitted(true);
+          onReported?.();
+        } catch (err) {
+          setError(err.message || 'Unable to submit report.');
+          setCaptcha(makeReportCaptcha());
+          setAnswer('');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      if (!open) return null;
+
+      const sellerName = listing?.owner_username ? `@${listing.owner_username}` : 'this seller';
+
+      const modal = H('div', {
+        className: 'modal open',
+        onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); }
+      },
+        H('div', { className: 'modal-inner', style: { maxWidth: '520px', padding: '24px', background: '#fff', color: '#111' } },
+          H('button', { className: 'close', onClick: onClose, disabled: submitting && !submitted }, 'X'),
+          H('h2', { style: { margin: '0 0 16px', fontSize: 24, fontWeight: 700 } }, `Report ${sellerName}`),
+          submitted ?
+            H('div', { className: 'muted', style: { marginBottom: 16 } }, 'Thank you. We will review this report shortly.') :
+            H('form', { onSubmit: handleSubmit, style: { display: 'grid', gap: 12 } },
+              H('div', { style: { fontWeight: 600 } }, 'Why are you reporting this seller?'),
+              REPORT_REASON_OPTIONS.map(opt => H('label', {
+                key: opt.value,
+                style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }
+              },
+                H('input', {
+                  type: 'checkbox',
+                  checked: selected.has(opt.value),
+                  disabled: submitting,
+                  onChange: () => toggleReason(opt.value)
+                }),
+                opt.label
+              )),
+              H('textarea', {
+                placeholder: 'Additional details (optional)',
+                value: details,
+                onChange: (e) => setDetails(e.target.value),
+                disabled: submitting,
+                rows: 3,
+                style: { width: '100%', fontSize: 13, padding: 8 }
+              }),
+              H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                H('span', null, `What is ${captcha.a} + ${captcha.b}?`),
+                H('input', {
+                  type: 'number',
+                  value: answer,
+                  onChange: (e) => setAnswer(e.target.value),
+                  disabled: submitting,
+                  style: { width: 80 }
+                })
+              ),
+              error && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, error),
+              H('div', { className: 'row', style: { gap: 8, marginTop: 4 } },
+                H('button', { className: 'btn primary', type: 'submit', disabled: submitting, style: { flex: 1 } }, submitting ? 'Submitting...' : 'Submit report'),
+                H('button', { className: 'btn', type: 'button', onClick: onClose, disabled: submitting, style: { flex: 1 } }, 'Cancel')
+              )
+            ),
+          submitted && H('div', { style: { marginTop: 16 } },
+            H('button', { className: 'btn primary', onClick: onClose }, 'Close')
+          )
+        )
+      );
+
+      return ReactDOM.createPortal(modal, document.body);
+    }
+
+    function ListingModal({ open, item, onClose, cardProps = {} }) {
+      useBodyScrollLock(open);
+
+      React.useEffect(() => {
+        if (!open) return;
+        const handler = (evt) => {
+          if (evt.key === 'Escape') {
+            evt.preventDefault();
+            onClose?.();
+          }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+      }, [open, onClose]);
+
+      if (!open || !item) return null;
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: (evt) => {
+            if (evt.target === evt.currentTarget || evt.target.classList.contains('modal')) {
+              onClose?.();
+            }
+          }
+        },
+          H('div', {
+            className: 'modal-inner listing-modal',
+            onClick: (evt) => evt.stopPropagation()
+          },
+            H('button', { className: 'close', onClick: onClose }, 'x'),
+            H(ListingCard, { item, viewContext: 'modal', ...cardProps })
+          )
+        ),
+        document.body
+      );
+    }
+
+    function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = false }) {
+      useBodyScrollLock(open);
+
+      const list = Array.isArray(images) ? images.filter(Boolean) : [];
+      const len = list.length;
+      const safeIndex = len ? Math.min(Math.max(Number(index) || 0, 0), len - 1) : 0;
+      const canNavigate = len > 1 && typeof onIndex === 'function';
+      const currentSrc = len ? list[safeIndex] : '';
+
+      const [stageLoaded, setStageLoaded] = React.useState(false);
+
+      React.useEffect(() => {
+        if (!open) {
+          setStageLoaded(false);
+          return;
+        }
+        setStageLoaded(false);
+      }, [open, currentSrc]);
+
+      const handleStageSettled = React.useCallback(() => {
+        setStageLoaded(true);
+      }, []);
+
+      React.useEffect(() => {
+        if (!open) return;
+        if (index !== safeIndex) {
+          onIndex?.(safeIndex);
+        }
+      }, [open, safeIndex, index, onIndex]);
+
+      React.useEffect(() => {
+        if (!open) return;
+        const handler = (evt) => {
+          if (evt.key === 'Escape') {
+            evt.preventDefault();
+            onClose?.();
+            return;
+          }
+          if (!canNavigate) return;
+          if (evt.key === 'ArrowRight') {
+            evt.preventDefault();
+            onIndex?.((safeIndex + 1) % len);
+          } else if (evt.key === 'ArrowLeft') {
+            evt.preventDefault();
+            onIndex?.((safeIndex - 1 + len) % len);
+          }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+      }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
+
+      if (!open) return null;
+
+      const stageOverlay = (!stageLoaded && currentSrc) || (loading && !len)
+        ? H('div', { className: 'lightbox-stage-skeleton', 'aria-hidden': true })
+        : null;
+
+      const imageContent = len
+        ? H('div', { className: 'lightbox-main' },
+            H(ResponsiveImage, {
+              src: currentSrc,
+              alt: `Listing image ${safeIndex + 1}`,
+              widths: [480, 720, 1080, 1440],
+              sizes: '100vw',
+              loading: 'eager',
+              fetchPriority: 'high',
+              className: 'lightbox-img',
+              onLoad: handleStageSettled,
+              onError: handleStageSettled,
+              style: { opacity: stageLoaded ? 1 : 0, transition: 'opacity 180ms ease' }
+            })
+          )
+        : H('div', { className: 'lightbox-main' },
+            H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available')
+          );
+
+      const thumbsContent = len
+        ? H('div', { className: 'lightbox-thumbs' },
+            ...list.map((img, i) => H(ImageWithSkeleton, {
+              key: String(i),
+              src: img,
+              alt: `Thumbnail ${i + 1}`,
+              className: i === safeIndex ? 'active' : '',
+              onClick: () => onIndex?.(i)
+            }))
+          )
+        : (loading
+            ? H('div', { className: 'lightbox-thumbs loading', 'aria-hidden': true },
+                ...Array.from({ length: 4 }).map((_, i) =>
+                  H('div', { key: `s-${i}`, className: 'lightbox-thumb-skeleton' })
+                )
+              )
+            : H('div', { className: 'lightbox-thumbs empty' },
+                H('span', null, 'No photos yet')
+              )
+          );
+
+      const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
+        H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, '×'),
+        stageOverlay,
+        imageContent,
+        thumbsContent,
+        canNavigate && H('div', { className: 'lightbox-nav' },
+          H('button', { className: 'nav prev', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous' }, '‹'),
+          H('button', { className: 'nav next', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next' }, '›')
+        )
+      );
+
+      return ReactDOM.createPortal(
+        H('div', { className: 'lightbox-overlay open', role: 'presentation' }, overlayContent),
+        document.body
+      );
+    }
+
+    function ListingCard({
+      item,
+      canEdit,
+      onEdit,
+      onDelete,
+      user,
+      onMessage,
+      onAdminDelete,
+      onViewSeller,
+      onToggleSold,
+      showDistance = false,
+      viewContext = 'grid'
+    }) {
+
+      const fallbackImages = useMemo(() => collectListingImages(item, item?.__cover), [item, item?.__cover]);
+      const baseGallery = useMemo(() => {
+        const fallbackList = Array.isArray(fallbackImages) ? fallbackImages : [];
+        const inlineList = Array.isArray(item?.images) ? item.images : [];
+        return dedupeImageUrls([...fallbackList, ...inlineList]);
+      }, [item?.images, fallbackImages]);
+
+      const [galleryImages, setGalleryImages] = useState(baseGallery);
+      const [galleryOpen, setGalleryOpen] = useState(false);
+      const [galleryIndex, setGalleryIndex] = useState(0);
+      const [galleryLoading, setGalleryLoading] = useState(false);
+      const [showReport, setShowReport] = useState(false);
+      const [derivedMeters, setDerivedMeters] = React.useState(null);
+
+      const isModalView = viewContext === 'modal';
+
+      const normalizedBaseGallery = useMemo(() => {
+        if (Array.isArray(baseGallery) && baseGallery.length) return baseGallery;
+        const fallbackCover = item.image_data || item.__cover || item.thumb_url || '';
+        return fallbackCover ? [fallbackCover] : [];
+      }, [baseGallery, item.image_data, item.__cover, item.thumb_url]);
+
+      const sameList = useCallback((a, b) => {
+        if (a === b) return true;
+        if (!Array.isArray(a) || !Array.isArray(b)) return false;
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+          if (a[i] !== b[i]) return false;
+        }
+        return true;
+      }, []);
+
+      const baseImageCount = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery.length : 0;
+
+      const prefetchImages = useCallback(() => {
+        if (!item?.id) return;
+        if (listingImageInFlight.has(item.id)) return;
+        const minCount = baseImageCount + 1;
+        const cached = listingImageCache.get(item.id);
+        if (Array.isArray(cached) && cached.length >= minCount) return;
+        fetchListingImagesCached(item.id, { minCount });
+      }, [item?.id, baseImageCount]);
+
+      React.useEffect(() => {
+        const baseList = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery : [];
+        setGalleryImages(prev => {
+          const prevList = Array.isArray(prev) ? prev : [];
+          return sameList(prevList, baseList) ? prevList : baseList;
+        });
+      }, [normalizedBaseGallery, sameList]);
+
+      React.useEffect(() => {
+        if (!item?.id) return;
+        const cached = listingImageCache.get(item.id);
+        if (Array.isArray(cached) && cached.length) {
+          const cachedList = dedupeImageUrls(cached);
+          setGalleryImages(prev => sameList(prev, cachedList) ? prev : cachedList);
+        }
+      }, [item?.id, sameList]);
+
+      const handleOpenGallery = useCallback(async (start = 0) => {
+        const baseList = Array.isArray(normalizedBaseGallery) ? normalizedBaseGallery : [];
+        setGalleryIndex(Number.isFinite(start) ? start : 0);
+        setGalleryImages(prev => {
+          const prevList = Array.isArray(prev) ? prev : [];
+          return sameList(prevList, baseList) ? prevList : baseList;
+        });
+        setGalleryOpen(true);
+        prefetchImages();
+
+        if (!item?.id) return;
+
+        setGalleryLoading(true);
+        try {
+          const fetched = await fetchListingImagesCached(item.id, { minCount: baseList.length + 1 });
+          const merged = dedupeImageUrls([...baseList, ...(Array.isArray(fetched) ? fetched : [])]);
+          if (merged.length) {
+            listingImageCache.set(item.id, merged);
+          }
+          setGalleryImages(prev => sameList(prev, merged) ? prev : merged);
+        } catch (err) {
+          console.warn('Failed to load gallery images for listing', item?.id, err);
+        } finally {
+          setGalleryLoading(false);
+        }
+      }, [item?.id, normalizedBaseGallery, sameList, prefetchImages]);
+
+      React.useEffect(() => {
+        if (!item?.id) return;
+        if (!Array.isArray(galleryImages) || !galleryImages.length) return;
+        const baseLen = baseImageCount;
+        if (galleryImages.length <= baseLen) return;
+        listingImageCache.set(item.id, galleryImages);
+      }, [galleryImages, item?.id, baseImageCount]);
+
+      React.useEffect(() => {
+        if (!galleryOpen) return;
+        const len = Array.isArray(galleryImages) ? galleryImages.length : 0;
+        if (!len) {
+          if (galleryIndex !== 0) setGalleryIndex(0);
+          return;
+        }
+        if (galleryIndex >= len) {
+          setGalleryIndex(len - 1);
+        } else if (galleryIndex < 0) {
+          setGalleryIndex(0);
+        }
+      }, [galleryOpen, galleryImages, galleryIndex]);
+
+      React.useEffect(() => {
+        if (!showDistance) {
+          setDerivedMeters(null);
+          return;
+        }
+        let fromServer = null;
+        if (Number.isFinite(item?.distance_m)) fromServer = item.distance_m;
+        if (Number.isFinite(item?.distance_ft)) fromServer = item.distance_ft / 3.28084;
+        if (fromServer != null) {
+          setDerivedMeters(fromServer);
+          return;
+        }
+
+        if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
+          getUserCoordsOnce().then(coords => {
+            if (!coords) return;
+            const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
+            setDerivedMeters(m);
+          });
+        } else {
+          setDerivedMeters(null);
+        }
+      }, [showDistance, item?.id, item?.lat, item?.lon]);
+
+      const isFree = Number(item?.price ?? 0) === 0;
+      const [soldBusy, setSoldBusy] = useState(false);
+      const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
+      const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
+
+      const controls = [];
+      if (!user || user.id !== item.user_id) {
+        controls.push(H('button', {
+          key: 'm',
+          className: 'btn primary',
+          onClick: () => onMessage?.(item)
+        }, 'Message seller'));
+      }
+      if (user && user.id !== item.user_id) {
+        controls.push(H('button', {
+          key: 'report',
+          className: 'btn',
+          onClick: () => setShowReport(true)
+        }, 'Report seller'));
+      }
+      if (canEdit) {
+        controls.push(H('button', {
+          key: 'e',
+          className: 'btn',
+          onClick: () => onEdit?.(item)
+        }, 'Edit'));
+        if (onToggleSold) {
+          const isSold = !!item?.sold;
+          controls.push(H('button', {
+            key: 'sold-toggle',
+            className: 'btn',
+            onClick: async () => {
+              if (soldBusy) return;
+              try {
+                setSoldBusy(true);
+                await onToggleSold(item, !isSold);
+              } finally {
+                setSoldBusy(false);
+              }
+            },
+            disabled: soldBusy,
+            style: {
+              background: isSold ? '#D1FAE5' : '#059669',
+              color: isSold ? '#047857' : '#fff',
+              borderColor: '#059669'
+            }
+          }, isSold ? 'Mark as unsold' : 'Mark as sold'));
+        }
+        controls.push(H('button', {
+          key: 'd',
+          className: 'btn danger',
+          onClick: () => onDelete?.(item)
+        }, 'Remove Listing'));
+      }
+      if (user?.is_admin) {
+        controls.push(H('button', {
+          key: 'admin-del',
+          className: 'btn danger',
+          onClick: async () => {
+            if (!confirm('Admin: Delete this listing?')) return;
+            await api.adminDeleteListing(item.id);
+            onAdminDelete?.(item.id);
+          }
+        }, 'Admin Delete'));
+      }
+
+      const renderSellerInfo = () => {
+        if (!item.owner_username) {
+          return '--';
+        }
+
+        if (onViewSeller) {
+          return H('button', {
+            onClick: () => onViewSeller(item.user_id, item.owner_username),
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#111',
+              fontWeight: 600,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              padding: 0,
+              font: 'inherit'
+            }
+          }, `@${item.owner_username}`);
+        }
+
+        return H('span', null, `@${item.owner_username}`);
+      };
+
+      const openGalleryFromEvent = useCallback((evt) => {
+        if (evt && typeof evt.preventDefault === 'function') {
+          evt.preventDefault();
+        }
+        if (evt && typeof evt.stopPropagation === 'function') {
+          evt.stopPropagation();
+        }
+        handleOpenGallery(0);
+      }, [handleOpenGallery]);
+
+      const cardEventProps = isModalView ? {} : {
+        onMouseEnter: prefetchImages,
+        onFocus: prefetchImages,
+        onPointerDown: prefetchImages,
+        onTouchStart: prefetchImages
+      };
+
+      return H('div', { className: 'card', ...cardEventProps, tabIndex: -1 },
+        H('div', {
+          className: 'aspect',
+          onClick: openGalleryFromEvent,
+          style: {
+            cursor: 'zoom-in',
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: 8
+          }
+        },
+          coverSrc
+            ? H(ResponsiveImage, {
+                src: coverSrc,
+                alt: item.title || 'Listing image',
+                style: { width: '100%', height: '100%', objectFit: 'cover' },
+                sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
+                loading: isModalView ? 'eager' : 'lazy',
+                fetchPriority: isModalView ? 'high' : 'auto',
+                onClick: openGalleryFromEvent
+              })
+            : H('div', {
+                style: {
+                  width: '100%',
+                  height: '100%',
+                  background: '#f3f4f6',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#6b7280',
+                  fontWeight: 600
+                }
+              }, 'No image'),
+          item.sold ? H('div', {
+            style: {
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none'
+            }
+          },
+            H('div', {
+              style: {
+                transform: 'rotate(-18deg)',
+                padding: '6px 18px',
+                textTransform: 'uppercase',
+                letterSpacing: '6px',
+                fontWeight: 800,
+                fontSize: 26,
+                color: 'rgba(4, 120, 87, 0.85)',
+                border: '3px solid rgba(16, 185, 129, 0.55)',
+                background: 'rgba(229, 255, 244, 0.82)',
+                borderRadius: 999
+              }
+            }, 'Sold')
+          ) : null
+        ),
+        H('div', { style: { padding: 16 } },
+          H('div', {
+            className: 'row',
+            style: { justifyContent: 'space-between', alignItems: 'start' }
+          },
+            H('div', null,
+              H('div', { style: { fontWeight: 800 } }, item.title || 'Item for sale'),
+              H('div', { className: 'muted' }, item.description)
+            ),
+            H('div', {
+              style: {
+                fontWeight: 800,
+                textAlign: 'right',
+                color: isFree ? '#16a34a' : '#111'
+              }
+            }, price(item.price))
+          ),
+
+          H('div', { className: 'muted' }, item.location || 'No location'),
+
+          (showDistance && derivedMeters != null) &&
+            H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
+
+          H('div', { className: 'muted' },
+            'Seller: ',
+            renderSellerInfo()
+          ),
+
+          H('div', {
+            className: 'row',
+            style: { marginTop: 8, justifyContent: 'flex-start', gap: 8 }
+          }, ...controls)
+        ),
+
+        showReport && H(ReportSellerModal, {
+          open: showReport,
+          listing: item,
+          onClose: () => setShowReport(false)
+        }),
+
+        H(ListingGalleryModal, {
+          open: galleryOpen,
+          images: galleryImages,
+          index: galleryIndex,
+          onClose: () => setGalleryOpen(false),
+          onIndex: setGalleryIndex,
+          loading: galleryLoading
+        })
+      );
+    }
+
     return {
       MultiFilePicker,
       InfoHelpModal,
       AutoListHelpModal,
       AiDescriptionHelpModal,
       ListingForm,
-      MassListModal
+      MassListModal,
+      ReportSellerModal,
+      ListingModal,
+      ListingCard,
+      ListingGalleryModal
     };
   }
 
