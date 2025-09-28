@@ -154,7 +154,7 @@
     if (typeof listingsFeatureFactory !== 'function') {
       throw new Error('Listings feature bundle failed to load.');
     }
-    const { useListingsFeature, CityAutocomplete } = listingsFeatureFactory({
+    const { useListingsFeature, CityAutocomplete, useListingModal } = listingsFeatureFactory({
       React: runtimeReact,
       api,
       helpers: {
@@ -162,6 +162,10 @@
         asArray,
         selectPrimaryListingImage,
         pageSize: PAGE_SIZE
+      },
+      uploads: {
+        prepareListingForModal,
+        warmListingImages
       }
     });
 
@@ -208,7 +212,7 @@
     if (typeof messagesFeatureFactory !== 'function') {
       throw new Error('Messages feature bundle failed to load.');
     }
-    const { MessagesPanel } = messagesFeatureFactory({
+    const { MessagesPanel, useMessageActions } = messagesFeatureFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM,
       api,
@@ -217,7 +221,8 @@
         useFilePreviews
       },
       helpers: {
-        loadSeen
+        loadSeen,
+        saveSeen
       },
       components: {
         Lightbox,
@@ -229,7 +234,7 @@
     if (typeof adminFeatureFactory !== 'function') {
       throw new Error('Admin feature bundle failed to load.');
     }
-    const { AdminDashboard } = adminFeatureFactory({
+    const { AdminDashboard, useAdminListingActions } = adminFeatureFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM,
       api,
@@ -415,10 +420,10 @@
       AppNav,
       features: {
         auth: { AuthProvider, useAuth, AuthModal },
-        listings: { useListingsFeature, CityAutocomplete },
+        listings: { useListingsFeature, CityAutocomplete, useListingModal },
         messageCenter: { useMessageCenter },
-        messages: { MessagesPanel },
-        admin: { AdminDashboard },
+        messages: { MessagesPanel, useMessageActions },
+        admin: { AdminDashboard, useAdminListingActions },
         profile: { ProfilePanel },
         nearby: { NearbyPanel },
         listingForms: { ListingFormModal },

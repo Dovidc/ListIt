@@ -1,5 +1,5 @@
 (() => {
-  function createListingsFeature({ React, api, helpers }) {
+  function createListingsFeature({ React, api, helpers, uploads }) {
     if (!React || typeof React.useState !== 'function') {
       throw new Error('Listings feature requires React.');
     }
@@ -29,6 +29,15 @@
     }
     if (typeof selectPrimaryListingImage !== 'function') {
       throw new Error('Listings feature requires selectPrimaryListingImage helper.');
+    }
+
+    const prepareListingForModal = uploads?.prepareListingForModal;
+    const warmListingImages = uploads?.warmListingImages;
+    if (typeof prepareListingForModal !== 'function') {
+      throw new Error('Listings feature requires prepareListingForModal helper.');
+    }
+    if (typeof warmListingImages !== 'function') {
+      throw new Error('Listings feature requires warmListingImages helper.');
     }
 
     function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
@@ -341,9 +350,37 @@
       };
     }
 
+    function useListingModal({ setSelectedListing }) {
+      const openListingModal = useCallback((listing, coverSrc) => {
+        if (typeof setSelectedListing !== 'function') return;
+        const { payload, images } = prepareListingForModal(listing, coverSrc);
+        if (!payload) return;
+        setSelectedListing(payload);
+        if (listing?.id) {
+          warmListingImages(listing.id, images);
+        }
+      }, [setSelectedListing]);
+
+      const handleListingTileEvent = useCallback((evt, listing, coverSrc) => {
+        if (evt && typeof evt.preventDefault === 'function') {
+          evt.preventDefault();
+        }
+        if (evt && typeof evt.stopPropagation === 'function') {
+          evt.stopPropagation();
+        }
+        openListingModal(listing, coverSrc);
+      }, [openListingModal]);
+
+      return {
+        openListingModal,
+        handleListingTileEvent
+      };
+    }
+
     return {
       useListingsFeature,
-      CityAutocomplete
+      CityAutocomplete,
+      useListingModal
     };
   }
 

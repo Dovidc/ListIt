@@ -31,6 +31,11 @@
       throw new Error('Messages feature requires loadSeen helper.');
     }
 
+    const saveSeen = helpers?.saveSeen;
+    if (typeof saveSeen !== 'function') {
+      throw new Error('Messages feature requires saveSeen helper.');
+    }
+
     const Lightbox = components?.Lightbox;
     const ImageWithSkeleton = components?.ImageWithSkeleton;
     if (typeof Lightbox !== 'function' || typeof ImageWithSkeleton !== 'function') {
@@ -584,6 +589,84 @@
       };
     }
 
+    function useMessageActions({
+      user,
+      onConversationOpened,
+      onTabChange,
+      onSellerCleared,
+      recomputeUnread
+    }) {
+      const startMessage = useCallback(async (item) => {
+        if (!item) return;
+        if (!user) { alert('Log in to message a seller.'); return; }
+        if (user.id === item?.user_id) { alert('This is your listing.'); return; }
+
+        if (typeof onSellerCleared === 'function') {
+          onSellerCleared();
+        }
+
+        try {
+          const convo = await api.ensureConversation({
+            with_user_id: item.user_id,
+            listing_id: item.id
+          });
+          if (typeof onConversationOpened === 'function') {
+            onConversationOpened(convo?.id ?? null);
+          }
+          if (typeof onTabChange === 'function') {
+            onTabChange('messages');
+          }
+        } catch (err) {
+          alert(err?.message || 'Failed to open conversation.');
+        }
+      }, [user, onSellerCleared, onConversationOpened, onTabChange]);
+
+      const startDirectMessage = useCallback(async (userId) => {
+        if (!user) { alert('Log in to message users.'); return; }
+        const targetId = Number(userId);
+        if (!Number.isFinite(targetId) || targetId <= 0) return;
+        if (targetId === user.id) return;
+
+        if (typeof onSellerCleared === 'function') {
+          onSellerCleared();
+        }
+
+        try {
+          const convo = await api.ensureConversation({ with_user_id: targetId });
+          if (typeof onConversationOpened === 'function') {
+            onConversationOpened(convo?.id ?? null);
+          }
+          if (typeof onTabChange === 'function') {
+            onTabChange('messages');
+          }
+        } catch (err) {
+          alert(err?.message || 'Failed to open conversation.');
+        }
+      }, [user, onSellerCleared, onConversationOpened, onTabChange]);
+
+      const handleSeen = useCallback((convoId, lastMsgId) => {
+        if (!user || !convoId || !lastMsgId) return;
+        const seen = loadSeen(user.id) || {};
+        if (!seen[convoId] || seen[convoId] < lastMsgId) {
+          seen[convoId] = lastMsgId;
+          saveSeen(user.id, seen);
+          if (typeof recomputeUnread === 'function') {
+            setTimeout(() => {
+              Promise.resolve()
+                .then(() => recomputeUnread())
+                .catch(() => {});
+            }, 0);
+          }
+        }
+      }, [user, loadSeen, saveSeen, recomputeUnread]);
+
+      return {
+        startMessage,
+        startDirectMessage,
+        handleSeen
+      };
+    }
+
     function MessagesPanel(props) {
       const { user } = props;
       if (!user) return H('div', { className: 'muted' }, 'Please log in to view messages.');
@@ -674,7 +757,8 @@
       MessageComposer,
       ImagePreviewStrip,
       MessagesThread,
-      ConversationsSidebar
+      ConversationsSidebar,
+      useMessageActions
     };
   }
 
