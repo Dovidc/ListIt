@@ -151,7 +151,10 @@
   }
   const { ListingsGrid } = gridComponentsFactory({
     React,
-    components: { ImageWithSkeleton, AdTile }
+    components: { ImageWithSkeleton, AdTile },
+    helpers: {
+      useVirtualMasonry
+    }
   });
 
   const layoutComponentsFactory = window.ListItApp?.components?.layout?.createLayoutComponents;
