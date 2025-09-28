@@ -410,15 +410,6 @@
     };
   }
 
-  // --- Global Loader ---
-  function GlobalLoader({ active }) {
-    if (!active) return null;
-    return H('div', { className: 'global-loader' },
-      H('div', { className: 'spinner' }),
-      H('div', { className: 'loader-text' }, 'Loading...')
-    );
-  }
-
   function AdTile({ ad, cols = 4, className, preview = false }) {
     if (!ad) return null;
     const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
@@ -510,6 +501,12 @@
   }
   const { Lightbox, ImageWithSkeleton, ResponsiveImage } = mediaComponentsFactory({ React, ReactDOM });
 
+  const layoutComponentsFactory = window.ListItApp?.components?.layout?.createLayoutComponents;
+  if (typeof layoutComponentsFactory !== 'function') {
+    throw new Error('Layout components bundle failed to load.');
+  }
+  const { Header, GlobalLoader } = layoutComponentsFactory({ React });
+
   const listingsFeatureFactory = window.ListItApp?.features?.listings?.createListingsFeature;
   if (typeof listingsFeatureFactory !== 'function') {
     throw new Error('Listings feature bundle failed to load.');
@@ -584,85 +581,6 @@
   window.ListItApp.hooks.useNotifications = useNotifications;
   window.ListItApp.hooks.useListingQueue = useListingQueue;
   window.ListItApp.hooks.useListingQueueState = useListingQueueState;
-  // --- Header (profile tab shows @username) ---
-  // --- Header (simplified for modal auth) ---
-function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick, hasAdminUnread }) {
-  // If user not logged in, show Register/Login buttons
-  if (!user) {
-    return H('header', null,
-      H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
-          H('div', { className: 'brand-badge' },
-            H('div', { className: 'brand-ring' }),
-            H('div', { className: 'brand-initials' }, 'CL')
-          ),
-          H('div', { className: 'brand-copy' },
-            H('div', { className: 'brand-title' }, 'Creegslist'),
-            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
-          )
-        ),
-        H('div', { className: 'row', style: { gap: 8 } },
-          H('button', { className: 'btn', onClick: () => onAuthClick('register') }, 'Register'),
-          H('button', { className: 'btn primary', onClick: () => onAuthClick('login') }, 'Log In')
-        )
-      )
-    );
-  }
-
-  // Original header for logged in users
-  const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
-
-  const authArea = user
-    ? H('div', { className: 'row', style: { gap: 8 } },
-        !!user.is_admin && H('button', {
-          className: 'btn danger',
-          onClick: async () => {
-            if (confirm('Delete ALL listings? This cannot be undone.')) {
-              await onAdminDeleteAll?.();
-            }
-          }
-        }, 'Admin: Delete ALL')
-      )
-    : null;
-
-  const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
-
-  const messagesBtn = H('button', {
-    className: `btn ${active==='messages'?'primary':''}`,
-    style: { position: 'relative' },
-    onClick: () => {
-      if (!user) { alert('Log in to view messages.'); return; }
-      onNav('messages');
-    }
-  }, 'Messages',
-    (unreadCount > 0) &&
-      H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: unreadDotColor } })
-  );
-
-  return H('header', null,
-    H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
-          H('div', { className: 'brand-badge' },
-            H('div', { className: 'brand-ring' }),
-            H('div', { className: 'brand-initials' }, 'CL')
-          ),
-          H('div', { className: 'brand-copy' },
-            H('div', { className: 'brand-title' }, 'Creegslist'),
-            H('div', { className: 'brand-tagline' }, 'Sell on the spot')
-          )
-        ),
-      H('nav', { className: 'row' },
-        H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-        isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
-        messagesBtn,
-        H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel),
-        user?.is_admin && H('button', { className: `btn ${active==='admin'?'primary':''}`, onClick: () => onNav('admin') }, 'Admin')
-      ),
-      authArea
-    )
-  );
-}
-
   // --- MultiFilePicker (for S3 uploads) ---
   function MultiFilePicker({ files, onChange }) {
     const ref = useRef();
