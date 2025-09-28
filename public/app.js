@@ -343,8 +343,7 @@
     appNav: AppNav
   });
 
-
-function App(){
+  const App = React.memo(function AppComponent(){
     const { user, setUser, pushMeta } = useAuth();
     const [tab, setTab] = useState('browse');
     const [showForm, setShowForm] = useState(false);
@@ -1177,7 +1176,7 @@ function App(){
         )
       )
     );
-  }
+  });
 
   function Root() {
     return H(AuthProvider, null,
