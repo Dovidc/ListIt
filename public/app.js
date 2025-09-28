@@ -343,6 +343,160 @@
     appNav: AppNav
   });
 
+  const DEFAULT_NEARBY_RADIUS_M = 400;
+
+  const NearbyPanel = React.memo(function NearbyPanel({
+    user,
+    mineById,
+    onEdit,
+    onDelete,
+    onMessage,
+    onAdminDelete,
+    onViewSeller,
+    onToggleSold,
+    setTab
+  }) {
+    const [status, setStatus] = useState('idle');
+    const [error, setError] = useState(null);
+    const [items, setItems] = useState([]);
+    const [locationLabel, setLocationLabel] = useState('');
+    const coordsRef = useRef(null);
+
+    const normalizeNearbyItems = useCallback((input) => {
+      const list = asArray(input);
+      return list.map((item) => {
+        const cover = selectPrimaryListingImage?.(item) || item?.thumb_url || item?.image_data || '';
+        if (cover) {
+          return { ...item, __cover: cover };
+        }
+        return { ...item };
+      });
+    }, [selectPrimaryListingImage, asArray]);
+
+    const loadNearby = useCallback(async (lat, lon) => {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        setError('Could not determine your location.');
+        setStatus('error');
+        return;
+      }
+
+      setStatus((prev) => (prev === 'locating' ? 'locating' : 'loading'));
+      setError(null);
+      try {
+        const response = await api.listNearby(lat, lon, DEFAULT_NEARBY_RADIUS_M, { silent: true });
+        const rows = response?.rows ?? response?.items ?? response;
+        const normalized = normalizeNearbyItems(rows);
+        setItems(normalized);
+        setStatus('ready');
+      } catch (err) {
+        console.error('Failed to load nearby listings', err);
+        setError(err?.message || 'Failed to load nearby listings.');
+        setStatus('error');
+      }
+    }, [api, normalizeNearbyItems]);
+
+    const requestLocation = useCallback(async () => {
+      setStatus('locating');
+      setError(null);
+      try {
+        const info = await fetchCoordsAndReverse();
+        if (!info || !Number.isFinite(info.lat) || !Number.isFinite(info.lon)) {
+          throw new Error('Could not determine your location.');
+        }
+        coordsRef.current = { lat: info.lat, lon: info.lon };
+        setLocationLabel(info.display || '');
+        await loadNearby(info.lat, info.lon);
+      } catch (err) {
+        console.warn('Nearby location error', err);
+        setError(err?.message || 'Could not determine your location.');
+        setStatus('error');
+      }
+    }, [loadNearby]);
+
+    useEffect(() => {
+      requestLocation();
+    }, [requestLocation]);
+
+    const handleRefresh = useCallback(() => {
+      const coords = coordsRef.current;
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+        loadNearby(coords.lat, coords.lon);
+      } else {
+        requestLocation();
+      }
+    }, [loadNearby, requestLocation]);
+
+    const showLoader = status === 'loading' || status === 'locating';
+    const hasItems = Array.isArray(items) && items.length > 0;
+
+    return H('section', { className: 'nearby-panel', style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' } },
+        H('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+          H('h2', { style: { margin: 0, fontSize: 20 } }, 'Nearby listings'),
+          locationLabel && H('span', { className: 'muted' }, locationLabel)
+        ),
+        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+          H('button', {
+            type: 'button',
+            className: 'btn',
+            onClick: requestLocation,
+            disabled: showLoader,
+            'aria-busy': showLoader ? 'true' : 'false'
+          }, showLoader && status === 'locating' ? 'Locating…' : 'Use my location'),
+          H('button', {
+            type: 'button',
+            className: 'btn',
+            onClick: handleRefresh,
+            disabled: showLoader
+          }, showLoader && status === 'loading' ? 'Loading…' : 'Refresh')
+        )
+      ),
+      error && H('div', {
+        className: 'card',
+        style: {
+          padding: 16,
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          color: '#b91c1c'
+        }
+      },
+        H('div', null, error),
+        H('div', { style: { marginTop: 12 } },
+          H('button', {
+            type: 'button',
+            className: 'btn',
+            onClick: requestLocation
+          }, 'Try again')
+        )
+      ),
+      showLoader && H('p', { className: 'muted', style: { padding: '12px 0' } }, status === 'locating' ? 'Locating you…' : 'Loading nearby listings…'),
+      (!showLoader && !error && !hasItems) && H('p', { className: 'muted', style: { padding: '24px 0', textAlign: 'center' } }, 'No nearby listings yet.'),
+      hasItems && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+        items.map((item, index) => H(ListingCard, {
+          key: item.id || item.uuid || `nearby-${index}`,
+          item,
+          canEdit: !!mineById[item.id],
+          onEdit,
+          onDelete,
+          user,
+          onMessage,
+          onAdminDelete,
+          onViewSeller,
+          onToggleSold,
+          showDistance: true,
+          viewContext: 'nearby'
+        }))
+      ),
+      H('div', { style: { marginTop: 8 } },
+        H('button', {
+          type: 'button',
+          className: 'btn',
+          onClick: () => setTab('browse')
+        }, 'Back to listings')
+      )
+    );
+  });
+
   const App = React.memo(function AppComponent(){
     const { user, setUser, pushMeta } = useAuth();
     const [tab, setTab] = useState('browse');
