@@ -1,5 +1,5 @@
 (() => {
-  function createGridComponents({ React, components = {} } = {}) {
+  function createGridComponents({ React, components = {}, helpers = {} } = {}) {
     if (!React || typeof React.createElement !== 'function') {
       throw new Error('Grid components require React.');
     }
@@ -11,8 +11,63 @@
 
     const AdTile = typeof components.AdTile === 'function' ? components.AdTile : null;
 
+    const { useVirtualMasonry } = helpers || {};
+    const hasVirtualMasonry = typeof useVirtualMasonry === 'function';
+
     const { useEffect, useMemo, useRef } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+
+    const VirtualEntry = React.memo(function VirtualEntry({ id, style, children, onHeightChange }) {
+      const ref = useRef(null);
+      const lastHeightRef = useRef(null);
+
+      useEffect(() => {
+        if (typeof onHeightChange !== 'function') return undefined;
+        const el = ref.current;
+        if (!el) return undefined;
+
+        let frame = null;
+        let resizeObserver = null;
+
+        const emitHeight = () => {
+          if (!ref.current) return;
+          const rect = ref.current.getBoundingClientRect();
+          const height = rect.height;
+          if (!Number.isFinite(height) || height <= 0) return;
+          if (lastHeightRef.current === height) return;
+          lastHeightRef.current = height;
+          onHeightChange(id, height);
+        };
+
+        emitHeight();
+
+        if (typeof ResizeObserver === 'function') {
+          resizeObserver = new ResizeObserver(() => emitHeight());
+          resizeObserver.observe(el);
+        } else {
+          const loop = () => {
+            emitHeight();
+            frame = window.requestAnimationFrame(loop);
+          };
+          frame = window.requestAnimationFrame(loop);
+        }
+
+        return () => {
+          lastHeightRef.current = null;
+          if (resizeObserver) resizeObserver.disconnect();
+          if (frame != null) window.cancelAnimationFrame(frame);
+        };
+      }, [id, onHeightChange]);
+
+      return H('div', {
+        ref,
+        style: {
+          position: 'absolute',
+          boxSizing: 'border-box',
+          ...style
+        }
+      }, children);
+    });
 
     const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect }) {
       const ref = useRef(null);
@@ -103,19 +158,105 @@
 
       const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
-      const sectionStyle = {
+
+      const containerRef = useRef(null);
+      const virtualItems = useMemo(() => {
+        if (!hasVirtualMasonry) return [];
+        return entries.map((entry, index) => {
+          const dataId = entry?.data?.id;
+          const baseId = dataId != null ? String(dataId) : String(index);
+          const prefix = entry.type === 'ad' ? 'ad' : 'listing';
+          return {
+            id: `${prefix}-${baseId}`,
+            entry,
+            index
+          };
+        });
+      }, [entries]);
+
+      const virtualizationEstimate = isMobile ? 210 : 240;
+      const virtualizationState = hasVirtualMasonry
+        ? useVirtualMasonry({
+            containerRef,
+            items: virtualItems,
+            columnCount: cols,
+            columnGap: resolvedGap,
+            estimateHeight: virtualizationEstimate,
+            overscanVH: 2
+          })
+        : null;
+
+      const shouldVirtualize = hasVirtualMasonry && entries.length >= 120;
+      const fallbackHeight = entries.length && cols > 0
+        ? Math.max(0, (Math.ceil(entries.length / cols) * (virtualizationEstimate + resolvedGap)) - resolvedGap)
+        : 0;
+
+      const baseStyle = { ...(style || {}) };
+      const gridStyle = {
+        ...baseStyle,
         display: 'grid',
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gap: resolvedGap,
-        ...(style || {})
+        gap: resolvedGap
       };
 
-      const containerProps = {
-        className,
-        style: sectionStyle
-      };
+      if (shouldVirtualize && virtualizationState) {
+        const {
+          visible = [],
+          positions = [],
+          containerHeight = 0,
+          registerHeight,
+          colWidth
+        } = virtualizationState;
 
-      return H('section', containerProps,
+        const itemsToRender = visible.length
+          ? visible
+          : virtualItems.map((item, idx) => ({ item, pos: positions[idx] }));
+
+        const estimatedHeight = containerHeight > 0 ? containerHeight : fallbackHeight;
+        const virtualStyle = { ...baseStyle, position: 'relative' };
+        if (baseStyle.height == null) {
+          virtualStyle.height = estimatedHeight;
+        }
+        if (baseStyle.minHeight == null) {
+          virtualStyle.minHeight = fallbackHeight;
+        }
+
+        return H('section', { ref: containerRef, className, style: virtualStyle },
+          itemsToRender.map(({ item, pos }) => {
+            const entry = item?.entry;
+            if (!entry) return null;
+            const position = pos || {};
+            const width = position.width ?? colWidth ?? '100%';
+            const commonProps = {
+              key: item.id,
+              id: item.id,
+              style: {
+                top: position.top ?? 0,
+                left: position.left ?? 0,
+                width
+              },
+              onHeightChange: registerHeight
+            };
+
+            if (entry.type === 'ad') {
+              if (!AdTile) return null;
+              return H(VirtualEntry, commonProps,
+                H(AdTile, { ad: entry.data, cols })
+              );
+            }
+
+            return H(VirtualEntry, commonProps,
+              H(GridTile, {
+                item: entry.data,
+                onEnsureCover,
+                onSelect
+              })
+            );
+          })
+        );
+      }
+
+      return H('section', { className, style: gridStyle },
         entries.map((entry, index) => {
           if (entry.type === 'ad') {
             if (!AdTile) return null;
