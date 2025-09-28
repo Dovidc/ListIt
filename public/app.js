@@ -390,258 +390,275 @@
     onViewSeller,
     onToggleSold
   }) {
-    const [showAutoHelp, setShowAutoHelp] = useState(false);
-    const [showAiHelp, setShowAiHelp] = useState(false);
-    const [showNearbyHelp, setShowNearbyHelp] = useState(false);
+    const [helpModal, setHelpModal] = useState(null);
+    const [profileSelected, setProfileSelected] = useState(null);
 
-    const myListings = useMemo(() => {
-      const arr = Array.isArray(items) ? items.slice() : [];
-      const getTs = (item) => {
-        if (!item || typeof item !== 'object') return 0;
-        const candidates = [
-          item.updated_at,
-          item.updatedAt,
-          item.created_at,
-          item.createdAt,
-          item.posted_at
-        ];
-        for (const value of candidates) {
-          if (typeof value === 'number' && Number.isFinite(value)) return value;
-          if (typeof value === 'string' && value) {
-            const ts = Date.parse(value);
-            if (!Number.isNaN(ts)) return ts;
-          }
-        }
-        return 0;
-      };
-      arr.sort((a, b) => {
-        const diff = getTs(b) - getTs(a);
-        if (diff !== 0) return diff;
-        const idA = Number.isFinite(Number(a?.id)) ? Number(a.id) : 0;
-        const idB = Number.isFinite(Number(b?.id)) ? Number(b.id) : 0;
-        return idB - idA;
-      });
-      return arr;
-    }, [items]);
+    const handleEdit = useCallback((it) => {
+      setProfileSelected(null);
+      onEdit?.(it);
+    }, [onEdit]);
 
-    const renderToggle = ({
-      key,
-      label,
-      description,
-      value,
-      onChange,
-      disabled,
-      onHelp,
-      helpLabel
-    }) => {
-      const inputId = `profile-toggle-${key}`;
-      const handleHelpClick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onHelp?.();
-      };
-      const handleChange = (event) => {
-        if (disabled) {
-          event.preventDefault();
-          return;
-        }
-        onChange?.(!!event.target.checked);
-      };
-      return H('label', {
-        key,
-        className: 'toggle-card',
-        htmlFor: inputId,
-        'data-disabled': disabled ? 'true' : 'false',
-        style: {
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          width: '100%'
-        }
-      },
-      H('input', {
-        id: inputId,
-        type: 'checkbox',
-        className: 'toggle-input',
-        checked: !!value,
-        onChange: handleChange,
-        disabled
-      }),
-      H('span', {
-        className: 'toggle-copy',
-        style: { flex: 1 }
-      },
-        H('span', {
-          style: {
-            fontWeight: 600,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8
-          }
-        },
-          label,
-          onHelp && H('button', {
-            type: 'button',
-            onClick: handleHelpClick,
-            className: 'btn',
-            style: {
-              width: 26,
-              height: 26,
-              padding: 0,
-              borderRadius: 13,
-              fontSize: 14,
-              lineHeight: '24px'
-            },
-            title: helpLabel || 'Learn more'
-          }, '?')
-        ),
-        description && H('span', {
-          className: 'muted',
-          style: { fontSize: 12 }
-        }, description)
-      ),
-      H('span', {
-        className: 'toggle-slider',
-        'aria-hidden': 'true'
-      }));
-    };
+    const handleDelete = useCallback(async (it) => {
+      if (onDelete) await onDelete(it);
+      setProfileSelected(null);
+    }, [onDelete]);
+
+    const handleAdminDelete = useCallback(async (id) => {
+      if (onAdminDelete) await onAdminDelete(id);
+      setProfileSelected(null);
+    }, [onAdminDelete]);
+
+    const [profileTab, setProfileTab] = useState('active');
+    const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
+
+    async function savePaypal() {
+      const r = await api.updatePaypalEmail((paypalEmail || '').trim());
+      if (r?.error) { alert(r.error); return; }
+      const me = await api.me({ silent: true });
+      AppNav.setUser(me);
+      alert('Saved.');
+    }
 
     if (!user) {
-      return H('section', {
-        className: 'card',
-        style: { padding: 24, display: 'grid', gap: 12 }
-      },
-      H('h2', { style: { margin: 0, fontSize: 20 } }, 'Profile'),
-      H('p', { className: 'muted', style: { margin: 0 } }, 'Log in to manage your profile and listings.')
+      return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
+        H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
+        H('div', { className: 'muted' }, 'Please log in to view your profile.')
       );
     }
 
-    const nearbyDisabled = !isMobile || !autoListEnabled;
+    const activeItems = asArray(items).filter(it => !it?.sold);
+    const soldItems = asArray(items).filter(it => !!it?.sold);
+    const shownItems = profileTab === 'sold' ? soldItems : activeItems;
 
-    return H('div', {
-      className: 'profile-panel',
-      style: {
-        display: 'grid',
-        gap: 24,
-        alignContent: 'start'
-      }
-    },
-    H('section', {
-      className: 'card',
-      style: {
-        padding: isMobile ? 16 : 24,
-        display: 'grid',
-        gap: 16
-      }
-    },
-      H('div', {
-        style: {
-          display: 'grid',
-          gap: 4
-        }
-      },
-        H('h2', { style: { margin: 0, fontSize: 20 } }, 'Profile & settings'),
-        user.username && H('div', { className: 'muted', style: { fontWeight: 600 } }, `@${user.username}`),
-        user.email && H('div', { className: 'muted' }, user.email),
-        user.paypal_email && H('div', { className: 'muted' }, `PayPal: ${user.paypal_email}`)
-      ),
-      H('div', {
-        style: {
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8
-        }
-      },
-        H('button', {
-          type: 'button',
-          className: 'btn primary',
-          onClick: () => onNewListing?.()
-        }, 'New listing'),
-        H('button', {
-          type: 'button',
-          className: 'btn',
-          onClick: () => onLogout?.()
-        }, 'Log out')
-      ),
-      H('div', {
-        style: {
-          display: 'grid',
-          gap: 12
-        }
-      },
-        renderToggle({
-          key: 'auto',
-          label: 'Auto-list new photos',
-          description: 'Automatically create listings after you attach photos.',
-          value: !!autoListEnabled,
-          onChange: (next) => setAutoListEnabled?.(next),
-          onHelp: () => setShowAutoHelp(true),
-          helpLabel: 'About Auto-list'
-        }),
-        renderToggle({
-          key: 'ai-desc',
-          label: 'AI descriptions',
-          description: 'Let AI draft descriptions for you when you upload photos.',
-          value: !!aiDescriptionEnabled,
-          onChange: (next) => setAiDescriptionEnabled?.(next),
-          onHelp: () => setShowAiHelp(true),
-          helpLabel: 'About AI descriptions'
-        }),
-        renderToggle({
-          key: 'nearby',
-          label: 'Also post to Nearby',
-          description: nearbyDisabled
-            ? 'Requires Auto-list and is available from mobile devices.'
-            : 'Auto-listings will be shared to the Nearby feed with your location.',
-          value: !!autoPostNearbyEnabled,
-          onChange: (next) => setAutoPostNearbyEnabled?.(next),
-          disabled: nearbyDisabled,
-          onHelp: () => setShowNearbyHelp(true),
-          helpLabel: 'About Nearby posting'
-        })
-      )
-    ),
-    H('section', {
-      style: {
-        display: 'grid',
-        gap: 16
-      }
-    },
-      H('div', {
-        style: {
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12
-        }
-      },
-        H('h2', { style: { margin: 0, fontSize: 20 } }, 'Your listings'),
-        H('span', { className: 'muted', style: { fontSize: 13 } }, `${myListings.length} total`)
-      ),
-      myListings.length === 0
-        ? H('p', { className: 'muted', style: { margin: 0 } }, 'You have not created any listings yet.')
-        : H('div', {
+    return H(React.Fragment, null,
+      H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
+        H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+          H('div', null,
+            H('div', { style: { fontWeight: 800, fontSize: 18 } }, user.username ? `@${user.username}` : user.email),
+            H('div', { className: 'muted' }, 'Your account')
+          ),
+          H('div', { className: 'row', style: { gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+            H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
+              H('input', {
+                type: 'checkbox',
+                className: 'toggle-input',
+                checked: !!autoListEnabled,
+                onChange: (e) => setAutoListEnabled(e.target.checked)
+              }),
+              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+              H('div', { className: 'toggle-copy' },
+                H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
+                H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
+              ),
+              H('button', {
+                type: 'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('auto'); },
+                title: 'About Auto-list',
+                style: {
+                  marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                  borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                }
+              }, '?')
+            ),
+            H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
+              H('input', {
+                type: 'checkbox',
+                className: 'toggle-input',
+                checked: !!aiDescriptionEnabled,
+                onChange: (e) => setAiDescriptionEnabled(e.target.checked)
+              }),
+              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+              H('div', { className: 'toggle-copy' },
+                H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
+                H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
+              ),
+              H('button', {
+                type: 'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
+                title: 'AI description tips',
+                style: {
+                  marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                  borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                }
+              }, '?')
+            ),
+            H('button', { className: 'btn', onClick: onNewListing }, 'New listing'),
+            H('button', { className: 'btn danger', onClick: onLogout }, 'Log out')
+          )
+        ),
+
+        (isMobile && H('div', {
             style: {
-              display: 'grid',
-              gap: 16
+              marginTop: 10,
+              overflow: 'hidden',
+              maxHeight: autoListEnabled ? 120 : 0,
+              transition: 'max-height 220ms ease'
             }
           },
-          myListings.map((item, idx) => H(ListingCard, {
-            key: item?.id ?? item?.slug ?? `listing-${idx}`,
-            item,
-            user,
-            canEdit: true,
-            onEdit,
-            onDelete,
-            onAdminDelete,
-            onViewSeller,
-            onToggleSold
-          }))
+            H('label', {
+              className: 'toggle-card',
+              style: { gap: 8, alignItems: 'flex-start', padding: '8px 10px', border: '1px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' },
+              'data-disabled': !autoListEnabled ? 'true' : undefined
+            },
+              H('input', {
+                type: 'checkbox',
+                className: 'toggle-input',
+                checked: !!autoPostNearbyEnabled,
+                onChange: (e) => setAutoPostNearbyEnabled(e.target.checked),
+                disabled: !autoListEnabled
+              }),
+              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+              H('div', { className: 'toggle-copy' },
+                H('div', { style: { fontWeight: 700 } }, 'Also post to Nearby'),
+                H('div', { className: 'muted', style: { fontSize: 12 } }, 'Auto-created items will be discoverable in Nearby (asks for your location once).')
+              ),
+              H('button', {
+                type: 'button',
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('nearby'); },
+                title: 'Auto-post to Nearby info',
+                style: {
+                  marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                  borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                }
+              }, '?')
+            )
+          ))
+      ),
+
+      H('section', null,
+        H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap' } },
+          H('section', { style: { marginTop: 12 } },
+            H('label', null, 'PayPal email'),
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+              H('input', {
+                value: paypalEmail,
+                onChange: e => setPaypalEmail(e.target.value),
+                placeholder: 'name@example.com',
+                style: { minWidth: 260 }
+              }),
+              H('button', { className: 'btn', onClick: savePaypal }, 'Save')
+            ),
+            H('div', { className: 'muted', style: { fontSize: 12, marginTop: 4 } },
+              'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.'
+            )
+          ),
+
+          H('div', { style: { fontWeight: 800 } }, 'Your listings'),
+          H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
+        ),
+        H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
+          H('button', {
+            className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setProfileTab('active')
+          }, 'Active listings'),
+          H('button', {
+            className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
+            type: 'button',
+            onClick: () => setProfileTab('sold')
+          }, 'Sold listings')
+        ),
+        (shownItems.length
+          ? (() => {
+              const COLS = isMobile ? 3 : 4;
+              const GAP = 12;
+              return H('section', {
+                style: {
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                  gap: GAP
+                }
+              },
+                shownItems.map(it => {
+                  const src = it.image_data || '';
+                  return H('div', {
+                    key: it.id,
+                    className: 'card',
+                    style: { padding: 0, overflow: 'hidden', borderRadius: 8, cursor: 'pointer' },
+                    onClick: () => setProfileSelected(it)
+                  },
+                    H('div', {
+                      style: {
+                        position: 'relative',
+                        width: '100%',
+                        aspectRatio: '1 / 1',
+                        background: '#f3f4f6'
+                      }
+                    },
+                      src ? H(ImageWithSkeleton, {
+                        src,
+                        alt: it.title || 'Item',
+                        loading: 'lazy',
+                        decoding: 'async',
+                        fetchPriority: 'low',
+                        style: {
+                          position: 'absolute',
+                          inset: 0,
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block'
+                        },
+                        disableSkeleton: true
+                      }) : H('div', {
+                        style: {
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'grid',
+                          placeItems: 'center',
+                          color: '#6b7280',
+                          fontWeight: 600
+                        }
+                      }, 'No image'),
+                      it.sold ? H('div', {
+                        style: {
+                          position: 'absolute',
+                          top: '22%',
+                          left: '50%',
+                          transform: 'translateX(-50%) rotate(-12deg)',
+                          background: 'rgba(5, 150, 105, 0.92)',
+                          color: '#fff',
+                          fontWeight: 800,
+                          fontSize: 20,
+                          letterSpacing: 4,
+                          textTransform: 'uppercase',
+                          padding: '6px 24px',
+                          borderRadius: 999,
+                          pointerEvents: 'none',
+                          boxShadow: '0 8px 18px rgba(4,120,87,0.35)'
+                        }
+                      }, 'Sold') : null
+                    )
+                  );
+                })
+              );
+            })()
+          : H('p', {
+              className: 'muted',
+              style: { textAlign: 'center', margin: '28px 0' }
+            }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
         )
-    ),
-    showAutoHelp && H(AutoListHelpModal, { onClose: () => setShowAutoHelp(false) }),
-    showAiHelp && H(AiDescriptionHelpModal, { onClose: () => setShowAiHelp(false) }),
-    showNearbyHelp && H(AutoPostNearbyHelpModal, { onClose: () => setShowNearbyHelp(false) })
+      ),
+
+      helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
+      helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
+      helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
+
+      H(ListingModal, {
+        open: !!profileSelected,
+        item: profileSelected,
+        onClose: () => setProfileSelected(null),
+        cardProps: {
+          user,
+          canEdit: true,
+          onEdit: handleEdit,
+          onDelete: handleDelete,
+          onAdminDelete: handleAdminDelete,
+          onViewSeller,
+          onToggleSold,
+          showDistance: false
+        }
+      })
     );
   });
 
