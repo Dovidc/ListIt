@@ -361,11 +361,46 @@
     onToggleSold,
     setTab
   }) {
-    const [status, setStatus] = useState('idle');
-    const [error, setError] = useState(null);
+    const COORD_STORAGE_KEY = 'listit_nearby_coords';
+    const COORD_TTL_MS = 2 * 60 * 1000;
+    const RADIUS_OPTIONS = [
+      { value: 150, label: '~500 ft' },
+      { value: 402, label: '0.25 mi' },
+      { value: 805, label: '0.5 mi' },
+      { value: 1609, label: '1 mi' }
+    ];
+
+    const storedCoords = useMemo(() => {
+      try {
+        const raw = localStorage.getItem(COORD_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const lat = Number(parsed?.lat);
+        const lon = Number(parsed?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return {
+          lat,
+          lon,
+          ts: Number(parsed?.ts) || 0,
+          display: typeof parsed?.display === 'string' ? parsed.display : ''
+        };
+      } catch {
+        return null;
+      }
+    }, []);
+
+    const [radius, setRadius] = useState(150);
     const [items, setItems] = useState([]);
-    const [locationLabel, setLocationLabel] = useState('');
-    const coordsRef = useRef(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [selected, setSelected] = useState(null);
+    const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
+    const [locationLabel, setLocationLabel] = useState(() => storedCoords?.display || '');
+
+    const coordsRef = useRef(storedCoords ? { lat: storedCoords.lat, lon: storedCoords.lon } : null);
+    const coordsTsRef = useRef(storedCoords?.ts || 0);
+    const loadTokenRef = useRef(0);
+    const masonryRef = useRef(null);
 
     const normalizeNearbyItems = useCallback((input) => {
       const list = asArray(input);
@@ -378,121 +413,207 @@
       });
     }, [selectPrimaryListingImage, asArray]);
 
-    const loadNearby = useCallback(async (lat, lon) => {
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        setError('Could not determine your location.');
-        setStatus('error');
-        return;
+    const columnCount = useColumnCount(masonryRef, 3);
+    const orderedItems = useMemo(() => interleaveByColumns(items, columnCount), [items, columnCount]);
+    const hasItems = orderedItems.length > 0;
+
+    const ensureCoords = useCallback(async (force = false) => {
+      const now = Date.now();
+      if (!force && coordsRef.current && (now - coordsTsRef.current) < COORD_TTL_MS) {
+        return coordsRef.current;
       }
 
-      setStatus((prev) => (prev === 'locating' ? 'locating' : 'loading'));
-      setError(null);
-      try {
-        const response = await api.listNearby(lat, lon, DEFAULT_NEARBY_RADIUS_M, { silent: true });
-        const rows = response?.rows ?? response?.items ?? response;
-        const normalized = normalizeNearbyItems(rows);
-        setItems(normalized);
-        setStatus('ready');
-      } catch (err) {
-        console.error('Failed to load nearby listings', err);
-        setError(err?.message || 'Failed to load nearby listings.');
-        setStatus('error');
-      }
-    }, [api, normalizeNearbyItems]);
-
-    const requestLocation = useCallback(async () => {
-      setStatus('locating');
-      setError(null);
       try {
         const info = await fetchCoordsAndReverse();
         if (!info || !Number.isFinite(info.lat) || !Number.isFinite(info.lon)) {
-          throw new Error('Could not determine your location.');
+          throw new Error('location_unavailable');
         }
-        coordsRef.current = { lat: info.lat, lon: info.lon };
+        const coords = { lat: info.lat, lon: info.lon };
+        coordsRef.current = coords;
+        coordsTsRef.current = Date.now();
         setLocationLabel(info.display || '');
-        await loadNearby(info.lat, info.lon);
+        try {
+          localStorage.setItem(COORD_STORAGE_KEY, JSON.stringify({
+            ...coords,
+            display: info.display || '',
+            ts: coordsTsRef.current
+          }));
+        } catch {}
+        return coords;
       } catch (err) {
-        console.warn('Nearby location error', err);
-        setError(err?.message || 'Could not determine your location.');
-        setStatus('error');
+        if (!force && coordsRef.current) return coordsRef.current;
+        throw err;
       }
+    }, []);
+
+    const loadNearby = useCallback(async (forceLocation = false) => {
+      const token = ++loadTokenRef.current;
+      setBusy(true);
+      setError('');
+
+      try {
+        const coords = await ensureCoords(forceLocation);
+        if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
+          throw new Error('location_unavailable');
+        }
+
+        const response = await api.listNearby(coords.lat, coords.lon, radius, { silent: true });
+        if (loadTokenRef.current !== token) return;
+
+        const rows = response?.rows ?? response?.items ?? response;
+        const normalized = normalizeNearbyItems(rows);
+        setItems(normalized);
+        setLastUpdatedLabel(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (err) {
+        if (loadTokenRef.current !== token) return;
+        console.error('Nearby load failed:', err);
+        let message = 'Could not load nearby listings.';
+        const errMessage = err?.message || '';
+        if (errMessage === 'Geolocation not supported' || errMessage === 'geolocation_unsupported') {
+          message = 'Geolocation not supported in this browser.';
+        } else if (err?.code === 1) {
+          message = 'Location permission denied.';
+        } else if (err?.code === 2) {
+          message = 'Unable to determine your location.';
+        } else if (err?.code === 3) {
+          message = 'Location lookup timed out.';
+        } else if (errMessage === 'location_unavailable' || errMessage === 'Could not determine your location.') {
+          message = 'Location unavailable.';
+        } else if (typeof errMessage === 'string' && errMessage && errMessage !== 'request_failed') {
+          message = errMessage;
+        }
+        setItems([]);
+        setLastUpdatedLabel('');
+        setError(message);
+      } finally {
+        if (loadTokenRef.current === token) {
+          setBusy(false);
+        }
+      }
+    }, [api, ensureCoords, normalizeNearbyItems, radius]);
+
+    useEffect(() => {
+      loadNearby(false);
+      return () => {
+        loadTokenRef.current += 1;
+      };
     }, [loadNearby]);
 
     useEffect(() => {
-      requestLocation();
-    }, [requestLocation]);
-
-    const handleRefresh = useCallback(() => {
-      const coords = coordsRef.current;
-      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
-        loadNearby(coords.lat, coords.lon);
-      } else {
-        requestLocation();
-      }
-    }, [loadNearby, requestLocation]);
-
-    const showLoader = status === 'loading' || status === 'locating';
-    const hasItems = Array.isArray(items) && items.length > 0;
-
-    return H('section', { className: 'nearby-panel', style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-      H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' } },
-        H('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-          H('h2', { style: { margin: 0, fontSize: 20 } }, 'Nearby listings'),
-          locationLabel && H('span', { className: 'muted' }, locationLabel)
-        ),
-        H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
-          H('button', {
-            type: 'button',
-            className: 'btn',
-            onClick: requestLocation,
-            disabled: showLoader,
-            'aria-busy': showLoader ? 'true' : 'false'
-          }, showLoader && status === 'locating' ? 'Locating…' : 'Use my location'),
-          H('button', {
-            type: 'button',
-            className: 'btn',
-            onClick: handleRefresh,
-            disabled: showLoader
-          }, showLoader && status === 'loading' ? 'Loading…' : 'Refresh')
-        )
-      ),
-      error && H('div', {
-        className: 'card',
-        style: {
-          padding: 16,
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          color: '#b91c1c'
+      if (!selected) return;
+      const listener = (evt) => {
+        if (evt.key === 'Escape') {
+          setSelected(null);
         }
+      };
+      window.addEventListener('keydown', listener);
+      return () => window.removeEventListener('keydown', listener);
+    }, [selected]);
+
+    useEffect(() => {
+      if (!selected) return;
+      const key = selected?.id ?? selected?.uuid ?? null;
+      if (key == null) return;
+      const next = items.find((item) => (item?.id ?? item?.uuid) === key);
+      if (!next) {
+        setSelected(null);
+      } else if (next !== selected) {
+        setSelected(next);
+      }
+    }, [items, selected]);
+
+    const handleReload = useCallback(() => {
+      loadNearby(true);
+    }, [loadNearby]);
+
+    const handleEdit = useCallback((listing) => {
+      setSelected(null);
+      setTab('browse');
+      onEdit?.(listing);
+    }, [onEdit, setTab]);
+
+    return H('div', { id: 'tab-nearby' },
+      H('section', { className: 'card', style: { padding: 12, margin: '12px 0 16px' } },
+        H('div', { className: 'row nearby-filter', style: { gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+          H('label', { htmlFor: 'nearby-radius' }, 'Filter radius:'),
+          H('select', {
+            id: 'nearby-radius',
+            value: radius,
+            onChange: (e) => setRadius(Number(e.target.value)),
+            disabled: busy,
+            style: { width: 'auto' }
+          },
+            RADIUS_OPTIONS.map((opt) => H('option', { key: opt.value, value: opt.value }, opt.label))
+          ),
+          H('button', { className: 'btn', onClick: handleReload, disabled: busy }, busy ? 'Refreshing…' : 'Reload'),
+          lastUpdatedLabel && H('span', { className: 'muted', style: { marginLeft: 'auto', fontSize: 11 } }, `Updated ${lastUpdatedLabel}`)
+        ),
+        locationLabel && H('div', { className: 'muted', style: { fontSize: 12, marginTop: 6 } }, locationLabel)
+      ),
+
+      error && H('div', { className: 'muted', style: { color: '#b91c1c', marginTop: 8, fontSize: 12 } }, error),
+
+      H('section', { className: 'masonry', ref: masonryRef },
+        orderedItems.map((item, index) => {
+          const key = item.id || item.uuid || `nearby-${index}`;
+          const cover = item.__cover || item.image_data || item.thumb_url || '';
+          return H('div', { key, className: 'masonry-item' },
+            H('div', {
+              className: 'image-shell',
+              style: { cursor: 'pointer' },
+              onClick: () => setSelected(item)
+            },
+              cover
+                ? H('img', {
+                    src: cover,
+                    loading: 'lazy',
+                    decoding: 'async',
+                    alt: item.title || 'Nearby listing'
+                  })
+                : H('div', {
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      background: '#f3f4f6',
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: '#6b7280',
+                      fontWeight: 600,
+                      minHeight: 120
+                    }
+                  }, 'No image')
+            )
+          );
+        })
+      ),
+
+      (!hasItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings found in this radius.'),
+
+      busy && H('p', { className: 'muted', style: { padding: '12px 0' } }, 'Loading nearby listings…'),
+
+      selected && H('div', {
+        className: 'modal open',
+        onClick: (e) => { if (e.target && e.target.classList && e.target.classList.contains('modal')) setSelected(null); }
       },
-        H('div', null, error),
-        H('div', { style: { marginTop: 12 } },
-          H('button', {
-            type: 'button',
-            className: 'btn',
-            onClick: requestLocation
-          }, 'Try again')
+        H('div', { className: 'modal-inner listing-modal' },
+          H('button', { className: 'close', onClick: () => setSelected(null) }, 'x'),
+          H(ListingCard, {
+            item: selected,
+            user,
+            canEdit: !!mineById[selected?.id],
+            onEdit: handleEdit,
+            onDelete,
+            onMessage,
+            onAdminDelete,
+            onViewSeller,
+            onToggleSold,
+            showDistance: true,
+            viewContext: 'nearby'
+          })
         )
       ),
-      showLoader && H('p', { className: 'muted', style: { padding: '12px 0' } }, status === 'locating' ? 'Locating you…' : 'Loading nearby listings…'),
-      (!showLoader && !error && !hasItems) && H('p', { className: 'muted', style: { padding: '24px 0', textAlign: 'center' } }, 'No nearby listings yet.'),
-      hasItems && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-        items.map((item, index) => H(ListingCard, {
-          key: item.id || item.uuid || `nearby-${index}`,
-          item,
-          canEdit: !!mineById[item.id],
-          onEdit,
-          onDelete,
-          user,
-          onMessage,
-          onAdminDelete,
-          onViewSeller,
-          onToggleSold,
-          showDistance: true,
-          viewContext: 'nearby'
-        }))
-      ),
-      H('div', { style: { marginTop: 8 } },
+
+      H('div', { style: { marginTop: 12 } },
         H('button', {
           type: 'button',
           className: 'btn',
@@ -545,13 +666,18 @@
 
     const dismissBanner = useCallback(() => setBanner(null), []);
 
+    const isMobile = isMobileDevice();
+
     const handleTabChange = (newTab) => {
-    if (newTab === 'admin' && !user?.is_admin) {
-      return;
-    }
-    setTab(newTab);
-    setViewingSeller(null); // Clear seller view when switching tabs
-  };
+      if (newTab === 'admin' && !user?.is_admin) {
+        return;
+      }
+      if (newTab === 'nearby' && !isMobile) {
+        return;
+      }
+      setTab(newTab);
+      setViewingSeller(null); // Clear seller view when switching tabs
+    };
 
     // NEW: Seller profile state
     const [viewingSeller, setViewingSeller] = useState(null);
@@ -588,8 +714,6 @@
       try { return localStorage.getItem(AUTO_NEAR_KEY) === '1'; } catch { return false; }
     });
     useEffect(() => { try { localStorage.setItem(AUTO_NEAR_KEY, autoPostNearbyEnabled ? '1' : '0'); } catch {} }, [autoPostNearbyEnabled]);
-
-    const isMobile = isMobileDevice();
 
     const {
       backgroundQueueEnabled,
