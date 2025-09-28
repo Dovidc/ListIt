@@ -20,6 +20,11 @@
 
 (() => {
   const { useCallback, useEffect, useMemo, useRef, useState } = React;
+  const ReactDOM = window.ReactDOM;
+
+  if (!ReactDOM) {
+    throw new Error('ReactDOM bundle failed to load.');
+  }
 
   const core = window.ListItCore || {};
   const {
