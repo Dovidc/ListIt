@@ -1,6 +1,13 @@
 (() => {
   function assertFunction(fn, name) {
-    if (typeof fn !== 'function') {
+    const isFn = typeof fn === 'function';
+    const isReactComponent = !!fn && typeof fn === 'object' && (
+      typeof fn.render === 'function' ||
+      typeof fn.type === 'function' ||
+      typeof fn.$$typeof === 'symbol'
+    );
+
+    if (!isFn && !isReactComponent) {
       throw new Error(`${name} is required.`);
     }
     return fn;
