@@ -237,19 +237,21 @@ describe('browser app integration', () => {
         createGridComponents: jest.fn(() => ({ ListingsGrid: jest.fn() }))
       },
       layout: {
-        createLayoutComponents: jest.fn(() => ({
-          Header: jest.fn(),
-          GlobalLoader: jest.fn()
-        }))
-      },
-      listings: {
-        createListingComponents: jest.fn(() => listingComponents)
-      }
+      createLayoutComponents: jest.fn(() => ({
+        Header: jest.fn(),
+        GlobalLoader: jest.fn()
+      }))
+    },
+    listings: {
+      createListingComponents: jest.fn(() => listingComponents)
+    }
     };
+
+    const locationHelpers = { fetchCoordsAndReverse: jest.fn(() => 'coords') };
 
     const bootstrap = {
       createAppNav: jest.fn(() => appNav),
-      createLocationHelpers: jest.fn(() => ({ fetchCoordsAndReverse: jest.fn() }))
+      createLocationHelpers: jest.fn(() => locationHelpers)
     };
 
     const bundles = {
@@ -269,7 +271,10 @@ describe('browser app integration', () => {
 
     bundles.__stubs = {
       uploads,
-      listingFormsFeature
+      listingFormsFeature,
+      locationHelpers,
+      listingComponents,
+      mediaComponents
     };
 
     return bundles;
@@ -359,6 +364,72 @@ describe('browser app integration', () => {
     expect(core.haversineMeters).toHaveBeenCalledWith(1, 2, 3, 4);
     expect(browserApp.utilities.price(7)).toBe('currency:7');
     expect(browserApp.utilities.fmtDistance(3)).toBe('distance:3');
+  });
+
+  test('provides shared helpers and formatting to listing bundles', () => {
+    const dependencies = createDependencies();
+    const { appBundles, core } = dependencies;
+
+    createBrowserApp(dependencies);
+
+    const listingComponentArgs = appBundles.components.listings.createListingComponents.mock.calls[0][0];
+    expect(listingComponentArgs.uploads.uploadFileDraft).toBe(appBundles.__stubs.uploads.uploadFileDraft);
+    expect(listingComponentArgs.helpers.fetchCoordsAndReverse).toBe(appBundles.__stubs.locationHelpers.fetchCoordsAndReverse);
+
+    listingComponentArgs.formatting.price(5);
+    expect(core.formatCurrency).toHaveBeenCalledWith(5);
+    listingComponentArgs.formatting.fmtDistance(12);
+    expect(core.formatDistance).toHaveBeenCalledWith(12);
+    listingComponentArgs.helpers.haversineMeters(1, 2, 3, 4);
+    expect(core.haversineMeters).toHaveBeenCalledWith(1, 2, 3, 4);
+
+    const listingFormsArgs = appBundles.features.listingForms.createListingFormsFeature.mock.calls[0][0];
+    expect(listingFormsArgs.helpers.fetchCoordsAndReverse).toBe(appBundles.__stubs.locationHelpers.fetchCoordsAndReverse);
+    expect(listingFormsArgs.uploads.uploadFileDraft).toBe(appBundles.__stubs.uploads.uploadFileDraft);
+    expect(listingFormsArgs.components.ListingForm).toBe(appBundles.__stubs.listingComponents.ListingForm);
+    expect(listingFormsArgs.components.ImageWithSkeleton).toBe(appBundles.__stubs.mediaComponents.ImageWithSkeleton);
+
+    listingFormsArgs.formatting.price(9);
+    expect(core.formatCurrency).toHaveBeenCalledWith(9);
+  });
+
+  test('passes shared modules into feature factories', () => {
+    const dependencies = createDependencies();
+    const { appBundles, core, __mocks } = dependencies;
+
+    createBrowserApp(dependencies);
+
+    const listingsArgs = appBundles.features.listings.createListingsFeature.mock.calls[0][0];
+    expect(listingsArgs.api).toBe(core.api);
+    expect(listingsArgs.helpers.normalizeListingsResponse).toBe(__mocks.helpers.normalizeListingsResponse);
+    expect(listingsArgs.helpers.selectPrimaryListingImage).toBe(appBundles.__stubs.uploads.selectPrimaryListingImage);
+    expect(listingsArgs.helpers.pageSize).toBe(75);
+    expect(listingsArgs.uploads.prepareListingForModal).toBe(appBundles.__stubs.uploads.prepareListingForModal);
+
+    const pushArgs = appBundles.features.push.createPushFeature.mock.calls[0][0];
+    expect(pushArgs.api).toBe(core.api);
+    pushArgs.helpers.serializePushSubscription('sub');
+    expect(__mocks.helpers.serializePushSubscription).toHaveBeenCalledWith('sub');
+    pushArgs.helpers.base64UrlToUint8Array('abc');
+    expect(__mocks.helpers.base64UrlToUint8Array).toHaveBeenCalledWith('abc');
+
+    const messageCenterArgs = appBundles.features.messageCenter.createMessageCenterFeature.mock.calls[0][0];
+    messageCenterArgs.helpers.loadSeen();
+    expect(__mocks.helpers.loadSeen).toHaveBeenCalledTimes(1);
+    messageCenterArgs.helpers.saveSeen();
+    expect(__mocks.helpers.saveSeen).toHaveBeenCalledTimes(1);
+    const notificationsResult = appBundles.features.notifications.createNotificationsFeature.mock.results[0].value;
+    expect(messageCenterArgs.notifications.useMessageNotifications).toBe(notificationsResult.useMessageNotifications);
+
+    const messagesArgs = appBundles.features.messages.createMessagesFeature.mock.calls[0][0];
+    messagesArgs.uploads.uploadOneMessageImage();
+    expect(appBundles.__stubs.uploads.uploadOneMessageImage).toHaveBeenCalledTimes(1);
+    expect(messagesArgs.helpers.loadSeen).toBe(__mocks.helpers.loadSeen);
+    expect(messagesArgs.components.Lightbox).toBe(appBundles.__stubs.mediaComponents.Lightbox);
+
+    const authArgs = appBundles.features.auth.createAuthFeature.mock.calls[0][0];
+    expect(authArgs.api).toBe(core.api);
+    expect(authArgs.ReactDOM).toBe(dependencies.ReactDOM);
   });
 
   test('mount renders using ReactDOM.createRoot with the app shell Root component', () => {
