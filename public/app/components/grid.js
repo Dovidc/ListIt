@@ -213,12 +213,13 @@
           : virtualItems.map((item, idx) => ({ item, pos: positions[idx] }));
 
         const estimatedHeight = containerHeight > 0 ? containerHeight : fallbackHeight;
+        const minHeight = containerHeight > 0 ? containerHeight : fallbackHeight;
         const virtualStyle = { ...baseStyle, position: 'relative' };
         if (baseStyle.height == null) {
           virtualStyle.height = estimatedHeight;
         }
         if (baseStyle.minHeight == null) {
-          virtualStyle.minHeight = fallbackHeight;
+          virtualStyle.minHeight = minHeight;
         }
 
         return H('section', { ref: containerRef, className, style: virtualStyle },
