@@ -32,21 +32,14 @@
     const {
       useState,
       useEffect,
-      useMemo,
-      useCallback
+      useMemo
     } = React;
 
     const {
-      H,
-      loadSeen,
-      saveSeen,
-      asArray
+      H
     } = helpers || {};
 
     assertFunction(H, 'helpers.H');
-    assertFunction(loadSeen, 'helpers.loadSeen');
-    assertFunction(saveSeen, 'helpers.saveSeen');
-    assertFunction(asArray, 'helpers.asArray');
 
     const { price, fmtDistance } = utilities || {};
 
@@ -71,12 +64,13 @@
 
     const {
       useListingsFeature,
-      CityAutocomplete
+      CityAutocomplete,
+      useListingModal
     } = listingsFeature;
 
     const { useMessageCenter } = messageCenter;
-    const { MessagesPanel } = messagesFeature;
-    const { AdminDashboard } = adminFeature;
+    const { MessagesPanel, useMessageActions } = messagesFeature;
+    const { AdminDashboard, useAdminListingActions } = adminFeature;
     const { ProfilePanel } = profileFeature;
     const { NearbyPanel } = nearbyFeature;
     const { ListingFormModal } = listingFormsFeature;
@@ -90,9 +84,12 @@
     assertFunction(AuthModal, 'features.auth.AuthModal');
     assertFunction(useListingsFeature, 'features.listings.useListingsFeature');
     assertFunction(CityAutocomplete, 'features.listings.CityAutocomplete');
+    assertFunction(useListingModal, 'features.listings.useListingModal');
     assertFunction(useMessageCenter, 'features.messageCenter.useMessageCenter');
     assertFunction(MessagesPanel, 'features.messages.MessagesPanel');
+    assertFunction(useMessageActions, 'features.messages.useMessageActions');
     assertFunction(AdminDashboard, 'features.admin.AdminDashboard');
+    assertFunction(useAdminListingActions, 'features.admin.useAdminListingActions');
     assertFunction(ProfilePanel, 'features.profile.ProfilePanel');
     assertFunction(NearbyPanel, 'features.nearby.NearbyPanel');
     assertFunction(ListingFormModal, 'features.listingForms.ListingFormModal');
@@ -138,13 +135,6 @@
     assertFunction(ListingModal, 'components.listing.ListingModal');
     assertFunction(SellerProfile, 'components.listing.SellerProfile');
 
-    const {
-      prepareListingForModal,
-      warmListingImages
-    } = uploads || {};
-
-    assertFunction(prepareListingForModal, 'uploads.prepareListingForModal');
-    assertFunction(warmListingImages, 'uploads.warmListingImages');
 
     if (!api) {
       throw new Error('App shell requires an API client.');
@@ -235,6 +225,23 @@
       } = notifications;
       const { removePushSubscription } = usePushNotifications({ user, pushMeta });
 
+      const { handleAdminDeleteAll, handleAdminDelete } = useAdminListingActions({
+        setAllListings: setAll,
+        setMineListings: setMine
+      });
+
+      const { openListingModal, handleListingTileEvent } = useListingModal({
+        setSelectedListing
+      });
+
+      const { startMessage, startDirectMessage, handleSeen } = useMessageActions({
+        user,
+        onConversationOpened: setActiveConvoId,
+        onTabChange: setTab,
+        onSellerCleared: () => setViewingSeller(null),
+        recomputeUnread
+      });
+
       useEffect(() => {
         AppNav.setUser = setUser;
         AppNav.setTab = setTab;
@@ -266,51 +273,6 @@
       }
 
 
-      async function startMessage(item){
-        if(!user){ alert('Log in to message a seller.'); return; }
-        if(user.id === item.user_id){ alert('This is your listing.'); return; }
-
-        setViewingSeller(null);
-        const convo = await api.ensureConversation({ with_user_id: item.user_id, listing_id: item.id });
-        setActiveConvoId(convo.id);
-        setTab('messages');
-      }
-
-      async function startDirectMessage(userId){
-        if (!user) { alert('Log in to message users.'); return; }
-        const targetId = Number(userId);
-        if (!Number.isFinite(targetId) || targetId <= 0) return;
-        if (targetId === user.id) return;
-        try {
-          setViewingSeller(null);
-          const convo = await api.ensureConversation({ with_user_id: targetId });
-          setActiveConvoId(convo.id);
-          setTab('messages');
-        } catch (err) {
-          alert(err?.message || 'Failed to open conversation.');
-        }
-      }
-
-      function handleSeen(convoId, lastMsgId){
-        if (!user || !convoId || !lastMsgId) return;
-        const map = loadSeen(user.id);
-        if (!map[convoId] || map[convoId] < lastMsgId) {
-          map[convoId] = lastMsgId;
-          saveSeen(user.id, map);
-          setTimeout(() => { (async()=>{ await recomputeUnread(); })(); }, 0);
-        }
-      }
-
-      async function handleAdminDeleteAll(){
-        await api.adminDeleteAll();
-        setAll([]); setMine([]);
-      }
-
-      function handleAdminDelete(listingId) {
-        setAll(prev => asArray(prev).filter(x => x.id !== listingId));
-        setMine(prev => (prev||[]).filter(x => x.id !== listingId));
-      }
-
       function handleAuthClick(mode) {
         openAuthModal(mode);
       }
@@ -327,25 +289,6 @@
         setUser(null);
         setTab('browse');
       }
-
-      const openListingModal = useCallback((listing, coverSrc) => {
-        const { payload, images } = prepareListingForModal(listing, coverSrc);
-        if (!payload) return;
-        setSelectedListing(payload);
-        if (listing?.id) {
-          warmListingImages(listing.id, images);
-        }
-      }, [setSelectedListing]);
-
-      const handleListingTileEvent = useCallback((evt, listing, coverSrc) => {
-        if (evt && typeof evt.preventDefault === 'function') {
-          evt.preventDefault();
-        }
-        if (evt && typeof evt.stopPropagation === 'function') {
-          evt.stopPropagation();
-        }
-        openListingModal(listing, coverSrc);
-      }, [openListingModal]);
 
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },

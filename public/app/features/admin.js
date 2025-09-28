@@ -10,6 +10,8 @@
       throw new Error('Admin feature requires an API client.');
     }
 
+    const { useCallback } = React;
+
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
     const { AdTile } = components;
@@ -644,10 +646,40 @@
       );
     }
 
+    function useAdminListingActions({ setAllListings, setMineListings }) {
+      const toArray = (value) => Array.isArray(value) ? value : [];
+
+      const handleAdminDeleteAll = useCallback(async () => {
+        await api.adminDeleteAll();
+        if (typeof setAllListings === 'function') {
+          setAllListings([]);
+        }
+        if (typeof setMineListings === 'function') {
+          setMineListings([]);
+        }
+      }, [api, setAllListings, setMineListings]);
+
+      const handleAdminDelete = useCallback((listingId) => {
+        if (!listingId) return;
+        if (typeof setAllListings === 'function') {
+          setAllListings((prev) => toArray(prev).filter((item) => item.id !== listingId));
+        }
+        if (typeof setMineListings === 'function') {
+          setMineListings((prev) => toArray(prev).filter((item) => item.id !== listingId));
+        }
+      }, [setAllListings, setMineListings]);
+
+      return {
+        handleAdminDeleteAll,
+        handleAdminDelete
+      };
+    }
+
     return {
       AdminDashboard,
       FlaggedDetailsModal,
-      createEmptyAdForm
+      createEmptyAdForm,
+      useAdminListingActions
     };
   }
 
