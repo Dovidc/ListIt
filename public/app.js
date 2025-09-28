@@ -358,6 +358,293 @@
     );
   });
 
+  const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
+    return H(InfoHelpModal, {
+      onClose,
+      title: 'Auto-post to Nearby',
+      intro: 'When enabled, Auto-List will also publish your item to the Nearby feed.',
+      bullets: [
+        'Uses your latest saved location to set latitude and longitude.',
+        'Marks the new listing as available to nearby shoppers.',
+        'Requires Auto-List to be turned on and is best used from your phone.'
+      ],
+      footer: 'You can always edit the listing afterwards to adjust its location or disable Nearby.'
+    });
+  });
+
+  const ProfilePanel = React.memo(function ProfilePanel({
+    isMobile,
+    user,
+    items,
+    onNewListing,
+    onEdit,
+    onDelete,
+    onLogout,
+    onAdminDelete,
+    autoListEnabled,
+    setAutoListEnabled,
+    aiDescriptionEnabled,
+    setAiDescriptionEnabled,
+    autoPostNearbyEnabled,
+    setAutoPostNearbyEnabled,
+    onViewSeller,
+    onToggleSold
+  }) {
+    const [showAutoHelp, setShowAutoHelp] = useState(false);
+    const [showAiHelp, setShowAiHelp] = useState(false);
+    const [showNearbyHelp, setShowNearbyHelp] = useState(false);
+
+    const myListings = useMemo(() => {
+      const arr = Array.isArray(items) ? items.slice() : [];
+      const getTs = (item) => {
+        if (!item || typeof item !== 'object') return 0;
+        const candidates = [
+          item.updated_at,
+          item.updatedAt,
+          item.created_at,
+          item.createdAt,
+          item.posted_at
+        ];
+        for (const value of candidates) {
+          if (typeof value === 'number' && Number.isFinite(value)) return value;
+          if (typeof value === 'string' && value) {
+            const ts = Date.parse(value);
+            if (!Number.isNaN(ts)) return ts;
+          }
+        }
+        return 0;
+      };
+      arr.sort((a, b) => {
+        const diff = getTs(b) - getTs(a);
+        if (diff !== 0) return diff;
+        const idA = Number.isFinite(Number(a?.id)) ? Number(a.id) : 0;
+        const idB = Number.isFinite(Number(b?.id)) ? Number(b.id) : 0;
+        return idB - idA;
+      });
+      return arr;
+    }, [items]);
+
+    const renderToggle = ({
+      key,
+      label,
+      description,
+      value,
+      onChange,
+      disabled,
+      onHelp,
+      helpLabel
+    }) => {
+      const inputId = `profile-toggle-${key}`;
+      const handleHelpClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onHelp?.();
+      };
+      const handleChange = (event) => {
+        if (disabled) {
+          event.preventDefault();
+          return;
+        }
+        onChange?.(!!event.target.checked);
+      };
+      return H('label', {
+        key,
+        className: 'toggle-card',
+        htmlFor: inputId,
+        'data-disabled': disabled ? 'true' : 'false',
+        style: {
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          width: '100%'
+        }
+      },
+      H('input', {
+        id: inputId,
+        type: 'checkbox',
+        className: 'toggle-input',
+        checked: !!value,
+        onChange: handleChange,
+        disabled
+      }),
+      H('span', {
+        className: 'toggle-copy',
+        style: { flex: 1 }
+      },
+        H('span', {
+          style: {
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8
+          }
+        },
+          label,
+          onHelp && H('button', {
+            type: 'button',
+            onClick: handleHelpClick,
+            className: 'btn',
+            style: {
+              width: 26,
+              height: 26,
+              padding: 0,
+              borderRadius: 13,
+              fontSize: 14,
+              lineHeight: '24px'
+            },
+            title: helpLabel || 'Learn more'
+          }, '?')
+        ),
+        description && H('span', {
+          className: 'muted',
+          style: { fontSize: 12 }
+        }, description)
+      ),
+      H('span', {
+        className: 'toggle-slider',
+        'aria-hidden': 'true'
+      }));
+    };
+
+    if (!user) {
+      return H('section', {
+        className: 'card',
+        style: { padding: 24, display: 'grid', gap: 12 }
+      },
+      H('h2', { style: { margin: 0, fontSize: 20 } }, 'Profile'),
+      H('p', { className: 'muted', style: { margin: 0 } }, 'Log in to manage your profile and listings.')
+      );
+    }
+
+    const nearbyDisabled = !isMobile || !autoListEnabled;
+
+    return H('div', {
+      className: 'profile-panel',
+      style: {
+        display: 'grid',
+        gap: 24,
+        alignContent: 'start'
+      }
+    },
+    H('section', {
+      className: 'card',
+      style: {
+        padding: isMobile ? 16 : 24,
+        display: 'grid',
+        gap: 16
+      }
+    },
+      H('div', {
+        style: {
+          display: 'grid',
+          gap: 4
+        }
+      },
+        H('h2', { style: { margin: 0, fontSize: 20 } }, 'Profile & settings'),
+        user.username && H('div', { className: 'muted', style: { fontWeight: 600 } }, `@${user.username}`),
+        user.email && H('div', { className: 'muted' }, user.email),
+        user.paypal_email && H('div', { className: 'muted' }, `PayPal: ${user.paypal_email}`)
+      ),
+      H('div', {
+        style: {
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8
+        }
+      },
+        H('button', {
+          type: 'button',
+          className: 'btn primary',
+          onClick: () => onNewListing?.()
+        }, 'New listing'),
+        H('button', {
+          type: 'button',
+          className: 'btn',
+          onClick: () => onLogout?.()
+        }, 'Log out')
+      ),
+      H('div', {
+        style: {
+          display: 'grid',
+          gap: 12
+        }
+      },
+        renderToggle({
+          key: 'auto',
+          label: 'Auto-list new photos',
+          description: 'Automatically create listings after you attach photos.',
+          value: !!autoListEnabled,
+          onChange: (next) => setAutoListEnabled?.(next),
+          onHelp: () => setShowAutoHelp(true),
+          helpLabel: 'About Auto-list'
+        }),
+        renderToggle({
+          key: 'ai-desc',
+          label: 'AI descriptions',
+          description: 'Let AI draft descriptions for you when you upload photos.',
+          value: !!aiDescriptionEnabled,
+          onChange: (next) => setAiDescriptionEnabled?.(next),
+          onHelp: () => setShowAiHelp(true),
+          helpLabel: 'About AI descriptions'
+        }),
+        renderToggle({
+          key: 'nearby',
+          label: 'Also post to Nearby',
+          description: nearbyDisabled
+            ? 'Requires Auto-list and is available from mobile devices.'
+            : 'Auto-listings will be shared to the Nearby feed with your location.',
+          value: !!autoPostNearbyEnabled,
+          onChange: (next) => setAutoPostNearbyEnabled?.(next),
+          disabled: nearbyDisabled,
+          onHelp: () => setShowNearbyHelp(true),
+          helpLabel: 'About Nearby posting'
+        })
+      )
+    ),
+    H('section', {
+      style: {
+        display: 'grid',
+        gap: 16
+      }
+    },
+      H('div', {
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12
+        }
+      },
+        H('h2', { style: { margin: 0, fontSize: 20 } }, 'Your listings'),
+        H('span', { className: 'muted', style: { fontSize: 13 } }, `${myListings.length} total`)
+      ),
+      myListings.length === 0
+        ? H('p', { className: 'muted', style: { margin: 0 } }, 'You have not created any listings yet.')
+        : H('div', {
+            style: {
+              display: 'grid',
+              gap: 16
+            }
+          },
+          myListings.map((item, idx) => H(ListingCard, {
+            key: item?.id ?? item?.slug ?? `listing-${idx}`,
+            item,
+            user,
+            canEdit: true,
+            onEdit,
+            onDelete,
+            onAdminDelete,
+            onViewSeller,
+            onToggleSold
+          }))
+        )
+    ),
+    showAutoHelp && H(AutoListHelpModal, { onClose: () => setShowAutoHelp(false) }),
+    showAiHelp && H(AiDescriptionHelpModal, { onClose: () => setShowAiHelp(false) }),
+    showNearbyHelp && H(AutoPostNearbyHelpModal, { onClose: () => setShowNearbyHelp(false) })
+    );
+  });
+
   // SmartImage v2.1 (kept; not used in main grid now)
   function SmartImage({
     src,
