@@ -227,21 +227,59 @@
       return cols;
     }
 
-    function useElementWidth(ref) {
+    function useElementWidth(ref, active = true) {
       const [w, setW] = useState(0);
       useEffect(() => {
-        if (!ref.current) return;
-        const el = ref.current;
-        const update = () => setW(el.clientWidth || 0);
-        update();
-        const ro = new ResizeObserver(update);
-        ro.observe(el);
-        window.addEventListener('resize', update);
-        return () => {
-          ro.disconnect();
-          window.removeEventListener('resize', update);
+        if (!active) {
+          setW(0);
+          return undefined;
+        }
+        if (!ref || typeof ref !== 'object') return undefined;
+
+        let el = ref.current || null;
+        let frame = null;
+        let ro = null;
+
+        const readWidth = () => {
+          if (!el) return;
+          const next = el.clientWidth || 0;
+          setW((prev) => (prev === next ? prev : next));
         };
-      }, [ref]);
+
+        const cleanup = () => {
+          if (ro) {
+            ro.disconnect();
+            ro = null;
+          }
+          if (el) {
+            window.removeEventListener('resize', readWidth);
+            el = null;
+          }
+        };
+
+        const attach = () => {
+          cleanup();
+          el = ref.current || null;
+          if (!el) {
+            frame = window.requestAnimationFrame(attach);
+            return;
+          }
+
+          readWidth();
+          if (typeof ResizeObserver === 'function') {
+            ro = new ResizeObserver(readWidth);
+            ro.observe(el);
+          }
+          window.addEventListener('resize', readWidth);
+        };
+
+        attach();
+
+        return () => {
+          if (frame != null) window.cancelAnimationFrame(frame);
+          cleanup();
+        };
+      }, [ref, active]);
       return w;
     }
 
@@ -337,9 +375,9 @@
           : []
     );
 
-    function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5 }) {
+    function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5, active = true }) {
       const scrollY = useWindowScrollY();
-      const containerW = useElementWidth(containerRef);
+      const containerW = useElementWidth(containerRef, active);
 
       const [heightMap, setHeightMap] = useState(() => Object.create(null));
       const registerHeight = useCallback((id, h) => {

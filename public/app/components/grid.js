@@ -174,6 +174,7 @@
         });
       }, [entries]);
 
+      const shouldVirtualize = hasVirtualMasonry && entries.length >= 120;
       const virtualizationEstimate = isMobile ? 210 : 240;
       const virtualizationState = hasVirtualMasonry
         ? useVirtualMasonry({
@@ -182,11 +183,10 @@
             columnCount: cols,
             columnGap: resolvedGap,
             estimateHeight: virtualizationEstimate,
-            overscanVH: 2
+            overscanVH: 2,
+            active: shouldVirtualize
           })
         : null;
-
-      const shouldVirtualize = hasVirtualMasonry && entries.length >= 120;
       const fallbackHeight = entries.length && cols > 0
         ? Math.max(0, (Math.ceil(entries.length / cols) * (virtualizationEstimate + resolvedGap)) - resolvedGap)
         : 0;
