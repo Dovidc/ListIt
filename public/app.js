@@ -2181,46 +2181,46 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('active');
   useEffect(() => {
-  let mounted = true;
-  
-  async function fetchSellerListings() {
-    try {
-      setLoading(true);
-      const items = await api.listByUser(sellerId);
-      if (mounted) {
+    let mounted = true;
+
+    async function fetchSellerListings() {
+      try {
+        const items = await api.listByUser(sellerId);
+        if (!mounted) return;
         setListings(asArray(items));
+        setError(null);
+      } catch (e) {
+        if (!mounted) return;
+        console.error('Failed to fetch seller listings:', e);
+
+        const message = e?.message;
+        if (message === 'User not found' || message === 'Not found') {
+          setError('User not found');
+        } else {
+          setError('Failed to load listings');
+        }
+        setListings([]);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    } catch (e) {
-  if (mounted) {
-    console.error('Failed to fetch seller listings:', e);
-    
-    // Check if it's a 404 (user not found)
-    if (e.message === 'User not found' || e.message === 'Not found') {
-      setError('User not found');
+    }
+
+    if (sellerId) {
+      setLoading(true);
+      setError(null);
+      fetchSellerListings();
     } else {
-      setError('Failed to load listings');
+      setListings([]);
+      setError(null);
+      setLoading(false);
     }
-    setListings([]);
-  }
-} finally {
-      if (mounted) {
-        setLoading(false);
-      }
-    }
-  }
-  if (error) {
-  return H('div', { style: { padding: '24px', textAlign: 'center' } },
-    H('div', { className: 'muted' }, error),
-    H('button', { className: 'btn', onClick: onBack }, '<- Back')
-  );
-}
-  
-  if (sellerId) {
-    fetchSellerListings();
-  }
-  
-  return () => { mounted = false; };
-}, [sellerId]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [sellerId]);
 
   useEffect(() => { setTab('active'); }, [sellerId]);
 
@@ -2242,6 +2242,13 @@ function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAd
     }
     handleSelectListing(listing, coverSrc);
   }, [handleSelectListing]);
+
+  if (error) {
+    return H('div', { style: { padding: '24px', textAlign: 'center' } },
+      H('div', { className: 'muted' }, error),
+      H('button', { className: 'btn', onClick: onBack }, '<- Back')
+    );
+  }
 
   if (loading) {
     return H('div', { style: { padding: '24px', textAlign: 'center' } },
