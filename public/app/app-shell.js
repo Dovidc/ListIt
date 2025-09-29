@@ -423,6 +423,7 @@
             H(NearbyPanel, {
               user,
               mineById,
+              isMobile,
               onEdit:(it)=>{
                 if(user?.account_status === 'locked'){ showLockedBanner(); return; }
                 const rich = mineById[it.id] || it;

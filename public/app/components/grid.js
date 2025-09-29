@@ -92,27 +92,68 @@
       }, [item?.id, item?.__cover, onEnsureCover]);
 
       const src = item?.__cover;
+      const isClickable = typeof onSelect === 'function';
 
-      return H('div', { ref, className: 'card', style: { padding: 0, overflow: 'hidden', borderRadius: 8 } },
-        H('div', { style: { position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#f3f4f6' } },
-          src && H(ImageWithSkeleton, {
-            src,
-            alt: item?.title || 'Item',
-            loading: 'lazy',
-            decoding: 'async',
-            fetchPriority: 'low',
-            style: {
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              display: 'block',
-              cursor: 'pointer'
-            },
-            disableSkeleton: true,
-            onClick: (evt) => typeof onSelect === 'function' ? onSelect(evt, item, src) : undefined
-          })
+      const handleSelect = isClickable
+        ? (evt) => {
+            onSelect(evt, item, src);
+          }
+        : undefined;
+
+      const handleKeyDown = isClickable
+        ? (evt) => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+              evt.preventDefault();
+              onSelect(evt, item, src);
+            }
+          }
+        : undefined;
+
+      return H('div', {
+        ref,
+        className: 'card',
+        style: {
+          padding: 0,
+          overflow: 'hidden',
+          borderRadius: 8,
+          cursor: isClickable ? 'pointer' : 'default'
+        },
+        onClick: handleSelect,
+        onKeyDown: handleKeyDown,
+        role: isClickable ? 'button' : undefined,
+        tabIndex: isClickable ? 0 : undefined
+      },
+        H('div', { style: { position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#f3f4f6', overflow: 'hidden' } },
+          src
+            ? H(ImageWithSkeleton, {
+                src,
+                alt: item?.title || 'Item',
+                loading: 'lazy',
+                decoding: 'async',
+                fetchPriority: 'low',
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block'
+                },
+                disableSkeleton: true
+              })
+            : H('div', {
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  padding: 12,
+                  textAlign: 'center',
+                  color: '#6b7280',
+                  fontWeight: 600,
+                  fontSize: 12
+                }
+              }, 'No image')
         )
       );
     });

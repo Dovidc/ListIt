@@ -10,9 +10,7 @@
     const {
       asArray,
       selectPrimaryListingImage,
-      fetchCoordsAndReverse,
-      interleaveByColumns,
-      useColumnCount
+      fetchCoordsAndReverse
     } = helpers;
 
     if (typeof asArray !== 'function') {
@@ -24,16 +22,12 @@
     if (typeof fetchCoordsAndReverse !== 'function') {
       throw new Error('Nearby feature requires fetchCoordsAndReverse helper.');
     }
-    if (typeof interleaveByColumns !== 'function') {
-      throw new Error('Nearby feature requires interleaveByColumns helper.');
-    }
-    if (typeof useColumnCount !== 'function') {
-      throw new Error('Nearby feature requires useColumnCount helper.');
-    }
-
-    const { ListingCard } = components;
+    const { ListingCard, ListingsGrid } = components;
     if (typeof ListingCard !== 'function') {
       throw new Error('Nearby feature requires ListingCard component.');
+    }
+    if (typeof ListingsGrid !== 'function') {
+      throw new Error('Nearby feature requires ListingsGrid component.');
     }
 
     const {
@@ -57,7 +51,8 @@
       onAdminDelete,
       onViewSeller,
       onToggleSold,
-      setTab
+      setTab,
+      isMobile
     }) {
       const COORD_STORAGE_KEY = 'listit_nearby_coords';
       const COORD_TTL_MS = 2 * 60 * 1000;
@@ -100,7 +95,6 @@
       const coordsRef = useRef(storedCoords ? { lat: storedCoords.lat, lon: storedCoords.lon } : null);
       const coordsTsRef = useRef(storedCoords?.ts || 0);
       const loadTokenRef = useRef(0);
-      const masonryRef = useRef(null);
 
       const normalizeNearbyItems = useCallback((input) => {
         const list = asArray(input);
@@ -165,10 +159,13 @@
         return sorted;
       }, [items, search, sort]);
 
-      const columnCount = useColumnCount(masonryRef, 3);
-      const orderedItems = useMemo(() => interleaveByColumns(filteredItems, columnCount), [filteredItems, columnCount]);
-      const hasItems = orderedItems.length > 0;
+      const hasItems = filteredItems.length > 0;
       const hasBaseItems = Array.isArray(items) && items.length > 0;
+
+      const handleSelectListing = useCallback((evt, item) => {
+        if (!item) return;
+        setSelected(item);
+      }, []);
 
       const ensureCoords = useCallback(async (force = false) => {
         const now = Date.now();
@@ -324,39 +321,12 @@
 
         error && H('div', { className: 'muted', style: { color: '#b91c1c', marginTop: 8, fontSize: 12 } }, error),
 
-        H('section', { className: 'masonry', ref: masonryRef },
-          orderedItems.map((item, index) => {
-            const key = item.id || item.uuid || `nearby-${index}`;
-            const cover = item.__cover || item.image_data || item.thumb_url || '';
-            return H('div', { key, className: 'masonry-item' },
-              H('div', {
-                className: 'image-shell',
-                style: { cursor: 'pointer' },
-                onClick: () => setSelected(item)
-              },
-                cover
-                  ? H('img', {
-                      src: cover,
-                      loading: 'lazy',
-                      decoding: 'async',
-                      alt: item.title || 'Nearby listing'
-                    })
-                  : H('div', {
-                      style: {
-                        width: '100%',
-                        height: '100%',
-                        background: '#f3f4f6',
-                        display: 'grid',
-                        placeItems: 'center',
-                        color: '#6b7280',
-                        fontWeight: 600,
-                        minHeight: 120
-                      }
-                    }, 'No image')
-              )
-            );
-          })
-        ),
+        H(ListingsGrid, {
+          className: 'nearby-grid',
+          items: filteredItems,
+          isMobile: !!isMobile,
+          onSelect: handleSelectListing
+        }),
 
         (!hasItems && hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
 

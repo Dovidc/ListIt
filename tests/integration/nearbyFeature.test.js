@@ -104,8 +104,6 @@ function createDependencies({ stateOverrides, helpers: helperOverrides = {}, api
     asArray: jest.fn((value) => (Array.isArray(value) ? value : value == null ? [] : [value])),
     selectPrimaryListingImage: jest.fn(() => ''),
     fetchCoordsAndReverse: jest.fn().mockResolvedValue({ lat: 47.6, lon: -122.3, display: 'Downtown' }),
-    interleaveByColumns: jest.fn((items) => items),
-    useColumnCount: jest.fn(() => 3),
     ...helperOverrides
   };
 
@@ -116,6 +114,7 @@ function createDependencies({ stateOverrides, helpers: helperOverrides = {}, api
 
   const components = {
     ListingCard: jest.fn((props) => ({ type: 'ListingCard', props })),
+    ListingsGrid: jest.fn((props) => ({ type: 'ListingsGrid', props })),
     ...componentOverrides
   };
 
@@ -185,14 +184,12 @@ describe('nearby feature integration', () => {
     const helpersWithImage = { ...helpers, selectPrimaryListingImage: () => '' };
     expect(() => createNearbyFeature({ React, api, helpers: helpersWithImage })).toThrow('Nearby feature requires fetchCoordsAndReverse helper.');
 
-    const helpersWithCoords = { ...helpersWithImage, fetchCoordsAndReverse: () => ({}) };
-    expect(() => createNearbyFeature({ React, api, helpers: helpersWithCoords })).toThrow('Nearby feature requires interleaveByColumns helper.');
-
-    const helpersWithInterleave = { ...helpersWithCoords, interleaveByColumns: () => [] };
-    expect(() => createNearbyFeature({ React, api, helpers: helpersWithInterleave })).toThrow('Nearby feature requires useColumnCount helper.');
-
-    const helpersComplete = { ...helpersWithInterleave, useColumnCount: () => 3 };
+    const helpersComplete = { ...helpersWithImage, fetchCoordsAndReverse: () => ({}) };
     expect(() => createNearbyFeature({ React, api, helpers: helpersComplete })).toThrow('Nearby feature requires ListingCard component.');
+
+    const componentsWithCard = { ListingCard: () => ({}) };
+    expect(() => createNearbyFeature({ React, api, helpers: helpersComplete, components: componentsWithCard })).toThrow('Nearby feature requires ListingsGrid component.');
+
   });
 
   test('loads nearby listings, normalizes results, and stores location details', async () => {
