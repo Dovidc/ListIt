@@ -1005,12 +1005,13 @@ describe('listing forms feature integration', () => {
     expect(typeof job).toBe('function');
     await job();
 
+    expect(deps.helpers.fetchCoordsAndReverse).toHaveBeenCalledTimes(1);
     expect(deps.uploads.uploadFileDraft).toHaveBeenCalledTimes(1);
     expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(queued);
     expect(deps.api.createListing).toHaveBeenCalledWith({
       title: 'Item for sale',
       description: 'No description',
-      location: '',
+      location: 'Somewhere',
       price: 0,
       tags: '',
       enable_nearby: 0,
