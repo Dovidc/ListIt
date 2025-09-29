@@ -362,6 +362,37 @@ describe('listing forms feature integration', () => {
     expect(global.alert).not.toHaveBeenCalled();
   });
 
+  test('CompactListingForm runAI alerts when no sources are available', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies();
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const { states } = deps.__mocks.react;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const runAiButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'Run AI analysis');
+    await runAiButton.props.onClick();
+
+    expect(states[9].setter).toHaveBeenCalledWith('');
+    expect(states[8].setter).toHaveBeenNthCalledWith(1, true);
+    expect(states[8].setter).toHaveBeenLastCalledWith(false);
+    expect(deps.api.aiAnalyze).not.toHaveBeenCalled();
+    expect(global.alert).toHaveBeenCalledWith('No images available for AI analysis.');
+  });
+
   test('CompactListingForm runAI surfaces description gating errors', async () => {
     const createListingFormsFeature = loadFactory();
     const deps = createDependencies({
@@ -405,6 +436,37 @@ describe('listing forms feature integration', () => {
     expect(global.alert).not.toHaveBeenCalled();
   });
 
+  test('CompactListingForm useMyLocation handles unsupported geolocation', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies();
+    const { states } = deps.__mocks.react;
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const locationButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'Use my location');
+
+    global.navigator = {};
+    await locationButton.props.onClick();
+
+    expect(states[13].setter).toHaveBeenNthCalledWith(1, '');
+    expect(states[13].setter).toHaveBeenLastCalledWith('Geolocation not supported');
+    expect(states[12].setter).not.toHaveBeenCalled();
+  });
+
   test('CompactListingForm useMyLocation populates coordinates and handles API response', async () => {
     const createListingFormsFeature = loadFactory();
     const deps = createDependencies();
@@ -442,6 +504,46 @@ describe('listing forms feature integration', () => {
     expect(states[14].setter).toHaveBeenCalledWith(37.8);
     expect(states[15].setter).toHaveBeenCalledWith(-122.4);
     expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm submit requires at least one image', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies({
+      stateOverrides: [
+        [],
+        [],
+        [],
+        'Title',
+        'Description',
+        'Location',
+        '10',
+        'tag'
+      ]
+    });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const submitEvent = { preventDefault: jest.fn() };
+    await form.props.onSubmit(submitEvent);
+
+    expect(submitEvent.preventDefault).toHaveBeenCalled();
+    expect(global.alert).toHaveBeenCalledWith('Please add at least one image.');
+    expect(deps.api.createListing).not.toHaveBeenCalled();
+    expect(deps.api.updateListing).not.toHaveBeenCalled();
   });
 
   test('CompactListingForm submit updates an existing listing with uploads and deletions', async () => {
@@ -504,6 +606,53 @@ describe('listing forms feature integration', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(deps.api.createListing).not.toHaveBeenCalled();
     expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm submit requires coordinates when enabling Nearby', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies({
+      stateOverrides: [
+        [],
+        ['https://cdn/current.jpg'],
+        ['https://cdn/current.jpg'],
+        'Title',
+        'Description',
+        'Location',
+        '15',
+        'tag1',
+        false,
+        '',
+        false,
+        true,
+        false,
+        '',
+        null,
+        null
+      ]
+    });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const submitEvent = { preventDefault: jest.fn() };
+    await form.props.onSubmit(submitEvent);
+
+    expect(submitEvent.preventDefault).toHaveBeenCalled();
+    expect(global.alert).toHaveBeenCalledWith('Enable Nearby requires using your location.');
+    expect(deps.api.createListing).not.toHaveBeenCalled();
   });
 
   test('CompactListingForm submit enqueues background job for new listings', async () => {
@@ -640,6 +789,46 @@ describe('listing forms feature integration', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     expect(global.alert).not.toHaveBeenCalled();
+    expect(refs[1].current).toBe(false);
+  });
+
+  test('CompactListingForm auto-list alerts when create fails and resets state', async () => {
+    const createListingFormsFeature = loadFactory();
+    const autoFile = { name: 'auto.jpg', size: 2000, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [autoFile]
+      ]
+    });
+
+    deps.uploads.uploadFileDraft.mockResolvedValue({ publicUrl: 'https://uploads/auto.jpg', uploadToken: 'tok-auto' });
+    deps.api.createListing.mockResolvedValue({});
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const onSaved = jest.fn();
+
+    CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved,
+      autoListEnabled: true,
+      aiDescriptionEnabled: false,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const { effects, states, refs } = deps.__mocks.react;
+    effects[1]();
+    await flushAsyncEffects();
+
+    expect(states[10].setter).toHaveBeenNthCalledWith(1, true);
+    expect(states[10].setter).toHaveBeenLastCalledWith(false);
+    expect(global.alert).toHaveBeenCalledWith('Auto-list failed: Create failed');
+    expect(onSaved).not.toHaveBeenCalled();
     expect(refs[1].current).toBe(false);
   });
 
