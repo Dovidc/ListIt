@@ -172,7 +172,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -245,6 +245,7 @@
               autoListEnabled,
               aiDescriptionEnabled,
               autoPostNearbyEnabled,
+              autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob,
               showTags,
@@ -256,6 +257,7 @@
               autoListEnabled,
               aiDescriptionEnabled,
               autoPostNearbyEnabled,
+              autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob
             })
@@ -266,7 +268,7 @@
       return ReactDOM.createPortal(modal, document.body);
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags }) {
       const fileRef = useRef();
       const [files, setFiles] = useState([]);
       const [existingUrls, setExistingUrls] = useState([]);
@@ -294,6 +296,12 @@
       const [geoErr, setGeoErr] = useState('');
       const [lat, setLat] = useState(draft?.lat ?? null);
       const [lon, setLon] = useState(draft?.lon ?? null);
+      const [inquiryEnabled, setInquiryEnabled] = useState(() => {
+        if (draft?.inquiry_enabled != null) return !!draft.inquiry_enabled;
+        if (typeof autoInquiryEnabled === 'boolean') return autoInquiryEnabled;
+        return !!autoListEnabled;
+      });
+      const [showInquiryHelp, setShowInquiryHelp] = useState(false);
 
       function pickFiles(e) {
         const MAX_MB = 20;
@@ -332,7 +340,17 @@
             setOriginalUrls([]);
           }
         })();
-      }, [draft?.id]);
+
+        if (!draft?.id) {
+          if (!autoListEnabled) {
+            setInquiryEnabled(false);
+          } else if (typeof autoInquiryEnabled === 'boolean') {
+            setInquiryEnabled(autoInquiryEnabled);
+          } else {
+            setInquiryEnabled(true);
+          }
+        }
+      }, [draft?.id, autoListEnabled, autoInquiryEnabled]);
 
       async function runAI() {
         setAiErr('');
@@ -495,6 +513,13 @@
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('Create failed');
+          if (inquiryEnabled && created?.id) {
+            try {
+              await api.updateListing(created.id, { inquiry_enabled: 1 });
+            } catch (err) {
+              console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
+            }
+          }
         };
 
         if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
@@ -526,7 +551,7 @@
             autoRunning.current = false;
           }
         })();
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
+      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
 
       async function submit(e) {
         e.preventDefault();
@@ -546,8 +571,12 @@
             location: String(location || '').trim(),
             price: safePrice,
             tags: String(tags || '').trim(),
-            enable_nearby: enableNearby ? 1 : 0,
+            enable_nearby: enableNearby ? 1 : 0
           };
+
+          if (draft || inquiryEnabled) {
+            basePayload.inquiry_enabled = inquiryEnabled ? 1 : 0;
+          }
 
           if (enableNearby && !hasFixedGps) {
             basePayload.lat = lat;
@@ -585,6 +614,13 @@
 
             const created = await api.createListing(payload);
             if (!created?.id) { throw new Error('Create failed'); }
+            if (inquiryEnabled && created?.id) {
+              try {
+                await api.updateListing(created.id, { inquiry_enabled: 1 });
+              } catch (err) {
+                console.error('Failed to mark listing as inquiry-enabled:', err);
+              }
+            }
           };
 
           if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
@@ -610,6 +646,8 @@
       }
 
       const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+      const showInquiryText = !!inquiryEnabled;
+      const formattedPrice = isFree ? price(0) : price(Number(priceVal));
 
       return H('form', {
         className: 'compact-listing-form',
@@ -740,15 +778,49 @@
           )
         ),
 
-        H('div', { className: 'row', style: { alignItems: 'center', gap: 6 } },
-          H('input', {
-            value: priceVal,
-            inputMode: 'decimal',
-            onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
-            placeholder: 'Price (empty = $0.00)',
-            style: { fontSize: '13px', padding: '7px', flex: 1 }
-          }),
-          isFree && H('span', { style: { fontSize: 11, color: '#16a34a', fontWeight: 700 } }, price(0))
+        H('div', { className: 'row', style: { alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+          H('div', { className: 'row', style: { alignItems: 'center', gap: 6, flex: 1 } },
+            H('input', {
+              value: priceVal,
+              inputMode: 'decimal',
+              onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
+              placeholder: 'Price (empty = $0.00)',
+              style: { fontSize: '13px', padding: '7px', flex: 1 }
+            }),
+            showInquiryText
+              ? H('span', { className: 'inquiry-badge', style: { fontSize: 11, padding: '3px 8px' } }, 'Seller wants an offer')
+              : H('span', { style: { fontSize: 11, color: isFree ? '#16a34a' : '#6b7280', fontWeight: 700 } }, formattedPrice)
+          ),
+          H('div', { className: 'row', style: { alignItems: 'center', gap: 4 } },
+            H('label', { className: 'toggle-card', style: { padding: '4px 8px', fontSize: 11 } },
+              H('input', {
+                type: 'checkbox',
+                className: 'toggle-input',
+                checked: showInquiryText,
+                onChange: e => setInquiryEnabled(e.target.checked)
+              }),
+              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+              H('div', { className: 'toggle-copy' },
+                H('div', { style: { fontWeight: 600, fontSize: 11 } }, 'Inquiry text'),
+                H('div', { className: 'muted', style: { fontSize: 10 } }, 'show offer msg')
+              )
+            ),
+            H('button', {
+              type: 'button',
+              onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
+              title: 'Inquiry mode info',
+              style: {
+                width: 22,
+                height: 22,
+                lineHeight: '20px',
+                borderRadius: 11,
+                border: '1px solid #e5e7eb',
+                background: '#fff',
+                fontSize: 12,
+                cursor: 'pointer'
+              }
+            }, '?')
+          )
         ),
 
         H('button', {
@@ -790,6 +862,38 @@
             style: { flex: 1, padding: '9px', fontSize: '13px' }
           },
             'Cancel'
+          )
+        ),
+        showInquiryHelp && H('div', {
+          style: {
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(17,24,39,0.65)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 120
+          },
+          onClick: (e) => { if (e.target === e.currentTarget) setShowInquiryHelp(false); }
+        },
+          H('div', {
+            style: {
+              background: '#fff',
+              borderRadius: 12,
+              padding: 16,
+              width: 'min(320px, 90vw)',
+              boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)'
+            }
+          },
+            H('div', { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, 'Inquiry mode'),
+            H('p', { style: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.5 } },
+              'When inquiry is enabled it will replace the price field with a message inviting buyers to make an offer.'
+            ),
+            H('button', {
+              type: 'button',
+              className: 'btn primary',
+              style: { width: '100%' },
+              onClick: () => setShowInquiryHelp(false)
+            }, 'Got it')
           )
         )
       );

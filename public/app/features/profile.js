@@ -64,6 +64,18 @@
       });
     });
 
+    const InquiryHelpModal = React.memo(function InquiryHelpModal({ onClose }) {
+      return H(InfoHelpModal, {
+        onClose,
+        title: 'Inquiry mode',
+        intro: 'When inquiry is enabled it will:',
+        bullets: [
+          'Replace the price field with a message inviting buyers to make an offer.'
+        ],
+        footer: 'Turn inquiry mode off to show the AI suggested price again.'
+      });
+    });
+
     const ProfilePanel = React.memo(function ProfilePanel({
       isMobile,
       user,
@@ -79,6 +91,8 @@
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
+      autoInquiryEnabled,
+      setAutoInquiryEnabled,
       onViewSeller,
       onToggleSold
     }) {
@@ -135,7 +149,13 @@
                   type: 'checkbox',
                   className: 'toggle-input',
                   checked: !!autoListEnabled,
-                  onChange: (e) => setAutoListEnabled(e.target.checked)
+                  onChange: (e) => {
+                    const checked = e.target.checked;
+                    setAutoListEnabled(checked);
+                    if (typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(checked);
+                    }
+                  }
                 }),
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
@@ -146,6 +166,32 @@
                   type: 'button',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('auto'); },
                   title: 'About Auto-list',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoInquiryEnabled,
+                  onChange: (e) => {
+                    if (typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(e.target.checked);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('inquiry'); },
+                  title: 'Inquiry mode info',
                   style: {
                     marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
                     borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
@@ -328,6 +374,7 @@
         helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
+        helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
 
         H(ListingModal, {
           open: !!profileSelected,

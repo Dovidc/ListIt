@@ -738,6 +738,8 @@ async function initializeSchema() {
 
         enable_nearby INTEGER DEFAULT 0,
 
+        inquiry_enabled INTEGER DEFAULT 0,
+
         sold INTEGER DEFAULT 0,
 
         is_test_listing INTEGER DEFAULT 0
@@ -751,9 +753,11 @@ async function initializeSchema() {
     try { await db.exec('ALTER TABLE listings ADD COLUMN lat REAL'); } catch {}
     try { await db.exec('ALTER TABLE listings ADD COLUMN lon REAL'); } catch {}
     try { await db.exec('ALTER TABLE listings ADD COLUMN enable_nearby INTEGER DEFAULT 0'); } catch {}
+    try { await db.exec('ALTER TABLE listings ADD COLUMN inquiry_enabled INTEGER DEFAULT 0'); } catch {}
     try { await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0'); } catch {}
     try { await db.exec('ALTER TABLE listings ADD COLUMN is_test_listing INTEGER DEFAULT 0'); } catch {}
     try { await db.exec("UPDATE listings SET enable_nearby = 0 WHERE enable_nearby IS NULL"); } catch {}
+    try { await db.exec("UPDATE listings SET inquiry_enabled = 0 WHERE inquiry_enabled IS NULL"); } catch {}
     try { await db.exec("UPDATE listings SET sold = 0 WHERE sold IS NULL"); } catch {}
     try { await db.exec("UPDATE listings SET is_test_listing = 0 WHERE is_test_listing IS NULL"); } catch {}
 
@@ -3535,7 +3539,7 @@ app.post(
 
     if (isLockedAccount(req.user)) return respondLocked(res);
 
-    const { title, description, location, price, tags, enable_nearby } = req.body || {};
+      const { title, description, location, price, tags, enable_nearby, inquiry_enabled } = req.body || {};
 
     
 
@@ -3695,14 +3699,15 @@ app.post(
 
 
     const enNearby = enable_nearby ? 1 : 0;
+    const inquiryEnabled = inquiry_enabled ? 1 : 0;
 
 
 
     const info = await db.prepare(`
 
-      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby)
+      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -3722,7 +3727,7 @@ app.post(
 
       tagStr,
 
-      lat, lon, enNearby
+      lat, lon, enNearby, inquiryEnabled
 
     );
 
@@ -4181,6 +4186,12 @@ app.put(
     if (typeof req.body.enable_nearby !== 'undefined') {
 
       await db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(req.body.enable_nearby ? 1 : 0, id);
+
+    }
+
+    if (typeof req.body.inquiry_enabled !== 'undefined') {
+
+      await db.prepare('UPDATE listings SET inquiry_enabled=? WHERE id=?').run(req.body.inquiry_enabled ? 1 : 0, id);
 
     }
 
@@ -6667,8 +6678,8 @@ async function seedListingsInternal(requestedCount) {
     const info = await db.prepare(`
       INSERT INTO listings (
         user_id, image_data, title, description, location, price,
-        created_at, tags, lat, lon, enable_nearby, sold, is_test_listing
-      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
+        created_at, tags, lat, lon, enable_nearby, inquiry_enabled, sold, is_test_listing
+      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
     `).run(
       sellerId,
       String(template.title || ''),
@@ -6679,7 +6690,8 @@ async function seedListingsInternal(requestedCount) {
       normalizeTags(template.tags),
       Number.isFinite(template.lat) ? template.lat : null,
       Number.isFinite(template.lon) ? template.lon : null,
-      enableNearby
+      enableNearby,
+      0
     );
 
     const listingId = info.lastInsertRowid;

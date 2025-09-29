@@ -173,6 +173,7 @@ function validateCreateListingRequest(raw = {}) {
   const priceRaw = raw.price;
   const tags = sanitizeTags(raw.tags);
   const enableNearby = coerceBoolean(raw.enable_nearby);
+  const inquiryEnabled = coerceBoolean(raw.inquiry_enabled ?? raw.inquiryEnabled);
   const lat = coerceNumber(raw.lat);
   const lon = coerceNumber(raw.lon);
 
@@ -207,6 +208,7 @@ function validateCreateListingRequest(raw = {}) {
   sanitized.price = Number(price);
   if (tags) sanitized.tags = tags;
   sanitized.enable_nearby = Boolean(enableNearby);
+  sanitized.inquiry_enabled = Boolean(inquiryEnabled);
   sanitized.lat = Number.isFinite(lat) ? Number(lat) : undefined;
   sanitized.lon = Number.isFinite(lon) ? Number(lon) : undefined;
   sanitized.upload_tokens = uploadTokens;
@@ -274,6 +276,12 @@ function validateUpdateListingRequest(raw = {}) {
 
   if (raw.enable_nearby !== undefined) {
     sanitized.enable_nearby = coerceBoolean(raw.enable_nearby);
+    hasKnownField = true;
+  }
+
+  if (raw.inquiry_enabled !== undefined || raw.inquiryEnabled !== undefined) {
+    const inquiryEnabled = coerceBoolean(raw.inquiry_enabled ?? raw.inquiryEnabled);
+    sanitized.inquiry_enabled = Boolean(inquiryEnabled);
     hasKnownField = true;
   }
 

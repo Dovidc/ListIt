@@ -164,7 +164,9 @@
         aiDescriptionEnabled,
         setAiDescriptionEnabled,
         autoPostNearbyEnabled,
-        setAutoPostNearbyEnabled
+        setAutoPostNearbyEnabled,
+        autoInquiryEnabled,
+        setAutoInquiryEnabled
       } = useAppPreferences();
 
       const { ads, refreshAds } = useAds();
@@ -476,6 +478,8 @@
               setAiDescriptionEnabled,
               autoPostNearbyEnabled,
               setAutoPostNearbyEnabled,
+              autoInquiryEnabled,
+              setAutoInquiryEnabled,
               onViewSeller: handleViewSeller,
               onToggleSold: toggleSold
             }),
@@ -495,6 +499,7 @@
           onLockedAction: showLockedBanner,
           autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
           aiDescriptionEnabled,
+          autoInquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob
         }),
@@ -507,6 +512,7 @@
           autoListEnabled,
           aiDescriptionEnabled,
           autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+          autoInquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob
         }),

@@ -9,7 +9,9 @@
     function createStoredToggle(key, defaultValue = false) {
       const readInitial = () => {
         try {
-          return localStorage.getItem(key) === '1';
+          const raw = localStorage.getItem(key);
+          if (raw === null) return Boolean(defaultValue);
+          return raw === '1';
         } catch {
           return defaultValue;
         }
@@ -42,11 +44,13 @@
     const useAutoListToggle = createStoredToggle('listit_auto_list');
     const useAiDescriptionToggle = createStoredToggle('listit_ai_descriptions');
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
+    const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
 
     function useAppPreferences() {
       const autoList = useAutoListToggle();
       const aiDescription = useAiDescriptionToggle();
       const autoNearby = useAutoPostNearbyToggle();
+      const inquiryText = useInquiryTextToggle();
 
       return {
         autoListEnabled: autoList.enabled,
@@ -54,7 +58,9 @@
         aiDescriptionEnabled: aiDescription.enabled,
         setAiDescriptionEnabled: aiDescription.setEnabled,
         autoPostNearbyEnabled: autoNearby.enabled,
-        setAutoPostNearbyEnabled: autoNearby.setEnabled
+        setAutoPostNearbyEnabled: autoNearby.setEnabled,
+        autoInquiryEnabled: inquiryText.enabled,
+        setAutoInquiryEnabled: inquiryText.setEnabled
       };
     }
 
