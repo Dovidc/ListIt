@@ -122,6 +122,11 @@ function createDependencies({ mobile = false, stateOverrides } = {}) {
   };
 }
 
+async function flushAsyncEffects() {
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 function findNode(root, predicate) {
   if (!root || typeof root !== 'object') return null;
   if (predicate(root)) return root;
@@ -571,6 +576,133 @@ describe('listing forms feature integration', () => {
     });
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm auto-list immediately uploads, enriches, and creates listing', async () => {
+    const createListingFormsFeature = loadFactory();
+    const autoFile = { name: 'auto.jpg', size: 1200, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [autoFile]
+      ]
+    });
+
+    deps.uploads.uploadFileDraft.mockResolvedValue({ publicUrl: 'https://uploads/auto.jpg', uploadToken: 'tok-auto' });
+    deps.api.aiAnalyze.mockResolvedValue({
+      title: 'AI Sofa',
+      description: 'Comfy sofa with minimal wear.',
+      suggested_price: 139.5,
+      tags: ['living room', 'sofa']
+    });
+    deps.helpers.fetchCoordsAndReverse.mockResolvedValue({ lat: 51.5, lon: -0.12, display: 'London, UK' });
+    deps.api.createListing.mockResolvedValue({ id: 'listing-ai' });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const onCancel = jest.fn();
+    const onSaved = jest.fn();
+
+    CompactListingForm({
+      draft: null,
+      onCancel,
+      onSaved,
+      autoListEnabled: true,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: true,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const { effects, states, refs } = deps.__mocks.react;
+    expect(effects.length).toBeGreaterThanOrEqual(2);
+    effects[1]();
+    await flushAsyncEffects();
+
+    expect(states[10].setter).toHaveBeenNthCalledWith(1, true);
+    expect(states[10].setter).toHaveBeenLastCalledWith(false);
+    expect(deps.uploads.uploadFileDraft).toHaveBeenCalledTimes(1);
+    expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(autoFile);
+    expect(deps.api.aiAnalyze).toHaveBeenCalledWith({ images: ['https://uploads/auto.jpg'], hint: '' }, { silent: true });
+    expect(deps.helpers.fetchCoordsAndReverse).toHaveBeenCalledTimes(1);
+    expect(deps.api.createListing).toHaveBeenCalledWith({
+      title: 'AI Sofa',
+      description: 'Comfy sofa with minimal wear.',
+      location: 'London, UK',
+      price: 139.5,
+      tags: 'living room, sofa',
+      enable_nearby: 1,
+      upload_tokens: ['tok-auto'],
+      lat: 51.5,
+      lon: -0.12
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(global.alert).not.toHaveBeenCalled();
+    expect(refs[1].current).toBe(false);
+  });
+
+  test('CompactListingForm auto-list queues background job when background queue enabled', async () => {
+    const createListingFormsFeature = loadFactory();
+    const queued = { name: 'queue.jpg', size: 1500, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [queued]
+      ]
+    });
+
+    deps.uploads.uploadFileDraft.mockResolvedValue({ publicUrl: 'https://uploads/queue.jpg', uploadToken: 'tok-queue' });
+    deps.api.createListing.mockResolvedValue({ id: 'background-job' });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const onCancel = jest.fn();
+    const onSaved = jest.fn();
+    const enqueueListingJob = jest.fn();
+
+    CompactListingForm({
+      draft: null,
+      onCancel,
+      onSaved,
+      autoListEnabled: true,
+      aiDescriptionEnabled: false,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: true,
+      enqueueListingJob,
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const { effects, refs, states } = deps.__mocks.react;
+    expect(effects.length).toBeGreaterThanOrEqual(2);
+    effects[1]();
+
+    expect(enqueueListingJob).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(states[10].setter).not.toHaveBeenCalled();
+    expect(deps.uploads.uploadFileDraft).not.toHaveBeenCalled();
+    expect(deps.api.createListing).not.toHaveBeenCalled();
+    expect(deps.helpers.fetchCoordsAndReverse).not.toHaveBeenCalled();
+
+    const job = enqueueListingJob.mock.calls[0][0];
+    expect(typeof job).toBe('function');
+    await job();
+
+    expect(deps.uploads.uploadFileDraft).toHaveBeenCalledTimes(1);
+    expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(queued);
+    expect(deps.api.createListing).toHaveBeenCalledWith({
+      title: 'Item for sale',
+      description: 'No description',
+      location: '',
+      price: 0,
+      tags: '',
+      enable_nearby: 0,
+      upload_tokens: ['tok-queue']
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(global.alert).not.toHaveBeenCalled();
+    expect(refs[1].current).toBe(false);
   });
 });
 
