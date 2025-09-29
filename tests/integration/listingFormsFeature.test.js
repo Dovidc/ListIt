@@ -300,6 +300,133 @@ describe('listing forms feature integration', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
+  test('CompactListingForm pickFiles filters invalid files and resets input', () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies();
+    const { states, refs } = deps.__mocks.react;
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const valid = { name: 'chair.jpg', size: 1024, type: 'image/jpeg' };
+    const oversized = { name: 'big.png', size: 25 * 1024 * 1024, type: 'image/png' };
+    const notImage = { name: 'notes.pdf', size: 2048, type: 'application/pdf' };
+
+    const fileInput = findNode(form, (node) => node?.type === 'input' && node?.props?.type === 'file');
+    expect(fileInput).toBeTruthy();
+
+    refs[0].current = { value: 'stale' };
+
+    fileInput.props.onChange({ target: { files: [valid, oversized, notImage] } });
+
+    expect(states[0].setter).toHaveBeenCalledTimes(1);
+    expect(states[0].setter).toHaveBeenCalledWith([valid]);
+    expect(states[0].value).toEqual([valid]);
+    expect(refs[0].current.value).toBe('');
+    expect(global.alert).toHaveBeenNthCalledWith(1, 'Each image must be under 20MB');
+    expect(global.alert).toHaveBeenNthCalledWith(2, 'Only images are allowed');
+  });
+
+  test('CompactListingForm removeFile clears cache and updates state', () => {
+    const createListingFormsFeature = loadFactory();
+    const fileA = { name: 'a.jpg', size: 1000, type: 'image/jpeg' };
+    const fileB = { name: 'b.jpg', size: 800, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [fileA, fileB],
+        [],
+        []
+      ]
+    });
+
+    deps.uploads.useFilePreviews.mockReturnValue([{ url: 'preview-a' }, { url: 'preview-b' }]);
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const { states } = deps.__mocks.react;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const removeButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'x');
+    expect(removeButton).toBeTruthy();
+
+    removeButton.props.onClick();
+
+    expect(deps.uploads.clearDraftCacheForFile).toHaveBeenCalledTimes(1);
+    expect(deps.uploads.clearDraftCacheForFile).toHaveBeenCalledWith(fileA);
+    expect(states[0].setter).toHaveBeenCalledWith([fileB]);
+    expect(states[0].value).toEqual([fileB]);
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm removeExistingImage updates existing URLs state', () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies({
+      stateOverrides: [
+        [],
+        ['https://cdn/one.jpg', 'https://cdn/two.jpg'],
+        ['https://cdn/one.jpg', 'https://cdn/two.jpg']
+      ]
+    });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const { states } = deps.__mocks.react;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const removeExistingButton = findNode(form, (node) => (
+      node?.type === 'button'
+      && node?.props?.children === 'x'
+      && typeof node?.props?.onClick === 'function'
+      && node.props.onClick.toString().includes('existingUrls')
+    ));
+
+    expect(removeExistingButton).toBeTruthy();
+
+    removeExistingButton.props.onClick();
+
+    expect(states[1].setter).toHaveBeenCalledWith(['https://cdn/two.jpg']);
+    expect(states[1].value).toEqual(['https://cdn/two.jpg']);
+    expect(deps.uploads.clearDraftCacheForFile).not.toHaveBeenCalled();
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
   test('CompactListingForm runAI uploads images, applies AI results, and respects limits', async () => {
     const createListingFormsFeature = loadFactory();
     const fileA = { name: 'a.jpg', size: 1024, type: 'image/jpeg' };
