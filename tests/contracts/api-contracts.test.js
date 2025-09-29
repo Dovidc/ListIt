@@ -133,27 +133,34 @@ describe('API contracts', () => {
 });
 
 describe('listing schema validators', () => {
-  it('requires title and location when creating a listing', () => {
-    const missingTitle = validateCreateListingRequest({
+  it('requires location but not title or price when creating a listing', () => {
+    const noTitleOrPrice = validateCreateListingRequest({
       location: 'City, ST',
-      price: 25,
+      price: '',
       upload_tokens: ['tok-1']
     });
 
-    expect(missingTitle.ok).toBe(false);
-    expect(missingTitle.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: 'title', code: 'required' })
-    ]));
+    expect(noTitleOrPrice.ok).toBe(true);
+    expect(noTitleOrPrice.data.title).toBe('');
+    expect(noTitleOrPrice.data.price).toBe(0);
 
     const missingLocation = validateCreateListingRequest({
       title: 'Nice chair',
-      price: 25,
       upload_tokens: ['tok-1']
     });
 
     expect(missingLocation.ok).toBe(false);
     expect(missingLocation.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: 'location', code: 'required' })
+    ]));
+
+    const missingImages = validateCreateListingRequest({
+      location: 'City, ST'
+    });
+
+    expect(missingImages.ok).toBe(false);
+    expect(missingImages.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'upload_tokens', code: 'required' })
     ]));
   });
 
