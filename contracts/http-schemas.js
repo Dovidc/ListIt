@@ -177,9 +177,7 @@ function validateCreateListingRequest(raw = {}) {
   const lat = coerceNumber(raw.lat);
   const lon = coerceNumber(raw.lon);
 
-  if (!title) {
-    issues.push(issue('title', 'Title is required', 'required'));
-  } else if (title.length > 80) {
+  if (title && title.length > 80) {
     issues.push(issue('title', 'Title must be 80 characters or less', 'too_long'));
   }
 
@@ -189,10 +187,19 @@ function validateCreateListingRequest(raw = {}) {
     issues.push(issue('location', 'Location must be 80 characters or less', 'too_long'));
   }
 
-  let price = coerceNumber(priceRaw);
-  if (!Number.isFinite(price) || price < 0) {
-    issues.push(issue('price', 'Price must be a non-negative number', 'invalid_number'));
-    price = 0;
+  const hasPriceInput = !(
+    priceRaw === undefined ||
+    priceRaw === null ||
+    (typeof priceRaw === 'string' && priceRaw.trim() === '')
+  );
+
+  let price = 0;
+  if (hasPriceInput) {
+    price = coerceNumber(priceRaw);
+    if (!Number.isFinite(price) || price < 0) {
+      issues.push(issue('price', 'Price must be a non-negative number', 'invalid_number'));
+      price = 0;
+    }
   }
 
   const uploadTokens = normalizeUploadTokens(raw.upload_tokens ?? raw.uploadTokens);
