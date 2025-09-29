@@ -4378,7 +4378,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                    l.image_data
                  ) AS image_data,
                  l.title, l.description, l.location,
-                 l.price, l.created_at, l.lat, l.lon,
+                 l.price, l.created_at, l.tags, l.lat, l.lon,
                  u.username as owner_username,
                  ST_Distance(
                    COALESCE(
@@ -4453,7 +4453,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  l.image_data
                ) AS image_data,
                l.title, l.description, l.location,
-               l.price, l.created_at, l.lat, l.lon,
+               l.price, l.created_at, l.tags, l.lat, l.lon,
                u.username as owner_username,
                ${distanceExpr} AS distance_m
           FROM listings l
@@ -4488,10 +4488,13 @@ app.get('/api/listings/nearby', async (req, res) => {
     const out = rows.map((row) => {
 
       const distance = Number.isFinite(row.distance_m) ? Math.round(row.distance_m) : null;
+      const tags = row?.tags ? String(row.tags).split(',').filter(Boolean) : [];
 
       return {
 
         ...row,
+
+        tags,
 
         distance_m: distance,
 
