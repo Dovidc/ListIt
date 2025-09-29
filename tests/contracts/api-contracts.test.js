@@ -6,6 +6,10 @@ if (!process.env.DB_PATH) {
 const request = require('supertest');
 const app = require('../../server');
 const { API_VERSIONS } = require('../../contracts/versioning');
+const {
+  validateCreateListingRequest,
+  validateUpdateListingRequest
+} = require('../../contracts/http-schemas');
 
 async function resetDb() {
   const res = await request(app).post('/__test/reset');
@@ -124,6 +128,46 @@ describe('API contracts', () => {
     expect(badMessage.status).toBe(400);
     expect(badMessage.body.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: 'body' })
+    ]));
+  });
+});
+
+describe('listing schema validators', () => {
+  it('requires title and location when creating a listing', () => {
+    const missingTitle = validateCreateListingRequest({
+      location: 'City, ST',
+      price: 25,
+      upload_tokens: ['tok-1']
+    });
+
+    expect(missingTitle.ok).toBe(false);
+    expect(missingTitle.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'title', code: 'required' })
+    ]));
+
+    const missingLocation = validateCreateListingRequest({
+      title: 'Nice chair',
+      price: 25,
+      upload_tokens: ['tok-1']
+    });
+
+    expect(missingLocation.ok).toBe(false);
+    expect(missingLocation.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'location', code: 'required' })
+    ]));
+  });
+
+  it('enforces non-empty fields on listing updates', () => {
+    const emptyTitle = validateUpdateListingRequest({ title: '   ' });
+    expect(emptyTitle.ok).toBe(false);
+    expect(emptyTitle.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'title', code: 'too_short' })
+    ]));
+
+    const emptyLocation = validateUpdateListingRequest({ location: '\n' });
+    expect(emptyLocation.ok).toBe(false);
+    expect(emptyLocation.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'location', code: 'too_short' })
     ]));
   });
 });
