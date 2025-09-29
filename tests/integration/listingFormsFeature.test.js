@@ -32,7 +32,7 @@ function loadFactory() {
   return global.window.ListItApp.features.listingForms.createListingFormsFeature;
 }
 
-function createReactMocks() {
+function createReactMocks(stateOverrides = []) {
   const states = [];
   const refs = [];
   const effects = [];
@@ -46,10 +46,17 @@ function createReactMocks() {
       }
     })),
     useState: jest.fn((initial) => {
-      const value = typeof initial === 'function' ? initial() : initial;
-      const setter = jest.fn();
-      states.push({ value, setter });
-      return [value, setter];
+      const initialValue = typeof initial === 'function' ? initial() : initial;
+      const nextValue = stateOverrides.length ? stateOverrides.shift() : undefined;
+      const stateRecord = { value: nextValue !== undefined ? nextValue : initialValue, setter: null };
+      const setter = jest.fn((update) => {
+        const resolved = typeof update === 'function' ? update(stateRecord.value) : update;
+        stateRecord.value = resolved;
+        return resolved;
+      });
+      stateRecord.setter = setter;
+      states.push(stateRecord);
+      return [stateRecord.value, setter];
     }),
     useRef: jest.fn((initial) => {
       const ref = { current: initial };
@@ -66,8 +73,8 @@ function createReactMocks() {
   return { React, states, refs, effects };
 }
 
-function createDependencies({ mobile = false } = {}) {
-  const react = createReactMocks();
+function createDependencies({ mobile = false, stateOverrides } = {}) {
+  const react = createReactMocks(stateOverrides ? [...stateOverrides] : []);
   const ReactDOM = {
     createPortal: jest.fn((node, target) => ({ node, target }))
   };
@@ -139,10 +146,12 @@ beforeEach(() => {
   resetGlobals();
   global.setTimeout = jest.fn(() => 1);
   global.clearTimeout = jest.fn();
+  global.alert = jest.fn();
 });
 
 afterEach(() => {
   resetGlobals();
+  delete global.alert;
 });
 
 describe('listing forms feature integration', () => {
@@ -284,6 +293,284 @@ describe('listing forms feature integration', () => {
     cleanup();
     expect(global.clearTimeout).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test('CompactListingForm runAI uploads images, applies AI results, and respects limits', async () => {
+    const createListingFormsFeature = loadFactory();
+    const fileA = { name: 'a.jpg', size: 1024, type: 'image/jpeg' };
+    const fileB = { name: 'b.jpg', size: 2048, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [fileA, fileB],
+        ['https://cdn/current.jpg'],
+        ['https://cdn/original.jpg']
+      ]
+    });
+
+    deps.uploads.uploadFileDraft
+      .mockResolvedValueOnce({ publicUrl: 'https://uploads/a.jpg', uploadToken: 'tok-a' })
+      .mockResolvedValueOnce({ publicUrl: 'https://uploads/b.jpg', uploadToken: 'tok-b' });
+    deps.api.aiAnalyze.mockResolvedValue({
+      title: 'AI Generated Title',
+      tags: ['modern', 'sofa'],
+      suggested_price: 129.99,
+      description: 'Beautiful couch ready for a new home.'
+    });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const { states } = deps.__mocks.react;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const runAiButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'Run AI analysis');
+    expect(runAiButton).toBeTruthy();
+    await runAiButton.props.onClick();
+
+    expect(deps.uploads.uploadFileDraft).toHaveBeenCalledTimes(2);
+    expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(fileA);
+    expect(deps.uploads.uploadFileDraft.mock.calls[1][0]).toBe(fileB);
+    expect(deps.api.aiAnalyze).toHaveBeenCalledTimes(1);
+    expect(deps.api.aiAnalyze).toHaveBeenCalledWith({
+      images: ['https://uploads/a.jpg', 'https://uploads/b.jpg', 'https://cdn/current.jpg'],
+      hint: ''
+    });
+
+    expect(states[8].setter).toHaveBeenNthCalledWith(1, true);
+    expect(states[8].setter).toHaveBeenLastCalledWith(false);
+    expect(states[9].setter).toHaveBeenCalledWith('');
+    expect(states[3].setter).toHaveBeenCalledWith('AI Generated Title');
+    expect(states[7].setter).toHaveBeenCalledWith('modern, sofa');
+    expect(states[6].setter).toHaveBeenCalledWith('129.99');
+    expect(states[4].setter).toHaveBeenCalledWith('Beautiful couch ready for a new home.');
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm runAI surfaces description gating errors', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies({
+      stateOverrides: [
+        [{ name: 'photo.jpg', size: 500, type: 'image/jpeg' }],
+        [],
+        []
+      ]
+    });
+
+    deps.uploads.uploadFileDraft.mockResolvedValue({ publicUrl: 'https://uploads/photo.jpg', uploadToken: 'tok-1' });
+    deps.api.aiAnalyze.mockResolvedValue({
+      title: 'Draft',
+      tags: ['tag'],
+      suggested_price: 50,
+      description: 'Long AI description'
+    });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const { states } = deps.__mocks.react;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: false,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const runAiButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'Run AI analysis');
+    await runAiButton.props.onClick();
+
+    expect(states[4].setter).not.toHaveBeenCalled();
+    expect(states[9].setter).toHaveBeenLastCalledWith('Enable AI descriptions in your profile to apply AI-written descriptions.');
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm useMyLocation populates coordinates and handles API response', async () => {
+    const createListingFormsFeature = loadFactory();
+    const deps = createDependencies();
+    const { states } = deps.__mocks.react;
+
+    global.navigator.geolocation.getCurrentPosition.mockImplementation((success) => {
+      success({ coords: { latitude: 37.77, longitude: -122.41 } });
+    });
+    deps.api.reverseGeocode.mockResolvedValue({ lat: 37.8, lon: -122.4, display: 'San Francisco, CA' });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel: jest.fn(),
+      onSaved: jest.fn(),
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const locationButton = findNode(form, (node) => node?.type === 'button' && node?.props?.children === 'Use my location');
+    await locationButton.props.onClick();
+
+    expect(states[12].setter).toHaveBeenNthCalledWith(1, true);
+    expect(states[12].setter).toHaveBeenLastCalledWith(false);
+    expect(states[13].setter).toHaveBeenCalledWith('');
+    expect(deps.api.reverseGeocode).toHaveBeenCalledWith(37.77, -122.41);
+    expect(states[5].setter).toHaveBeenCalledWith('San Francisco, CA');
+    expect(states[14].setter).toHaveBeenCalledWith(37.8);
+    expect(states[15].setter).toHaveBeenCalledWith(-122.4);
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm submit updates an existing listing with uploads and deletions', async () => {
+    const createListingFormsFeature = loadFactory();
+    const newFile = { name: 'latest.jpg', size: 1000, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [newFile],
+        ['https://cdn/keep.jpg'],
+        ['https://cdn/remove.jpg', 'https://cdn/keep.jpg'],
+        'Draft title',
+        'Draft description',
+        'Draft location',
+        '45',
+        'tag1, tag2',
+        false,
+        '',
+        false,
+        true,
+        false,
+        '',
+        12.3,
+        45.6
+      ]
+    });
+
+    deps.uploads.uploadFilesForListing.mockResolvedValue(undefined);
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const onSaved = jest.fn();
+
+    const form = CompactListingForm({
+      draft: { id: 'listing-42', enable_nearby: 1, lat: 12.3, lon: 45.6 },
+      onCancel: jest.fn(),
+      onSaved,
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: false,
+      enqueueListingJob: jest.fn(),
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const submitEvent = { preventDefault: jest.fn() };
+    await form.props.onSubmit(submitEvent);
+
+    expect(submitEvent.preventDefault).toHaveBeenCalled();
+    expect(deps.api.updateListing).toHaveBeenCalledWith('listing-42', expect.objectContaining({
+      title: 'Draft title',
+      description: 'Draft description',
+      location: 'Draft location',
+      price: 45,
+      tags: 'tag1, tag2',
+      enable_nearby: 1,
+      deletedImages: ['https://cdn/remove.jpg']
+    }));
+    expect(deps.uploads.uploadFilesForListing).toHaveBeenCalledWith('listing-42', [newFile]);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(deps.api.createListing).not.toHaveBeenCalled();
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  test('CompactListingForm submit enqueues background job for new listings', async () => {
+    const createListingFormsFeature = loadFactory();
+    const queuedFile = { name: 'queued.jpg', size: 900, type: 'image/jpeg' };
+    const deps = createDependencies({
+      stateOverrides: [
+        [queuedFile],
+        [],
+        [],
+        'Title',
+        'Desc',
+        'City',
+        '0',
+        '',
+        false,
+        '',
+        false,
+        false,
+        false,
+        '',
+        null,
+        null
+      ]
+    });
+
+    deps.uploads.uploadFileDraft.mockResolvedValue({ uploadToken: 'token-123' });
+    deps.api.createListing.mockResolvedValue({ id: 'new-listing' });
+
+    const feature = createListingFormsFeature(deps);
+    const { CompactListingForm } = feature;
+    const onCancel = jest.fn();
+    const onSaved = jest.fn();
+    const enqueueListingJob = jest.fn();
+
+    const form = CompactListingForm({
+      draft: null,
+      onCancel,
+      onSaved,
+      autoListEnabled: false,
+      aiDescriptionEnabled: true,
+      autoPostNearbyEnabled: false,
+      backgroundQueueEnabled: true,
+      enqueueListingJob,
+      showTags: false,
+      setShowTags: jest.fn()
+    });
+
+    const submitEvent = { preventDefault: jest.fn() };
+    await form.props.onSubmit(submitEvent);
+
+    expect(enqueueListingJob).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(deps.api.createListing).not.toHaveBeenCalled();
+    expect(deps.uploads.uploadFileDraft).not.toHaveBeenCalled();
+
+    const job = enqueueListingJob.mock.calls[0][0];
+    expect(typeof job).toBe('function');
+    await job();
+
+    expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(queuedFile);
+    expect(deps.api.createListing).toHaveBeenCalledWith({
+      title: 'Title',
+      description: 'Desc',
+      location: 'City',
+      price: 0,
+      tags: '',
+      enable_nearby: 0,
+      upload_tokens: ['token-123']
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(global.alert).not.toHaveBeenCalled();
   });
 });
 
