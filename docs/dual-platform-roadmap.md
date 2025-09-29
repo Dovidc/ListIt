@@ -22,6 +22,12 @@ This roadmap outlines the major workstreams required to evolve ListIt from a bro
 - Provide browser implementations inside the web client and plan native counterparts (Apple Push Notification service, Photos picker, Keychain/CoreData, background tasks) that adhere to the same interfaces.
 - Evaluate bridging strategies: a thin Swift wrapper around the shared JavaScript bundle (via JavaScriptCore/React Native) or rewriting the UI natively while reusing the shared business logic and API contracts.
 
+### Choosing the Right iOS Approach
+- **Full Native (SwiftUI/UIKit)** – Highest degree of customization and access to platform features. Reuse the shared business logic via modularized TypeScript/ESM bundles exposed as Swift Packages or through a lightweight JS runtime. Plan to rebuild screens with SwiftUI components while calling into the shared core for data and state.
+- **Hybrid Bridge (React Native/Expo or Capacitor)** – Faster to ship because the existing React mental model carries over. Wrap the shared core as a reusable package, then implement platform-specific modules (e.g., notifications, file system) in Swift that are exposed to JavaScript through the bridge. Customization is limited by the bridge’s rendering model but still allows native modules when you need to drop down to Swift.
+- **Enhanced Web (PWA/WebView Shell)** – Lowest engineering lift since the current web UI runs inside a WKWebView shell. Offers minimal native customization, so reserve this for interim distribution or if App Store requirements are minimal.
+- Decide up front which path balances your customization requirements, maintenance budget, and release cadence. All approaches benefit from the shared core, typed contracts, and interface boundaries defined above.
+
 ## 5. Set Up Native Project Infrastructure
 - Create an Xcode workspace configured to consume the shared core (as a compiled module or via a JavaScript runtime) and wired to the existing Express backend for API calls.
 - Implement authentication, data fetching, and storage using the documented server contracts and shared validation logic.
