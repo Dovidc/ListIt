@@ -296,7 +296,7 @@ describe('nearby feature integration', () => {
     });
 
     const feature = createNearbyFeature(deps);
-    feature.NearbyPanel({
+    const tree = feature.NearbyPanel({
       user: { id: 'user-1' },
       mineById: {},
       onEdit: jest.fn(),
@@ -321,6 +321,56 @@ describe('nearby feature integration', () => {
 
     cleanupLoad?.();
     consoleErrorSpy.mockRestore();
+  });
+
+  test('filters nearby listings by tags when searching', () => {
+    const createNearbyFeature = loadFactory();
+    const taggedItem = {
+      id: 'listing-1',
+      title: 'Vintage desk',
+      description: 'Solid oak writing desk',
+      tags: ['office', 'furniture'],
+      owner_username: 'seller-one'
+    };
+    const otherItem = {
+      id: 'listing-2',
+      title: 'Garden tools set',
+      description: 'Perfect for spring prep',
+      tags: ['garden'],
+      owner_username: 'seller-two'
+    };
+
+    const stateOverrides = [
+      undefined,
+      [taggedItem, otherItem],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'office',
+      undefined
+    ];
+
+    const deps = createDependencies({ stateOverrides });
+    const feature = createNearbyFeature(deps);
+
+    const tree = feature.NearbyPanel({
+      user: { id: 'user-1' },
+      mineById: {},
+      onEdit: jest.fn(),
+      onDelete: jest.fn(),
+      onMessage: jest.fn(),
+      onAdminDelete: jest.fn(),
+      onViewSeller: jest.fn(),
+      onToggleSold: jest.fn(),
+      setTab: jest.fn()
+    });
+
+    const gridNode = findNode(tree, (node) => node && node.type === deps.components.ListingsGrid);
+    expect(gridNode).toBeTruthy();
+    expect(gridNode.props.items).toHaveLength(1);
+    expect(gridNode.props.items[0]).toEqual(expect.objectContaining({ id: 'listing-1' }));
   });
 
   test('modal actions clear selection and notify parent callbacks', () => {

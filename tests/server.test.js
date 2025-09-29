@@ -385,6 +385,7 @@ describe('Nearby listings endpoint', () => {
       description: 'Located downtown',
       location: 'Geo City',
       price: 10,
+      tags: ['central', 'downtown'],
       enable_nearby: true,
       lat: 40.0,
       lon: -74.0,
@@ -398,6 +399,7 @@ describe('Nearby listings endpoint', () => {
     expect(res.body.length).toBe(1);
     expect(res.body[0].id).toBe(createRes.body.id);
     expect(res.body[0].distance_m).toBe(0);
+    expect(res.body[0].tags).toEqual(['central', 'downtown']);
   });
 
   it('builds a PostGIS-powered query when the feature flag is enabled', async () => {
@@ -423,6 +425,7 @@ describe('Nearby listings endpoint', () => {
             location: 'Nowhere',
             price: 5,
             created_at: new Date().toISOString(),
+            tags: 'bike,commuter',
             lat: 1,
             lon: 2,
             owner_username: 'stub',
@@ -438,8 +441,10 @@ describe('Nearby listings endpoint', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body[0].distance_m).toBe(42);
+      expect(res.body[0].tags).toEqual(['bike', 'commuter']);
       expect(capturedSql).toContain('ST_DWithin');
       expect(capturedSql).toContain('ST_Distance');
+      expect(capturedSql).toContain('l.tags');
     } finally {
       app._db.prepare = originalPrepare;
       features.postgisNearby = originalFeature;

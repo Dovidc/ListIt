@@ -411,15 +411,25 @@
         let working = list;
         if (query) {
           working = list.filter((item) => {
-            const haystack = [
+            const baseValues = [
               item?.title,
               item?.description,
               item?.location,
               item?.owner_username
             ]
               .filter(Boolean)
-              .map((value) => String(value).toLowerCase())
-              .join(' ');
+              .map((value) => String(value).toLowerCase());
+
+            const tagValues = [];
+            if (Array.isArray(item?.tags)) {
+              for (const tag of item.tags) {
+                if (tag) tagValues.push(String(tag).toLowerCase());
+              }
+            } else if (item?.tags) {
+              tagValues.push(String(item.tags).toLowerCase());
+            }
+
+            const haystack = baseValues.concat(tagValues).join(' ');
             return haystack.includes(query);
           });
         }
