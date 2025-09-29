@@ -393,6 +393,15 @@ describe('browser app integration', () => {
     apiOptions.onAccountLocked();
     expect(appNav.notifyLocked).toHaveBeenCalledTimes(1);
 
+    const fetchMock = jest.fn().mockReturnValue('fetch-result');
+    global.fetch = fetchMock;
+
+    const fetchResult = apiOptions.fetchImpl('/api/test', { method: 'POST' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/test', { method: 'POST' });
+    expect(fetchResult).toBe('fetch-result');
+
+    delete global.fetch;
+
     expect(appBundles.hooks.useListings()).toBe('listingsHook');
     expect(appBundles.hooks.useNotifications()).toBe('notificationsHook');
     expect(appBundles.hooks.useListingQueue()).toBe('listingQueueHook');
