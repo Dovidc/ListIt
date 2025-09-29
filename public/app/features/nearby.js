@@ -24,10 +24,7 @@
     }
 
     const providedListingCard = components?.ListingCard;
-    const ListingsGrid = components?.ListingsGrid;
-    if (typeof ListingsGrid !== 'function') {
-      throw new Error('Nearby feature requires ListingsGrid component.');
-    }
+    const providedListingsGrid = components?.ListingsGrid;
 
     const {
       useState,
@@ -39,9 +36,45 @@
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    const formatFallbackPrice = (value) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '';
+      try {
+        return new Intl.NumberFormat(undefined, {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0
+        }).format(num);
+      } catch {
+        return `$${num.toFixed(Math.abs(num) < 1 ? 2 : 0)}`;
+      }
+    };
+
+    const formatFallbackDistance = (item) => {
+      const meters = Number(item?.distance_m);
+      if (Number.isFinite(meters) && meters >= 0) {
+        if (meters >= 1000) {
+          return `${(meters / 1000).toFixed(1)} km away`;
+        }
+        return `${Math.round(meters)} m away`;
+      }
+      const feet = Number(item?.distance_ft);
+      if (Number.isFinite(feet) && feet >= 0) {
+        return `${Math.round(feet)} ft away`;
+      }
+      return '';
+    };
+
+    const formatFallbackLocation = (item) => {
+      const parts = [];
+      if (item?.location) parts.push(String(item.location));
+      if (item?.owner_username) parts.push(`Seller: ${item.owner_username}`);
+      return parts.join(' • ');
+    };
+
     const ListingCard = typeof providedListingCard === 'function'
       ? providedListingCard
-      : createFallbackListingCard({ React, H });
+      : createFallbackListingCard({ React, H, formatFallbackPrice, formatFallbackDistance, formatFallbackLocation });
 
     if (typeof providedListingCard !== 'function') {
       try {
@@ -49,39 +82,23 @@
       } catch {}
     }
 
-    function createFallbackListingCard({ React: ReactRuntime, H: createElement }) {
-      const formatPrice = (value) => {
-        const num = Number(value);
-        if (!Number.isFinite(num)) return '';
-        try {
-          return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(num);
-        } catch {
-          return `$${num.toFixed(Math.abs(num) < 1 ? 2 : 0)}`;
-        }
-      };
+    const ListingsGrid = typeof providedListingsGrid === 'function'
+      ? providedListingsGrid
+      : createFallbackListingsGrid({ React, H, formatFallbackPrice, formatFallbackDistance, formatFallbackLocation });
 
-      const formatDistance = (item) => {
-        const meters = Number(item?.distance_m);
-        if (Number.isFinite(meters) && meters >= 0) {
-          if (meters >= 1000) {
-            return `${(meters / 1000).toFixed(1)} km away`;
-          }
-          return `${Math.round(meters)} m away`;
-        }
-        const feet = Number(item?.distance_ft);
-        if (Number.isFinite(feet) && feet >= 0) {
-          return `${Math.round(feet)} ft away`;
-        }
-        return '';
-      };
+    if (typeof providedListingsGrid !== 'function') {
+      try {
+        console.warn('Nearby feature is using a fallback grid view because ListingsGrid component was not provided.');
+      } catch {}
+    }
 
-      const formatLocation = (item) => {
-        const parts = [];
-        if (item?.location) parts.push(String(item.location));
-        if (item?.owner_username) parts.push(`Seller: ${item.owner_username}`);
-        return parts.join(' • ');
-      };
-
+    function createFallbackListingCard({
+      React: ReactRuntime,
+      H: createElement,
+      formatFallbackPrice: formatPrice,
+      formatFallbackDistance: formatDistance,
+      formatFallbackLocation: formatLocation
+    }) {
       const BaseCard = function NearbyFallbackListingCard({
         item,
         user,
@@ -212,6 +229,146 @@
       return typeof ReactRuntime.memo === 'function'
         ? ReactRuntime.memo(BaseCard)
         : BaseCard;
+    }
+
+    function createFallbackListingsGrid({
+      React: ReactRuntime,
+      H: createElement,
+      formatFallbackPrice: formatPrice,
+      formatFallbackDistance: formatDistance,
+      formatFallbackLocation: formatLocation
+    }) {
+      const FallbackListingsGrid = function NearbyFallbackListingsGrid({
+        items = [],
+        className,
+        style,
+        isMobile,
+        onSelect
+      }) {
+        const resolvedClassName = [className, 'nearby-grid-fallback'].filter(Boolean).join(' ');
+        const columnCount = isMobile ? 2 : 4;
+        const baseStyle = {
+          display: 'grid',
+          gap: 12,
+          alignItems: 'stretch',
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`
+        };
+        const resolvedStyle = style ? { ...baseStyle, ...style } : baseStyle;
+
+        const renderItem = (item, index) => {
+          if (!item) return null;
+          const key = item?.id != null ? `listing-${item.id}` : `listing-${index}`;
+          const cover = item.__cover || item.image_data || item.thumb_url || '';
+          const priceLabel = formatPrice(item.price);
+          const distanceLabel = formatDistance(item);
+          const locationLabel = formatLocation(item);
+
+          const handleActivate = typeof onSelect === 'function'
+            ? () => onSelect(null, item, cover || null)
+            : undefined;
+
+          const handleKeyDown = typeof onSelect === 'function'
+            ? (evt) => {
+                if (evt.key === 'Enter' || evt.key === ' ') {
+                  evt.preventDefault();
+                  handleActivate();
+                }
+              }
+            : undefined;
+
+          const content = [];
+
+          content.push(
+            cover
+              ? createElement('img', {
+                  key: 'img',
+                  src: cover,
+                  alt: item?.title || 'Listing image',
+                  style: {
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    objectFit: 'cover',
+                    borderRadius: 6,
+                    display: 'block'
+                  }
+                })
+              : createElement('div', {
+                  key: 'img',
+                  style: {
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    borderRadius: 6,
+                    background: '#e5e7eb',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#6b7280',
+                    fontSize: 12,
+                    fontWeight: 600
+                  }
+                }, 'No image')
+          );
+
+          const meta = [];
+          if (item?.title) {
+            meta.push(createElement('h3', {
+              key: 'title',
+              style: { margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }
+            }, item.title));
+          }
+          if (priceLabel) {
+            meta.push(createElement('p', {
+              key: 'price',
+              style: { margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }
+            }, priceLabel));
+          }
+          if (distanceLabel) {
+            meta.push(createElement('p', {
+              key: 'distance',
+              style: { margin: 0, fontSize: 12, color: '#4b5563' }
+            }, distanceLabel));
+          }
+          if (locationLabel) {
+            meta.push(createElement('p', {
+              key: 'location',
+              style: { margin: 0, fontSize: 12, color: '#6b7280' }
+            }, locationLabel));
+          }
+
+          if (meta.length) {
+            content.push(createElement('div', {
+              key: 'meta',
+              style: { display: 'grid', gap: 4 }
+            }, ...meta));
+          }
+
+          return createElement('article', {
+            key,
+            className: 'nearby-grid-fallback-card',
+            style: {
+              display: 'grid',
+              gap: 8,
+              padding: 12,
+              borderRadius: 8,
+              background: '#ffffff',
+              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.12)',
+              cursor: typeof onSelect === 'function' ? 'pointer' : 'default'
+            },
+            onClick: handleActivate,
+            onKeyDown: handleKeyDown,
+            role: typeof onSelect === 'function' ? 'button' : undefined,
+            tabIndex: typeof onSelect === 'function' ? 0 : undefined
+          }, ...content);
+        };
+
+        return createElement('div', {
+          className: resolvedClassName || null,
+          style: resolvedStyle
+        },
+          (Array.isArray(items) ? items : []).map(renderItem)
+        );
+      };
+
+      return ReactRuntime.memo ? ReactRuntime.memo(FallbackListingsGrid) : FallbackListingsGrid;
     }
 
     const DEFAULT_NEARBY_RADIUS_M = 400;
