@@ -185,18 +185,31 @@ describe('nearby feature integration', () => {
     expect(() => createNearbyFeature({ React, api, helpers: helpersWithImage })).toThrow('Nearby feature requires fetchCoordsAndReverse helper.');
 
     const helpersComplete = { ...helpersWithImage, fetchCoordsAndReverse: () => ({}) };
-    expect(() => createNearbyFeature({ React, api, helpers: helpersComplete })).toThrow('Nearby feature requires ListingsGrid component.');
-
     const { React: ReactWithMemo } = createReactMocks();
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const featureWithAllFallbacks = createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete });
+    expect(typeof featureWithAllFallbacks.NearbyPanel).toBe('function');
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback listing view'))).toBe(true);
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback grid view'))).toBe(true);
+
+    warnSpy.mockClear();
+
     const componentsWithGrid = { ListingsGrid: () => ({}) };
-    const featureWithFallback = createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsWithGrid });
-    expect(typeof featureWithFallback.NearbyPanel).toBe('function');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ListingCard'));
-    warnSpy.mockRestore();
+    const featureWithFallbackCard = createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsWithGrid });
+    expect(typeof featureWithFallbackCard.NearbyPanel).toBe('function');
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback listing view'))).toBe(true);
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback grid view'))).toBe(false);
+
+    warnSpy.mockClear();
 
     const componentsMissingGrid = { ListingCard: () => ({}) };
-    expect(() => createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsMissingGrid })).toThrow('Nearby feature requires ListingsGrid component.');
+    const featureWithFallbackGrid = createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsMissingGrid });
+    expect(typeof featureWithFallbackGrid.NearbyPanel).toBe('function');
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback listing view'))).toBe(false);
+    expect(warnSpy.mock.calls.some(([msg]) => msg.includes('fallback grid view'))).toBe(true);
+
+    warnSpy.mockRestore();
 
   });
 
