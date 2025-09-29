@@ -273,6 +273,10 @@ describe('app shell integration', () => {
     };
   }
 
+  function findCall(calls, component) {
+    return calls.find(([comp]) => comp === component);
+  }
+
   test('Root composes auth and listing queue providers', () => {
     const dependencies = createDependencies({ stateResults: [false, 0] });
     const { App, Root } = createAppShell(dependencies);
@@ -296,15 +300,15 @@ describe('app shell integration', () => {
 
     const calls = dependencies.helpers.H.mock.calls;
 
-    const listingsProviderCall = calls.find(([component]) => component === dependencies.contexts.listings.ListingsProvider);
+    const listingsProviderCall = findCall(calls, dependencies.contexts.listings.ListingsProvider);
     expect(listingsProviderCall).toBeDefined();
     expect(listingsProviderCall[1].value).toBe(dependencies.__mocks.listingsResult);
 
-    const notificationsProviderCall = calls.find(([component]) => component === dependencies.contexts.notifications.NotificationsProvider);
+    const notificationsProviderCall = findCall(calls, dependencies.contexts.notifications.NotificationsProvider);
     expect(notificationsProviderCall).toBeDefined();
     expect(notificationsProviderCall[1].value).toBe(dependencies.__mocks.notificationsValue);
 
-    const headerCall = calls.find(([component]) => component === dependencies.components.layout.Header);
+    const headerCall = findCall(calls, dependencies.components.layout.Header);
     expect(headerCall).toBeDefined();
     expect(headerCall[1]).toMatchObject({
       user: { id: 'user-1', account_status: 'active', is_admin: true },
@@ -318,11 +322,11 @@ describe('app shell integration', () => {
     headerCall[1].onAuthClick('login');
     expect(dependencies.__mocks.openAuthModal).toHaveBeenCalledWith('login');
 
-    const globalLoaderCall = calls.find(([component]) => component === dependencies.components.layout.GlobalLoader);
+    const globalLoaderCall = findCall(calls, dependencies.components.layout.GlobalLoader);
     expect(globalLoaderCall).toBeDefined();
     expect(globalLoaderCall[1].active).toBe(true);
 
-    const listingsGridCall = calls.find(([component]) => component === dependencies.components.grid.ListingsGrid);
+    const listingsGridCall = findCall(calls, dependencies.components.grid.ListingsGrid);
     expect(listingsGridCall).toBeDefined();
     expect(listingsGridCall[1]).toMatchObject({
       items: dependencies.__mocks.listingsResult.items,
@@ -331,7 +335,7 @@ describe('app shell integration', () => {
       onSelect: dependencies.__mocks.listingModalHooks.handleListingTileEvent
     });
 
-    const massListCall = calls.find(([component]) => component === dependencies.components.listing.MassListModal);
+    const massListCall = findCall(calls, dependencies.components.listing.MassListModal);
     expect(massListCall).toBeDefined();
     expect(massListCall[1]).toMatchObject({
       reloadAll: dependencies.__mocks.refreshListings,
@@ -342,7 +346,7 @@ describe('app shell integration', () => {
       autoPostNearbyEnabled: true
     });
 
-    const listingFormCall = calls.find(([component]) => component === dependencies.features.listingForms.ListingFormModal);
+    const listingFormCall = findCall(calls, dependencies.features.listingForms.ListingFormModal);
     expect(listingFormCall).toBeDefined();
     expect(listingFormCall[1]).toMatchObject({
       isOpen: true,
@@ -359,7 +363,7 @@ describe('app shell integration', () => {
     await listingFormCall[1].onSaved();
     expect(dependencies.__mocks.refreshListings).toHaveBeenCalledWith({ preserveExisting: true });
 
-    const authModalCall = calls.find(([component]) => component === dependencies.features.auth.AuthModal);
+    const authModalCall = findCall(calls, dependencies.features.auth.AuthModal);
     expect(authModalCall).toBeDefined();
     expect(authModalCall[1]).toMatchObject({ isOpen: true, initialMode: 'login' });
     authModalCall[1].onClose();
@@ -370,7 +374,7 @@ describe('app shell integration', () => {
     expect(dependencies.__mocks.refreshListings).toHaveBeenCalled();
     expect(dependencies.__mocks.listingsResult.reloadMineOnly).toHaveBeenCalled();
 
-    const listingModalCall = calls.find(([component]) => component === dependencies.components.listing.ListingModal);
+    const listingModalCall = findCall(calls, dependencies.components.listing.ListingModal);
     expect(listingModalCall).toBeDefined();
     expect(listingModalCall[1]).toMatchObject({
       open: true,
@@ -405,7 +409,7 @@ describe('app shell integration', () => {
 
     expect(cardProps.onToggleSold).toBe(dependencies.__mocks.listingsResult.toggleSold);
 
-    const listingQueueToastCall = calls.find(([component]) => component === dependencies.contexts.listingQueue.ListingQueueToast);
+    const listingQueueToastCall = findCall(calls, dependencies.contexts.listingQueue.ListingQueueToast);
     expect(listingQueueToastCall).toBeDefined();
 
     const toastCalls = calls.filter(([component, props]) => component === 'div' && props && props.className === 'message-toast');
@@ -437,6 +441,134 @@ describe('app shell integration', () => {
     const setUserCallCount = dependencies.__mocks.setUser.mock.calls.length;
     dependencies.AppNav.setUser('after-cleanup');
     expect(dependencies.__mocks.setUser.mock.calls.length).toBe(setUserCallCount);
+  });
+
+  test('CityAutocomplete integrates browser geolocation and reverse geocoding', async () => {
+    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'browse' });
+    const { App } = createAppShell(dependencies);
+
+    dependencies.helpers.H.mockClear();
+    App();
+
+    const calls = dependencies.helpers.H.mock.calls;
+    const cityAutocompleteCall = findCall(calls, dependencies.features.listings.CityAutocomplete);
+    expect(cityAutocompleteCall).toBeDefined();
+
+    const [, props] = cityAutocompleteCall;
+    dependencies.api.reverseGeocode.mockResolvedValue({ city: 'Testopolis' });
+    global.navigator.geolocation.getCurrentPosition.mockImplementation((success) => {
+      success({ coords: { latitude: 12, longitude: 34 } });
+    });
+
+    await props.onUseMyLocation();
+
+    expect(global.navigator.geolocation.getCurrentPosition).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), expect.objectContaining({
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 60000
+    }));
+    expect(dependencies.api.reverseGeocode).toHaveBeenCalledWith(12, 34);
+    expect(dependencies.__mocks.listingsResult.setLocationQuery).toHaveBeenCalledWith('Testopolis');
+  });
+
+  test('Profile tab wires account management actions to shared modules', async () => {
+    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'profile', isMobile: false });
+    dependencies.__mocks.listingsResult.mine = [
+      { id: 'listing-1', title: 'Mine 1' },
+      { id: 'listing-2', title: 'Mine 2' }
+    ];
+    const { App } = createAppShell(dependencies);
+
+    dependencies.helpers.H.mockClear();
+    App();
+
+    const calls = dependencies.helpers.H.mock.calls;
+    const profilePanelCall = findCall(calls, dependencies.features.profile.ProfilePanel);
+    expect(profilePanelCall).toBeDefined();
+
+    const [, props] = profilePanelCall;
+    expect(props.items).toBe(dependencies.__mocks.listingsResult.mine);
+    expect(props.autoListEnabled).toBe(true);
+    expect(props.autoPostNearbyEnabled).toBe(dependencies.__mocks.preferences.autoPostNearbyEnabled);
+    expect(props.onToggleSold).toBe(dependencies.__mocks.listingsResult.toggleSold);
+
+    props.onNewListing();
+    expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(null);
+    const setShowForm = dependencies.__mocks.stateSetters[0];
+    expect(setShowForm).toHaveBeenCalledWith(true);
+    expect(dependencies.__mocks.setTab).toHaveBeenCalledWith('browse');
+
+    props.onEdit({ id: 'listing-2', title: 'Other' });
+    expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(dependencies.__mocks.listingsResult.mine[1]);
+
+    dependencies.__mocks.listingsResult.reloadMineOnly.mockResolvedValue();
+    await props.onDelete({ id: 'listing-1' });
+    expect(global.confirm).toHaveBeenCalled();
+    expect(dependencies.api.deleteListing).toHaveBeenCalledWith('listing-1');
+    expect(dependencies.__mocks.listingsResult.reloadMineOnly).toHaveBeenCalled();
+    expect(dependencies.__mocks.refreshListings).toHaveBeenCalled();
+
+    await props.onLogout();
+    expect(dependencies.__mocks.pushResult.removePushSubscription).toHaveBeenCalled();
+    expect(dependencies.api.logout).toHaveBeenCalled();
+    expect(dependencies.__mocks.setUser).toHaveBeenCalledWith(null);
+    expect(dependencies.__mocks.setTab).toHaveBeenCalledWith('browse');
+
+    props.onViewSeller('seller-3', 'Seller Three');
+    expect(dependencies.__mocks.setViewingSeller).toHaveBeenCalledWith({ id: 'seller-3', username: 'Seller Three' });
+  });
+
+  test('Nearby and seller views integrate listing actions', async () => {
+    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'nearby', isMobile: true });
+    dependencies.__mocks.listingsResult.mine = [
+      { id: 'listing-1', title: 'Mine 1' }
+    ];
+    const { App } = createAppShell(dependencies);
+
+    dependencies.helpers.H.mockClear();
+    App();
+
+    const calls = dependencies.helpers.H.mock.calls;
+    const nearbyCall = findCall(calls, dependencies.features.nearby.NearbyPanel);
+    expect(nearbyCall).toBeDefined();
+    const [, nearbyProps] = nearbyCall;
+    expect(nearbyProps.mineById).toEqual({ 'listing-1': dependencies.__mocks.listingsResult.mine[0] });
+    expect(nearbyProps.onMessage).toBe(dependencies.__mocks.messageActions.startMessage);
+    expect(nearbyProps.onAdminDelete).toBe(dependencies.__mocks.adminActions.handleAdminDelete);
+    expect(nearbyProps.setTab).toBe(dependencies.__mocks.setTab);
+
+    nearbyProps.onEdit({ id: 'listing-1' });
+    expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(dependencies.__mocks.listingsResult.mine[0]);
+    const setShowForm = dependencies.__mocks.stateSetters[0];
+    expect(setShowForm).toHaveBeenCalledWith(true);
+
+    await nearbyProps.onDelete({ id: 'listing-5' });
+    expect(global.confirm).toHaveBeenCalled();
+    expect(dependencies.api.deleteListing).toHaveBeenCalledWith('listing-5');
+    expect(dependencies.__mocks.refreshListings).toHaveBeenCalled();
+
+    nearbyProps.onViewSeller('seller-7', 'Seller Seven');
+    expect(dependencies.__mocks.setViewingSeller).toHaveBeenCalledWith({ id: 'seller-7', username: 'Seller Seven' });
+    expect(dependencies.__mocks.listingsResult.setShowMassList).not.toHaveBeenCalled();
+
+    const sellerDependencies = createDependencies({ stateResults: [false, 0], viewingSeller: { id: 'seller-9', username: 'Seller Nine' } });
+    const { App: SellerApp } = createAppShell(sellerDependencies);
+
+    sellerDependencies.helpers.H.mockClear();
+    SellerApp();
+
+    const sellerCalls = sellerDependencies.helpers.H.mock.calls;
+    const sellerProfileCall = findCall(sellerCalls, sellerDependencies.components.listing.SellerProfile);
+    expect(sellerProfileCall).toBeDefined();
+    const [, sellerProps] = sellerProfileCall;
+    expect(sellerProps.sellerId).toBe('seller-9');
+    expect(sellerProps.sellerUsername).toBe('Seller Nine');
+    sellerProps.onBack();
+    expect(sellerDependencies.__mocks.setViewingSeller).toHaveBeenCalledWith(null);
+    sellerProps.onMessage();
+    expect(sellerDependencies.__mocks.messageActions.startMessage).toHaveBeenCalled();
+    sellerProps.onAdminDelete();
+    expect(sellerDependencies.__mocks.adminActions.handleAdminDelete).toHaveBeenCalled();
   });
 });
 
