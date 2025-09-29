@@ -335,6 +335,48 @@ describe('browser app integration', () => {
     expect(appShellArgs.components.grid.ListingsGrid).toBeDefined();
     expect(appBundles.legacy.SmartImage).toBe(appBundles.__stubs.listingFormsFeature.SmartImage);
 
+    const listingsFeature = appBundles.features.listings.createListingsFeature.mock.results[0].value;
+    expect(appShellArgs.features.listings.useListingsFeature).toBe(listingsFeature.useListingsFeature);
+    expect(appShellArgs.features.listings.CityAutocomplete).toBe(listingsFeature.CityAutocomplete);
+    expect(appShellArgs.features.listings.useListingModal).toBe(listingsFeature.useListingModal);
+
+    const messageCenterFeature = appBundles.features.messageCenter.createMessageCenterFeature.mock.results[0].value;
+    expect(appShellArgs.features.messageCenter.useMessageCenter).toBe(messageCenterFeature.useMessageCenter);
+
+    const messagesFeature = appBundles.features.messages.createMessagesFeature.mock.results[0].value;
+    expect(appShellArgs.features.messages.MessagesPanel).toBe(messagesFeature.MessagesPanel);
+    expect(appShellArgs.features.messages.useMessageActions).toBe(messagesFeature.useMessageActions);
+
+    const adminFeature = appBundles.features.admin.createAdminFeature.mock.results[0].value;
+    expect(appShellArgs.features.admin.AdminDashboard).toBe(adminFeature.AdminDashboard);
+    expect(appShellArgs.features.admin.useAdminListingActions).toBe(adminFeature.useAdminListingActions);
+
+    const profileFeature = appBundles.features.profile.createProfileFeature.mock.results[0].value;
+    expect(appShellArgs.features.profile.ProfilePanel).toBe(profileFeature.ProfilePanel);
+
+    const nearbyFeature = appBundles.features.nearby.createNearbyFeature.mock.results[0].value;
+    expect(appShellArgs.features.nearby.NearbyPanel).toBe(nearbyFeature.NearbyPanel);
+
+    const listingFormsFeature = appBundles.features.listingForms.createListingFormsFeature.mock.results[0].value;
+    expect(appShellArgs.features.listingForms.ListingFormModal).toBe(listingFormsFeature.ListingFormModal);
+
+    const preferencesFeature = appBundles.features.preferences.createPreferencesFeature.mock.results[0].value;
+    expect(appShellArgs.features.preferences.useAppPreferences).toBe(preferencesFeature.useAppPreferences);
+
+    const pushFeature = appBundles.features.push.createPushFeature.mock.results[0].value;
+    expect(appShellArgs.features.push.usePushNotifications).toBe(pushFeature.usePushNotifications);
+
+    const adsFeature = appBundles.features.ads.createAdsFeature.mock.results[0].value;
+    expect(appShellArgs.features.ads.useAds).toBe(adsFeature.useAds);
+
+    const appViewFeature = appBundles.features.appView.createAppViewFeature.mock.results[0].value;
+    expect(appShellArgs.features.appView.useAppView).toBe(appViewFeature.useAppView);
+
+    const authFeature = appBundles.features.auth.createAuthFeature.mock.results[0].value;
+    expect(appShellArgs.features.auth.AuthProvider).toBe(authFeature.AuthProvider);
+    expect(appShellArgs.features.auth.useAuth).toBe(authFeature.useAuth);
+    expect(appShellArgs.features.auth.AuthModal).toBe(authFeature.AuthModal);
+
     appShellArgs.utilities.price();
     expect(core.formatCurrency).toHaveBeenCalledWith(0);
     appShellArgs.utilities.fmtDistance(15);
@@ -356,6 +398,32 @@ describe('browser app integration', () => {
     expect(appBundles.hooks.useListingQueue()).toBe('listingQueueHook');
     expect(appBundles.hooks.useListingQueueState()).toBe('queueState');
 
+    const listingQueueContext = appBundles.contexts.listingQueue.createListingQueueContext.mock.results[0].value;
+    expect(appShellArgs.contexts.listingQueue.ListingQueueProvider).toBe(listingQueueContext.ListingQueueProvider);
+    expect(appShellArgs.contexts.listingQueue.ListingQueueToast).toBe(listingQueueContext.ListingQueueToast);
+    expect(appShellArgs.contexts.listingQueue.useListingQueueState).toBe(listingQueueContext.useListingQueueState);
+
+    const listingsContext = appBundles.contexts.listings.createListingsContext.mock.results[0].value;
+    expect(appShellArgs.contexts.listings.ListingsProvider).toBe(listingsContext.ListingsProvider);
+
+    const notificationsContext = appBundles.contexts.notifications.createNotificationsContext.mock.results[0].value;
+    expect(appShellArgs.contexts.notifications.NotificationsProvider).toBe(notificationsContext.NotificationsProvider);
+
+    const layoutComponents = appBundles.components.layout.createLayoutComponents.mock.results[0].value;
+    expect(appShellArgs.components.layout.Header).toBe(layoutComponents.Header);
+    expect(appShellArgs.components.layout.GlobalLoader).toBe(layoutComponents.GlobalLoader);
+
+    const gridComponents = appBundles.components.grid.createGridComponents.mock.results[0].value;
+    expect(appShellArgs.components.grid.ListingsGrid).toBe(gridComponents.ListingsGrid);
+
+    const listingComponents = appBundles.__stubs.listingComponents;
+    expect(appShellArgs.components.listing.MassListModal).toBe(listingComponents.MassListModal);
+    expect(appShellArgs.components.listing.ListingModal).toBe(listingComponents.ListingModal);
+    expect(appShellArgs.components.listing.SellerProfile).toBe(listingComponents.SellerProfile);
+
+    expect(appShellArgs.uploads.prepareListingForModal).toBe(appBundles.__stubs.uploads.prepareListingForModal);
+    expect(appShellArgs.uploads.warmListingImages).toBe(appBundles.__stubs.uploads.warmListingImages);
+
     expect(browserApp.AppNav).toBe(appNav);
     expect(browserApp.api).toBe(core.api);
     expect(browserApp.helpers.H).toBe(helpers.H);
@@ -364,6 +432,22 @@ describe('browser app integration', () => {
     expect(core.haversineMeters).toHaveBeenCalledWith(1, 2, 3, 4);
     expect(browserApp.utilities.price(7)).toBe('currency:7');
     expect(browserApp.utilities.fmtDistance(3)).toBe('distance:3');
+    expect(browserApp.uploads.uploadFilesForListing).toBe(appBundles.__stubs.uploads.uploadFilesForListing);
+    expect(browserApp.uploads.useFilePreviews).toBe(appBundles.__stubs.uploads.useFilePreviews);
+    expect(browserApp.uploads.AI_IMAGE_LIMIT).toBe(appBundles.__stubs.uploads.AI_IMAGE_LIMIT);
+    expect(browserApp.helpers.seenKey()).toBe('seen');
+    expect(browserApp.helpers.urlToDataUrl).toBe(helpers.urlToDataUrl);
+    expect(browserApp.helpers.arrayBufferToBase64Url).toBe(helpers.arrayBufferToBase64Url);
+    expect(browserApp.helpers.createConcurrencyLimiter).toBe(helpers.createConcurrencyLimiter);
+    expect(browserApp.helpers.getUserCoordsOnce).toBe(helpers.getUserCoordsOnce);
+    expect(browserApp.helpers.interleaveByColumns).toBe(helpers.interleaveByColumns);
+    expect(browserApp.helpers.useColumnCount).toBe(helpers.useColumnCount);
+    expect(browserApp.helpers.useElementWidth).toBe(helpers.useElementWidth);
+    expect(browserApp.helpers.useWindowScrollY).toBe(helpers.useWindowScrollY);
+    expect(browserApp.helpers.useBodyScrollLock).toBe(helpers.useBodyScrollLock);
+    expect(browserApp.helpers.pageTop).toBe(helpers.pageTop);
+    expect(browserApp.helpers.normalizeListingsResponse).toBe(helpers.normalizeListingsResponse);
+    expect(browserApp.helpers.useVirtualMasonry).toBe(helpers.useVirtualMasonry);
   });
 
   test('provides shared helpers and formatting to listing bundles', () => {
@@ -516,5 +600,193 @@ describe('browser app integration', () => {
         helpers: { ...dependencies.appBundles.helpers, createHelpers: null }
       }
     })).toThrow('Helpers bundle failed to load.');
+  });
+
+  describe('throws helpful errors when downstream bundles fail to load', () => {
+    const scenarios = [
+      {
+        name: 'location helpers bundle',
+        mutate: (deps) => {
+          deps.appBundles.bootstrap.createLocationHelpers = null;
+        },
+        message: 'Location helpers bundle failed to load.'
+      },
+      {
+        name: 'auth feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.auth.createAuthFeature = null;
+        },
+        message: 'Auth feature bundle failed to load.'
+      },
+      {
+        name: 'uploads feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.uploads.createUploadsFeature = null;
+        },
+        message: 'Uploads feature bundle failed to load.'
+      },
+      {
+        name: 'media components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.media.createMediaComponents = null;
+        },
+        message: 'Media components bundle failed to load.'
+      },
+      {
+        name: 'ads components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.ads.createAdsComponents = null;
+        },
+        message: 'Ads components bundle failed to load.'
+      },
+      {
+        name: 'grid components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.grid.createGridComponents = null;
+        },
+        message: 'Grid components bundle failed to load.'
+      },
+      {
+        name: 'layout components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.layout.createLayoutComponents = null;
+        },
+        message: 'Layout components bundle failed to load.'
+      },
+      {
+        name: 'app view feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.appView.createAppViewFeature = null;
+        },
+        message: 'App view feature bundle failed to load.'
+      },
+      {
+        name: 'listings feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.listings.createListingsFeature = null;
+        },
+        message: 'Listings feature bundle failed to load.'
+      },
+      {
+        name: 'notifications feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.notifications.createNotificationsFeature = null;
+        },
+        message: 'Notifications feature bundle failed to load.'
+      },
+      {
+        name: 'preferences feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.preferences.createPreferencesFeature = null;
+        },
+        message: 'Preferences feature bundle failed to load.'
+      },
+      {
+        name: 'push feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.push.createPushFeature = null;
+        },
+        message: 'Push feature bundle failed to load.'
+      },
+      {
+        name: 'ads feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.ads.createAdsFeature = null;
+        },
+        message: 'Ads feature bundle failed to load.'
+      },
+      {
+        name: 'message center feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.messageCenter.createMessageCenterFeature = null;
+        },
+        message: 'Message center feature bundle failed to load.'
+      },
+      {
+        name: 'messages feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.messages.createMessagesFeature = null;
+        },
+        message: 'Messages feature bundle failed to load.'
+      },
+      {
+        name: 'admin feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.admin.createAdminFeature = null;
+        },
+        message: 'Admin feature bundle failed to load.'
+      },
+      {
+        name: 'listing queue feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.listingQueue.createListingQueueFeature = null;
+        },
+        message: 'Listing queue feature bundle failed to load.'
+      },
+      {
+        name: 'listing queue context bundle',
+        mutate: (deps) => {
+          deps.appBundles.contexts.listingQueue.createListingQueueContext = null;
+        },
+        message: 'Listing queue context bundle failed to load.'
+      },
+      {
+        name: 'listings context bundle',
+        mutate: (deps) => {
+          deps.appBundles.contexts.listings.createListingsContext = null;
+        },
+        message: 'Listings context bundle failed to load.'
+      },
+      {
+        name: 'notifications context bundle',
+        mutate: (deps) => {
+          deps.appBundles.contexts.notifications.createNotificationsContext = null;
+        },
+        message: 'Notifications context bundle failed to load.'
+      },
+      {
+        name: 'listing components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.listings.createListingComponents = null;
+        },
+        message: 'Listing components bundle failed to load.'
+      },
+      {
+        name: 'listing forms feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.listingForms.createListingFormsFeature = null;
+        },
+        message: 'Listing forms feature bundle failed to load.'
+      },
+      {
+        name: 'profile feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.profile.createProfileFeature = null;
+        },
+        message: 'Profile feature bundle failed to load.'
+      },
+      {
+        name: 'nearby feature bundle',
+        mutate: (deps) => {
+          deps.appBundles.features.nearby.createNearbyFeature = null;
+        },
+        message: 'Nearby feature bundle failed to load.'
+      },
+      {
+        name: 'app shell bundle',
+        mutate: (deps) => {
+          deps.appBundles.app.createAppShell = null;
+        },
+        message: 'App shell bundle failed to load.'
+      }
+    ];
+
+    scenarios.forEach(({ name, mutate, message }) => {
+      test(`throws when ${name}`, () => {
+        const dependencies = createDependencies();
+        mutate(dependencies);
+        expect(() => createBrowserApp(dependencies)).toThrow(message);
+      });
+    });
   });
 });
