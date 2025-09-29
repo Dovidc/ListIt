@@ -22,10 +22,9 @@
     if (typeof fetchCoordsAndReverse !== 'function') {
       throw new Error('Nearby feature requires fetchCoordsAndReverse helper.');
     }
-    const { ListingCard, ListingsGrid } = components;
-    if (typeof ListingCard !== 'function') {
-      throw new Error('Nearby feature requires ListingCard component.');
-    }
+
+    const providedListingCard = components?.ListingCard;
+    const ListingsGrid = components?.ListingsGrid;
     if (typeof ListingsGrid !== 'function') {
       throw new Error('Nearby feature requires ListingsGrid component.');
     }
@@ -39,6 +38,181 @@
     } = React;
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+
+    const ListingCard = typeof providedListingCard === 'function'
+      ? providedListingCard
+      : createFallbackListingCard({ React, H });
+
+    if (typeof providedListingCard !== 'function') {
+      try {
+        console.warn('Nearby feature is using a fallback listing view because ListingCard component was not provided.');
+      } catch {}
+    }
+
+    function createFallbackListingCard({ React: ReactRuntime, H: createElement }) {
+      const formatPrice = (value) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return '';
+        try {
+          return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(num);
+        } catch {
+          return `$${num.toFixed(Math.abs(num) < 1 ? 2 : 0)}`;
+        }
+      };
+
+      const formatDistance = (item) => {
+        const meters = Number(item?.distance_m);
+        if (Number.isFinite(meters) && meters >= 0) {
+          if (meters >= 1000) {
+            return `${(meters / 1000).toFixed(1)} km away`;
+          }
+          return `${Math.round(meters)} m away`;
+        }
+        const feet = Number(item?.distance_ft);
+        if (Number.isFinite(feet) && feet >= 0) {
+          return `${Math.round(feet)} ft away`;
+        }
+        return '';
+      };
+
+      const formatLocation = (item) => {
+        const parts = [];
+        if (item?.location) parts.push(String(item.location));
+        if (item?.owner_username) parts.push(`Seller: ${item.owner_username}`);
+        return parts.join(' • ');
+      };
+
+      const BaseCard = function NearbyFallbackListingCard({
+        item,
+        user,
+        canEdit,
+        onEdit,
+        onDelete,
+        onMessage,
+        onAdminDelete,
+        onViewSeller,
+        onToggleSold,
+        showDistance
+      }) {
+        if (!item) return null;
+
+        const cover = item.__cover || item.image_data || item.thumb_url || '';
+        const priceLabel = formatPrice(item.price);
+        const distanceLabel = showDistance ? formatDistance(item) : '';
+        const metaLabel = formatLocation(item);
+        const isOwner = user && item?.user_id && user.id === item.user_id;
+        const isSold = !!item?.sold;
+
+        const actionButtons = [];
+
+        if (!isOwner && typeof onMessage === 'function') {
+          actionButtons.push(createElement('button', {
+            key: 'msg',
+            type: 'button',
+            className: 'btn primary',
+            onClick: () => onMessage(item)
+          }, 'Message seller'));
+        }
+
+        if (!isOwner && typeof onViewSeller === 'function' && item?.user_id) {
+          actionButtons.push(createElement('button', {
+            key: 'view-seller',
+            type: 'button',
+            className: 'btn',
+            onClick: () => onViewSeller(item.user_id, item.owner_username)
+          }, item?.owner_username ? `View @${item.owner_username}` : 'View seller'));
+        }
+
+        if ((isOwner || canEdit) && typeof onEdit === 'function') {
+          actionButtons.push(createElement('button', {
+            key: 'edit',
+            type: 'button',
+            className: 'btn',
+            onClick: () => onEdit(item)
+          }, 'Edit listing'));
+        }
+
+        if ((isOwner || canEdit) && typeof onToggleSold === 'function') {
+          actionButtons.push(createElement('button', {
+            key: 'sold',
+            type: 'button',
+            className: 'btn',
+            onClick: () => onToggleSold(item, !isSold)
+          }, isSold ? 'Mark as unsold' : 'Mark as sold'));
+        }
+
+        if ((isOwner || canEdit) && typeof onDelete === 'function') {
+          actionButtons.push(createElement('button', {
+            key: 'delete',
+            type: 'button',
+            className: 'btn danger',
+            onClick: () => onDelete(item)
+          }, 'Remove listing'));
+        }
+
+        if (user?.is_admin && typeof onAdminDelete === 'function') {
+          actionButtons.push(createElement('button', {
+            key: 'admin-delete',
+            type: 'button',
+            className: 'btn danger',
+            onClick: () => onAdminDelete(item?.id)
+          }, 'Admin delete'));
+        }
+
+        return createElement('article', {
+          className: 'nearby-card-fallback',
+          style: {
+            display: 'grid',
+            gap: 16,
+            padding: 16
+          }
+        },
+          cover && createElement('img', {
+            src: cover,
+            alt: item?.title || 'Listing image',
+            style: {
+              width: '100%',
+              borderRadius: 8,
+              objectFit: 'cover',
+              maxHeight: 360
+            }
+          }),
+          createElement('div', { style: { display: 'grid', gap: 8 } },
+            item?.title && createElement('h2', {
+              style: { margin: 0, fontSize: 20 }
+            }, item.title),
+            priceLabel && createElement('p', {
+              style: { margin: 0, fontWeight: 600 }
+            }, priceLabel),
+            distanceLabel && createElement('p', {
+              style: { margin: 0, color: '#4b5563' }
+            }, distanceLabel),
+            metaLabel && createElement('p', {
+              style: { margin: 0, color: '#4b5563' }
+            }, metaLabel),
+            item?.description && createElement('p', {
+              style: { margin: '8px 0 0 0', whiteSpace: 'pre-line' }
+            }, item.description),
+            isSold && createElement('p', {
+              style: { margin: 0, color: '#047857', fontWeight: 600 }
+            }, 'Marked as sold')
+          ),
+          actionButtons.length
+            ? createElement('div', {
+                style: {
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8
+                }
+              }, actionButtons)
+            : null
+        );
+      };
+
+      return typeof ReactRuntime.memo === 'function'
+        ? ReactRuntime.memo(BaseCard)
+        : BaseCard;
+    }
 
     const DEFAULT_NEARBY_RADIUS_M = 400;
 

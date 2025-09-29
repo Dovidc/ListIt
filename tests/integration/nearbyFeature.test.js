@@ -185,10 +185,18 @@ describe('nearby feature integration', () => {
     expect(() => createNearbyFeature({ React, api, helpers: helpersWithImage })).toThrow('Nearby feature requires fetchCoordsAndReverse helper.');
 
     const helpersComplete = { ...helpersWithImage, fetchCoordsAndReverse: () => ({}) };
-    expect(() => createNearbyFeature({ React, api, helpers: helpersComplete })).toThrow('Nearby feature requires ListingCard component.');
+    expect(() => createNearbyFeature({ React, api, helpers: helpersComplete })).toThrow('Nearby feature requires ListingsGrid component.');
 
-    const componentsWithCard = { ListingCard: () => ({}) };
-    expect(() => createNearbyFeature({ React, api, helpers: helpersComplete, components: componentsWithCard })).toThrow('Nearby feature requires ListingsGrid component.');
+    const { React: ReactWithMemo } = createReactMocks();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const componentsWithGrid = { ListingsGrid: () => ({}) };
+    const featureWithFallback = createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsWithGrid });
+    expect(typeof featureWithFallback.NearbyPanel).toBe('function');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ListingCard'));
+    warnSpy.mockRestore();
+
+    const componentsMissingGrid = { ListingCard: () => ({}) };
+    expect(() => createNearbyFeature({ React: ReactWithMemo, api, helpers: helpersComplete, components: componentsMissingGrid })).toThrow('Nearby feature requires ListingsGrid component.');
 
   });
 
