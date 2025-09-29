@@ -174,7 +174,7 @@
                   }
                 }, '?')
               ),
-              H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
+              isMobile && H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
                 H('input', {
                   type: 'checkbox',
                   className: 'toggle-input',

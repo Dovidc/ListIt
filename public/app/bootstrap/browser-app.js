@@ -390,12 +390,11 @@
       helpers: {
         asArray,
         selectPrimaryListingImage,
-        fetchCoordsAndReverse,
-        interleaveByColumns,
-        useColumnCount
+        fetchCoordsAndReverse
       },
       components: {
-        ListingCard
+        ListingCard,
+        ListingsGrid
       }
     });
 

@@ -124,7 +124,7 @@ describe('profile feature integration', () => {
     const { ProfilePanel } = feature;
 
     const props = {
-      isMobile: false,
+      isMobile: true,
       user: { id: 'user-1', email: 'user@example.com', paypal_email: 'initial@example.com' },
       items: [
         { id: 1, sold: false, image_data: 'img-1' },
@@ -202,5 +202,56 @@ describe('profile feature integration', () => {
     states[1].setter.mockClear();
     onClose();
     expect(states[1].setter).toHaveBeenCalledWith(null);
+  });
+
+  test('omits nearby auto-post toggle on desktop', () => {
+    const createProfileFeature = loadFactory();
+    const { React } = createReactMocks();
+
+    const api = {
+      updatePaypalEmail: jest.fn().mockResolvedValue({}),
+      me: jest.fn().mockResolvedValue({ id: 'me-3' })
+    };
+
+    const helpers = {
+      asArray: jest.fn((value) => (Array.isArray(value) ? value : value == null ? [] : [value]))
+    };
+
+    const components = {
+      ImageWithSkeleton: jest.fn(),
+      InfoHelpModal: jest.fn(),
+      AutoListHelpModal: jest.fn(),
+      AiDescriptionHelpModal: jest.fn(),
+      ListingModal: jest.fn()
+    };
+
+    const feature = createProfileFeature({ React, api, helpers, components, appNav: { setUser: jest.fn() } });
+    const { ProfilePanel } = feature;
+
+    const props = {
+      isMobile: false,
+      user: { id: 'user-2', email: 'desktop@example.com' },
+      items: [],
+      onNewListing: jest.fn(),
+      onEdit: jest.fn(),
+      onDelete: jest.fn(),
+      onLogout: jest.fn(),
+      onAdminDelete: jest.fn(),
+      autoListEnabled: false,
+      setAutoListEnabled: jest.fn(),
+      aiDescriptionEnabled: false,
+      setAiDescriptionEnabled: jest.fn(),
+      autoPostNearbyEnabled: false,
+      setAutoPostNearbyEnabled: jest.fn(),
+      onViewSeller: jest.fn(),
+      onToggleSold: jest.fn()
+    };
+
+    const tree = ProfilePanel(props);
+    const nodes = collectNodes(tree);
+
+    const checkboxes = nodes.filter((node) => node?.props?.type === 'checkbox');
+    expect(checkboxes).toHaveLength(2);
+    expect(nodes.some((node) => typeof node?.props?.children === 'string' && node.props.children === 'Auto Nearby')).toBe(false);
   });
 });
