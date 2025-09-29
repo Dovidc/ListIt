@@ -2940,7 +2940,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.sold,
+      l.inquiry_enabled, l.sold,
 
       u.username as owner_username
 
@@ -2952,7 +2952,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.tags, l.lat, l.lon, l.enable_nearby, l.sold, u.username as owner_username
+      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, u.username as owner_username
 
     `;
 
@@ -4390,6 +4390,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  ) AS image_data,
                  l.title, l.description, l.location,
                  l.price, l.created_at, l.tags, l.lat, l.lon,
+                 l.inquiry_enabled,
                  u.username as owner_username,
                  ST_Distance(
                    COALESCE(
@@ -4465,6 +4466,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                ) AS image_data,
                l.title, l.description, l.location,
                l.price, l.created_at, l.tags, l.lat, l.lon,
+               l.inquiry_enabled,
                u.username as owner_username,
                ${distanceExpr} AS distance_m
           FROM listings l
