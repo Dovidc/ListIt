@@ -270,8 +270,20 @@
       });
     }
 
+    function InquiryHelpModal({ onClose }) {
+      return H(InfoHelpModal, {
+        onClose,
+        title: 'Inquiry mode',
+        intro: 'When inquiry is enabled it will:',
+        bullets: [
+          'Replace the price field with a message inviting buyers to make an offer.'
+        ],
+        footer: 'Turn inquiry mode off to show the AI suggested price again.'
+      });
+    }
+
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, backgroundQueueEnabled, enqueueListingJob }) {
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob }) {
       const [files, setFiles] = useState([]); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -300,6 +312,13 @@
       const [lat, setLat] = useState(draft?.lat ?? null);
       const [lon, setLon] = useState(draft?.lon ?? null);
 
+      const [inquiryEnabled, setInquiryEnabled] = useState(() => {
+        if (draft?.inquiry_enabled != null) return !!draft.inquiry_enabled;
+        if (typeof autoInquiryEnabled === 'boolean') return autoInquiryEnabled;
+        return !!autoListEnabled;
+      });
+      const [showInquiryHelp, setShowInquiryHelp] = useState(false);
+
       const isMobile = isMobileDevice();
 
       // Load current images (URLs/base64; new uploads use files[])
@@ -320,7 +339,17 @@
             setOriginalUrls([]);
           }
         })();
-      }, [draft?.id]);
+
+        if (!draft?.id) {
+          if (!autoListEnabled) {
+            setInquiryEnabled(false);
+          } else if (typeof autoInquiryEnabled === 'boolean') {
+            setInquiryEnabled(autoInquiryEnabled);
+          } else {
+            setInquiryEnabled(true);
+          }
+        }
+      }, [draft?.id, autoListEnabled, autoInquiryEnabled]);
 
       // UPDATED: AI analysis that works with both new files and S3 URLs
       async function runAI(){
@@ -482,6 +511,13 @@
 
           const created = await api.createListing(payload);
           if (!created?.id) throw new Error('Create failed');
+          if (inquiryEnabled && created?.id) {
+            try {
+              await api.updateListing(created.id, { inquiry_enabled: 1 });
+            } catch (err) {
+              console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
+            }
+          }
         };
 
         if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
@@ -513,7 +549,7 @@
             autoRunning.current = false;
           }
         })();
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
+      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
 
       // UPDATED: Submit function that handles image changes properly
       // Update the submit function (remove the duplicate and fix it):
@@ -537,6 +573,10 @@
             tags: String(tags || '').trim(),
             enable_nearby: enableNearby ? 1 : 0
           };
+
+          if (draft || inquiryEnabled) {
+            basePayload.inquiry_enabled = inquiryEnabled ? 1 : 0;
+          }
 
           if (enableNearby && !hasFixedGps) {
             basePayload.lat = lat;
@@ -600,6 +640,8 @@
       }
 
       const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
+      const showInquiryText = !!inquiryEnabled;
+      const formattedPrice = isFree ? price(0) : price(Number(priceVal));
 
       return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
 
@@ -678,17 +720,45 @@
         (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
 
         H('label', null, 'Price (optional)'),
-        H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
-          H('input', {
-            value:priceVal,
-            inputMode:'decimal',
-            onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
-            placeholder:'Leave empty for $0.00'
-          }),
-          H('span', {
-            className:'muted',
-            style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
-          }, isFree ? price(0) : price(Number(priceVal)))
+        H('div', { className:'row', style:{ alignItems:'center', gap:12, flexWrap:'wrap' } },
+          H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+            H('input', {
+              value:priceVal,
+              inputMode:'decimal',
+              onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
+              placeholder:'Leave empty for $0.00'
+            }),
+            showInquiryText
+              ? H('span', { className:'inquiry-badge' }, 'Seller wants an offer')
+              : H('span', {
+                  className:'muted',
+                  style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
+                }, formattedPrice)
+          ),
+          H('div', { className:'row', style:{ alignItems:'center', gap:6 } },
+            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
+              H('input', {
+                type:'checkbox',
+                className:'toggle-input',
+                checked:showInquiryText,
+                onChange:e=>setInquiryEnabled(e.target.checked)
+              }),
+              H('span', { className:'toggle-slider', 'aria-hidden': true }),
+              H('div', { className:'toggle-copy' },
+                H('div', { style:{ fontWeight:700 } }, 'Inquiry text'),
+                H('div', { className:'muted', style:{ fontSize:12 } }, 'show offer message')
+              )
+            ),
+            H('button', {
+              type:'button',
+              onClick:(e)=>{ e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
+              title:'Inquiry mode info',
+              style:{
+                width:24, height:24, lineHeight:'22px',
+                borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+              }
+            }, '?')
+          )
         ),
 
         H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
@@ -700,12 +770,13 @@
         H('div', { className:'row' },
           H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
           H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
-        )
+        ),
+        showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) })
       );
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob }) {
+    function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob }) {
       const [files, setFiles] = useState([]);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -782,10 +853,18 @@
               enable_nearby: sharedNearby.ok ? 1 : 0,
               upload_tokens: [upload.uploadToken]
             };
+            if (autoInquiryEnabled) payload.inquiry_enabled = 1;
             if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
             const created = await api.createListing(payload);
             if (!created?.id) throw new Error('create_failed');
+            if (autoInquiryEnabled && created?.id) {
+              try {
+                await api.updateListing(created.id, { inquiry_enabled: 1 });
+              } catch (err) {
+                console.error('Failed to mark mass-listed item as inquiry-enabled:', err);
+              }
+            }
 
           } catch (err) {
             encounteredError = true;
@@ -1342,6 +1421,7 @@
       }, [showDistance, item?.id, item?.lat, item?.lon]);
 
       const isFree = Number(item?.price ?? 0) === 0;
+      const wantsOffer = !!item?.inquiry_enabled;
       const [soldBusy, setSoldBusy] = useState(false);
       const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
       const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
@@ -1519,9 +1599,11 @@
               style: {
                 fontWeight: 800,
                 textAlign: 'right',
-                color: isFree ? '#16a34a' : '#111'
+                color: wantsOffer ? '#9f1239' : (isFree ? '#16a34a' : '#111')
               }
-            }, price(item.price))
+            }, wantsOffer
+              ? H('span', { className: 'inquiry-badge', style: { fontSize: 16 } }, 'Seller wants an offer')
+              : price(item.price))
           ),
 
           H('div', { className: 'muted' }, item.location || 'No location'),
@@ -1802,9 +1884,11 @@
                     H('div', {
                       style: {
                         fontWeight: 800,
-                        color: Number(item?.price ?? 0) === 0 ? '#16a34a' : '#111'
+                        color: item?.inquiry_enabled ? '#9f1239' : (Number(item?.price ?? 0) === 0 ? '#16a34a' : '#111')
                       }
-                    }, price(item.price))
+                    }, item?.inquiry_enabled
+                      ? H('span', { className: 'inquiry-badge' }, 'Seller wants an offer')
+                      : price(item.price))
                   ),
                   H('div', { className: 'row', style: { padding: '0 16px 16px', gap: 8 } },
                     H('button', {

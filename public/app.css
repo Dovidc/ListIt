@@ -249,6 +249,20 @@
   gap: 2px;
 }
 
+.inquiry-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: #9f1239;
+  background: linear-gradient(135deg, #fde68a 0%, #fbcfe8 100%);
+  border: 1px solid rgba(219, 39, 119, 0.35);
+  box-shadow: 0 6px 16px rgba(248, 113, 113, 0.25);
+  letter-spacing: 0.2px;
+}
+
 .toggle-input {
   position: absolute;
   opacity: 0;
