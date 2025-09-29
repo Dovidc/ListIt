@@ -1,0 +1,130 @@
+process.env.NODE_ENV = 'test';
+if (!process.env.DB_PATH) {
+  process.env.DB_PATH = ':memory:';
+}
+
+const request = require('supertest');
+const app = require('../../server');
+const { API_VERSIONS } = require('../../contracts/versioning');
+
+async function resetDb() {
+  const res = await request(app).post('/__test/reset');
+  if (res.status !== 200) {
+    throw new Error(`reset_failed:${res.status}`);
+  }
+}
+
+function scrubAuthPayload(payload) {
+  const copy = { ...payload };
+  if (typeof copy.id === 'number') copy.id = '[id]';
+  if (copy.token) copy.token = '[token]';
+  if (copy.created_at) copy.created_at = '[iso]';
+  if (copy.last_login_at) copy.last_login_at = '[iso]';
+  if (copy.status_updated_at) copy.status_updated_at = '[iso]';
+  if (copy.push_meta) {
+    copy.push_meta = {
+      available: !!copy.push_meta.available,
+      vapid_public_key: copy.push_meta.vapid_public_key
+    };
+  }
+  return copy;
+}
+
+describe('API contracts', () => {
+  beforeAll(async () => {
+    await app._initializeSchema();
+  });
+
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('returns a stable payload for registration', async () => {
+    const res = await request(app)
+      .post('/api/register')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ email: 'snapshot@test.com', password: 'secret1', username: 'snapshotUser' });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['x-api-version']).toBe(API_VERSIONS.latest);
+    const scrubbed = scrubAuthPayload(res.body);
+    expect(scrubbed).toMatchInlineSnapshot(`
+{
+  "account_status": "active",
+  "created_at": "[iso]",
+  "email": "snapshot@test.com",
+  "id": "[id]",
+  "is_admin": false,
+  "last_login_at": null,
+  "push_meta": {
+    "available": false,
+    "vapid_public_key": null,
+  },
+  "status_note": null,
+  "status_updated_at": null,
+  "token": "[token]",
+  "username": "snapshotUser",
+}
+`);
+  });
+
+  it('provides granular validation details for invalid registration', async () => {
+    const res = await request(app)
+      .post('/api/register')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ email: 'not-an-email', password: '123', username: 'ab' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'invalid_request' });
+    expect(res.body.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'email' }),
+      expect.objectContaining({ path: 'password' }),
+      expect.objectContaining({ path: 'username' }),
+    ]));
+  });
+
+  it('rejects unsupported API versions before hitting route handlers', async () => {
+    const res = await request(app)
+      .post('/api/register')
+      .set('X-API-Version', '2022-01-01')
+      .send({ email: 'foo@test.com', password: 'secret1', username: 'foo' });
+
+    expect(res.status).toBe(412);
+    expect(res.body).toEqual({
+      error: 'unsupported_version',
+      latest: API_VERSIONS.latest,
+      supported: API_VERSIONS.supported,
+    });
+  });
+
+  it('enforces conversation message schema requirements', async () => {
+    const alice = request.agent(app);
+    const bob = request.agent(app);
+
+    await alice
+      .post('/api/register')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ email: 'alice@test.com', password: 'secret1', username: 'aliceUser' });
+
+    const bobRes = await bob
+      .post('/api/register')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ email: 'bob@test.com', password: 'secret1', username: 'bobUser' });
+
+    const convoRes = await alice
+      .post('/api/conversations')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ with_user_id: bobRes.body.id });
+
+    const badMessage = await alice
+      .post(`/api/conversations/${convoRes.body.id}/messages`)
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ body: '   ' });
+
+    expect(badMessage.status).toBe(400);
+    expect(badMessage.body.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'body' })
+    ]));
+  });
+});
+

@@ -19,6 +19,20 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 
 
+const { versionMiddleware } = require('./contracts/versioning');
+const { validateBody, sendSchema } = require('./contracts/validation');
+const {
+  validateRegisterRequest,
+  validateLoginRequest,
+  validateCreateListingRequest,
+  validateUpdateListingRequest,
+  validateSendMessageRequest,
+  validateAuthResponse,
+  validateListingResponse,
+  validateMessageEnvelopeResponse
+} = require('./contracts/http-schemas');
+
+
 
 let cors; try { cors = require('cors'); } catch {}
 
@@ -481,6 +495,8 @@ app.use((err, req, res, next) => {
   next(err);
 
 });
+
+app.use(versionMiddleware);
 
 
 
@@ -2534,35 +2550,11 @@ const userListingsLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
 
 /* ------------------------------------------------------------------ */
 
-app.post('/api/register', writeLimiter, async (req, res) => {
+app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), async (req, res) => {
 
   try {
 
-    const username = (req.body.username || req.body.name || '').trim();
-
-    const email = (req.body.email || '').trim().toLowerCase();
-
-    const password = req.body.password || '';
-
-    
-
-    if (!username || !email || !password) {
-
-      return res.status(400).json({ error: 'Username, email, and password are required' });
-
-    }
-
-    if (username.length < 3 || username.length > 32) {
-
-      return res.status(400).json({ error: 'Username must be 3–32 chars' });
-
-    }
-
-    if (password.length < 6) {
-
-      return res.status(400).json({ error: 'Password must be at least 6 chars' });
-
-    }
+    const { username, email, password } = req.body;
 
 
 
@@ -2600,7 +2592,7 @@ app.post('/api/register', writeLimiter, async (req, res) => {
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: false, account_status: 'active' });
 
-    return res.json({ ...user, token, push_meta: publicPushMeta() });
+    return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
 
   } catch (e) {
 
@@ -2620,21 +2612,11 @@ app.post('/api/register', writeLimiter, async (req, res) => {
 
 
 
-app.post('/api/login', loginLimiter, async (req, res) => {
+app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (req, res) => {
 
   try {
 
-    const email = (req.body.email || '').trim().toLowerCase();
-
-    const password = req.body.password || '';
-
-    
-
-    if (!email || !password) {
-
-      return res.status(400).json({ error: 'Email and password required' });
-
-    }
+    const { email, password } = req.body;
 
     
 
@@ -2708,7 +2690,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
-    return res.json({ ...user, token, push_meta: publicPushMeta() });
+    return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
 
   } catch (e) {
 
@@ -3538,7 +3520,16 @@ app.post('/api/reports', auth, writeLimiter, async (req, res) => {
 
 
 
-app.post('/api/listings', auth, writeLimiter, async (req, res) => {
+app.post(
+  '/api/listings',
+  auth,
+  writeLimiter,
+  (req, res, next) => {
+    if (isLockedAccount(req.user)) return respondLocked(res);
+    return next();
+  },
+  validateBody(validateCreateListingRequest),
+  async (req, res) => {
 
   try {
 
@@ -3859,7 +3850,7 @@ app.post('/api/listings', auth, writeLimiter, async (req, res) => {
       });
     }
 
-    return res.json(row);
+    return sendSchema(res, validateListingResponse, row);
 
   } catch (e) {
 
@@ -3959,7 +3950,16 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
 
 
-app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
+app.put(
+  '/api/listings/:id',
+  auth,
+  writeLimiter,
+  (req, res, next) => {
+    if (isLockedAccount(req.user)) return respondLocked(res);
+    return next();
+  },
+  validateBody(validateUpdateListingRequest),
+  async (req, res) => {
 
   try {
 
@@ -4228,7 +4228,7 @@ app.put('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     invalidateNearbyCache();
 
-    res.json(row);
+    return sendSchema(res, validateListingResponse, row);
 
   } catch (e) {
 
@@ -5518,21 +5518,13 @@ app.get('/api/conversations/:id/messages', auth, async (req, res) => {
 
 
 
-app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res) => {
+app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(validateSendMessageRequest), async (req, res) => {
 
   try {
 
     const id = Number(req.params.id);
 
     const { body, images } = req.body || {};
-
-
-
-    if ((!body || !String(body).trim()) && (!Array.isArray(images) || images.length === 0)) {
-
-      return res.status(400).json({ error: 'Message body or image required' });
-
-    }
 
 
 
@@ -5660,7 +5652,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, async (req, res)
 
 
 
-    res.json({ message: messagePayload, other_user_deleted: !!otherDeleted });
+    return sendSchema(res, validateMessageEnvelopeResponse, { message: messagePayload, other_user_deleted: !!otherDeleted });
 
 
 
