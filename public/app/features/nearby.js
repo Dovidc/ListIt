@@ -246,7 +246,7 @@
         onSelect
       }) {
         const resolvedClassName = [className, 'nearby-grid-fallback'].filter(Boolean).join(' ');
-        const columnCount = isMobile ? 2 : 4;
+        const columnCount = isMobile ? 3 : 4;
         const baseStyle = {
           display: 'grid',
           gap: 12,
@@ -259,9 +259,6 @@
           if (!item) return null;
           const key = item?.id != null ? `listing-${item.id}` : `listing-${index}`;
           const cover = item.__cover || item.image_data || item.thumb_url || '';
-          const priceLabel = formatPrice(item.price);
-          const distanceLabel = formatDistance(item);
-          const locationLabel = formatLocation(item);
 
           const handleActivate = typeof onSelect === 'function'
             ? () => onSelect(null, item, cover || null)
@@ -276,88 +273,57 @@
               }
             : undefined;
 
-          const content = [];
-
-          content.push(
-            cover
-              ? createElement('img', {
-                  key: 'img',
-                  src: cover,
-                  alt: item?.title || 'Listing image',
-                  style: {
-                    width: '100%',
-                    aspectRatio: '1 / 1',
-                    objectFit: 'cover',
-                    borderRadius: 6,
-                    display: 'block'
-                  }
-                })
-              : createElement('div', {
-                  key: 'img',
-                  style: {
-                    width: '100%',
-                    aspectRatio: '1 / 1',
-                    borderRadius: 6,
-                    background: '#e5e7eb',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: '#6b7280',
-                    fontSize: 12,
-                    fontWeight: 600
-                  }
-                }, 'No image')
-          );
-
-          const meta = [];
-          if (item?.title) {
-            meta.push(createElement('h3', {
-              key: 'title',
-              style: { margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }
-            }, item.title));
-          }
-          if (priceLabel) {
-            meta.push(createElement('p', {
-              key: 'price',
-              style: { margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }
-            }, priceLabel));
-          }
-          if (distanceLabel) {
-            meta.push(createElement('p', {
-              key: 'distance',
-              style: { margin: 0, fontSize: 12, color: '#4b5563' }
-            }, distanceLabel));
-          }
-          if (locationLabel) {
-            meta.push(createElement('p', {
-              key: 'location',
-              style: { margin: 0, fontSize: 12, color: '#6b7280' }
-            }, locationLabel));
-          }
-
-          if (meta.length) {
-            content.push(createElement('div', {
-              key: 'meta',
-              style: { display: 'grid', gap: 4 }
-            }, ...meta));
-          }
+          const content = cover
+            ? createElement('img', {
+                key: 'img',
+                src: cover,
+                alt: item?.title || 'Listing image',
+                style: {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block'
+                }
+              })
+            : createElement('div', {
+                key: 'img',
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: '#e5e7eb',
+                  color: '#6b7280',
+                  fontSize: 12,
+                  fontWeight: 600
+                }
+              }, 'No image');
 
           return createElement('article', {
             key,
-            className: 'nearby-grid-fallback-card',
+            className: ['card', 'nearby-grid-fallback-card'].join(' '),
             style: {
-              display: 'grid',
-              gap: 8,
-              padding: 12,
+              position: 'relative',
+              padding: 0,
               borderRadius: 8,
-              background: '#ffffff',
-              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.12)',
+              overflow: 'hidden',
+              background: '#f3f4f6',
               cursor: typeof onSelect === 'function' ? 'pointer' : 'default'
             },
             onClick: handleActivate,
             onKeyDown: handleKeyDown,
             role: typeof onSelect === 'function' ? 'button' : undefined,
             tabIndex: typeof onSelect === 'function' ? 0 : undefined
-          }, ...content);
+          },
+            createElement('div', {
+              key: 'aspect-wrapper',
+              style: {
+                position: 'relative',
+                width: '100%',
+                aspectRatio: '1 / 1'
+              }
+            }, content)
+          );
         };
 
         return createElement('div', {
