@@ -5652,10 +5652,6 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
 
-    return sendSchema(res, validateMessageEnvelopeResponse, { message: messagePayload, other_user_deleted: !!otherDeleted });
-
-
-
     const wsMessage = {
 
       type: 'new_message',
@@ -5710,6 +5706,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
       });
     }
 
+    return sendSchema(res, validateMessageEnvelopeResponse, { message: messagePayload, other_user_deleted: !!otherDeleted });
 
   } catch (e) {
 
