@@ -430,15 +430,43 @@
           }
 
           // Nearby preference (sub-toggle)
-          let enableNearbyAuto = 0, latAuto = null, lonAuto = null, locAuto = '';
+          const manualLocation = String(location || '').trim();
+          let locAuto = manualLocation;
+          let latAuto = null;
+          let lonAuto = null;
+          let enableNearbyAuto = 0;
+          let cachedCoords = null;
+
+          async function ensureCoords() {
+            if (cachedCoords) return cachedCoords;
+            cachedCoords = await fetchCoordsAndReverseInternal();
+            return cachedCoords;
+          }
+
           if (autoPostNearbyEnabled) {
             try {
-              const c = await fetchCoordsAndReverseInternal();
+              const c = await ensureCoords();
               enableNearbyAuto = 1;
-              latAuto = c.lat; lonAuto = c.lon; locAuto = c.display;
+              latAuto = c.lat; lonAuto = c.lon;
+              if (!locAuto) locAuto = c.display || '';
             } catch (_) {
               enableNearbyAuto = 0;
             }
+          }
+
+          if (!locAuto) {
+            try {
+              const c = await ensureCoords();
+              locAuto = c?.display || '';
+              if (enableNearbyAuto && c) {
+                latAuto = c.lat;
+                lonAuto = c.lon;
+              }
+            } catch (_) {}
+          }
+
+          if (!locAuto) {
+            locAuto = 'Unknown location';
           }
 
           const payload = {
