@@ -77,12 +77,16 @@ public extension DesignSystemTheme {
                 xLarge: cgBase * 2.5
             )
         }
+        theme.spacing = theme.spacing.applyingEnvironmentOverrides(environment)
 
         if let corner = environment["LISTIT_IOS_THEME_CORNER_RADIUS"],
            let base = Double(corner) {
             let cg = CGFloat(base)
             theme.corners = CornerRadiusScale(small: cg * 0.5, medium: cg, large: cg * 1.5)
         }
+        theme.corners = theme.corners.applyingEnvironmentOverrides(environment)
+
+        theme.typography = TypographyScale.fromEnvironment(environment)
 
         return theme
     }

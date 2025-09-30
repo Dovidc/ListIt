@@ -96,9 +96,21 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - `DesignSystem/` exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` that wraps any view hierarchy with brand
   colors, typography, spacing, and component styles. Teams can override theme tokens via `.env` or scheme-based configuration
   files (`LISTIT_IOS_THEME_*`) without touching source code.
+- Theme tokens accept granular overrides so product teams can reskin ListIt without recompiling JavaScript:
+  - **Colors** – `LISTIT_IOS_THEME_PRIMARY`, `SECONDARY`, `ACCENT`, `BACKGROUND`, `SURFACE`, `SUCCESS`, `WARNING`, `DANGER`.
+  - **Spacing** – override individual values with `LISTIT_IOS_THEME_SPACING_XSMALL`, `SMALL`, `MEDIUM`, `LARGE`, and
+    `XLARGE`, or set a base multiplier via `LISTIT_IOS_THEME_BASE_SPACING`.
+  - **Corners** – control each radius with `LISTIT_IOS_THEME_CORNER_RADIUS_SMALL`, `MEDIUM`, and `LARGE`, or apply a base
+    curve using `LISTIT_IOS_THEME_CORNER_RADIUS`.
+  - **Typography** – choose presets with `LISTIT_IOS_THEME_TYPOGRAPHY_PRESET` (`rounded`, `system`, `serif`, `monospaced`,
+    `editorial`) and layer overrides on top using `LISTIT_IOS_THEME_FONT_GLOBAL`, category keys (`FONT_DISPLAY`, `FONT_CONTENT`,
+    `FONT_META`), or per-style tokens such as `LISTIT_IOS_THEME_FONT_HEADLINE`. Override strings use
+    `key=value` pairs separated by commas/semicolons (e.g., `family=GT Walsheim;weight=bold;scale=1.05`).
 - `ThemePlaygroundView` ships as a SwiftUI preview that designers can open inside Xcode to tweak palettes, spacing, and
-  interactions. The live preview mirrors production components (cards, primary/secondary buttons) so visual polish remains
-  consistent across web and native.
+  interactions. The live preview mirrors production components (cards, primary/secondary buttons) and now surfaces sliders for
+  spacing, corner radii, typography presets, and status colors so visual polish remains consistent across web and native.
+- Global UIKit chrome (navigation bars, tab bars, toolbars) inherits the active `DesignSystemTheme`, which keeps large titles,
+  tint colors, and selection states synchronized with the SwiftUI layer.
 - Feature modules consume the design system through the SwiftUI environment. For example, `AuthFeatureView` and
   `ListingsFeatureView` render `ListItCard` instances, primary buttons, and dynamic typography to guarantee platform idioms
   like large navigation titles, swipe actions, and dynamic type scaling remain configurable.
