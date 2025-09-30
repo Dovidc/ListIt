@@ -48,6 +48,51 @@ final class SharedCoreBundleProviderTests: XCTestCase {
         let script = try provider.loadScript(named: bundleName, configuration: configuration)
         XCTAssertFalse(script.isEmpty)
     }
+
+    func testExplicitBundlePathFailureThrows() {
+        let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: .module)
+        let configuration = TestEnvironmentConfiguration(extraEnvironment: [
+            "LISTIT_CORE_BUNDLE_PATH": "/path/that/does/not/exist.js"
+        ])
+
+        XCTAssertThrowsError(try provider.loadScript(named: bundleName, configuration: configuration)) { error in
+            guard case BootstrapError.bundleNotFound(let name) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(name, bundleName)
+        }
+    }
+
+    func testExplicitXCFrameworkPathFailureThrows() {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: .module)
+        let configuration = TestEnvironmentConfiguration(extraEnvironment: [
+            "LISTIT_CORE_DISTRIBUTION": "xcframework",
+            "LISTIT_CORE_XCFRAMEWORK_PATH": tempDirectory.path
+        ])
+
+        XCTAssertThrowsError(try provider.loadScript(named: bundleName, configuration: configuration)) { error in
+            guard case BootstrapError.bundleNotFound(let name) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(name, "\(bundleName) (xcframework)")
+        }
+    }
+
+    func testDistributionPreferenceWithoutBundleThrows() {
+        let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: .module)
+        let configuration = TestEnvironmentConfiguration(extraEnvironment: [
+            "LISTIT_CORE_DISTRIBUTION": "xcframework"
+        ])
+
+        XCTAssertThrowsError(try provider.loadScript(named: bundleName, configuration: configuration)) { error in
+            guard case BootstrapError.bundleNotFound(let name) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(name, "\(bundleName) (xcframework)")
+        }
+    }
 }
 
 private struct TestEnvironmentConfiguration: EnvironmentConfigurationProviding {
