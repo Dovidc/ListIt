@@ -1,0 +1,95 @@
+name: ListIt
+options:
+  minimumXcodeGenVersion: 2.37.0
+  deploymentTarget:
+    iOS: 16.0
+workspace:
+  name: ListIt
+  projects:
+    - ListIt.xcodeproj
+packages:
+  SharedCoreBridge:
+    path: SharedCoreBridge
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
+    SWIFT_VERSION: 5.9
+    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    OTHER_SWIFT_FLAGS: -warnings-as-errors
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ENABLE_PREVIEWS: YES
+  configs:
+    Debug:
+      ENABLE_TESTABILITY: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: -O
+    Staging:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
+targets:
+  ListItApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Sources/App
+    resources:
+      - path: Resources
+    dependencies:
+      - target: AuthFeature
+      - target: ListingsFeature
+      - target: UploadFeature
+      - package: SharedCoreBridge
+    settings:
+      base:
+        INFOPLIST_FILE: Sources/App/Info.plist
+        PRODUCT_NAME: ListIt
+    scheme:
+      testTargets:
+        - ListItAppTests
+      gatherCoverageData: true
+  ListItAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/AppTests
+    dependencies:
+      - target: ListItApp
+  AuthFeature:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/AuthFeature
+    dependencies:
+      - target: SharedServices
+  ListingsFeature:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/ListingsFeature
+    dependencies:
+      - target: SharedServices
+  UploadFeature:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/UploadFeature
+    dependencies:
+      - target: SharedServices
+  SharedServices:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/SharedServices
+    resources:
+      - path: Sources/SharedServices/Resources
+    dependencies:
+      - package: SharedCoreBridge
+  SharedServicesTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/SharedServicesTests
+    dependencies:
+      - target: SharedServices
