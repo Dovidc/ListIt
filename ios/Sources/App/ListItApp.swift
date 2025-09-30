@@ -4,6 +4,8 @@ import ListingsFeature
 import UploadFeature
 import SharedServices
 import SharedCoreBridge
+import DesignSystem
+import PlatformCapabilities
 
 @main
 struct ListItApp: App {
@@ -15,8 +17,10 @@ struct ListItApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView(environment: appEnvironment)
-                .task { await appEnvironment.bootstrap() }
+            DesignSystemProvider(theme: appEnvironment.theme) {
+                RootTabView(environment: appEnvironment)
+            }
+            .task { await appEnvironment.bootstrap() }
         }
     }
 }
@@ -26,17 +30,23 @@ struct RootTabView: View {
 
     var body: some View {
         TabView {
-            AuthFeatureView(authService: environment.authService)
+            AuthFeatureView(authService: environment.authService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
                 .tabItem {
                     Label("Account", systemImage: "person")
                 }
 
-            ListingsFeatureView(listingsService: environment.listingsService)
+            ListingsFeatureView(listingsService: environment.listingsService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
                 .tabItem {
                     Label("Listings", systemImage: "list.bullet")
                 }
 
-            UploadFeatureView(uploadService: environment.uploadService)
+            UploadFeatureView(uploadService: environment.uploadService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
                 .tabItem {
                     Label("Uploads", systemImage: "icloud.and.arrow.up")
                 }
@@ -46,12 +56,26 @@ struct RootTabView: View {
 }
 
 final class AppEnvironment: ObservableObject {
-    @Published var configuration = EnvironmentConfiguration()
+    @Published var configuration: EnvironmentConfiguration
+    @Published var theme: DesignSystemTheme
     let authService: AuthService
     let listingsService: ListingsService
     let uploadService: UploadService
+    private let capabilityRouter: CapabilityRouting
 
-    init(sharedRuntime: SharedRuntime = SharedRuntime()) {
+    init(
+        sharedRuntime: SharedRuntime = SharedRuntime(),
+        configuration: EnvironmentConfiguration = EnvironmentConfiguration(),
+        capabilityRouter: CapabilityRouting = CapabilityRouter()
+    ) {
+        self.configuration = configuration
+        self.theme = DesignSystemTheme()
+        self.capabilityRouter = capabilityRouter
+
+        configuration.setCapabilityEventHandler { [capabilityRouter] name, payload in
+            capabilityRouter.handle(event: CapabilityEvent(name: name, payload: payload))
+        }
+
         SharedRuntimeRegistry.shared.register(runtime: sharedRuntime)
         self.authService = AuthService(runtime: sharedRuntime)
         self.listingsService = ListingsService(runtime: sharedRuntime)
@@ -62,9 +86,15 @@ final class AppEnvironment: ObservableObject {
     func bootstrap() async {
         do {
             try configuration.load()
+            theme = configuration.designSystemTheme()
+            capabilityRouter.updateConfiguration(configuration.capabilityConfiguration())
             try await SharedCoreBridgeBootstrap.shared.ensureBundleLoaded(using: configuration)
         } catch {
             assertionFailure("Failed to bootstrap shared core: \(error)")
         }
+    }
+
+    func emitCapabilityEvent(_ name: String, payload: [String: Any] = [:]) {
+        capabilityRouter.handle(event: CapabilityEvent(name: name, payload: payload))
     }
 }

@@ -41,6 +41,8 @@ targets:
       - target: ListingsFeature
       - target: UploadFeature
       - package: SharedCoreBridge
+      - target: DesignSystem
+      - target: PlatformCapabilities
     settings:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
@@ -56,6 +58,7 @@ targets:
       - path: Tests/AppTests
     dependencies:
       - target: ListItApp
+      - target: PlatformCapabilities
   AuthFeature:
     type: framework
     platform: iOS
@@ -63,6 +66,7 @@ targets:
       - path: Sources/AuthFeature
     dependencies:
       - target: SharedServices
+      - target: DesignSystem
   ListingsFeature:
     type: framework
     platform: iOS
@@ -70,6 +74,7 @@ targets:
       - path: Sources/ListingsFeature
     dependencies:
       - target: SharedServices
+      - target: DesignSystem
   UploadFeature:
     type: framework
     platform: iOS
@@ -77,6 +82,7 @@ targets:
       - path: Sources/UploadFeature
     dependencies:
       - target: SharedServices
+      - target: DesignSystem
   SharedServices:
     type: framework
     platform: iOS
@@ -86,6 +92,8 @@ targets:
       - path: Sources/SharedServices/Resources
     dependencies:
       - package: SharedCoreBridge
+      - target: DesignSystem
+      - target: PlatformCapabilities
   SharedServicesTests:
     type: bundle.unit-test
     platform: iOS
@@ -93,3 +101,13 @@ targets:
       - path: Tests/SharedServicesTests
     dependencies:
       - target: SharedServices
+  DesignSystem:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/DesignSystem
+  PlatformCapabilities:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/PlatformCapabilities

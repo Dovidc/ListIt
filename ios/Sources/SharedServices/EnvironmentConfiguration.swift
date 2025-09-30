@@ -1,15 +1,18 @@
 import Foundation
 import Combine
 import SharedCoreBridge
+import DesignSystem
+import PlatformCapabilities
 
 public final class EnvironmentConfiguration: ObservableObject {
     @Published public private(set) var environment: [String: String] = [:]
 
+    private let loader: EnvironmentLoading
+    private var capabilityEventHandler: SharedCoreEventHandler?
+
     public init(loader: EnvironmentLoading = DefaultEnvironmentLoader()) {
         self.loader = loader
     }
-
-    private let loader: EnvironmentLoading
 }
 
 extension EnvironmentConfiguration {
@@ -22,7 +25,10 @@ extension EnvironmentConfiguration: EnvironmentConfigurationProviding {
     public var sharedCoreBundleName: String { "listit-core" }
 
     public var nativeBridge: SharedCoreNativeBridge {
-        SharedCoreNativeBridge(environment: self)
+        if let capabilityEventHandler {
+            return SharedCoreNativeBridge(environment: self, eventHandler: capabilityEventHandler)
+        }
+        return SharedCoreNativeBridge(environment: self)
     }
 
     public var apiBaseURL: URL {
@@ -41,6 +47,26 @@ extension EnvironmentConfiguration: EnvironmentConfigurationProviding {
 extension EnvironmentConfiguration {
     public func value(for key: String) -> String? {
         environment[key]
+    }
+
+    public func setCapabilityEventHandler(_ handler: @escaping SharedCoreEventHandler) {
+        capabilityEventHandler = handler
+    }
+
+    public func resetCapabilityEventHandler() {
+        capabilityEventHandler = nil
+    }
+
+    public func designSystemTheme() -> DesignSystemTheme {
+        DesignSystemTheme.fromEnvironment(environment)
+    }
+
+    public func capabilityConfiguration() -> CapabilityConfiguration {
+        CapabilityConfiguration.from(environment: environment)
+    }
+
+    public func loadEnvironment(_ values: [String: String]) {
+        environment = values
     }
 }
 

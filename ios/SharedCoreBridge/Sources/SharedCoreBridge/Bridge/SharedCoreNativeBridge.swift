@@ -1,18 +1,23 @@
 import Foundation
 import JavaScriptCore
 
+public typealias SharedCoreEventHandler = (String, [String: Any]) -> Void
+
 @objc
 public protocol SharedCoreNativeBridgeExport: JSExport {
     func fetchEnv(_ key: String) -> String?
     func log(_ message: String)
+    func emitEvent(_ name: String, payload: [String: Any]?)
 }
 
 @objc
 public final class SharedCoreNativeBridge: NSObject, SharedCoreNativeBridgeExport {
     private let environment: EnvironmentConfigurationProviding
+    private let eventHandler: SharedCoreEventHandler?
 
-    public init(environment: EnvironmentConfigurationProviding) {
+    public init(environment: EnvironmentConfigurationProviding, eventHandler: SharedCoreEventHandler? = nil) {
         self.environment = environment
+        self.eventHandler = eventHandler
     }
 
     public func fetchEnv(_ key: String) -> String? {
@@ -21,6 +26,10 @@ public final class SharedCoreNativeBridge: NSObject, SharedCoreNativeBridgeExpor
 
     public func log(_ message: String) {
         print("[SharedCore] \(message)")
+    }
+
+    public func emitEvent(_ name: String, payload: [String: Any]?) {
+        eventHandler?(name, payload ?? [:])
     }
 }
 
