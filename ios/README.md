@@ -48,6 +48,20 @@ The workspace expects the web build to produce a distributable JavaScript bundle
 precompiled XCFramework emitted by the web build pipeline. See the inline documentation in `SharedCoreBridge` for
 usage details.
 
+### Selecting the Shared Core Distribution
+
+The native project now supports both embedded scripts and XCFramework distributions so teams can pick the option that
+offers the highest level of iOS-specific customization:
+
+- Set `LISTIT_CORE_DISTRIBUTION=embedded` (default) to ship the JavaScript bundle packaged with the app for rapid
+  iteration.
+- Set `LISTIT_CORE_DISTRIBUTION=xcframework` and point `LISTIT_CORE_XCFRAMEWORK_PATH` to the extracted XCFramework on
+  disk when you want to integrate the shared core through Swift Package Manager with maximum native flexibility.
+- Use `LISTIT_CORE_BUNDLE_PATH` to bypass discovery entirely and load a specific JavaScript file, which is useful for
+  local development builds or specialized QA scenarios.
+
+All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-specific configuration files.
+
 ## Continuous Integration
 
 Fastlane lanes and the GitHub Actions workflow ensure `xcodebuild test` runs on pull requests and that archives are

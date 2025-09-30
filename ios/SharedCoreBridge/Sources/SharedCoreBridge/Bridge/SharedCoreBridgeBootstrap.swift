@@ -4,17 +4,15 @@ public actor SharedCoreBridgeBootstrap {
     public static let shared = SharedCoreBridgeBootstrap()
 
     private var hasLoadedBundle = false
+    private let bundleProvider: SharedCoreBundleProviding
+
+    public init(bundleProvider: SharedCoreBundleProviding = SharedCoreBundleProvider()) {
+        self.bundleProvider = bundleProvider
+    }
 
     public func ensureBundleLoaded(using configuration: EnvironmentConfigurationProviding) async throws {
         guard !hasLoadedBundle else { return }
-        let bundle = Bundle.module
-        guard let scriptURL = bundle.url(forResource: configuration.sharedCoreBundleName, withExtension: "js") else {
-            throw BootstrapError.bundleNotFound(name: configuration.sharedCoreBundleName)
-        }
-        let data = try Data(contentsOf: scriptURL)
-        guard let script = String(data: data, encoding: .utf8) else {
-            throw BootstrapError.invalidEncoding
-        }
+        let script = try bundleProvider.loadScript(named: configuration.sharedCoreBundleName, configuration: configuration)
         let runtime = SharedRuntimeRegistry.shared.runtime
         runtime.installNativeBridge(configuration.nativeBridge)
         try runtime.evaluate(script)
