@@ -175,7 +175,8 @@ export interface UploadsService {
   prepareListingForModal(listing: unknown, coverHint?: string): { payload: Record<string, unknown> | null; images: string[]; cover: string };
   warmListingImages(listingId: number | string, baseImages?: number | string[] | null): void;
   uploadFilesForListing(listingId: number | string, files: FileList | File[]): Promise<void>;
-  uploadOneMessageImage(conversationId: number | string, file: File): Promise<unknown>;
+  uploadOneMessageImage(file: File): Promise<unknown>;
+  uploadOneMessageImage(conversationId: number | string | null, file: File): Promise<unknown>;
   listingImageCache: Map<unknown, unknown>;
   listingImageInFlight: Map<unknown, Promise<unknown>>;
   uploadBase64Image(data: string, options?: Base64UploadOptions): Promise<boolean>;
