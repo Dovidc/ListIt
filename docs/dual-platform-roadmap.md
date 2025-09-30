@@ -29,9 +29,9 @@ This roadmap outlines the major workstreams required to evolve ListIt from a bro
 - Decide up front which path balances your customization requirements, maintenance budget, and release cadence. All approaches benefit from the shared core, typed contracts, and interface boundaries defined above.
 
 ## 5. Set Up Native Project Infrastructure
-- Create an Xcode workspace configured to consume the shared core (as a compiled module or via a JavaScript runtime) and wired to the existing Express backend for API calls.
-- Implement authentication, data fetching, and storage using the documented server contracts and shared validation logic.
-- Add platform-specific CI pipelines that build, test, and package the native app alongside the existing web CI to keep both experiences aligned.
+- Initialize an Xcode workspace that mirrors the web app's feature boundaries and can import the shared core package. For the shared JavaScript bundle, provide two consumption options: (1) compile it to an XCFramework via Swift Package Manager for SwiftUI/UIKit usage, and (2) embed the bundle inside a JavaScriptCore runtime for fast iteration. Wire the workspace to the existing Express backend by reusing the same `.env` contract (base URL, API keys) and adding per-scheme overrides for staging vs. production.
+- Stand up thin Swift service layers (AuthService, ListingsService, UploadService) that call into the shared validation and transformation logic before talking to `URLSession` or WebSockets. Persist auth tokens and cached data using a Keychain + CoreData stack that can later be swapped for platform abstractions defined in Step 4.
+- Set up native CI alongside the web pipeline: use Fastlane to drive unit/UI tests and TestFlight uploads, and add a GitHub Actions workflow that runs `xcodebuild test` on pull requests, produces archived builds on main merges, and publishes build artifacts for QA. Configure the workflow to reuse backend contract fixtures so both platforms validate against the same schemas.
 
 ## 6. Rollout & Maintenance Strategy
 - Adopt feature parity guidelines so new capabilities land in the shared core first, then receive platform-specific UI implementations.
