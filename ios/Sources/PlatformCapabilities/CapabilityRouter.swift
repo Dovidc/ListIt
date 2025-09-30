@@ -143,14 +143,22 @@ public final class DefaultHapticsProvider: HapticsProviding {
     public init() {}
 
     public func trigger(_ feedback: HapticFeedback) {
-        switch feedback {
-        case .impact(let style):
-            let generator = UIImpactFeedbackGenerator(style: style)
-            generator.prepare()
-            generator.impactOccurred()
-        case .notification(let type):
-            notificationGenerator.prepare()
-            notificationGenerator.notificationOccurred(type)
+        let triggerFeedback = { [notificationGenerator] in
+            switch feedback {
+            case .impact(let style):
+                let generator = UIImpactFeedbackGenerator(style: style)
+                generator.prepare()
+                generator.impactOccurred()
+            case .notification(let type):
+                notificationGenerator.prepare()
+                notificationGenerator.notificationOccurred(type)
+            }
+        }
+
+        if Thread.isMainThread {
+            triggerFeedback()
+        } else {
+            DispatchQueue.main.async(execute: triggerFeedback)
         }
     }
 }
