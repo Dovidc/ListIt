@@ -14,14 +14,12 @@ public struct SharedCoreBundleProvider: SharedCoreBundleProviding {
     }
 
     public func loadScript(named bundleName: String, configuration: EnvironmentConfigurationProviding) throws -> String {
-        if let overridePath = configuration.extraEnvironment["LISTIT_CORE_BUNDLE_PATH"],
-           let script = try? loadScript(fromFilesystemPath: overridePath, bundleName: bundleName) {
-            return script
+        if let overridePath = configuration.extraEnvironment["LISTIT_CORE_BUNDLE_PATH"] {
+            return try loadScript(fromFilesystemPath: overridePath, bundleName: bundleName)
         }
 
-        if shouldPreferXCFramework(using: configuration),
-           let xcframeworkScript = try? loadScriptFromXCFramework(configuration: configuration, bundleName: bundleName) {
-            return xcframeworkScript
+        if shouldPreferXCFramework(using: configuration) {
+            return try loadScriptFromXCFramework(configuration: configuration, bundleName: bundleName)
         }
 
         if let script = try? loadScriptFromMainBundle(bundleName: bundleName) {
@@ -50,14 +48,17 @@ private extension SharedCoreBundleProvider {
         if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
             url.appendPathComponent("\(bundleName).js")
         }
+
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw BootstrapError.bundleNotFound(name: bundleName)
+        }
         return try loadScript(from: url)
     }
 
     func loadScriptFromXCFramework(configuration: EnvironmentConfigurationProviding, bundleName: String) throws -> String {
         if let explicitPath = configuration.extraEnvironment["LISTIT_CORE_XCFRAMEWORK_PATH"],
-           !explicitPath.isEmpty,
-           let script = try? loadScriptInsideXCFramework(at: URL(fileURLWithPath: explicitPath), bundleName: bundleName) {
-            return script
+           !explicitPath.isEmpty {
+            return try loadScriptInsideXCFramework(at: URL(fileURLWithPath: explicitPath), bundleName: bundleName)
         }
 
         if let autoDiscovered = autoDiscoverXCFramework(bundleName: bundleName) {
