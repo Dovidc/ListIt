@@ -102,7 +102,7 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
 
 private func parse(content: String) -> [String: String] {
     content
-        .split(whereSeparator: \n.contains)
+        .split(whereSeparator: \.isNewline)
         .reduce(into: [String: String]()) { result, line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separatorIndex = trimmed.firstIndex(of: "=") else { return }

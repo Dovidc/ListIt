@@ -16,8 +16,8 @@ public actor SharedCoreBridgeBootstrap {
             throw BootstrapError.invalidEncoding
         }
         let runtime = SharedRuntimeRegistry.shared.runtime
-        try runtime.evaluate(script)
         runtime.installNativeBridge(configuration.nativeBridge)
+        try runtime.evaluate(script)
         hasLoadedBundle = true
     }
 }
