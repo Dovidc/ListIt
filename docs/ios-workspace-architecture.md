@@ -47,6 +47,9 @@ This strategy keeps the iOS build aligned with the Node/Express `.env` contract 
 - `ThemePlaygroundView` (available under `DesignSystem/Theming`) offers a live SwiftUI preview with controls for colors,
   spacing, typography presets, and interaction toggles, enabling designers to experiment before checking updated tokens into
   source control.
+- `AppEnvironment` listens for environment changes at runtime, reapplying the resolved `DesignSystemTheme` through
+  `AppearanceConfigurator` and rebroadcasting capability toggles. Designers can tweak `.env` files or inject overrides via
+  the simulator without rebuilding to validate palettes, spacing, and native affordances instantly.
 
 ## Continuous Integration
 

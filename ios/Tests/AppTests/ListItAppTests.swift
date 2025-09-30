@@ -1,4 +1,6 @@
 import XCTest
+import Combine
+import SharedServices
 @testable import ListItApp
 import SharedCoreBridge
 import PlatformCapabilities
@@ -17,6 +19,35 @@ final class ListItAppTests: XCTestCase {
         environment.emitCapabilityEvent("haptic", payload: ["style": "success"])
         XCTAssertEqual(router.events.count, 1)
         XCTAssertEqual(router.events.first?.name, "haptic")
+    }
+
+    func testEnvironmentUpdatesApplyThemeAndCapabilities() {
+        let configuration = EnvironmentConfiguration()
+        let router = MockCapabilityRouter()
+        let environment = AppEnvironment(sharedRuntime: SharedRuntime(),
+                                         configuration: configuration,
+                                         capabilityRouter: router)
+
+        let expectation = expectation(description: "Theme resolves from environment overrides")
+        var cancellable: AnyCancellable?
+        cancellable = environment.$theme
+            .dropFirst()
+            .sink { theme in
+                XCTAssertFalse(theme.enablesLargeTitles)
+                XCTAssertEqual(theme.spacing.medium, 30)
+                expectation.fulfill()
+            }
+
+        configuration.loadEnvironment([
+            "LISTIT_IOS_THEME_LARGE_TITLES": "false",
+            "LISTIT_IOS_THEME_BASE_SPACING": "20",
+            "LISTIT_IOS_ENABLE_HAPTICS": "false"
+        ])
+
+        waitForExpectations(timeout: 1)
+        cancellable?.cancel()
+
+        XCTAssertFalse(router.configuration.enablesHaptics)
     }
 }
 

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import AuthFeature
 import ListingsFeature
@@ -62,6 +63,7 @@ final class AppEnvironment: ObservableObject {
     let listingsService: ListingsService
     let uploadService: UploadService
     private let capabilityRouter: CapabilityRouting
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         sharedRuntime: SharedRuntime = SharedRuntime(),
@@ -80,16 +82,14 @@ final class AppEnvironment: ObservableObject {
         self.authService = AuthService(runtime: sharedRuntime)
         self.listingsService = ListingsService(runtime: sharedRuntime)
         self.uploadService = UploadService(runtime: sharedRuntime)
+
+        bind(to: configuration)
     }
 
     @MainActor
     func bootstrap() async {
         do {
             try configuration.load()
-            let loadedTheme = configuration.designSystemTheme()
-            theme = loadedTheme
-            AppearanceConfigurator.apply(theme: loadedTheme)
-            capabilityRouter.updateConfiguration(configuration.capabilityConfiguration())
             try await SharedCoreBridgeBootstrap.shared.ensureBundleLoaded(using: configuration)
         } catch {
             assertionFailure("Failed to bootstrap shared core: \(error)")
@@ -98,5 +98,19 @@ final class AppEnvironment: ObservableObject {
 
     func emitCapabilityEvent(_ name: String, payload: [String: Any] = [:]) {
         capabilityRouter.handle(event: CapabilityEvent(name: name, payload: payload))
+    }
+
+    private func bind(to configuration: EnvironmentConfiguration) {
+        configuration.$environment
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] environment in
+                guard let self else { return }
+                let resolvedTheme = DesignSystemTheme.fromEnvironment(environment)
+                theme = resolvedTheme
+                AppearanceConfigurator.apply(theme: resolvedTheme)
+                let capabilityConfiguration = CapabilityConfiguration.from(environment: environment)
+                capabilityRouter.updateConfiguration(capabilityConfiguration)
+            }
+            .store(in: &cancellables)
     }
 }
