@@ -48,6 +48,7 @@ final class AppEnvironment: ObservableObject {
     let uploadService: UploadService
 
     init(sharedRuntime: SharedRuntime = SharedRuntime()) {
+        SharedRuntimeRegistry.shared.register(runtime: sharedRuntime)
         self.authService = AuthService(runtime: sharedRuntime)
         self.listingsService = ListingsService(runtime: sharedRuntime)
         self.uploadService = UploadService(runtime: sharedRuntime)

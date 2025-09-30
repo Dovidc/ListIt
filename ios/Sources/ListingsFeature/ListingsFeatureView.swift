@@ -29,25 +29,24 @@ public struct ListingsFeatureView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .refreshable(loadListings)
+                    .refreshable { await loadListings() }
                 }
             }
             .navigationTitle("Listings")
-            .task(loadListings)
+            .task { await loadListings() }
         }
     }
 
-    private func loadListings() {
-        Task {
-            isLoading = true
-            defer { isLoading = false }
-            do {
-                let summaries = try await listingsService.fetchListings()
-                listings = summaries.map(Listing.init(model:))
-                errorMessage = nil
-            } catch {
-                errorMessage = error.localizedDescription
-            }
+    @MainActor
+    private func loadListings() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let summaries = try await listingsService.fetchListings()
+            listings = summaries.map(Listing.init(model:))
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
