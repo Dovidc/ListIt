@@ -983,8 +983,25 @@ function createUploadsService({ api, utils, fetchImpl } = {}) {
     }
   }
 
-  async function uploadOneMessageImage(conversationId, file) {
+  async function uploadOneMessageImage(conversationIdOrFile, maybeFile) {
+    let conversationId = conversationIdOrFile;
+    let file = maybeFile;
+
+    if (!file && conversationIdOrFile && typeof conversationIdOrFile === 'object') {
+      const possibleFile = conversationIdOrFile;
+      const hasName = typeof possibleFile.name === 'string';
+      const hasSize = typeof possibleFile.size === 'number';
+      const hasType = typeof possibleFile.type === 'string' || typeof possibleFile.type === 'undefined';
+
+      if (hasName && hasSize && hasType) {
+        file = possibleFile;
+        conversationId = null;
+      }
+    }
+
     if (!file) throw new Error('file_required');
+
+    conversationId = conversationId ?? null;
     const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
     if (sig?.error) throw new Error(sig.error);
     const putRes = await fetchLike(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
