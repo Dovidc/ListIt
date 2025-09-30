@@ -9,6 +9,10 @@ import SharedCoreBridge
 struct ListItApp: App {
     @StateObject private var appEnvironment = AppEnvironment()
 
+    init() {
+        AppearanceConfigurator.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootTabView(environment: appEnvironment)

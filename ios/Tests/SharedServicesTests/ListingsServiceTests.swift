@@ -8,18 +8,62 @@ final class ListingsServiceTests: XCTestCase {
         let runtime = FakeRuntime()
         let context = JSContext()!
         runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: context)
-        let service = ListingsService(runtime: runtime)
+        let persistence = FakeListingsPersistence()
+        let service = ListingsService(runtime: runtime, persistence: persistence)
         let listings = try waitFor { try await service.fetchListings() }
         XCTAssertEqual(listings.first?.title, "Test")
+        XCTAssertEqual(persistence.storedListings.first?.id, "1")
+    }
+
+    func testReturnsCachedListingsWhenFetchFails() throws {
+        let runtime = FakeRuntime()
+        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        let cached = [ListingSummary(id: "cached", title: "Offline", subtitle: "Cached")]
+        let persistence = FakeListingsPersistence()
+        persistence.stubbedCached = cached
+
+        let service = ListingsService(runtime: runtime, persistence: persistence)
+        let listings = try waitFor { try await service.fetchListings() }
+        XCTAssertEqual(listings.first?.id, "cached")
+    }
+
+    func testPropagatesErrorWhenCacheIsEmpty() {
+        let runtime = FakeRuntime()
+        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        let persistence = FakeListingsPersistence()
+
+        let service = ListingsService(runtime: runtime, persistence: persistence)
+        XCTAssertThrowsError(try waitFor { try await service.fetchListings() })
     }
 }
 
 private final class FakeRuntime: SharedRuntime {
     var stubbedResponse: JSValue?
+    var stubbedError: Error?
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
+        if let stubbedError {
+            throw stubbedError
+        }
         guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
         return stubbedResponse
+    }
+}
+
+private final class FakeListingsPersistence: ListingsPersisting {
+    var storedListings: [ListingSummary] = []
+    var stubbedCached: [ListingSummary] = []
+
+    func store(listings: [ListingSummary]) throws {
+        storedListings = listings
+    }
+
+    func loadListings() throws -> [ListingSummary] {
+        stubbedCached
+    }
+
+    func clear() throws {
+        storedListings = []
     }
 }
 
