@@ -171,14 +171,14 @@ public extension CornerRadiusScale {
     }
 }
 
-enum TypographyPreset: String, CaseIterable {
+public enum TypographyPreset: String, CaseIterable {
     case rounded
     case system
     case serif
     case monospaced
     case editorial
 
-    static var `default`: TypographyPreset { .rounded }
+    public static var `default`: TypographyPreset { .rounded }
 
     init?(environmentValue: String) {
         switch environmentValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
