@@ -86,7 +86,9 @@ final class AppEnvironment: ObservableObject {
     func bootstrap() async {
         do {
             try configuration.load()
-            theme = configuration.designSystemTheme()
+            let loadedTheme = configuration.designSystemTheme()
+            theme = loadedTheme
+            AppearanceConfigurator.apply(theme: loadedTheme)
             capabilityRouter.updateConfiguration(configuration.capabilityConfiguration())
             try await SharedCoreBridgeBootstrap.shared.ensureBundleLoaded(using: configuration)
         } catch {

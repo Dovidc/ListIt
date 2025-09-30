@@ -73,15 +73,15 @@ public struct TypographyScale: Equatable {
 
 public extension TypographyScale {
     static func preferred() -> TypographyScale {
-        TypographyScale(
-            largeTitle: .system(.largeTitle, design: .rounded).weight(.bold),
-            title: .system(.title, design: .rounded).weight(.semibold),
-            headline: .system(.headline, design: .rounded).weight(.semibold),
-            body: .system(.body, design: .default),
-            callout: .system(.callout, design: .default),
-            subheadline: .system(.subheadline, design: .default).weight(.medium),
-            footnote: .system(.footnote, design: .monospaced)
-        )
+        TypographyPreset.rounded.makeScale()
+    }
+
+    static func fromEnvironment(_ environment: [String: String]) -> TypographyScale {
+        TypographyEnvironmentResolver(environment: environment).resolve()
+    }
+
+    static func preset(_ preset: TypographyPreset) -> TypographyScale {
+        preset.makeScale()
     }
 }
 
@@ -105,6 +105,33 @@ public extension SpacingScale {
     static func comfortable() -> SpacingScale {
         SpacingScale(xSmall: 4, small: 8, medium: 16, large: 24, xLarge: 32)
     }
+
+    func applyingEnvironmentOverrides(_ environment: [String: String]) -> SpacingScale {
+        var updated = self
+
+        if let value = environment["LISTIT_IOS_THEME_SPACING_XSMALL"],
+           let amount = Double(value) {
+            updated.xSmall = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_SPACING_SMALL"],
+           let amount = Double(value) {
+            updated.small = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_SPACING_MEDIUM"],
+           let amount = Double(value) {
+            updated.medium = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_SPACING_LARGE"],
+           let amount = Double(value) {
+            updated.large = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_SPACING_XLARGE"],
+           let amount = Double(value) {
+            updated.xLarge = CGFloat(amount)
+        }
+
+        return updated
+    }
 }
 
 public struct CornerRadiusScale: Equatable {
@@ -122,6 +149,372 @@ public struct CornerRadiusScale: Equatable {
 public extension CornerRadiusScale {
     static func fluid() -> CornerRadiusScale {
         CornerRadiusScale(small: 8, medium: 16, large: 28)
+    }
+
+    func applyingEnvironmentOverrides(_ environment: [String: String]) -> CornerRadiusScale {
+        var updated = self
+
+        if let value = environment["LISTIT_IOS_THEME_CORNER_RADIUS_SMALL"],
+           let amount = Double(value) {
+            updated.small = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_CORNER_RADIUS_MEDIUM"],
+           let amount = Double(value) {
+            updated.medium = CGFloat(amount)
+        }
+        if let value = environment["LISTIT_IOS_THEME_CORNER_RADIUS_LARGE"],
+           let amount = Double(value) {
+            updated.large = CGFloat(amount)
+        }
+
+        return updated
+    }
+}
+
+enum TypographyPreset: String, CaseIterable {
+    case rounded
+    case system
+    case serif
+    case monospaced
+    case editorial
+
+    static var `default`: TypographyPreset { .rounded }
+
+    init?(environmentValue: String) {
+        switch environmentValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "rounded", "native": self = .rounded
+        case "system", "default": self = .system
+        case "serif", "editorial-serif": self = .serif
+        case "mono", "monospaced", "code": self = .monospaced
+        case "editorial", "magazine": self = .editorial
+        default: return nil
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .rounded: return "Rounded"
+        case .system: return "System"
+        case .serif: return "Serif"
+        case .monospaced: return "Monospaced"
+        case .editorial: return "Editorial"
+        }
+    }
+
+    fileprivate func baseOverride(for style: TypographyStyle) -> TypographyOverrideDescriptor? {
+        switch self {
+        case .rounded:
+            switch style {
+            case .largeTitle: return TypographyOverrideDescriptor(design: .rounded, weight: .bold)
+            case .title: return TypographyOverrideDescriptor(design: .rounded, weight: .semibold)
+            case .headline: return TypographyOverrideDescriptor(design: .rounded, weight: .semibold)
+            case .body: return TypographyOverrideDescriptor()
+            case .callout: return TypographyOverrideDescriptor()
+            case .subheadline: return TypographyOverrideDescriptor(weight: .medium)
+            case .footnote: return TypographyOverrideDescriptor(design: .monospaced)
+            }
+        case .system:
+            switch style {
+            case .largeTitle: return TypographyOverrideDescriptor(weight: .bold)
+            case .title: return TypographyOverrideDescriptor(weight: .semibold)
+            case .headline: return TypographyOverrideDescriptor(weight: .semibold)
+            case .body, .callout: return TypographyOverrideDescriptor()
+            case .subheadline: return TypographyOverrideDescriptor(weight: .medium)
+            case .footnote: return TypographyOverrideDescriptor()
+            }
+        case .serif:
+            switch style {
+            case .largeTitle: return TypographyOverrideDescriptor(design: .serif, weight: .black)
+            case .title: return TypographyOverrideDescriptor(design: .serif, weight: .bold)
+            case .headline: return TypographyOverrideDescriptor(design: .serif, weight: .semibold)
+            case .body, .callout: return TypographyOverrideDescriptor(design: .serif)
+            case .subheadline: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
+            case .footnote: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
+            }
+        case .monospaced:
+            switch style {
+            case .largeTitle: return TypographyOverrideDescriptor(design: .monospaced, weight: .bold)
+            case .title: return TypographyOverrideDescriptor(design: .monospaced, weight: .semibold)
+            case .headline: return TypographyOverrideDescriptor(design: .monospaced, weight: .semibold)
+            case .body, .callout: return TypographyOverrideDescriptor(design: .monospaced)
+            case .subheadline: return TypographyOverrideDescriptor(design: .monospaced, weight: .medium)
+            case .footnote: return TypographyOverrideDescriptor(design: .monospaced)
+            }
+        case .editorial:
+            switch style {
+            case .largeTitle: return TypographyOverrideDescriptor(design: .serif, weight: .heavy)
+            case .title: return TypographyOverrideDescriptor(design: .serif, weight: .bold, scale: 1.04)
+            case .headline: return TypographyOverrideDescriptor(design: .serif, weight: .semibold)
+            case .body, .callout: return TypographyOverrideDescriptor(design: .serif)
+            case .subheadline: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
+            case .footnote: return TypographyOverrideDescriptor(design: .serif, weight: .regular, scale: 0.96)
+            }
+        }
+    }
+
+    fileprivate var globalOverride: TypographyOverrideDescriptor? {
+        switch self {
+        case .editorial:
+            return TypographyOverrideDescriptor(scale: 1.02)
+        default:
+            return nil
+        }
+    }
+
+    func makeScale(overrides environment: [String: String] = [:]) -> TypographyScale {
+        TypographyEnvironmentResolver(environment: environment, preset: self).resolve()
+    }
+}
+
+private enum TypographyCategory {
+    case display
+    case content
+    case meta
+}
+
+private enum TypographyStyle: CaseIterable {
+    case largeTitle
+    case title
+    case headline
+    case body
+    case callout
+    case subheadline
+    case footnote
+
+    var environmentKey: String {
+        switch self {
+        case .largeTitle: return "LISTIT_IOS_THEME_FONT_LARGE_TITLE"
+        case .title: return "LISTIT_IOS_THEME_FONT_TITLE"
+        case .headline: return "LISTIT_IOS_THEME_FONT_HEADLINE"
+        case .body: return "LISTIT_IOS_THEME_FONT_BODY"
+        case .callout: return "LISTIT_IOS_THEME_FONT_CALLOUT"
+        case .subheadline: return "LISTIT_IOS_THEME_FONT_SUBHEADLINE"
+        case .footnote: return "LISTIT_IOS_THEME_FONT_FOOTNOTE"
+        }
+    }
+
+    var textStyle: UIFont.TextStyle {
+        switch self {
+        case .largeTitle: return .largeTitle
+        case .title: return .title1
+        case .headline: return .headline
+        case .body: return .body
+        case .callout: return .callout
+        case .subheadline: return .subheadline
+        case .footnote: return .footnote
+        }
+    }
+
+    var category: TypographyCategory {
+        switch self {
+        case .largeTitle, .title: return .display
+        case .headline, .body, .callout: return .content
+        case .subheadline, .footnote: return .meta
+        }
+    }
+}
+
+private struct TypographyOverrideDescriptor {
+    var family: String?
+    var design: UIFontDescriptor.SystemDesign?
+    var weight: UIFont.Weight?
+    var scale: CGFloat?
+
+    init(family: String? = nil,
+         design: UIFontDescriptor.SystemDesign? = nil,
+         weight: UIFont.Weight? = nil,
+         scale: CGFloat? = nil) {
+        self.family = family
+        self.design = design
+        self.weight = weight
+        self.scale = scale
+    }
+
+    init?(rawValue: String) {
+        self.init()
+
+        let components = rawValue.split(whereSeparator: { $0 == "," || $0 == ";" })
+
+        for component in components {
+            let pair = component.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: true)
+            guard pair.count == 2 else { continue }
+            let key = pair[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            switch key {
+            case "family", "font":
+                if !value.isEmpty { family = value }
+            case "design":
+                design = UIFontDescriptor.SystemDesign(token: value)
+            case "weight":
+                weight = UIFont.Weight(token: value)
+            case "scale":
+                if let amount = Double(value) { scale = CGFloat(amount) }
+            default:
+                continue
+            }
+        }
+
+        if isEmpty { return nil }
+    }
+
+    var isEmpty: Bool {
+        family == nil && design == nil && weight == nil && scale == nil
+    }
+
+    func apply(to descriptor: UIFontDescriptor, textStyle: UIFont.TextStyle) -> UIFontDescriptor {
+        var updated = descriptor
+
+        if let family {
+            updated = updated.withFamily(family)
+        }
+        if let design, let designed = updated.withDesign(design) {
+            updated = designed
+        }
+        if let weight {
+            updated = updated.applying(weight: weight)
+        }
+        if let scale {
+            let baseDescriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: textStyle)
+            let baseSize = updated.pointSize > 0 ? updated.pointSize : baseDescriptor.pointSize
+            updated = updated.withSize(baseSize * scale)
+        }
+
+        return updated
+    }
+}
+
+private struct TypographyEnvironmentResolver {
+    let environment: [String: String]
+    let preset: TypographyPreset
+
+    init(environment: [String: String], preset: TypographyPreset? = nil) {
+        self.environment = environment
+        if let preset {
+            self.preset = preset
+        } else if let value = environment["LISTIT_IOS_THEME_TYPOGRAPHY_PRESET"],
+                  let resolved = TypographyPreset(environmentValue: value) {
+            self.preset = resolved
+        } else {
+            self.preset = TypographyPreset.default
+        }
+    }
+
+    func resolve() -> TypographyScale {
+        let globalOverride = environment["LISTIT_IOS_THEME_FONT_GLOBAL"].flatMap(TypographyOverrideDescriptor.init(rawValue:))
+        let displayOverride = environment["LISTIT_IOS_THEME_FONT_DISPLAY"].flatMap(TypographyOverrideDescriptor.init(rawValue:))
+        let contentOverride = environment["LISTIT_IOS_THEME_FONT_CONTENT"].flatMap(TypographyOverrideDescriptor.init(rawValue:))
+        let metaOverride = environment["LISTIT_IOS_THEME_FONT_META"].flatMap(TypographyOverrideDescriptor.init(rawValue:))
+
+        var specific: [TypographyStyle: TypographyOverrideDescriptor] = [:]
+        for style in TypographyStyle.allCases {
+            if let raw = environment[style.environmentKey], let descriptor = TypographyOverrideDescriptor(rawValue: raw) {
+                specific[style] = descriptor
+            }
+        }
+
+        func categoryOverride(for style: TypographyStyle) -> TypographyOverrideDescriptor? {
+            switch style.category {
+            case .display: return displayOverride
+            case .content: return contentOverride
+            case .meta: return metaOverride
+            }
+        }
+
+        var fonts: [TypographyStyle: Font] = [:]
+
+        for style in TypographyStyle.allCases {
+            var descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: style.textStyle)
+
+            if let base = preset.baseOverride(for: style) {
+                descriptor = base.apply(to: descriptor, textStyle: style.textStyle)
+            }
+
+            if let presetGlobal = preset.globalOverride {
+                descriptor = presetGlobal.apply(to: descriptor, textStyle: style.textStyle)
+            }
+
+            if let globalOverride {
+                descriptor = globalOverride.apply(to: descriptor, textStyle: style.textStyle)
+            }
+
+            if let category = categoryOverride(for: style) {
+                descriptor = category.apply(to: descriptor, textStyle: style.textStyle)
+            }
+
+            if let styleOverride = specific[style] {
+                descriptor = styleOverride.apply(to: descriptor, textStyle: style.textStyle)
+            }
+
+            let font = UIFont(descriptor: descriptor, size: 0)
+            fonts[style] = Font.custom(font.fontName, size: font.pointSize, relativeTo: style.textStyle.swiftUITextStyle)
+        }
+
+        return TypographyScale(
+            largeTitle: fonts[.largeTitle]!,
+            title: fonts[.title]!,
+            headline: fonts[.headline]!,
+            body: fonts[.body]!,
+            callout: fonts[.callout]!,
+            subheadline: fonts[.subheadline]!,
+            footnote: fonts[.footnote]!
+        )
+    }
+}
+
+private extension UIFontDescriptor {
+    func applying(weight: UIFont.Weight) -> UIFontDescriptor {
+        var traits = fontAttributes[.traits] as? [UIFontDescriptor.TraitKey: Any] ?? [:]
+        traits[.weight] = weight
+        return addingAttributes([.traits: traits])
+    }
+}
+
+private extension UIFontDescriptor.SystemDesign {
+    init?(token: String) {
+        switch token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "rounded": self = .rounded
+        case "serif": self = .serif
+        case "monospaced", "mono", "code": self = .monospaced
+        case "default", "system": self = .default
+        default: return nil
+        }
+    }
+}
+
+private extension UIFont.Weight {
+    init?(token: String) {
+        switch token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ultralight": self = .ultraLight
+        case "thin": self = .thin
+        case "light": self = .light
+        case "regular", "normal": self = .regular
+        case "medium": self = .medium
+        case "semibold", "semi-bold": self = .semibold
+        case "bold": self = .bold
+        case "heavy": self = .heavy
+        case "black": self = .black
+        default: return nil
+        }
+    }
+}
+
+private extension UIFont.TextStyle {
+    var swiftUITextStyle: Font.TextStyle {
+        switch self {
+        case .largeTitle: return .largeTitle
+        case .title1: return .title
+        case .title2: return .title2
+        case .title3: return .title3
+        case .headline: return .headline
+        case .body: return .body
+        case .callout: return .callout
+        case .subheadline: return .subheadline
+        case .footnote: return .footnote
+        case .caption1: return .caption
+        case .caption2: return .caption2
+        default: return .body
+        }
     }
 }
 
