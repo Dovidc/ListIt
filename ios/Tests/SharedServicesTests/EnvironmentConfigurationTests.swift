@@ -61,7 +61,9 @@ final class EnvironmentConfigurationTests: XCTestCase {
                 "LISTIT_IOS_THEME_PRIMARY": "#000000",
                 "LISTIT_IOS_THEME_BASE_SPACING": "20",
                 "LISTIT_IOS_THEME_CORNER_RADIUS": "14",
-                "LISTIT_IOS_THEME_LARGE_TITLES": "false"
+                "LISTIT_IOS_THEME_LARGE_TITLES": "false",
+                "LISTIT_IOS_THEME_ON_PRIMARY": "#FFEE00",
+                "LISTIT_IOS_THEME_ON_SURFACE": "#333333"
             ]
         )
 
@@ -70,6 +72,8 @@ final class EnvironmentConfigurationTests: XCTestCase {
         XCTAssertEqual(theme.spacing.medium, 30)
         XCTAssertEqual(theme.corners.medium, 14)
         XCTAssertFalse(theme.enablesLargeTitles)
+        XCTAssertEqual(theme.palette.onPrimary, Color(hex: "#FFEE00"))
+        XCTAssertEqual(theme.palette.onSurface, Color(hex: "#333333"))
     }
 
     func testCapabilityConfigurationRespectsEnvironmentFlags() {

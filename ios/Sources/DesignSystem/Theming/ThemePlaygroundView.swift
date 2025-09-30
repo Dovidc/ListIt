@@ -19,8 +19,15 @@ public struct ThemePlaygroundView: View {
                     colorEditor(label: "Background", keyPath: \DesignSystemTheme.palette.background)
                 }
 
-                Section("Status Colors") {
+                Section("Surface & Text Colors") {
                     colorEditor(label: "Surface", keyPath: \DesignSystemTheme.palette.surface)
+                    colorEditor(label: "On Surface", keyPath: \DesignSystemTheme.palette.onSurface)
+                    colorEditor(label: "On Background", keyPath: \DesignSystemTheme.palette.onBackground)
+                    colorEditor(label: "On Primary", keyPath: \DesignSystemTheme.palette.onPrimary)
+                    colorEditor(label: "On Secondary", keyPath: \DesignSystemTheme.palette.onSecondary)
+                }
+
+                Section("Status Colors") {
                     colorEditor(label: "Success", keyPath: \DesignSystemTheme.palette.success)
                     colorEditor(label: "Warning", keyPath: \DesignSystemTheme.palette.warning)
                     colorEditor(label: "Danger", keyPath: \DesignSystemTheme.palette.danger)

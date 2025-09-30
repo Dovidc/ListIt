@@ -17,20 +17,21 @@ public struct ListItCard<Content: View>: View {
             if let title {
                 Text(title)
                     .font(system.typography.headline)
-                    .foregroundStyle(system.colors.secondary)
+                    .foregroundStyle(system.colors.onSurface)
             }
             if let subtitle {
                 Text(subtitle)
                     .font(system.typography.subheadline)
-                    .foregroundStyle(system.colors.secondary.opacity(0.7))
+                    .foregroundStyle(system.colors.onSurface.opacity(0.7))
             }
             content
                 .font(system.typography.body)
+                .foregroundStyle(system.colors.onSurface)
         }
         .padding(system.spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(system.colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: system.corners.medium, style: .continuous))
-        .shadow(color: system.colors.secondary.opacity(0.05), radius: 8, x: 0, y: 4)
+        .shadow(color: system.colors.onSurface.opacity(0.05), radius: 8, x: 0, y: 4)
     }
 }

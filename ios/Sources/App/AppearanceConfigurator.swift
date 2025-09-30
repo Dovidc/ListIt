@@ -23,13 +23,13 @@ enum AppearanceConfigurator {
         appearance.backgroundColor = UIColor(designSystem.colors.surface)
         appearance.titleTextAttributes = [
             .font: designSystem.typography.headlineUIFont,
-            .foregroundColor: UIColor(designSystem.colors.secondary)
+            .foregroundColor: UIColor(designSystem.colors.onSurface)
         ]
         appearance.largeTitleTextAttributes = [
             .font: designSystem.typography.largeTitleUIFont,
-            .foregroundColor: UIColor(designSystem.colors.secondary)
+            .foregroundColor: UIColor(designSystem.colors.onSurface)
         ]
-        appearance.shadowColor = UIColor(designSystem.colors.secondary).withAlphaComponent(0.08)
+        appearance.shadowColor = UIColor(designSystem.colors.onSurface).withAlphaComponent(0.08)
         UINavigationBar.appearance().prefersLargeTitles = designSystem.enablesLargeTitles
         UINavigationBar.appearance().tintColor = UIColor(designSystem.colors.accent)
         UINavigationBar.appearance().standardAppearance = appearance
@@ -43,7 +43,7 @@ enum AppearanceConfigurator {
         appearance.backgroundColor = UIColor(designSystem.colors.surface)
 
         let selectedColor = UIColor(designSystem.colors.accent)
-        let normalColor = UIColor(designSystem.colors.secondary).withAlphaComponent(0.55)
+        let normalColor = UIColor(designSystem.colors.onSurface).withAlphaComponent(0.55)
 
         let selectedFont = designSystem.typography.calloutUIFont
         let normalFont = designSystem.typography.footnoteUIFont
@@ -88,7 +88,7 @@ enum AppearanceConfigurator {
             .font: designSystem.typography.calloutUIFont
         ], for: .highlighted)
         UIBarButtonItem.appearance().setTitleTextAttributes([
-            .foregroundColor: UIColor(designSystem.colors.secondary).withAlphaComponent(0.4),
+            .foregroundColor: UIColor(designSystem.colors.onSurface).withAlphaComponent(0.4),
             .font: designSystem.typography.calloutUIFont
         ], for: .disabled)
         UIToolbar.appearance().tintColor = UIColor(designSystem.colors.accent)
