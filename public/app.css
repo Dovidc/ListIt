@@ -263,6 +263,15 @@
   letter-spacing: 0.2px;
 }
 
+.card .listing-description {
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
 .toggle-input {
   position: absolute;
   opacity: 0;

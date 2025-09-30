@@ -1591,15 +1591,16 @@
             className: 'row',
             style: { justifyContent: 'space-between', alignItems: 'start' }
           },
-            H('div', null,
+            H('div', { style: { flex: '1 1 auto', minWidth: 0 } },
               H('div', { style: { fontWeight: 800 } }, item.title || 'Item for sale'),
-              H('div', { className: 'muted' }, item.description)
+              H('div', { className: 'muted listing-description' }, item.description)
             ),
             H('div', {
               style: {
                 fontWeight: 800,
                 textAlign: 'right',
-                color: wantsOffer ? '#9f1239' : (isFree ? '#16a34a' : '#111')
+                color: wantsOffer ? '#9f1239' : (isFree ? '#16a34a' : '#111'),
+                flexShrink: 0
               }
             }, wantsOffer
               ? H('span', { className: 'inquiry-badge', style: { fontSize: 16 } }, 'Seller wants an offer')
