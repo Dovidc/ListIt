@@ -14,6 +14,13 @@ from the web application.
 - `FastlaneSupport/` – Fastlane configuration and metadata.
 - `.env.example` – Canonical environment variables shared with the Node/Express backend.
 
+### Native-First State Management
+
+- **Keychain-backed Auth** – `AuthService` persists access and refresh tokens using the system Keychain so credentials stay
+  synchronized with other native surfaces and remain protected by Secure Enclave policies.
+- **CoreData Listings Cache** – `CoreDataListingsPersistence` mirrors the shared listing summaries inside a Core Data store,
+  enabling offline reads and future Spotlight/Siri integrations without round-tripping through JavaScript.
+
 ## Bootstrapping the Workspace
 
 1. Install tooling:

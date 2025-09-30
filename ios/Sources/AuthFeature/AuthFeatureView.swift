@@ -36,10 +36,42 @@ public struct AuthFeatureView: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+                if let tokens = state.tokens {
+                    Section("Active Session") {
+                        LabeledContent("Access Token") {
+                            Text(tokens.accessToken)
+                                .textSelection(.enabled)
+                                .font(.footnote)
+                        }
+
+                        if let refresh = tokens.refreshToken {
+                            LabeledContent("Refresh Token") {
+                                Text(refresh)
+                                    .textSelection(.enabled)
+                                    .font(.footnote)
+                            }
+                        }
+
+                        if let expiry = tokens.expiresAt {
+                            LabeledContent("Expires") {
+                                Text(expiry.formatted(date: .numeric, time: .shortened))
+                            }
+                        }
+
+                        Button(role: .destructive, action: signOut) {
+                            Text("Sign Out")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
             }
             .navigationTitle("Account")
             .alert("Signed In", isPresented: $state.isSignedIn) {
                 Button("OK", role: .cancel) { }
+            }
+            .task {
+                state.tokens = authService.currentTokens()
             }
         }
     }
@@ -51,10 +83,20 @@ public struct AuthFeatureView: View {
             do {
                 let result = try await authService.signIn(email: state.email, password: state.password)
                 state.isSignedIn = result.isSuccess
+                state.tokens = result.tokens ?? authService.currentTokens()
             } catch {
                 state.errorMessage = error.localizedDescription
             }
             state.isLoading = false
+        }
+    }
+
+    private func signOut() {
+        do {
+            try authService.signOut()
+            state.tokens = nil
+        } catch {
+            state.errorMessage = error.localizedDescription
         }
     }
 }
@@ -65,6 +107,7 @@ private struct AuthViewState {
     var isLoading: Bool = false
     var errorMessage: String?
     var isSignedIn: Bool = false
+    var tokens: AuthTokens?
 
     var canSubmit: Bool {
         !email.isEmpty && !password.isEmpty && !isLoading
