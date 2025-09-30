@@ -1,5 +1,6 @@
 import XCTest
 @testable import SharedServices
+import DesignSystem
 
 final class EnvironmentConfigurationTests: XCTestCase {
     func testLoadsExampleEnvWhenPrimaryMissing() throws {
@@ -51,5 +52,54 @@ final class EnvironmentConfigurationTests: XCTestCase {
 
         let values = try loader.load()
         XCTAssertEqual(values["API_BASE_URL"], "https://custom.example")
+    }
+
+    func testDesignSystemThemeRespectsEnvironment() {
+        let configuration = EnvironmentConfiguration()
+        configuration.loadEnvironment(
+            [
+                "LISTIT_IOS_THEME_PRIMARY": "#000000",
+                "LISTIT_IOS_THEME_BASE_SPACING": "20",
+                "LISTIT_IOS_THEME_CORNER_RADIUS": "14",
+                "LISTIT_IOS_THEME_LARGE_TITLES": "false"
+            ]
+        )
+
+        let theme = configuration.designSystemTheme()
+        XCTAssertEqual(theme.palette.primary, Color(hex: "#000000"))
+        XCTAssertEqual(theme.spacing.medium, 30)
+        XCTAssertEqual(theme.corners.medium, 14)
+        XCTAssertFalse(theme.enablesLargeTitles)
+    }
+
+    func testCapabilityConfigurationRespectsEnvironmentFlags() {
+        let configuration = EnvironmentConfiguration()
+        configuration.loadEnvironment(
+            [
+                "LISTIT_IOS_ENABLE_HAPTICS": "false",
+                "LISTIT_IOS_ENABLE_LIVE_ACTIVITIES": "0",
+                "LISTIT_IOS_ENABLE_WIDGETS": "true",
+                "LISTIT_IOS_ENABLE_SIRI_INTENTS": "yes"
+            ]
+        )
+
+        let capabilityConfiguration = configuration.capabilityConfiguration()
+        XCTAssertFalse(capabilityConfiguration.enablesHaptics)
+        XCTAssertFalse(capabilityConfiguration.enablesLiveActivities)
+        XCTAssertTrue(capabilityConfiguration.enablesWidgets)
+        XCTAssertTrue(capabilityConfiguration.enablesIntents)
+    }
+
+    func testCapabilityEventHandlerIsInvoked() {
+        let configuration = EnvironmentConfiguration()
+        var received = [String: Any]()
+        configuration.setCapabilityEventHandler { name, payload in
+            received = payload
+            XCTAssertEqual(name, "haptic")
+        }
+
+        let bridge = configuration.nativeBridge
+        bridge.emitEvent("haptic", payload: ["style": "success"])
+        XCTAssertEqual(received["style"] as? String, "success")
     }
 }

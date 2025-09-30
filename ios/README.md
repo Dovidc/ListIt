@@ -10,6 +10,10 @@ from the web application.
 - `SharedCoreBridge/` – Swift Package that exposes the shared JavaScript bundle through XCFramework and JavaScriptCore
   runtime entry points.
 - `Services/` – Thin Swift service layer for auth, listings, and uploads.
+- `DesignSystem/` – Native-first typography, color, spacing, and component primitives with playground previews for rapid
+  customization.
+- `PlatformCapabilities/` – Event-driven adapters that translate shared core signals into iOS-only affordances like haptics,
+  Live Activities, widgets, and App Intents.
 - `Config/` – Environment configuration utilities shared by app targets and Fastlane lanes.
 - `FastlaneSupport/` – Fastlane configuration and metadata.
 - `.env.example` – Canonical environment variables shared with the Node/Express backend.
@@ -86,6 +90,37 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - For bespoke build pipelines, point `LISTIT_IOS_ENV_PATH_<VARIANT>` (for example `LISTIT_IOS_ENV_PATH_PRODUCTION`) to a
   directory or file that should override the discovered variant values. Directory targets are inspected for common file
   names such as `app.production.env` so teams can organize configuration however they prefer.
+
+## Design System & Theming
+
+- `DesignSystem/` exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` that wraps any view hierarchy with brand
+  colors, typography, spacing, and component styles. Teams can override theme tokens via `.env` or scheme-based configuration
+  files (`LISTIT_IOS_THEME_*`) without touching source code.
+- `ThemePlaygroundView` ships as a SwiftUI preview that designers can open inside Xcode to tweak palettes, spacing, and
+  interactions. The live preview mirrors production components (cards, primary/secondary buttons) so visual polish remains
+  consistent across web and native.
+- Feature modules consume the design system through the SwiftUI environment. For example, `AuthFeatureView` and
+  `ListingsFeatureView` render `ListItCard` instances, primary buttons, and dynamic typography to guarantee platform idioms
+  like large navigation titles, swipe actions, and dynamic type scaling remain configurable.
+
+## Native Capability Shims
+
+- `PlatformCapabilities/` defines lightweight protocols (`HapticsProviding`, `LiveActivityManaging`, `WidgetScheduling`,
+  `IntentHandling`) and a `CapabilityRouter` that listens for shared-core events. The router can be toggled via environment
+  flags (`LISTIT_IOS_ENABLE_*`) to mirror deployment requirements.
+- `SharedCoreNativeBridge` now supports `emitEvent` so JavaScript modules can trigger native behaviors without leaking
+  platform-specific code back into the shared bundle. `AppEnvironment` wires the bridge to the router, ensuring actions like
+  “favorite listing” or “upload complete” produce haptics, Live Activity updates, or widget refreshes.
+- Because the router is injectable, product teams can drop in bespoke implementations (e.g., Core Haptics waveforms,
+  WidgetKit timelines) per build variant while leaving feature modules untouched.
+
+## Customization Workflow Artifacts
+
+- Launch `ThemePlaygroundView` or add it to an internal scheme to experiment with new palettes alongside snapshot tests.
+- Feature tabs fire `CapabilityEvent`s whenever meaningful milestones occur (successful sign-in, upload completion, swipe
+  gestures). These events flow through the router so QA can validate haptics or Live Activities in isolation.
+- Designers can check in alternative theme presets by extending `.env.production` or other variant files—CI will load the same
+  configuration during Fastlane-driven UI tests.
 
 ## Continuous Integration
 

@@ -1,15 +1,19 @@
 import SwiftUI
 import SharedServices
+import DesignSystem
 
 public struct ListingsFeatureView: View {
+    @Environment(\.designSystem) private var designSystem
     @State private var listings: [Listing] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
     private let listingsService: ListingsService
+    private let capabilityEmitter: (String, [String: Any]) -> Void
 
-    public init(listingsService: ListingsService) {
+    public init(listingsService: ListingsService, capabilityEmitter: @escaping (String, [String: Any]) -> Void = { _, _ in }) {
         self.listingsService = listingsService
+        self.capabilityEmitter = capabilityEmitter
     }
 
     public var body: some View {
@@ -20,19 +24,32 @@ public struct ListingsFeatureView: View {
                 } else if let errorMessage {
                     ContentUnavailableView("Unable to Load", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
                 } else {
-                    List(listings) { listing in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(listing.title)
-                                .font(.headline)
-                            Text(listing.subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                    List {
+                        ForEach(listings) { listing in
+                            ListItCard(title: listing.title, subtitle: listing.subtitle) {
+                                Text("Native listing card powered by the shared core service")
+                                    .font(designSystem.typography.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if designSystem.supportsSwipeActions {
+                                    Button { capabilityEmitter("haptic", ["style": "impact.medium"]) } label: {
+                                        Label("Favorite", systemImage: "heart")
+                                    }
+                                    .tint(designSystem.colors.accent)
+                                }
+                            }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(designSystem.colors.background)
                     .refreshable { await loadListings() }
                 }
             }
             .navigationTitle("Listings")
+            .navigationBarTitleDisplayMode(designSystem.enablesLargeTitles ? .large : .inline)
             .task { await loadListings() }
         }
     }
