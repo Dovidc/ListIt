@@ -10,6 +10,10 @@ public struct ColorPalette: Equatable {
     public var success: Color
     public var warning: Color
     public var danger: Color
+    public var onPrimary: Color
+    public var onSecondary: Color
+    public var onBackground: Color
+    public var onSurface: Color
 
     public init(primary: Color,
                 secondary: Color,
@@ -18,7 +22,11 @@ public struct ColorPalette: Equatable {
                 surface: Color,
                 success: Color,
                 warning: Color,
-                danger: Color) {
+                danger: Color,
+                onPrimary: Color,
+                onSecondary: Color,
+                onBackground: Color,
+                onSurface: Color) {
         self.primary = primary
         self.secondary = secondary
         self.accent = accent
@@ -27,6 +35,10 @@ public struct ColorPalette: Equatable {
         self.success = success
         self.warning = warning
         self.danger = danger
+        self.onPrimary = onPrimary
+        self.onSecondary = onSecondary
+        self.onBackground = onBackground
+        self.onSurface = onSurface
     }
 }
 
@@ -40,7 +52,11 @@ public extension ColorPalette {
             surface: Color(hex: "#FFFFFF"),
             success: Color(hex: "#1BB55C"),
             warning: Color(hex: "#FFB020"),
-            danger: Color(hex: "#FF4F52")
+            danger: Color(hex: "#FF4F52"),
+            onPrimary: Color(hex: "#FFFFFF"),
+            onSecondary: Color(hex: "#FFFFFF"),
+            onBackground: Color(hex: "#1B2A52"),
+            onSurface: Color(hex: "#1B2A52")
         )
     }
 }

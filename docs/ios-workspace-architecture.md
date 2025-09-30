@@ -36,6 +36,10 @@ This strategy keeps the iOS build aligned with the Node/Express `.env` contract 
 - The `DesignSystem` module exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` so native screens can opt into the
   same color, typography, spacing, and corner radius tokens. Teams override any token via `.env` or scheme-specific files using
   the shared `LISTIT_IOS_THEME_*` contract.
+- Palette tokens cover both background hues and readable text pairings. Alongside the base colors (`PRIMARY`, `SECONDARY`,
+  `ACCENT`, `BACKGROUND`, `SURFACE`) the loader honours content-focused overrides (`ON_PRIMARY`, `ON_SECONDARY`,
+  `ON_BACKGROUND`, `ON_SURFACE`) so teams can swap button text, navigation chrome, and card copy colors without editing Swift
+  code.
 - UIKit chrome inherits those tokens automatically. `AppearanceConfigurator` converts the active typography scale into UIKit
   fonts so navigation bars, tab bars, toolbars, and bar button items mirror the SwiftUI look without manual tweaking.
 - The `.env.example` template enumerates every customizable key—from palette overrides to typography descriptors—so product

@@ -58,6 +58,10 @@ public extension DesignSystemTheme {
         if let hex = environment["LISTIT_IOS_THEME_SUCCESS"] { theme.palette.success = Color(hex: hex) }
         if let hex = environment["LISTIT_IOS_THEME_WARNING"] { theme.palette.warning = Color(hex: hex) }
         if let hex = environment["LISTIT_IOS_THEME_DANGER"] { theme.palette.danger = Color(hex: hex) }
+        if let hex = environment["LISTIT_IOS_THEME_ON_PRIMARY"] { theme.palette.onPrimary = Color(hex: hex) }
+        if let hex = environment["LISTIT_IOS_THEME_ON_SECONDARY"] { theme.palette.onSecondary = Color(hex: hex) }
+        if let hex = environment["LISTIT_IOS_THEME_ON_BACKGROUND"] { theme.palette.onBackground = Color(hex: hex) }
+        if let hex = environment["LISTIT_IOS_THEME_ON_SURFACE"] { theme.palette.onSurface = Color(hex: hex) }
 
         if let enablesLargeTitles = environment["LISTIT_IOS_THEME_LARGE_TITLES"]?.boolValue {
             theme.enablesLargeTitles = enablesLargeTitles

@@ -11,7 +11,7 @@ public struct ListItPrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, system.spacing.small)
             .frame(maxWidth: .infinity)
             .background(configuration.isPressed ? system.colors.primary.opacity(0.8) : system.colors.primary)
-            .foregroundStyle(.white)
+            .foregroundStyle(system.colors.onPrimary)
             .clipShape(RoundedRectangle(cornerRadius: system.corners.medium, style: .continuous))
             .shadow(color: system.colors.primary.opacity(0.15), radius: configuration.isPressed ? 2 : 6, x: 0, y: configuration.isPressed ? 1 : 3)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)

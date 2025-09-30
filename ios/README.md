@@ -99,7 +99,8 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - UIKit chrome now consumes the same tokens: `AppearanceConfigurator` translates the active typography scale into navigation bar,
   tab bar, and toolbar fonts so per-scheme overrides stay consistent across SwiftUI and UIKit surfaces.
 - Theme tokens accept granular overrides so product teams can reskin ListIt without recompiling JavaScript:
-  - **Colors** – `LISTIT_IOS_THEME_PRIMARY`, `SECONDARY`, `ACCENT`, `BACKGROUND`, `SURFACE`, `SUCCESS`, `WARNING`, `DANGER`.
+  - **Colors** – `LISTIT_IOS_THEME_PRIMARY`, `SECONDARY`, `ACCENT`, `BACKGROUND`, `SURFACE`, `ON_PRIMARY`, `ON_SECONDARY`,
+    `ON_BACKGROUND`, `ON_SURFACE`, `SUCCESS`, `WARNING`, `DANGER`.
   - **Spacing** – override individual values with `LISTIT_IOS_THEME_SPACING_XSMALL`, `SMALL`, `MEDIUM`, `LARGE`, and
     `XLARGE`, or set a base multiplier via `LISTIT_IOS_THEME_BASE_SPACING`.
   - **Corners** – control each radius with `LISTIT_IOS_THEME_CORNER_RADIUS_SMALL`, `MEDIUM`, and `LARGE`, or apply a base
