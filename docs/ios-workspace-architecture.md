@@ -31,6 +31,19 @@ The workspace layout mirrors the mental model of the web client, making it easie
 
 This strategy keeps the iOS build aligned with the Node/Express `.env` contract while still allowing scheme-specific overrides.
 
+## Design System & Customization
+
+- The `DesignSystem` module exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` so native screens can opt into the
+  same color, typography, spacing, and corner radius tokens. Teams override any token via `.env` or scheme-specific files using
+  the shared `LISTIT_IOS_THEME_*` contract.
+- UIKit chrome inherits those tokens automatically. `AppearanceConfigurator` converts the active typography scale into UIKit
+  fonts so navigation bars, tab bars, toolbars, and bar button items mirror the SwiftUI look without manual tweaking.
+- The `.env.example` template enumerates every customizable key—from palette overrides to typography descriptors—so product
+  variants (production, staging, white-label) can copy the file and tune values without code changes.
+- `ThemePlaygroundView` (available under `DesignSystem/Theming`) offers a live SwiftUI preview with controls for colors,
+  spacing, typography presets, and interaction toggles, enabling designers to experiment before checking updated tokens into
+  source control.
+
 ## Continuous Integration
 
 Fastlane lanes (`ci_tests`, `beta`) are set up under `ios/FastlaneSupport`, and the GitHub Actions workflow `.github/workflows/ios-ci.yml`

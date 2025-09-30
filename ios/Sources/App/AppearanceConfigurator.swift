@@ -22,11 +22,11 @@ enum AppearanceConfigurator {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(designSystem.colors.surface)
         appearance.titleTextAttributes = [
-            .font: UIFont.preferredFont(forTextStyle: .headline),
+            .font: designSystem.typography.headlineUIFont,
             .foregroundColor: UIColor(designSystem.colors.secondary)
         ]
         appearance.largeTitleTextAttributes = [
-            .font: UIFont.preferredFont(forTextStyle: .largeTitle),
+            .font: designSystem.typography.largeTitleUIFont,
             .foregroundColor: UIColor(designSystem.colors.secondary)
         ]
         appearance.shadowColor = UIColor(designSystem.colors.secondary).withAlphaComponent(0.08)
@@ -45,13 +45,22 @@ enum AppearanceConfigurator {
         let selectedColor = UIColor(designSystem.colors.accent)
         let normalColor = UIColor(designSystem.colors.secondary).withAlphaComponent(0.55)
 
+        let selectedFont = designSystem.typography.calloutUIFont
+        let normalFont = designSystem.typography.footnoteUIFont
+
         [appearance.stackedLayoutAppearance,
          appearance.inlineLayoutAppearance,
          appearance.compactInlineLayoutAppearance].forEach { itemAppearance in
             itemAppearance.selected.iconColor = selectedColor
-            itemAppearance.selected.titleTextAttributes = [.foregroundColor: selectedColor]
+            itemAppearance.selected.titleTextAttributes = [
+                .foregroundColor: selectedColor,
+                .font: selectedFont
+            ]
             itemAppearance.normal.iconColor = normalColor
-            itemAppearance.normal.titleTextAttributes = [.foregroundColor: normalColor]
+            itemAppearance.normal.titleTextAttributes = [
+                .foregroundColor: normalColor,
+                .font: normalFont
+            ]
         }
 
         UITabBar.appearance().tintColor = selectedColor
@@ -67,8 +76,21 @@ enum AppearanceConfigurator {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(designSystem.colors.surface)
         appearance.buttonAppearance.normal.titleTextAttributes = [
-            .foregroundColor: UIColor(designSystem.colors.accent)
+            .foregroundColor: UIColor(designSystem.colors.accent),
+            .font: designSystem.typography.calloutUIFont
         ]
+        UIBarButtonItem.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor(designSystem.colors.accent),
+            .font: designSystem.typography.calloutUIFont
+        ], for: .normal)
+        UIBarButtonItem.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor(designSystem.colors.accent).withAlphaComponent(0.7),
+            .font: designSystem.typography.calloutUIFont
+        ], for: .highlighted)
+        UIBarButtonItem.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor(designSystem.colors.secondary).withAlphaComponent(0.4),
+            .font: designSystem.typography.calloutUIFont
+        ], for: .disabled)
         UIToolbar.appearance().tintColor = UIColor(designSystem.colors.accent)
         UIToolbar.appearance().standardAppearance = appearance
         if #available(iOS 15.0, *) {
