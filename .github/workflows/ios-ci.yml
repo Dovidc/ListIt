@@ -25,7 +25,12 @@ jobs:
           working-directory: ios/FastlaneSupport
       - name: Install Homebrew dependencies
         run: |
-          git -C /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core fetch --unshallow
+          TAP_DIR=/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core
+          if git -C "$TAP_DIR" rev-parse --is-shallow-repository | grep -q "true"; then
+            git -C "$TAP_DIR" fetch --unshallow
+          else
+            git -C "$TAP_DIR" fetch
+          fi
           brew install xcodegen
       - name: Generate workspace
         run: |
