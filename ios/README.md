@@ -27,6 +27,20 @@ from the web application.
    ```bash
    brew install xcodegen fastlane
    ```
+
+   If Homebrew reports that the `xcodegen` formula requires Xcode 15.3 (a
+   common issue on macOS 13 machines that must stay on Xcode 14), run the
+   provided installer to download a compatible binary directly from the
+   upstream release archives:
+
+   ```bash
+   npm run ios:ensure-xcodegen
+   ```
+
+   The script installs the binary into `/usr/local/bin` (or falls back to
+   `~/.local/bin`) and honors the `LISTIT_XCODEGEN_VERSION`,
+   `LISTIT_XCODEGEN_INSTALL_DIR`, and `LISTIT_XCODEGEN_URL` environment
+   variables if you need a different release or custom location.
 2. Generate the workspace and projects:
    ```bash
    cd ios
