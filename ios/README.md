@@ -62,6 +62,17 @@ offers the highest level of iOS-specific customization:
 
 All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-specific configuration files.
 
+### Environment Variants & Overrides
+
+- Set `LISTIT_ENV` (e.g., `production`, `staging`, `qa`) to load additional overlays. Matching files in
+  `Resources/Config` such as `app.production.env` automatically extend the base configuration while keeping values in the
+  shared bundle (`Sources/SharedServices/Resources`).
+- Provide project-level overrides by adding `.env.production` (or `.env-production`) next to the standard `.env`. When the
+  variant-specific file is absent the loader falls back to `.env.example.production` and only fills missing keys.
+- For bespoke build pipelines, point `LISTIT_IOS_ENV_PATH_<VARIANT>` (for example `LISTIT_IOS_ENV_PATH_PRODUCTION`) to a
+  directory or file that should override the discovered variant values. Directory targets are inspected for common file
+  names such as `app.production.env` so teams can organize configuration however they prefer.
+
 ## Continuous Integration
 
 Fastlane lanes and the GitHub Actions workflow ensure `xcodebuild test` runs on pull requests and that archives are
