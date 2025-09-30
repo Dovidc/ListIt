@@ -45,30 +45,63 @@ public extension ColorPalette {
     }
 }
 
-public struct TypographyScale: Equatable {
-    public var largeTitle: Font
-    public var title: Font
-    public var headline: Font
-    public var body: Font
-    public var callout: Font
-    public var subheadline: Font
-    public var footnote: Font
+public struct TypographyFont: Equatable {
+    public var swiftUI: Font
+    public var uiKit: UIFont
 
-    public init(largeTitle: Font,
-                title: Font,
-                headline: Font,
-                body: Font,
-                callout: Font,
-                subheadline: Font,
-                footnote: Font) {
-        self.largeTitle = largeTitle
-        self.title = title
-        self.headline = headline
-        self.body = body
-        self.callout = callout
-        self.subheadline = subheadline
-        self.footnote = footnote
+    public init(swiftUI: Font, uiKit: UIFont) {
+        self.swiftUI = swiftUI
+        self.uiKit = uiKit
     }
+
+    public static func == (lhs: TypographyFont, rhs: TypographyFont) -> Bool {
+        lhs.swiftUI == rhs.swiftUI &&
+            lhs.uiKit.fontName == rhs.uiKit.fontName &&
+            abs(lhs.uiKit.pointSize - rhs.uiKit.pointSize) < CGFloat.ulpOfOne &&
+            lhs.uiKit.fontDescriptor.symbolicTraits == rhs.uiKit.fontDescriptor.symbolicTraits
+    }
+}
+
+public struct TypographyScale: Equatable {
+    public var largeTitleFont: TypographyFont
+    public var titleFont: TypographyFont
+    public var headlineFont: TypographyFont
+    public var bodyFont: TypographyFont
+    public var calloutFont: TypographyFont
+    public var subheadlineFont: TypographyFont
+    public var footnoteFont: TypographyFont
+
+    public init(largeTitle: TypographyFont,
+                title: TypographyFont,
+                headline: TypographyFont,
+                body: TypographyFont,
+                callout: TypographyFont,
+                subheadline: TypographyFont,
+                footnote: TypographyFont) {
+        self.largeTitleFont = largeTitle
+        self.titleFont = title
+        self.headlineFont = headline
+        self.bodyFont = body
+        self.calloutFont = callout
+        self.subheadlineFont = subheadline
+        self.footnoteFont = footnote
+    }
+
+    public var largeTitle: Font { largeTitleFont.swiftUI }
+    public var title: Font { titleFont.swiftUI }
+    public var headline: Font { headlineFont.swiftUI }
+    public var body: Font { bodyFont.swiftUI }
+    public var callout: Font { calloutFont.swiftUI }
+    public var subheadline: Font { subheadlineFont.swiftUI }
+    public var footnote: Font { footnoteFont.swiftUI }
+
+    public var largeTitleUIFont: UIFont { largeTitleFont.uiKit }
+    public var titleUIFont: UIFont { titleFont.uiKit }
+    public var headlineUIFont: UIFont { headlineFont.uiKit }
+    public var bodyUIFont: UIFont { bodyFont.uiKit }
+    public var calloutUIFont: UIFont { calloutFont.uiKit }
+    public var subheadlineUIFont: UIFont { subheadlineFont.uiKit }
+    public var footnoteUIFont: UIFont { footnoteFont.uiKit }
 }
 
 public extension TypographyScale {
@@ -421,7 +454,7 @@ private struct TypographyEnvironmentResolver {
             }
         }
 
-        var fonts: [TypographyStyle: Font] = [:]
+        var fonts: [TypographyStyle: TypographyFont] = [:]
 
         for style in TypographyStyle.allCases {
             var descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: style.textStyle)
@@ -446,8 +479,11 @@ private struct TypographyEnvironmentResolver {
                 descriptor = styleOverride.apply(to: descriptor, textStyle: style.textStyle)
             }
 
-            let font = UIFont(descriptor: descriptor, size: 0)
-            fonts[style] = Font.custom(font.fontName, size: font.pointSize, relativeTo: style.textStyle.swiftUITextStyle)
+            let uiFont = UIFont(descriptor: descriptor, size: 0)
+            let swiftUIFont = Font.custom(uiFont.fontName,
+                                          size: uiFont.pointSize,
+                                          relativeTo: style.textStyle.swiftUITextStyle)
+            fonts[style] = TypographyFont(swiftUI: swiftUIFont, uiKit: uiFont)
         }
 
         return TypographyScale(

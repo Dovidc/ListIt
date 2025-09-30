@@ -96,6 +96,8 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - `DesignSystem/` exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` that wraps any view hierarchy with brand
   colors, typography, spacing, and component styles. Teams can override theme tokens via `.env` or scheme-based configuration
   files (`LISTIT_IOS_THEME_*`) without touching source code.
+- UIKit chrome now consumes the same tokens: `AppearanceConfigurator` translates the active typography scale into navigation bar,
+  tab bar, and toolbar fonts so per-scheme overrides stay consistent across SwiftUI and UIKit surfaces.
 - Theme tokens accept granular overrides so product teams can reskin ListIt without recompiling JavaScript:
   - **Colors** – `LISTIT_IOS_THEME_PRIMARY`, `SECONDARY`, `ACCENT`, `BACKGROUND`, `SURFACE`, `SUCCESS`, `WARNING`, `DANGER`.
   - **Spacing** – override individual values with `LISTIT_IOS_THEME_SPACING_XSMALL`, `SMALL`, `MEDIUM`, `LARGE`, and
@@ -109,6 +111,8 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - `ThemePlaygroundView` ships as a SwiftUI preview that designers can open inside Xcode to tweak palettes, spacing, and
   interactions. The live preview mirrors production components (cards, primary/secondary buttons) and now surfaces sliders for
   spacing, corner radii, typography presets, and status colors so visual polish remains consistent across web and native.
+- `.env.example` in the workspace root enumerates every override key (palette, spacing, corners, typography) so product variants
+  can start from a single template and adjust only the values that differ from the defaults.
 - Global UIKit chrome (navigation bars, tab bars, toolbars) inherits the active `DesignSystemTheme`, which keeps large titles,
   tint colors, and selection states synchronized with the SwiftUI layer.
 - Feature modules consume the design system through the SwiftUI environment. For example, `AuthFeatureView` and
