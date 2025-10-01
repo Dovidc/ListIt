@@ -27,6 +27,8 @@ from the web application.
 
 ## Bootstrapping the Workspace
 
+> Looking for a complete macOS checklist? Follow the step-by-step setup guide in [`docs/ios-macos-setup.md`](../docs/ios-macos-setup.md) to prepare your machine before generating the workspace.
+
 1. Install tooling:
    ```bash
    brew install xcodegen fastlane
