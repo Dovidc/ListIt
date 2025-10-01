@@ -5,8 +5,8 @@ options:
     iOS: 16.0
   configurations:
     Debug: debug
-    Release: release
     Staging: debug
+    Release: release
 workspace:
   name: ListIt
   projects:
