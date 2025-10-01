@@ -10,7 +10,10 @@ configs:
 workspace:
   name: ListIt
   projects:
-    - path: ListIt.xcodeproj
+    # Keep this entry as a plain string so XcodeGen emits ListIt.xcworkspace.
+    # Using the dictionary form ("path: ...") makes XcodeGen treat the project
+    # as an external reference and it will skip recreating the workspace.
+    - ListIt.xcodeproj
 packages:
   SharedCoreBridge:
     path: SharedCoreBridge
