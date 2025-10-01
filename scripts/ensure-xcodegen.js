@@ -8,6 +8,7 @@ const {
   mkdirSync,
   mkdtempSync,
   lstatSync,
+  statSync,
   readdirSync,
   unlinkSync,
 } = require('fs');
@@ -117,7 +118,7 @@ async function installXcodeGen() {
         const binaryDir = dirname(binaryPath);
         missingSupport = REQUIRED_SUPPORT_DIRS.filter((dirName) => {
           try {
-            return !lstatSync(join(binaryDir, dirName)).isDirectory();
+            return !statSync(join(binaryDir, dirName)).isDirectory();
           } catch (_) {
             return true;
           }
