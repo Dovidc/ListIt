@@ -1,5 +1,16 @@
 #!/usr/bin/env node
-const { accessSync, constants, copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, unlinkSync } = require('fs');
+const {
+  accessSync,
+  constants,
+  copyFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  lstatSync,
+  readdirSync,
+  unlinkSync,
+} = require('fs');
 const { tmpdir, homedir } = require('os');
 const { join, resolve } = require('path');
 const { execFileSync } = require('child_process');
@@ -105,10 +116,51 @@ async function installXcodeGen() {
     throw new Error('Failed to locate xcodegen binary in the extracted archive.');
   }
 
+  const supportRoot = join(workDir, 'xcodegen');
+
+  const copyDirectory = (source, destination) => {
+    mkdirSync(destination, { recursive: true });
+    const entries = readdirSync(source, { withFileTypes: true });
+    for (const entry of entries) {
+      const sourcePath = join(source, entry.name);
+      const destPath = join(destination, entry.name);
+      if (entry.isDirectory()) {
+        copyDirectory(sourcePath, destPath);
+      } else {
+        copyFileSync(sourcePath, destPath);
+      }
+    }
+  };
+
+  const copySupportFiles = (source, destination) => {
+    const entries = readdirSync(source, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === 'bin' || !entry.isDirectory()) continue;
+      const sourcePath = join(source, entry.name);
+      const destPath = join(destination, entry.name);
+      try {
+        const existing = lstatSync(destPath);
+        if (!existing.isDirectory()) {
+          console.warn(
+            `Skipping XcodeGen support entry "${entry.name}" because ${destPath} already exists and is not a directory.`,
+          );
+          continue;
+        }
+      } catch (_) {}
+      copyDirectory(sourcePath, destPath);
+    }
+  };
+
   const installDir = resolveInstallDirectory();
   const targetPath = join(installDir, 'xcodegen');
   copyFileSync(binaryPath, targetPath);
   chmodSync(targetPath, 0o755);
+
+  try {
+    copySupportFiles(supportRoot, installDir);
+  } catch (err) {
+    console.warn('Unable to copy XcodeGen support files:', err.message || err);
+  }
   try {
     unlinkSync(zipPath);
   } catch (_) {}
