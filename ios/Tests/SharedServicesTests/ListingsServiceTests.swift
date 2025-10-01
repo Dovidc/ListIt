@@ -12,6 +12,7 @@ final class ListingsServiceTests: XCTestCase {
         let listings = try waitFor { try await service.fetchListings() }
         XCTAssertEqual(listings.first?.title, "Test")
         XCTAssertEqual(persistence.storedListings.first?.id, "1")
+        XCTAssertEqual(runtime.invokedFunctions, ["listings_fetch"])
     }
 
     func testCachesListingsResolvedFromPromise() throws {
@@ -53,6 +54,7 @@ private final class FakeRuntime: SharedRuntime {
     var stubbedError: Error?
     var stubbedPromisePayload: Any?
     var stubbedPromiseShouldReject = false
+    private(set) var invokedFunctions: [String] = []
 
     override init() {
         let context = JSContext()!
@@ -61,26 +63,24 @@ private final class FakeRuntime: SharedRuntime {
     }
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
+        XCTFail("Expected async call for \(name)")
+        throw SharedRuntimeError.missingExport(name: name)
+    }
+
+    override func callAsync(function name: String, with arguments: [Any]) async throws -> JSValue {
+        invokedFunctions.append(name)
         if let stubbedError {
             throw stubbedError
         }
         if let payload = stubbedPromisePayload {
-            let context = jsContext
-            let shouldReject = stubbedPromiseShouldReject
-            let block: @convention(block) (JSValue?, JSValue?) -> Void = { resolve, reject in
-                if shouldReject {
-                    let errorValue = JSValue(object: "Promise rejected", in: context)
-                    reject?.call(withArguments: [errorValue as Any])
-                    return
-                }
-                let resolvedValue = JSValue(object: payload, in: context) ?? JSValue(nullIn: context)!
-                resolve?.call(withArguments: [resolvedValue])
+            if stubbedPromiseShouldReject {
+                throw SharedRuntimeError.javascript(message: "Promise rejected")
             }
-            if let thenable = JSValue(object: ["then": block], in: context) {
-                return thenable
-            }
+            await Task.yield()
+            return JSValue(object: payload, in: jsContext) ?? JSValue(nullIn: jsContext)!
         }
         guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
+        await Task.yield()
         return stubbedResponse
     }
 }
