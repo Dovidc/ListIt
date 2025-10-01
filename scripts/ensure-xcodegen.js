@@ -81,8 +81,15 @@ function downloadFile(url, destination) {
 async function installXcodeGen() {
   const currentVersion = resolveCurrentVersion();
   if (currentVersion && compareSemver(currentVersion, MIN_VERSION) >= 0) {
-    console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}.`);
-    return;
+    const matchesTarget = TARGET_VERSION && compareSemver(currentVersion, TARGET_VERSION) === 0;
+    if (!TARGET_VERSION || matchesTarget) {
+      const targetInfo = TARGET_VERSION ? ` and matches requested ${TARGET_VERSION}` : '';
+      console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}${targetInfo}.`);
+      return;
+    }
+    console.log(
+      `XcodeGen ${currentVersion} meets minimum ${MIN_VERSION} but differs from requested ${TARGET_VERSION}, reinstalling...`,
+    );
   }
 
   const workDir = mkdtempSync(join(tmpdir(), 'listit-xcodegen-'));
