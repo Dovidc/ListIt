@@ -1136,15 +1136,15 @@ export function installNativeBindings(options = {}) {
     }
   };
 
-  globalThis.listings_fetch = (params) => {
+  globalThis.listings_fetch = async (params) => {
     try {
-      return Promise.resolve(listings.fetchSummaries(params || {})).then((items) => (
-        items.map((item) => ({
-          id: item.id,
-          title: item.title,
-          subtitle: item.subtitle
-        }))
-      ));
+      const result = await listings.fetchSummaries(params || {});
+      const items = Array.isArray(result?.items) ? result.items : [];
+      return items.map((item) => ({
+        id: item?.id,
+        title: item?.title,
+        subtitle: item?.subtitle
+      }));
     } catch (error) {
       log(`listings_fetch failed: ${error?.message || error}`);
       return [];

@@ -6,13 +6,23 @@ import JavaScriptCore
 final class ListingsServiceTests: XCTestCase {
     func testMapsListingSummaries() throws {
         let runtime = FakeRuntime()
-        let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: context)
+        runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: runtime.jsContext)
         let persistence = FakeListingsPersistence()
         let service = ListingsService(runtime: runtime, persistence: persistence)
         let listings = try waitFor { try await service.fetchListings() }
         XCTAssertEqual(listings.first?.title, "Test")
         XCTAssertEqual(persistence.storedListings.first?.id, "1")
+    }
+
+    func testCachesListingsResolvedFromPromise() throws {
+        let runtime = FakeRuntime()
+        runtime.stubbedPromisePayload = [["id": "p", "title": "Async", "subtitle": "Promise"]]
+        let persistence = FakeListingsPersistence()
+        let service = ListingsService(runtime: runtime, persistence: persistence)
+
+        let listings = try waitFor { try await service.fetchListings() }
+        XCTAssertEqual(listings.first?.id, "p")
+        XCTAssertEqual(persistence.storedListings.first?.title, "Async")
     }
 
     func testReturnsCachedListingsWhenFetchFails() throws {
@@ -38,12 +48,37 @@ final class ListingsServiceTests: XCTestCase {
 }
 
 private final class FakeRuntime: SharedRuntime {
+    let jsContext: JSContext
     var stubbedResponse: JSValue?
     var stubbedError: Error?
+    var stubbedPromisePayload: Any?
+    var stubbedPromiseShouldReject = false
+
+    override init() {
+        let context = JSContext()!
+        self.jsContext = context
+        super.init(context: context)
+    }
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
         if let stubbedError {
             throw stubbedError
+        }
+        if let payload = stubbedPromisePayload {
+            let context = jsContext
+            let shouldReject = stubbedPromiseShouldReject
+            let block: @convention(block) (JSValue?, JSValue?) -> Void = { resolve, reject in
+                if shouldReject {
+                    let errorValue = JSValue(object: "Promise rejected", in: context)
+                    reject?.call(withArguments: [errorValue as Any])
+                    return
+                }
+                let resolvedValue = JSValue(object: payload, in: context) ?? JSValue(nullIn: context)!
+                resolve?.call(withArguments: [resolvedValue])
+            }
+            if let thenable = JSValue(object: ["then": block], in: context) {
+                return thenable
+            }
         }
         guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
         return stubbedResponse
