@@ -10,7 +10,7 @@ configs:
 workspace:
   name: ListIt
   projects:
-    - ListIt.xcodeproj
+    - path: ListIt.xcodeproj
 packages:
   SharedCoreBridge:
     path: SharedCoreBridge
