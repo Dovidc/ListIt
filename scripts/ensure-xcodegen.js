@@ -12,7 +12,7 @@ const {
   unlinkSync,
 } = require('fs');
 const { tmpdir, homedir } = require('os');
-const { join, resolve } = require('path');
+const { dirname, join, resolve } = require('path');
 const { execFileSync } = require('child_process');
 const https = require('https');
 
@@ -20,6 +20,7 @@ const MIN_VERSION = process.env.LISTIT_XCODEGEN_MIN_VERSION || '2.37.0';
 const TARGET_VERSION = process.env.LISTIT_XCODEGEN_VERSION || '2.38.0';
 const DEFAULT_URL_TEMPLATE = 'https://github.com/yonaskolb/XcodeGen/releases/download/{version}/xcodegen.zip';
 const DOWNLOAD_URL = process.env.LISTIT_XCODEGEN_URL || DEFAULT_URL_TEMPLATE.replace('{version}', TARGET_VERSION);
+const REQUIRED_SUPPORT_DIRS = ['SettingPresets', 'Specs', 'Templates'];
 
 function compareSemver(a, b) {
   const pa = a.split('.').map(Number);
@@ -40,6 +41,22 @@ function resolveCurrentVersion() {
   } catch (_) {
     return null;
   }
+}
+
+function resolveBinaryPath() {
+  const runners = [
+    ['sh', ['-c', 'command -v xcodegen']],
+    ['which', ['xcodegen']],
+  ];
+  for (const [command, args] of runners) {
+    try {
+      const result = execFileSync(command, args, { encoding: 'utf8' }).trim();
+      if (result) return result;
+    } catch (_) {
+      // Try next resolver.
+    }
+  }
+  return null;
 }
 
 function ensureDirectoryWritable(dir) {
@@ -94,9 +111,37 @@ async function installXcodeGen() {
   if (currentVersion && compareSemver(currentVersion, MIN_VERSION) >= 0) {
     const matchesTarget = TARGET_VERSION && compareSemver(currentVersion, TARGET_VERSION) === 0;
     if (!TARGET_VERSION || matchesTarget) {
-      const targetInfo = TARGET_VERSION ? ` and matches requested ${TARGET_VERSION}` : '';
-      console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}${targetInfo}.`);
-      return;
+      const binaryPath = resolveBinaryPath();
+      let missingSupport = [];
+      if (binaryPath) {
+        const binaryDir = dirname(binaryPath);
+        missingSupport = REQUIRED_SUPPORT_DIRS.filter((dirName) => {
+          try {
+            return !lstatSync(join(binaryDir, dirName)).isDirectory();
+          } catch (_) {
+            return true;
+          }
+        });
+      } else {
+        missingSupport = REQUIRED_SUPPORT_DIRS.slice();
+      }
+
+      if (missingSupport.length === 0) {
+        const targetInfo = TARGET_VERSION ? ` and matches requested ${TARGET_VERSION}` : '';
+        console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}${targetInfo}.`);
+        return;
+      }
+
+      const missingList = missingSupport.join(', ');
+      if (!binaryPath) {
+        console.log(
+          `XcodeGen ${currentVersion} is installed but its binary location cannot be determined to verify support files, reinstalling...`,
+        );
+      } else {
+        console.log(
+          `XcodeGen ${currentVersion} is installed but missing support directories (${missingList}), reinstalling...`,
+        );
+      }
     }
     console.log(
       `XcodeGen ${currentVersion} meets minimum ${MIN_VERSION} but differs from requested ${TARGET_VERSION}, reinstalling...`,
