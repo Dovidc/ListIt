@@ -51,6 +51,27 @@ targets:
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
+    preBuildScripts:
+      - name: Ensure shared core bundle
+        shell: /bin/bash
+        script: |
+          set -euo pipefail
+
+          BUNDLE_PATH="$PROJECT_DIR/SharedCoreBridge/Resources/listit-core.js"
+          if [ -f "$BUNDLE_PATH" ]; then
+            echo "Shared core bundle already present at $BUNDLE_PATH"
+            exit 0
+          fi
+
+          echo "Shared core bundle missing; generating via npm run build:core"
+
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "error: npm is required to build the shared core bundle." >&2
+            exit 1
+          fi
+
+          ROOT_DIR="$(cd "$PROJECT_DIR"/.. && pwd)"
+          (cd "$ROOT_DIR" && npm run build:core)
     settings:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
