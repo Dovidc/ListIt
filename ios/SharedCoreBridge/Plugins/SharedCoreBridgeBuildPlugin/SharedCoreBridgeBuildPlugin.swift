@@ -36,11 +36,13 @@ private func buildCommands(targetDirectory: Path, pluginWorkDirectory: Path) thr
 
     let stampPath = pluginWorkDirectory.appending("build-core.stamp")
 
+    let nodeExecutable = try resolveNodeExecutable()
+
     return [
         .prebuildCommand(
             displayName: "Generate shared core JavaScript bundle",
-            executable: Path("/usr/bin/env"),
-            arguments: ["node", scriptPath.string, "--stamp", stampPath.string],
+            executable: nodeExecutable,
+            arguments: [scriptPath.string, "--stamp", stampPath.string],
             environment: [:],
             outputFilesDirectory: pluginWorkDirectory
         )
@@ -49,11 +51,38 @@ private func buildCommands(targetDirectory: Path, pluginWorkDirectory: Path) thr
 
 enum PluginError: Error, CustomStringConvertible {
     case missingBuildScript(String)
+    case missingNodeExecutable
 
     var description: String {
         switch self {
         case .missingBuildScript(let path):
             return "SharedCoreBridge build script not found at \(path)"
+        case .missingNodeExecutable:
+            return "SharedCoreBridge build plugin could not locate the Node.js executable"
         }
     }
+}
+
+private func resolveNodeExecutable(fileManager: FileManager = .default) throws -> Path {
+    let environment = ProcessInfo.processInfo.environment
+    var searchPaths: [String] = []
+
+    if let pathVariable = environment["PATH"] {
+        searchPaths.append(contentsOf: pathVariable.split(separator: ":").map(String.init))
+    }
+
+    searchPaths.append(contentsOf: [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin"
+    ])
+
+    for directory in searchPaths {
+        let candidate = Path(directory).appending("node")
+        if fileManager.isExecutableFile(atPath: candidate.string) {
+            return candidate
+        }
+    }
+
+    throw PluginError.missingNodeExecutable
 }
