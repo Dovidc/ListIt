@@ -3,6 +3,10 @@ options:
   minimumXcodeGenVersion: 2.37.0
   deploymentTarget:
     iOS: 16.0
+configs:
+  Debug: debug
+  Release: release
+  Staging: debug
 workspace:
   name: ListIt
   projects:
