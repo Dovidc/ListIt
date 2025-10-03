@@ -15,8 +15,21 @@ import XcodeProjectPlugin
 
 extension SharedCoreBridgeBuildPlugin: XcodeBuildToolPlugin {
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
-        try buildCommands(targetDirectory: target.directory, pluginWorkDirectory: context.pluginWorkDirectory)
+        let targetDirectory = try deriveTargetDirectory(for: target, context: context)
+
+        // Avoid relying on the newer `XcodeTarget.directory` API for older toolchains.
+        return try buildCommands(targetDirectory: targetDirectory, pluginWorkDirectory: context.pluginWorkDirectory)
     }
+}
+#endif
+
+#if canImport(XcodeProjectPlugin)
+private func deriveTargetDirectory(for target: XcodeTarget, context: XcodePluginContext) throws -> Path {
+    if let sourceDirectory = target.inputFiles.first?.path.removingLastComponent() {
+        return sourceDirectory
+    }
+
+    return context.xcodeProject.directory
 }
 #endif
 
