@@ -1,20 +1,28 @@
 name: ListIt
 options:
-  minimumXcodeGenVersion: 2.37.0
+  minimumXcodeGenVersion: 2.44.0
   deploymentTarget:
-    iOS: 16.0
+    iOS: "17.0"
+
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 workspace:
   name: ListIt
   projects:
     - ListIt.xcodeproj
+
 packages:
   SharedCoreBridge:
     path: SharedCoreBridge
+
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
     SWIFT_VERSION: 5.9
-    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     OTHER_SWIFT_FLAGS: -warnings-as-errors
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     ENABLE_PREVIEWS: YES
@@ -22,16 +30,17 @@ settings:
     Debug:
       ENABLE_TESTABILITY: YES
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Staging:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
     Release:
       SWIFT_COMPILATION_MODE: wholemodule
       SWIFT_OPTIMIZATION_LEVEL: -O
-    Staging:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
+
 targets:
   ListItApp:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/App
     resources:
@@ -51,6 +60,7 @@ targets:
       testTargets:
         - ListItAppTests
       gatherCoverageData: true
+
   ListItAppTests:
     type: bundle.unit-test
     platform: iOS
@@ -59,33 +69,41 @@ targets:
     dependencies:
       - target: ListItApp
       - target: PlatformCapabilities
+
   AuthFeature:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/AuthFeature
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+
   ListingsFeature:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/ListingsFeature
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+
   UploadFeature:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/UploadFeature
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+
   SharedServices:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/SharedServices
     resources:
@@ -94,20 +112,26 @@ targets:
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
+
   SharedServicesTests:
     type: bundle.unit-test
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Tests/SharedServicesTests
     dependencies:
       - target: SharedServices
+
   DesignSystem:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/DesignSystem
+
   PlatformCapabilities:
     type: framework
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/PlatformCapabilities
