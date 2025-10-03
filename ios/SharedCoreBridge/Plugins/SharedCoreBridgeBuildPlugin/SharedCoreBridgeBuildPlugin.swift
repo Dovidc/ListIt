@@ -21,10 +21,7 @@ extension SharedCoreBridgeBuildPlugin: XcodeBuildToolPlugin {
 #endif
 
 private func buildCommands(targetDirectory: Path, pluginWorkDirectory: Path) throws -> [Command] {
-    let sourcesDirectory = targetDirectory.removingLastComponent()
-    let packageDirectory = sourcesDirectory.removingLastComponent()
-    let iosDirectory = packageDirectory.removingLastComponent()
-    let repositoryRoot = iosDirectory.removingLastComponent()
+    let repositoryRoot = try resolveRepositoryRoot(startingAt: targetDirectory)
 
     let scriptPath = repositoryRoot
         .appending("scripts")
@@ -52,6 +49,7 @@ private func buildCommands(targetDirectory: Path, pluginWorkDirectory: Path) thr
 enum PluginError: Error, CustomStringConvertible {
     case missingBuildScript(String)
     case missingNodeExecutable
+    case missingRepositoryRoot
 
     var description: String {
         switch self {
@@ -59,6 +57,8 @@ enum PluginError: Error, CustomStringConvertible {
             return "SharedCoreBridge build script not found at \(path)"
         case .missingNodeExecutable:
             return "SharedCoreBridge build plugin could not locate the Node.js executable"
+        case .missingRepositoryRoot:
+            return "SharedCoreBridge build plugin could not determine the repository root directory"
         }
     }
 }
@@ -85,4 +85,39 @@ private func resolveNodeExecutable(fileManager: FileManager = .default) throws -
     }
 
     throw PluginError.missingNodeExecutable
+}
+
+private func resolveRepositoryRoot(startingAt targetDirectory: Path, fileManager: FileManager = .default) throws -> Path {
+    if let root = findRepositoryRoot(startingAt: targetDirectory, fileManager: fileManager) {
+        return root
+    }
+
+    let pluginSourceDirectory = Path(#filePath)
+        .removingLastComponent() // SharedCoreBridgeBuildPlugin.swift
+        .removingLastComponent() // SharedCoreBridgeBuildPlugin
+        .removingLastComponent() // Plugins
+
+    if let root = findRepositoryRoot(startingAt: pluginSourceDirectory, fileManager: fileManager) {
+        return root
+    }
+
+    throw PluginError.missingRepositoryRoot
+}
+
+private func findRepositoryRoot(startingAt path: Path, fileManager: FileManager) -> Path? {
+    var current = path
+
+    while true {
+        let candidate = current.appending("package.json")
+        if fileManager.fileExists(atPath: candidate.string) {
+            return current
+        }
+
+        let parent = current.removingLastComponent()
+        if parent == current {
+            return nil
+        }
+
+        current = parent
+    }
 }
