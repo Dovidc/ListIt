@@ -1,4 +1,8 @@
 name: ListIt
+configs:
+  Debug: debug
+  Release: release
+  Staging: debug
 options:
   minimumXcodeGenVersion: 2.37.0
   deploymentTarget:
