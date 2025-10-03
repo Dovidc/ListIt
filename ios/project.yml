@@ -13,6 +13,9 @@ packages:
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
+    DevelopmentTeam: H9JP539MT9
+    CodesignStyle: Automatic
+    ProvisioningProfileSpecifier: ""
     SWIFT_VERSION: 5.9
     IPHONEOS_DEPLOYMENT_TARGET: 16.0
     OTHER_SWIFT_FLAGS: -warnings-as-errors
