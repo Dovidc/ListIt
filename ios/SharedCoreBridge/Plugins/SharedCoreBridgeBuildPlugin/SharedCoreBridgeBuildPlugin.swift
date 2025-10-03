@@ -78,7 +78,7 @@ func resolveNodeExecutable(
             if fileManager.isExecutableFile(atPath: override) {
                 return Path(override)
             }
-            throw PluginError.missingNodeExecutable
+            continue
         }
     }
 
