@@ -40,6 +40,21 @@ final class NodeExecutableResolverTests: XCTestCase {
 
         XCTAssertEqual(resolved.string, overridePath)
     }
+
+    func testFallsBackWhenNodeBinaryOverrideIsNotExecutable() throws {
+        let fallbackPath = "/usr/local/bin/node"
+        let fileManager = StubFileManager(executablePaths: [fallbackPath])
+
+        let resolved = try resolveNodeExecutable(
+            environment: [
+                "NODE_BINARY": "node",
+                "PATH": "/usr/local/bin"
+            ],
+            fileManager: fileManager
+        )
+
+        XCTAssertEqual(resolved.string, fallbackPath)
+    }
 }
 
 private final class StubFileManager: FileManager {
