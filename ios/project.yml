@@ -7,7 +7,7 @@ configs:
 options:
   minimumXcodeGenVersion: 2.37.0
   deploymentTarget:
-    iOS: 16.0
+    iOS: 17.0
 
 workspace:
   name: ListIt
@@ -25,7 +25,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     PROVISIONING_PROFILE_SPECIFIER: ""
     SWIFT_VERSION: 5.9
-    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
     OTHER_SWIFT_FLAGS: -warnings-as-errors
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     ENABLE_PREVIEWS: YES
@@ -43,7 +43,7 @@ targets:
   ListItApp:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - path: Sources/App
     resources:
@@ -59,7 +59,6 @@ targets:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
         PRODUCT_NAME: ListIt
-        # Keep Automatic signing on app target
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: H9JP539MT9
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -79,14 +78,13 @@ targets:
       - target: PlatformCapabilities
     settings:
       base:
-        # Allow Xcode to synthesize a plist for the test bundle
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: H9JP539MT9
         PROVISIONING_PROFILE_SPECIFIER: ""
 
   # ---- Feature / Framework targets ----
-  # We disable signing (not needed for Simulator) AND synthesize an Info.plist.
+  # Disable signing for frameworks (simulator/dev) and synthesize an Info.plist.
 
   AuthFeature:
     type: framework
