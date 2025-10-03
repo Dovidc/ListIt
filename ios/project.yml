@@ -19,6 +19,7 @@ packages:
     path: SharedCoreBridge
 settings:
   base:
+    GENERATE_INFOPLIST_FILE: YES
     PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
     SWIFT_VERSION: 5.9
     IPHONEOS_DEPLOYMENT_TARGET: 16.0
