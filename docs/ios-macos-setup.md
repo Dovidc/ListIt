@@ -23,6 +23,12 @@ This guide walks through preparing a macOS development machine to run the native
    ```
    Otherwise download the macOS installer from <https://nodejs.org/en/download>.
 
+   > Tip: If your Node.js binary lives outside the standard system paths,
+   > export `LISTIT_NODE_BINARY=/full/path/to/node` (or `NODE_BINARY`) before
+   > running Xcode. The build plugin also inspects `NVM_BIN` and
+   > `~/.nvm/versions/node/*/bin` so `nvm` installations are picked up
+   > automatically.
+
 4. **Install Bundler** (needed for Fastlane gems):
    ```bash
    sudo gem install bundler
