@@ -24,7 +24,16 @@ let package = Package(
         ),
         .testTarget(
             name: "SharedCoreBridgeTests",
-            dependencies: ["SharedCoreBridge"]
+            dependencies: [
+                "SharedCoreBridge",
+                .target(name: "SharedCoreBridgeBuildPlugin")
+            ]
+        ),
+        .testTarget(
+            name: "SharedCoreBridgeBuildPluginTests",
+            dependencies: [
+                .target(name: "SharedCoreBridgeBuildPlugin")
+            ]
         ),
         .plugin(
             name: "SharedCoreBridgeBuildPlugin",
