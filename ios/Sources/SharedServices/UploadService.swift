@@ -17,7 +17,7 @@ public final class UploadService {
         }
         let base64 = data.base64EncodedString()
         let response = try await runtime.callAsync(function: "upload_photo", with: [base64])
-        guard response.toBool() == true else {
+        guard response.toBool() else {
             throw UploadError.failed
         }
         await progress(1.0)
