@@ -17,11 +17,18 @@ let package = Package(
             name: "SharedCoreBridge",
             resources: [
                 .process("Resources")
+            ],
+            plugins: [
+                .plugin(name: "SharedCoreBridgeBuildPlugin")
             ]
         ),
         .testTarget(
             name: "SharedCoreBridgeTests",
             dependencies: ["SharedCoreBridge"]
+        ),
+        .plugin(
+            name: "SharedCoreBridgeBuildPlugin",
+            capability: .buildTool()
         )
     ]
 )

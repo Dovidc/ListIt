@@ -9,6 +9,12 @@ const typesSrcPath = path.join(rootDir, 'packages', 'core', 'src', 'index.d.ts')
 const typesDistPath = path.join(distDir, 'index.d.ts');
 const iosBundlePath = path.join(rootDir, 'ios', 'SharedCoreBridge', 'Resources', 'listit-core.js');
 
+const stampFlagIndex = process.argv.indexOf('--stamp');
+const stampFilePath =
+  stampFlagIndex !== -1 && process.argv.length > stampFlagIndex + 1
+    ? process.argv[stampFlagIndex + 1]
+    : undefined;
+
 fs.mkdirSync(distDir, { recursive: true });
 const source = fs.readFileSync(srcPath, 'utf8');
 
@@ -93,3 +99,8 @@ fs.copyFileSync(path.join(distDir, 'index.global.js'), iosBundlePath);
 console.log(`Built core library -> ${path.relative(process.cwd(), distDir)}`);
 console.log(`Copied browser bundle -> ${path.relative(process.cwd(), browserTarget)}`);
 console.log(`Updated native bundle -> ${path.relative(process.cwd(), iosBundlePath)}`);
+
+if (stampFilePath) {
+  fs.mkdirSync(path.dirname(stampFilePath), { recursive: true });
+  fs.writeFileSync(stampFilePath, `${Date.now()}\n`);
+}
