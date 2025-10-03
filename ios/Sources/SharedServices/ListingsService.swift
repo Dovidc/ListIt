@@ -24,7 +24,7 @@ public final class ListingsService {
 
     public func fetchListings() async throws -> [ListingSummary] {
         do {
-            let result = try runtime.call(function: "listings_fetch", with: [])
+            let result = try await runtime.callAsync(function: "listings_fetch", with: [])
             guard let array = result.toArray() as? [[String: Any]] else {
                 try persistence.clear()
                 return []

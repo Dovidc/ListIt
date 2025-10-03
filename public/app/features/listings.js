@@ -76,7 +76,7 @@
 
       return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
         H('input', {
-          placeholder:'City...',
+          placeholder:'City....',
           value: value,
           onChange: e => { onChange(e.target.value); setOpen(true); },
           onKeyDown, onFocus, onBlur,

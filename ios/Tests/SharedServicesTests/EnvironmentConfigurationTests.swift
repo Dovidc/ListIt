@@ -31,7 +31,7 @@ final class EnvironmentConfigurationTests: XCTestCase {
         let values = try loader.load()
         XCTAssertEqual(values["API_BASE_URL"], "https://api.listit.app")
         XCTAssertEqual(values["WEBSOCKET_URL"], "wss://ws.listit.app")
-        XCTAssertEqual(values["LISTIT_CORE_DISTRIBUTION"], "xcframework")
+        XCTAssertEqual(values["LISTIT_CORE_DISTRIBUTION"], "embedded")
     }
 
     func testVariantSpecificOverridePathWins() throws {
