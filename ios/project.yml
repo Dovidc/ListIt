@@ -48,6 +48,7 @@ targets:
       - target: AuthFeature
       - target: ListingsFeature
       - target: UploadFeature
+      - target: SharedServices
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
