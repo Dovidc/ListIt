@@ -1,4 +1,5 @@
 name: ListIt
+
 options:
   minimumXcodeGenVersion: 2.44.0
   deploymentTarget:
@@ -18,14 +19,16 @@ packages:
   SharedCoreBridge:
     path: SharedCoreBridge
 
+# Global settings that apply to all targets unless overridden
 settings:
   base:
-    PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
     SWIFT_VERSION: 5.9
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     OTHER_SWIFT_FLAGS: -warnings-as-errors
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     ENABLE_PREVIEWS: YES
+    GENERATE_INFOPLIST_FILE: YES   # auto-generate Info.plist for frameworks
+
   configs:
     Debug:
       ENABLE_TESTABILITY: YES
@@ -37,6 +40,7 @@ settings:
       SWIFT_OPTIMIZATION_LEVEL: -O
 
 targets:
+  # -------------------- App --------------------
   ListItApp:
     type: application
     platform: iOS
@@ -56,6 +60,10 @@ targets:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
         PRODUCT_NAME: ListIt
+        PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: H9JP539MT9
+        GENERATE_INFOPLIST_FILE: NO   # app uses a real plist, not generated
     scheme:
       testTargets:
         - ListItAppTests
@@ -64,12 +72,14 @@ targets:
   ListItAppTests:
     type: bundle.unit-test
     platform: iOS
+    deploymentTarget: "17.0"
     sources:
       - path: Tests/AppTests
     dependencies:
       - target: ListItApp
       - target: PlatformCapabilities
 
+  # -------------------- Features / Frameworks --------------------
   AuthFeature:
     type: framework
     platform: iOS
@@ -79,6 +89,9 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
 
   ListingsFeature:
     type: framework
@@ -89,6 +102,9 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
 
   UploadFeature:
     type: framework
@@ -99,6 +115,9 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
 
   SharedServices:
     type: framework
@@ -112,6 +131,9 @@ targets:
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
 
   SharedServicesTests:
     type: bundle.unit-test
@@ -128,6 +150,9 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources/DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
 
   PlatformCapabilities:
     type: framework
@@ -135,3 +160,6 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources/PlatformCapabilities
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
