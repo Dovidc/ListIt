@@ -5,8 +5,8 @@ options:
     iOS: 16.0
 configs:
   Debug: debug
-  Release: release
   Staging: debug
+  Release: release
 workspace:
   name: ListIt
   projects:
@@ -26,11 +26,11 @@ settings:
     Debug:
       ENABLE_TESTABILITY: YES
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Staging:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
     Release:
       SWIFT_COMPILATION_MODE: wholemodule
       SWIFT_OPTIMIZATION_LEVEL: -O
-    Staging:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
 targets:
   ListItApp:
     type: application
