@@ -6,7 +6,10 @@ struct SharedCoreBridgeBuildPlugin: BuildToolPlugin {
     func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
         guard let target = target as? SourceModuleTarget else { return [] }
 
-        return try buildCommands(targetDirectory: target.directory, pluginWorkDirectory: context.pluginWorkDirectory)
+        return try buildCommands(
+            repositorySearchDirectory: target.directory,
+            pluginWorkDirectory: context.pluginWorkDirectory
+        )
     }
 }
 
@@ -15,13 +18,16 @@ import XcodeProjectPlugin
 
 extension SharedCoreBridgeBuildPlugin: XcodeBuildToolPlugin {
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
-        try buildCommands(targetDirectory: target.directory, pluginWorkDirectory: context.pluginWorkDirectory)
+        try buildCommands(
+            repositorySearchDirectory: context.xcodeProject.directory,
+            pluginWorkDirectory: context.pluginWorkDirectory
+        )
     }
 }
 #endif
 
-private func buildCommands(targetDirectory: Path, pluginWorkDirectory: Path) throws -> [Command] {
-    let repositoryRoot = try resolveRepositoryRoot(startingAt: targetDirectory)
+private func buildCommands(repositorySearchDirectory: Path, pluginWorkDirectory: Path) throws -> [Command] {
+    let repositoryRoot = try resolveRepositoryRoot(startingAt: repositorySearchDirectory)
 
     let scriptPath = repositoryRoot
         .appending("scripts")
