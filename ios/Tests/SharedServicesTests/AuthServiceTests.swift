@@ -18,6 +18,7 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertTrue(result.isSuccess)
         XCTAssertEqual(result.tokens?.accessToken, "abc")
         XCTAssertEqual(service.currentTokens(), AuthTokens(accessToken: "abc", refreshToken: "def", expiresAt: Date(timeIntervalSince1970: 1_700_000_000)))
+        XCTAssertEqual(runtime.invokedFunctions, ["auth_signIn"])
     }
 
     func testSignOutClearsTokens() throws {
@@ -54,9 +55,17 @@ private final class InMemoryKeychainStore: KeychainStoring {
 
 private final class FakeRuntime: SharedRuntime {
     var stubbedResponse: JSValue?
+    private(set) var invokedFunctions: [String] = []
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
+        XCTFail("Expected async call for \(name)")
+        throw SharedRuntimeError.missingExport(name: name)
+    }
+
+    override func callAsync(function name: String, with arguments: [Any]) async throws -> JSValue {
+        invokedFunctions.append(name)
         guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
+        await Task.yield()
         return stubbedResponse
     }
 }
