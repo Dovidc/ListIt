@@ -43,6 +43,20 @@ targets:
       - path: Sources/App
     resources:
       - path: Resources
+    prebuildScripts:
+      - name: Ensure Shared core bundle
+        basedOnDependencyAnalysis: false
+        script: |
+          ROOT_DIR="$SRCROOT/.."
+          CORE_BUNDLE_PATH="$SRCROOT/SharedCoreBridge/Resources/listit-core.js"
+          if [ ! -f "$CORE_BUNDLE_PATH" ]; then
+            echo "info: listit-core.js missing; running npm run build:core"
+            if command -v npm >/dev/null 2>&1 && [ -f "$ROOT_DIR/package.json" ]; then
+              (cd "$ROOT_DIR" && npm run --silent build:core) || exit 1
+            else
+              (cd "$ROOT_DIR" && node scripts/build-core.js) || exit 1
+            fi
+          fi
     dependencies:
       - target: AuthFeature
       - target: ListingsFeature

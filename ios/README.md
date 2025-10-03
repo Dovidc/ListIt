@@ -66,7 +66,8 @@ from the web application.
 The workspace expects the web build to produce a distributable JavaScript bundle under `packages/core/dist`. The
 `SharedCoreBridge` package can either embed the bundle directly for JavaScriptCore execution or link against a
 precompiled XCFramework emitted by the web build pipeline. See the inline documentation in `SharedCoreBridge` for
-usage details.
+usage details. When the embedded bundle is missing, the Xcode build now triggers `npm run build:core` automatically,
+but running the command manually after you change shared JavaScript keeps rebuilds faster.
 
 ### Selecting the Shared Core Distribution
 
