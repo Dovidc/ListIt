@@ -22,7 +22,28 @@ public struct ListingsFeatureView: View {
                 if isLoading {
                     ProgressView()
                 } else if let errorMessage {
-                    ContentUnavailableView("Unable to Load", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                    if #available(iOS 17.0, *) {
+                        ContentUnavailableView(
+                            "Unable to Load",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(errorMessage)
+                        )
+                    } else {
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.secondary)
+                            Text("Unable to Load")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                            Text(errorMessage)
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .padding()
+                    }
                 } else {
                     List {
                         ForEach(listings) { listing in
