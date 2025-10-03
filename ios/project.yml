@@ -3,17 +3,21 @@ configs:
   Debug: debug
   Release: release
   Staging: debug
+
 options:
   minimumXcodeGenVersion: 2.37.0
   deploymentTarget:
     iOS: 16.0
+
 workspace:
   name: ListIt
   projects:
     - ListIt.xcodeproj
+
 packages:
   SharedCoreBridge:
     path: SharedCoreBridge
+
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
@@ -34,6 +38,7 @@ settings:
       SWIFT_OPTIMIZATION_LEVEL: -O
     Staging:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG STAGING
+
 targets:
   ListItApp:
     type: application
@@ -54,10 +59,16 @@ targets:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
         PRODUCT_NAME: ListIt
+        # Keep Automatic signing on app target
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: H9JP539MT9
+        PROVISIONING_PROFILE_SPECIFIER: ""
+
     scheme:
       testTargets:
         - ListItAppTests
       gatherCoverageData: true
+
   ListItAppTests:
     type: bundle.unit-test
     platform: iOS
@@ -66,6 +77,17 @@ targets:
     dependencies:
       - target: ListItApp
       - target: PlatformCapabilities
+    settings:
+      base:
+        # Allow Xcode to synthesize a plist for the test bundle
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: H9JP539MT9
+        PROVISIONING_PROFILE_SPECIFIER: ""
+
+  # ---- Feature / Framework targets ----
+  # We disable signing (not needed for Simulator) AND synthesize an Info.plist.
+
   AuthFeature:
     type: framework
     platform: iOS
@@ -74,6 +96,13 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
   ListingsFeature:
     type: framework
     platform: iOS
@@ -82,6 +111,13 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
   UploadFeature:
     type: framework
     platform: iOS
@@ -90,6 +126,13 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
   SharedServices:
     type: framework
     platform: iOS
@@ -101,6 +144,37 @@ targets:
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
+  DesignSystem:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
+  PlatformCapabilities:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/PlatformCapabilities
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundlePackageType: FMWK
+
   SharedServicesTests:
     type: bundle.unit-test
     platform: iOS
@@ -108,13 +182,9 @@ targets:
       - path: Tests/SharedServicesTests
     dependencies:
       - target: SharedServices
-  DesignSystem:
-    type: framework
-    platform: iOS
-    sources:
-      - path: Sources/DesignSystem
-  PlatformCapabilities:
-    type: framework
-    platform: iOS
-    sources:
-      - path: Sources/PlatformCapabilities
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: H9JP539MT9
+        PROVISIONING_PROFILE_SPECIFIER: ""
