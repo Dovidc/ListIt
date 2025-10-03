@@ -34,7 +34,7 @@ public final class AuthService {
             "email": email,
             "password": password
         ]
-        let response = try runtime.call(function: "auth_signIn", with: [payload])
+        let response = try await runtime.callAsync(function: "auth_signIn", with: [payload])
         let tokens = try extractTokens(from: response)
         if let tokens {
             try persist(tokens: tokens)

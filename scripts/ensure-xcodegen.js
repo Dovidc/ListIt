@@ -1,7 +1,19 @@
 #!/usr/bin/env node
-const { accessSync, constants, copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, unlinkSync } = require('fs');
+const {
+  accessSync,
+  constants,
+  copyFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  lstatSync,
+  statSync,
+  readdirSync,
+  unlinkSync,
+} = require('fs');
 const { tmpdir, homedir } = require('os');
-const { join, resolve } = require('path');
+const { dirname, join, resolve } = require('path');
 const { execFileSync } = require('child_process');
 const https = require('https');
 
@@ -9,6 +21,7 @@ const MIN_VERSION = process.env.LISTIT_XCODEGEN_MIN_VERSION || '2.37.0';
 const TARGET_VERSION = process.env.LISTIT_XCODEGEN_VERSION || '2.38.0';
 const DEFAULT_URL_TEMPLATE = 'https://github.com/yonaskolb/XcodeGen/releases/download/{version}/xcodegen.zip';
 const DOWNLOAD_URL = process.env.LISTIT_XCODEGEN_URL || DEFAULT_URL_TEMPLATE.replace('{version}', TARGET_VERSION);
+const REQUIRED_SUPPORT_DIRS = ['SettingPresets', 'Specs', 'Templates'];
 
 function compareSemver(a, b) {
   const pa = a.split('.').map(Number);
@@ -29,6 +42,22 @@ function resolveCurrentVersion() {
   } catch (_) {
     return null;
   }
+}
+
+function resolveBinaryPath() {
+  const runners = [
+    ['sh', ['-c', 'command -v xcodegen']],
+    ['which', ['xcodegen']],
+  ];
+  for (const [command, args] of runners) {
+    try {
+      const result = execFileSync(command, args, { encoding: 'utf8' }).trim();
+      if (result) return result;
+    } catch (_) {
+      // Try next resolver.
+    }
+  }
+  return null;
 }
 
 function ensureDirectoryWritable(dir) {
@@ -81,8 +110,43 @@ function downloadFile(url, destination) {
 async function installXcodeGen() {
   const currentVersion = resolveCurrentVersion();
   if (currentVersion && compareSemver(currentVersion, MIN_VERSION) >= 0) {
-    console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}.`);
-    return;
+    const matchesTarget = TARGET_VERSION && compareSemver(currentVersion, TARGET_VERSION) === 0;
+    if (!TARGET_VERSION || matchesTarget) {
+      const binaryPath = resolveBinaryPath();
+      let missingSupport = [];
+      if (binaryPath) {
+        const binaryDir = dirname(binaryPath);
+        missingSupport = REQUIRED_SUPPORT_DIRS.filter((dirName) => {
+          try {
+            return !statSync(join(binaryDir, dirName)).isDirectory();
+          } catch (_) {
+            return true;
+          }
+        });
+      } else {
+        missingSupport = REQUIRED_SUPPORT_DIRS.slice();
+      }
+
+      if (missingSupport.length === 0) {
+        const targetInfo = TARGET_VERSION ? ` and matches requested ${TARGET_VERSION}` : '';
+        console.log(`XcodeGen ${currentVersion} already satisfies minimum ${MIN_VERSION}${targetInfo}.`);
+        return;
+      }
+
+      const missingList = missingSupport.join(', ');
+      if (!binaryPath) {
+        console.log(
+          `XcodeGen ${currentVersion} is installed but its binary location cannot be determined to verify support files, reinstalling...`,
+        );
+      } else {
+        console.log(
+          `XcodeGen ${currentVersion} is installed but missing support directories (${missingList}), reinstalling...`,
+        );
+      }
+    }
+    console.log(
+      `XcodeGen ${currentVersion} meets minimum ${MIN_VERSION} but differs from requested ${TARGET_VERSION}, reinstalling...`,
+    );
   }
 
   const workDir = mkdtempSync(join(tmpdir(), 'listit-xcodegen-'));
@@ -98,10 +162,51 @@ async function installXcodeGen() {
     throw new Error('Failed to locate xcodegen binary in the extracted archive.');
   }
 
+  const supportRoot = join(workDir, 'xcodegen');
+
+  const copyDirectory = (source, destination) => {
+    mkdirSync(destination, { recursive: true });
+    const entries = readdirSync(source, { withFileTypes: true });
+    for (const entry of entries) {
+      const sourcePath = join(source, entry.name);
+      const destPath = join(destination, entry.name);
+      if (entry.isDirectory()) {
+        copyDirectory(sourcePath, destPath);
+      } else {
+        copyFileSync(sourcePath, destPath);
+      }
+    }
+  };
+
+  const copySupportFiles = (source, destination) => {
+    const entries = readdirSync(source, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === 'bin' || !entry.isDirectory()) continue;
+      const sourcePath = join(source, entry.name);
+      const destPath = join(destination, entry.name);
+      try {
+        const existing = lstatSync(destPath);
+        if (!existing.isDirectory()) {
+          console.warn(
+            `Skipping XcodeGen support entry "${entry.name}" because ${destPath} already exists and is not a directory.`,
+          );
+          continue;
+        }
+      } catch (_) {}
+      copyDirectory(sourcePath, destPath);
+    }
+  };
+
   const installDir = resolveInstallDirectory();
   const targetPath = join(installDir, 'xcodegen');
   copyFileSync(binaryPath, targetPath);
   chmodSync(targetPath, 0o755);
+
+  try {
+    copySupportFiles(supportRoot, installDir);
+  } catch (err) {
+    console.warn('Unable to copy XcodeGen support files:', err.message || err);
+  }
   try {
     unlinkSync(zipPath);
   } catch (_) {}
