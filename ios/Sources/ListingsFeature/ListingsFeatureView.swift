@@ -29,7 +29,7 @@ public struct ListingsFeatureView: View {
                             Spacer()
                             ListItCard(title: "Unable to Load") {
                                 VStack(alignment: .leading, spacing: designSystem.spacing.small) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
+                                    Image(systemName: "exclamationmark.triangle")
                                         .font(.system(size: 32, weight: .medium))
                                         .foregroundStyle(designSystem.colors.warning)
                                     Text(errorMessage)
