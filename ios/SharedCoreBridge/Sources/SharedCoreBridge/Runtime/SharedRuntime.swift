@@ -39,6 +39,10 @@ open class SharedRuntime {
                 throw SharedRuntimeError.missingExport(name: name)
             }
 
+            guard let method = resolvedTarget.forProperty(methodName), !method.isUndefined else {
+                throw SharedRuntimeError.missingExport(name: name)
+            }
+
             result = resolvedTarget.invokeMethod(methodName, withArguments: arguments)
         } else {
             guard let function = context.objectForKeyedSubscript(name) else {

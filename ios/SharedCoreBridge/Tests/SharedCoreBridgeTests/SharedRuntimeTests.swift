@@ -17,4 +17,17 @@ final class SharedRuntimeTests: XCTestCase {
 
         XCTAssertEqual(result.toString(), "Hello, World")
     }
+
+    func testThrowsMissingExportForMissingNestedFunction() throws {
+        let runtime = SharedRuntime()
+        try runtime.evaluate("var ListItCore = { api: {} };")
+
+        XCTAssertThrowsError(try runtime.call(function: "ListItCore.api.greet", with: [])) { error in
+            guard case SharedRuntimeError.missingExport(let name) = error else {
+                return XCTFail("Expected missingExport error")
+            }
+
+            XCTAssertEqual(name, "ListItCore.api.greet")
+        }
+    }
 }
