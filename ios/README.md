@@ -63,8 +63,8 @@ from the web application.
 
 ### Preserving Local Signing Overrides
 
-- All targets import `Config/Signing.xcconfig`, which seeds default bundle identifiers and the shared development team.
-- Create `ios/Config/Signing.local.xcconfig` (this file is gitignored) to override values like `LISTIT_APP_BUNDLE_IDENTIFIER` or `LISTIT_DEVELOPMENT_TEAM` so your personal settings survive future `xcodegen generate` runs and pull requests.
+- All targets import `Config/Signing.xcconfig`, which centralizes the default bundle prefix, app identifier, and shared development team.
+- Create `ios/Config/Signing.local.xcconfig` (this file is gitignored) to override values like `LISTIT_APP_BUNDLE_IDENTIFIER`, `LISTIT_BUNDLE_PREFIX`, or `LISTIT_DEVELOPMENT_TEAM` so your personal settings survive future `xcodegen generate` runs and pull requests.
 - For example:
   ```xcconfig
   LISTIT_APP_BUNDLE_IDENTIFIER = com.yourcompany.listit
@@ -72,6 +72,7 @@ from the web application.
   LISTIT_DEVELOPMENT_TEAM = ABC1234567
   ```
 - `Signing.local.xcconfig` is included only when present, allowing each contributor to keep device provisioning details out of version control while avoiding repeated manual edits in Xcode.
+- Once you override `LISTIT_BUNDLE_PREFIX`, every framework and test target automatically inherits the new identifier via `$(LISTIT_BUNDLE_PREFIX).$(PRODUCT_NAME:rfc1034identifier)`, so you never have to rename modules manually after running XcodeGen.
 
 ## Shared Core Integration
 
