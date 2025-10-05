@@ -12,7 +12,14 @@ public struct SharedCoreBundleProvider: SharedCoreBundleProviding {
 
     public init(fileManager: FileManager = .default, resourceBundle: Bundle? = nil) {
         self.fileManager = fileManager
-        self.resourceBundle = resourceBundle ?? Bundle(for: SharedCoreBundleLocator.self)
+
+        #if SWIFT_PACKAGE
+        let defaultBundle = Bundle.module
+        #else
+        let defaultBundle = Bundle(for: SharedCoreBundleLocator.self)
+        #endif
+
+        self.resourceBundle = resourceBundle ?? defaultBundle
     }
 
     public func loadScript(named bundleName: String, configuration: EnvironmentConfigurationProviding) throws -> String {
