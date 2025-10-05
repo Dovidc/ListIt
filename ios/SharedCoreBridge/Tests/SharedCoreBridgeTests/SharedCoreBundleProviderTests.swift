@@ -49,6 +49,14 @@ final class SharedCoreBundleProviderTests: XCTestCase {
         XCTAssertFalse(script.isEmpty)
     }
 
+    func testDefaultInitializerLoadsBundledResource() throws {
+        let provider = SharedCoreBundleProvider()
+        let configuration = TestEnvironmentConfiguration()
+
+        let script = try provider.loadScript(named: bundleName, configuration: configuration)
+        XCTAssertFalse(script.isEmpty)
+    }
+
     func testExplicitBundlePathFailureThrows() {
         let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: .module)
         let configuration = TestEnvironmentConfiguration(extraEnvironment: [
