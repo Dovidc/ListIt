@@ -89,9 +89,25 @@ private extension SharedRuntime {
 
         promise.invokeMethod("then", withArguments: [fulfill, reject])
 
-        let timeoutResult = semaphore.wait(timeout: .now() + 30)
-        if timeoutResult == .timedOut {
-            throw SharedRuntimeError.promiseTimedOut(name: functionName)
+        let timeout = DispatchTime.now() + .seconds(30)
+        let runLoop = RunLoop.current
+
+        context.virtualMachine?.performMicrotaskCheckpoint()
+
+        while resolved == nil && rejected == nil {
+            let waitUntil = DispatchTime.now() + .milliseconds(10)
+            switch semaphore.wait(timeout: waitUntil) {
+            case .success:
+                break
+            case .timedOut:
+                if DispatchTime.now() >= timeout {
+                    throw SharedRuntimeError.promiseTimedOut(name: functionName)
+                }
+                context.virtualMachine?.performMicrotaskCheckpoint()
+                runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.001))
+                continue
+            }
+            break
         }
 
         if let rejection = rejected {
@@ -104,6 +120,10 @@ private extension SharedRuntime {
                 return JSValue(nullIn: context)
             }
             return resolved
+        }
+
+        if DispatchTime.now() >= timeout {
+            throw SharedRuntimeError.promiseTimedOut(name: functionName)
         }
 
         return JSValue(nullIn: context)
