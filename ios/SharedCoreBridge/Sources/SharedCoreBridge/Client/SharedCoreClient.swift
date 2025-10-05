@@ -1,5 +1,4 @@
 import Foundation
-import SharedCoreBridge
 import JavaScriptCore
 
 public final class SharedCoreClient {
@@ -30,10 +29,8 @@ public final class SharedCoreClient {
     }
 
     public func callArray(_ method: String, arguments: [Any] = []) throws -> [Any] {
-        guard let array = try callObject(method, arguments: arguments) as? [Any] else {
-            return []
-        }
-        return array
+        let value = try call(method, arguments: arguments)
+        return value.toArray() ?? []
     }
 
     public func callBool(_ method: String, arguments: [Any] = []) throws -> Bool {
