@@ -10,9 +10,9 @@ public struct SharedCoreBundleProvider: SharedCoreBundleProviding {
     private let fileManager: FileManager
     private let resourceBundle: Bundle
 
-    public init(fileManager: FileManager = .default, resourceBundle: Bundle = Bundle(for: SharedCoreBundleLocator.self)) {
+    public init(fileManager: FileManager = .default, resourceBundle: Bundle? = nil) {
         self.fileManager = fileManager
-        self.resourceBundle = resourceBundle
+        self.resourceBundle = resourceBundle ?? Bundle(for: SharedCoreBundleLocator.self)
     }
 
     public func loadScript(named bundleName: String, configuration: EnvironmentConfigurationProviding) throws -> String {
