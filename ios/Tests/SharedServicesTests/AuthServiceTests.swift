@@ -7,7 +7,7 @@ final class AuthServiceTests: XCTestCase {
     func testSignInPersistsTokens() throws {
         let runtime = FakeRuntime()
         let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: ["token": "abc", "refreshToken": "def", "expiresAt": 1_700_000_000], in: context)
+        runtime.stubbedResponses["auth.signIn"] = JSValue(object: ["token": "abc", "refreshToken": "def", "expiresAt": 1_700_000_000], in: context)
         let keychain = InMemoryKeychainStore()
         let service = AuthService(runtime: runtime, keychain: keychain)
 
@@ -23,7 +23,7 @@ final class AuthServiceTests: XCTestCase {
     func testSignOutClearsTokens() throws {
         let runtime = FakeRuntime()
         let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: ["token": "abc"], in: context)
+        runtime.stubbedResponses["auth.signIn"] = JSValue(object: ["token": "abc"], in: context)
         let keychain = InMemoryKeychainStore()
         let service = AuthService(runtime: runtime, keychain: keychain)
 
@@ -53,11 +53,20 @@ private final class InMemoryKeychainStore: KeychainStoring {
 }
 
 private final class FakeRuntime: SharedRuntime {
-    var stubbedResponse: JSValue?
+    var stubbedResponses: [String: JSValue] = [:]
+    var stubbedError: Error?
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
-        guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
-        return stubbedResponse
+        if let stubbedError {
+            throw stubbedError
+        }
+        guard name == "shared_core_call",
+              let method = arguments.first as? String,
+              let response = stubbedResponses[method]
+        else {
+            throw SharedRuntimeError.missingExport(name: name)
+        }
+        return response
     }
 }
 

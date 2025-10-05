@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import Dispatch
 
 open class SharedRuntime {
     private let context: JSContext
@@ -27,10 +28,11 @@ open class SharedRuntime {
         if let exception = context.exception {
             throw SharedRuntimeError.javascript(message: exception.toString())
         }
-        guard let resolvedResult = result ?? JSValue(nullIn: context) else {
+
+        guard let evaluatedResult = try resolveIfNeeded(result, functionName: name) else {
             throw SharedRuntimeError.javascript(message: "Unable to evaluate function \(name)")
         }
-        return resolvedResult
+        return evaluatedResult
     }
 
     open func installNativeBridge(_ bridge: SharedCoreNativeBridge) {
@@ -41,6 +43,7 @@ open class SharedRuntime {
 public enum SharedRuntimeError: Error, LocalizedError {
     case javascript(message: String)
     case missingExport(name: String)
+    case promiseTimedOut(name: String)
 
     public var errorDescription: String? {
         switch self {
@@ -48,6 +51,61 @@ public enum SharedRuntimeError: Error, LocalizedError {
             return message
         case .missingExport(let name):
             return "Missing export: \(name)"
+        case .promiseTimedOut(let name):
+            return "Promise timed out for \(name)"
         }
+    }
+}
+
+private extension SharedRuntime {
+    func resolveIfNeeded(_ value: JSValue?, functionName: String) throws -> JSValue? {
+        guard let value else { return JSValue(nullIn: context) }
+
+        if value.isNull || value.isUndefined {
+            return JSValue(nullIn: context)
+        }
+
+        if value.hasProperty("then"), value.forProperty("then")?.isObject == true {
+            return try resolvePromise(value, functionName: functionName)
+        }
+
+        return value
+    }
+
+    func resolvePromise(_ promise: JSValue, functionName: String) throws -> JSValue? {
+        let semaphore = DispatchSemaphore(value: 0)
+        var resolved: JSValue?
+        var rejected: JSValue?
+
+        let fulfill: @convention(block) (JSValue?) -> Void = { result in
+            resolved = result
+            semaphore.signal()
+        }
+
+        let reject: @convention(block) (JSValue?) -> Void = { error in
+            rejected = error
+            semaphore.signal()
+        }
+
+        promise.invokeMethod("then", withArguments: [fulfill, reject])
+
+        let timeoutResult = semaphore.wait(timeout: .now() + 30)
+        if timeoutResult == .timedOut {
+            throw SharedRuntimeError.promiseTimedOut(name: functionName)
+        }
+
+        if let rejection = rejected {
+            let message = rejection.toString()
+            throw SharedRuntimeError.javascript(message: message)
+        }
+
+        if let resolved {
+            if resolved.isNull || resolved.isUndefined {
+                return JSValue(nullIn: context)
+            }
+            return resolved
+        }
+
+        return JSValue(nullIn: context)
     }
 }

@@ -20,10 +20,12 @@ public final class AuthService {
     }
 
     private let runtime: SharedRuntime
+    private let client: SharedCoreClient
     private let keychain: KeychainStoring
-    
+
     public init(runtime: SharedRuntime, keychain: KeychainStoring? = nil) {
         self.runtime = runtime
+        self.client = SharedCoreClient(runtime: runtime)
         self.keychain = keychain ?? KeychainStore(service: Constants.keychainService)
     }
 
@@ -32,7 +34,7 @@ public final class AuthService {
             "email": email,
             "password": password
         ]
-        let response = try runtime.call(function: "auth_signIn", with: [payload])
+        let response = try client.call("auth.signIn", arguments: [payload])
         let tokens = try extractTokens(from: response)
         if let tokens {
             try persist(tokens: tokens)
@@ -54,6 +56,60 @@ public final class AuthService {
 
     public func signOut() throws {
         try keychain.removeData(for: Constants.keychainKey)
+    }
+
+    public func remoteSignOut(meta: SharedCoreRequestMeta? = nil) async throws {
+        var arguments: [Any] = []
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        _ = try client.call("api.logout", arguments: arguments)
+        try signOut()
+    }
+
+    public func fetchProfile(meta: SharedCoreRequestMeta? = nil) async throws -> [String: Any]? {
+        var arguments: [Any] = []
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        let value = try client.call("api.me", arguments: arguments)
+        return value.toDictionary() as? [String: Any]
+    }
+
+    public func register(payload: [String: Any], meta: SharedCoreRequestMeta? = nil) async throws -> [String: Any]? {
+        var arguments: [Any] = [payload]
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        let value = try client.call("api.register", arguments: arguments)
+        return value.toDictionary() as? [String: Any]
+    }
+
+    public func pushSubscribe(subscription: Any?, meta: SharedCoreRequestMeta? = nil) async throws -> Any? {
+        var arguments: [Any] = []
+        if let subscription { arguments.append(subscription) }
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        return try client.callObject("api.pushSubscribe", arguments: arguments)
+    }
+
+    public func pushUnsubscribe(subscription: Any?, meta: SharedCoreRequestMeta? = nil) async throws -> Any? {
+        var arguments: [Any] = []
+        if let subscription { arguments.append(subscription) }
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        return try client.callObject("api.pushUnsubscribe", arguments: arguments)
+    }
+
+    public func updatePaypalEmail(_ email: String, meta: SharedCoreRequestMeta? = nil) async throws -> [String: Any]? {
+        var arguments: [Any] = [email]
+        if let metaDictionary = meta?.toDictionary(), !metaDictionary.isEmpty {
+            arguments.append(metaDictionary)
+        }
+        let value = try client.call("api.updatePaypalEmail", arguments: arguments)
+        return value.toDictionary() as? [String: Any]
     }
 
     private func extractTokens(from value: JSValue) throws -> AuthTokens? {

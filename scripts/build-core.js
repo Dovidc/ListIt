@@ -32,7 +32,8 @@ const replacements = [
   ['export function createListingsService', 'function createListingsService'],
   ['export function createUploadsService', 'function createUploadsService'],
   ['export function createCoreEnvironment', 'function createCoreEnvironment'],
-  ['export function installNativeBindings', 'function installNativeBindings']
+  ['export function installNativeBindings', 'function installNativeBindings'],
+  ['export function createSharedCoreExports', 'function createSharedCoreExports']
 ];
 
 let coreBody = source;
@@ -53,7 +54,8 @@ const cjsExports = [
   'createListingsService',
   'createUploadsService',
   'createCoreEnvironment',
-  'installNativeBindings'
+  'installNativeBindings',
+  'createSharedCoreExports'
 ];
 
 const cjsContent = `${coreBody}\n\nmodule.exports = {\n${cjsExports.map((name) => `  ${name},`).join('\n')}\n  default: defaultExport\n};\n`;
@@ -73,6 +75,7 @@ const globalAssignments = [
   'exports.createUploadsService = createUploadsService;',
   'exports.createCoreEnvironment = createCoreEnvironment;',
   'exports.installNativeBindings = installNativeBindings;',
+  'exports.createSharedCoreExports = createSharedCoreExports;',
   'exports.default = defaultExport;'
 ]
   .map((line) => `  ${line}`)
