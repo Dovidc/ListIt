@@ -1,0 +1,12 @@
+#include? "Signing.local.xcconfig"
+
+// Default bundle identifier prefix used by non-application targets. Override in
+// Signing.local.xcconfig (e.g., `com.lisit`) to have every framework inherit
+// the same stable identifier without hand-editing Xcode after each generate.
+LISTIT_BUNDLE_PREFIX = com.listit
+
+// Default application identifier used by the main app target.
+LISTIT_APP_BUNDLE_IDENTIFIER = com.listit.app
+
+// Default development team for automatic signing.
+LISTIT_DEVELOPMENT_TEAM = H9JP539MT9
