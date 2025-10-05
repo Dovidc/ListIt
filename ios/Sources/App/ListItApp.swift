@@ -1,8 +1,8 @@
 import Combine
 import SwiftUI
-import Combine
 import AuthFeature
 import ListingsFeature
+import SettingsFeature
 import UploadFeature
 import SharedServices
 import SharedCoreBridge
@@ -52,6 +52,11 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Uploads", systemImage: "icloud.and.arrow.up")
                 }
+
+            SettingsFeatureView(preferences: environment.preferencesService)
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
         }
         .environmentObject(environment.configuration)
     }
@@ -63,17 +68,20 @@ final class AppEnvironment: ObservableObject {
     let authService: AuthService
     let listingsService: ListingsService
     let uploadService: UploadService
+    let preferencesService: PreferencesService
     private let capabilityRouter: CapabilityRouting
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         sharedRuntime: SharedRuntime = SharedRuntime(),
         configuration: EnvironmentConfiguration = EnvironmentConfiguration(),
-        capabilityRouter: CapabilityRouting = CapabilityRouter()
+        capabilityRouter: CapabilityRouting = CapabilityRouter(),
+        preferencesService: PreferencesService = PreferencesService()
     ) {
         self.configuration = configuration
         self.theme = DesignSystemTheme()
         self.capabilityRouter = capabilityRouter
+        self.preferencesService = preferencesService
 
         configuration.setCapabilityEventHandler { [capabilityRouter] name, payload in
             capabilityRouter.handle(event: CapabilityEvent(name: name, payload: payload))
