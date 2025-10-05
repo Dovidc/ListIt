@@ -14,7 +14,11 @@ public struct SharedCoreBundleProvider: SharedCoreBundleProviding {
         self.fileManager = fileManager
 
         #if SWIFT_PACKAGE
+        #if canImport(SharedCoreBridge_SharedCoreBridgeResources)
         let defaultBundle = Bundle.module
+        #else
+        let defaultBundle = Bundle(for: SharedCoreBundleLocator.self)
+        #endif
         #else
         let defaultBundle = Bundle(for: SharedCoreBundleLocator.self)
         #endif
