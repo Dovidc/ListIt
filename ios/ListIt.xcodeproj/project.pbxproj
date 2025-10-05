@@ -24,19 +24,18 @@
 		59B3D95922B37D39E777E46D /* CoreDataListingsPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2846C4CD9DA339E1FE6F1E30 /* CoreDataListingsPersistenceTests.swift */; };
 		5FC952A9FDB1641154D01ED3 /* app.production.env in Resources */ = {isa = PBXBuildFile; fileRef = 605F1947D55389B0A7651425 /* app.production.env */; };
 		61AFEAE4DD623133F1767A2C /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBF43121379DB3F4297BBF3 /* DesignSystem.swift */; };
+		636D93086263E0BCFC31A087 /* UploadFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = DBFD5AF6FFDAF9C4F2F58D12 /* UploadFeature-Info.plist */; };
 		71A6900D2BBA68A594C4416A /* AuthFeatureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C23422CFB30EDE7B5B03986 /* AuthFeatureView.swift */; };
 		7C51734030E79401C306C0F2 /* SharedServices.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 178E9A29DA80381970EA2D5B /* SharedServices.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7F5F489BA2B44F4E169C829B /* AuthFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9F1BA8EF86A692BB641B05BA /* AuthFeature-Info.plist */; };
 		7F63329E379183F69759F651 /* ListingsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C00F7C902AA81A4C5DD589 /* ListingsService.swift */; };
 		812B5B6F714FC54AB4ABF61D /* SharedServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 178E9A29DA80381970EA2D5B /* SharedServices.framework */; };
 		8AD1660F04A4FC33D7EB46F1 /* DesignSystem.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6C4B2CF819C871F6C097E21F /* DesignSystem.framework */; };
+		8D133BC6CD6F6799454CA932 /* DesignSystem-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = DF5C4B232006752169E558DD /* DesignSystem-Info.plist */; };
 		93AFCA1C94B4422943E1E5AD /* EnvironmentConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE16FE0570C148E21B0995E1 /* EnvironmentConfiguration.swift */; };
 		94823F5957BD4AB706B45BA1 /* CoreDataStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 114F94AF3F0F23D6FBC01984 /* CoreDataStack.swift */; };
 		9AD3B27C65F6CE5623FCDA51 /* DesignSystem.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 6C4B2CF819C871F6C097E21F /* DesignSystem.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		9E09C91D2E91FE0D00F201E7 /* AuthFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9E09C91C2E91FE0D00F201E7 /* AuthFeature-Info.plist */; };
-		9E09C91F2E91FE1300F201E7 /* DesignSystem-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9E09C91E2E91FE1300F201E7 /* DesignSystem-Info.plist */; };
-		9E09C9212E91FE1900F201E7 /* PlatformCapabilities-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9E09C9202E91FE1900F201E7 /* PlatformCapabilities-Info.plist */; };
-		9E09C9232E91FE1E00F201E7 /* ListingsFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9E09C9222E91FE1E00F201E7 /* ListingsFeature-Info.plist */; };
-		9E09C9252E91FE2300F201E7 /* UploadFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9E09C9242E91FE2300F201E7 /* UploadFeature-Info.plist */; };
+		A0B339C32EAA232DBDB6519A /* ListingsFeature-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = CEB53B667146490F5953D657 /* ListingsFeature-Info.plist */; };
 		A366B2BAC597315A4C6B1FBC /* AuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D6EA15A9A182D9B8418E32 /* AuthServiceTests.swift */; };
 		A5198C95DAAF184A51B53913 /* CachedListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19BCAF7B60106302C5E7DD8 /* CachedListing.swift */; };
 		AA4295349015A848C76FC0AA /* DesignSystem.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6C4B2CF819C871F6C097E21F /* DesignSystem.framework */; };
@@ -58,6 +57,7 @@
 		E2B96D29645D28CDB9C8693F /* AppearanceConfigurator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB7BD9F07A95DA98416766D /* AppearanceConfigurator.swift */; };
 		E373AD09CC4406689E2ED926 /* ListingsServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C060BA1957F6E829C3C287AF /* ListingsServiceTests.swift */; };
 		F12216ABF615FACCEC79985F /* PlatformCapabilities.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 091A7EE39564C3834A5007DA /* PlatformCapabilities.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		F1C7A2AF903308AE700C0C52 /* PlatformCapabilities-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = EF7C837894480892D3FFB1A7 /* PlatformCapabilities-Info.plist */; };
 		F763B89B4228484CC914F0B0 /* ListItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F57558A8A65E8B83BDDE37 /* ListItApp.swift */; };
 		F91CEE410D79E03DBB87B42E /* SharedCoreBridge in Frameworks */ = {isa = PBXBuildFile; productRef = 8C0C93F8F56BB6F47C5D90B8 /* SharedCoreBridge */; };
 		FD8EE778315C008DAA11CD6F /* SharedServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 178E9A29DA80381970EA2D5B /* SharedServices.framework */; };
@@ -244,26 +244,21 @@
 		8E8D460A41F603080511E746 /* AuthFeature.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = AuthFeature.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F7391ECADF9C6E139182BF3 /* ListItAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListItAppTests.swift; sourceTree = "<group>"; };
 		930DC2B9387D0880FD0510D1 /* ListingsFeature.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ListingsFeature.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		9E09C9172E91F82C00F201E7 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
-		9E09C9182E91F83700F201E7 /* ListingsPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListingsPersistence.swift; sourceTree = "<group>"; };
-		9E09C9192E91F84F00F201E7 /* CapabilityRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityRouter.swift; sourceTree = "<group>"; };
-		9E09C91A2E91F85400F201E7 /* DesignSystemStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystemStubs.swift; sourceTree = "<group>"; };
-		9E09C91B2E91F85B00F201E7 /* FeatureViewStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureViewStubs.swift; sourceTree = "<group>"; };
-		9E09C91C2E91FE0D00F201E7 /* AuthFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "AuthFeature-Info.plist"; sourceTree = "<group>"; };
-		9E09C91E2E91FE1300F201E7 /* DesignSystem-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "DesignSystem-Info.plist"; sourceTree = "<group>"; };
-		9E09C9202E91FE1900F201E7 /* PlatformCapabilities-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PlatformCapabilities-Info.plist"; sourceTree = "<group>"; };
-		9E09C9222E91FE1E00F201E7 /* ListingsFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ListingsFeature-Info.plist"; sourceTree = "<group>"; };
-		9E09C9242E91FE2300F201E7 /* UploadFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "UploadFeature-Info.plist"; sourceTree = "<group>"; };
+		9F1BA8EF86A692BB641B05BA /* AuthFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "AuthFeature-Info.plist"; sourceTree = "<group>"; };
 		B2D6EA15A9A182D9B8418E32 /* AuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthServiceTests.swift; sourceTree = "<group>"; };
 		BDDC70A09DDB51735A9373B9 /* UploadFeatureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadFeatureView.swift; sourceTree = "<group>"; };
 		BE16FE0570C148E21B0995E1 /* EnvironmentConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentConfiguration.swift; sourceTree = "<group>"; };
 		BF82EA6913A153784AAD90AB /* CapabilityRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityRouter.swift; sourceTree = "<group>"; };
 		C060BA1957F6E829C3C287AF /* ListingsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListingsServiceTests.swift; sourceTree = "<group>"; };
 		C814C1072444146532B028DE /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
+		CEB53B667146490F5953D657 /* ListingsFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "ListingsFeature-Info.plist"; sourceTree = "<group>"; };
 		D4F57558A8A65E8B83BDDE37 /* ListItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListItApp.swift; sourceTree = "<group>"; };
+		DBFD5AF6FFDAF9C4F2F58D12 /* UploadFeature-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "UploadFeature-Info.plist"; sourceTree = "<group>"; };
+		DF5C4B232006752169E558DD /* DesignSystem-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "DesignSystem-Info.plist"; sourceTree = "<group>"; };
 		DFBF43121379DB3F4297BBF3 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		E6FBEA26259CEFE24EE81BD7 /* SharedServicesTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SharedServicesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BFAF0F091007538A741C63 /* ListItAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ListItAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EF7C837894480892D3FFB1A7 /* PlatformCapabilities-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "PlatformCapabilities-Info.plist"; sourceTree = "<group>"; };
 		F19BCAF7B60106302C5E7DD8 /* CachedListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedListing.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -459,17 +454,17 @@
 		D6CB9A23F69CCE8133EA1D41 /* SharedServices */ = {
 			isa = PBXGroup;
 			children = (
+				9F1BA8EF86A692BB641B05BA /* AuthFeature-Info.plist */,
 				811B6339BFF967E5DA88744E /* AuthService.swift */,
+				DF5C4B232006752169E558DD /* DesignSystem-Info.plist */,
 				BE16FE0570C148E21B0995E1 /* EnvironmentConfiguration.swift */,
+				CEB53B667146490F5953D657 /* ListingsFeature-Info.plist */,
 				08C00F7C902AA81A4C5DD589 /* ListingsService.swift */,
+				EF7C837894480892D3FFB1A7 /* PlatformCapabilities-Info.plist */,
+				DBFD5AF6FFDAF9C4F2F58D12 /* UploadFeature-Info.plist */,
 				1B86380115BC0F598DF3FA4D /* UploadService.swift */,
 				B5F763FD0CFD99E040CF2A35 /* Persistence */,
 				E6117CCA96B9DAC9E56E396C /* Resources */,
-				9E09C91C2E91FE0D00F201E7 /* AuthFeature-Info.plist */,
-				9E09C91E2E91FE1300F201E7 /* DesignSystem-Info.plist */,
-				9E09C9202E91FE1900F201E7 /* PlatformCapabilities-Info.plist */,
-				9E09C9222E91FE1E00F201E7 /* ListingsFeature-Info.plist */,
-				9E09C9242E91FE2300F201E7 /* UploadFeature-Info.plist */,
 			);
 			name = SharedServices;
 			path = Sources/SharedServices;
@@ -498,11 +493,6 @@
 				F6D83B234F6320263236B49F /* SharedServicesTests */,
 				A6DBD8C63E458E9E35C5DFA7 /* UploadFeature */,
 				15281EFA6D0E84F6A704AAB1 /* Products */,
-				9E09C9172E91F82C00F201E7 /* KeychainStore.swift */,
-				9E09C9182E91F83700F201E7 /* ListingsPersistence.swift */,
-				9E09C9192E91F84F00F201E7 /* CapabilityRouter.swift */,
-				9E09C91A2E91F85400F201E7 /* DesignSystemStubs.swift */,
-				9E09C91B2E91F85B00F201E7 /* FeatureViewStubs.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -752,11 +742,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9E09C9252E91FE2300F201E7 /* UploadFeature-Info.plist in Resources */,
-				9E09C9232E91FE1E00F201E7 /* ListingsFeature-Info.plist in Resources */,
-				9E09C91D2E91FE0D00F201E7 /* AuthFeature-Info.plist in Resources */,
-				9E09C91F2E91FE1300F201E7 /* DesignSystem-Info.plist in Resources */,
-				9E09C9212E91FE1900F201E7 /* PlatformCapabilities-Info.plist in Resources */,
+				7F5F489BA2B44F4E169C829B /* AuthFeature-Info.plist in Resources */,
+				8D133BC6CD6F6799454CA932 /* DesignSystem-Info.plist in Resources */,
+				A0B339C32EAA232DBDB6519A /* ListingsFeature-Info.plist in Resources */,
+				F1C7A2AF903308AE700C0C52 /* PlatformCapabilities-Info.plist in Resources */,
+				636D93086263E0BCFC31A087 /* UploadFeature-Info.plist in Resources */,
 				5FC952A9FDB1641154D01ED3 /* app.production.env in Resources */,
 				409A6852BD5CE3E349D00487 /* default.env in Resources */,
 			);
@@ -1110,7 +1100,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilities;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilites;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1203,7 +1193,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilities;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilites;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1445,7 +1435,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilities;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=*]" = com.listit.PlatformCapabilites;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
