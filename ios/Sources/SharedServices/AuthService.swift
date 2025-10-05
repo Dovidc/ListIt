@@ -21,12 +21,10 @@ public final class AuthService {
 
     private let runtime: SharedRuntime
     private let keychain: KeychainStoring
-    public init(
-        runtime: SharedRuntime,
-        keychain: KeychainStoring = KeychainStore(service: Constants.keychainService)
-    ) {
+    
+    public init(runtime: SharedRuntime, keychain: KeychainStoring? = nil) {
         self.runtime = runtime
-        self.keychain = keychain
+        self.keychain = keychain ?? KeychainStore(service: Constants.keychainService)
     }
 
     public func signIn(email: String, password: String) async throws -> AuthResult {

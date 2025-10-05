@@ -85,8 +85,8 @@ public struct ThemePlaygroundView: View {
             .background(theme.palette.background)
             .navigationTitle("Theme Playground")
         }
-        .onChange(of: typographyPreset) { newValue in
-            theme.typography = TypographyScale.preset(newValue)
+        .onChange(of: typographyPreset) {
+            theme.typography = TypographyScale.preset(typographyPreset)
         }
     }
 

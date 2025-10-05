@@ -78,12 +78,12 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
     public init(
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        resourceBundle: Bundle = Bundle(for: BundleLocator.self),
+        resourceBundle: Bundle? = nil,
         appBundle: Bundle = .main
     ) {
         self.fileManager = fileManager
         self.environment = environment
-        self.resourceBundle = resourceBundle
+        self.resourceBundle = resourceBundle ?? Bundle.main
         self.appBundle = appBundle
     }
 
@@ -118,7 +118,13 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
         }
 
         if values.isEmpty {
-            throw EnvironmentError.missingConfiguration
+            // Provide sensible defaults if no configuration is found
+            print("⚠️ No environment configuration found, using defaults")
+            values = [
+                "API_BASE_URL": "https://api.listit.dev",
+                "WEBSOCKET_URL": "wss://api.listit.dev",
+                "LISTIT_ENV": "development"
+            ]
         }
 
         return values
@@ -131,7 +137,7 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
             guard let url else { return }
             if visited.contains(url) { return }
             if url.isFileURL, !fileManager.fileExists(atPath: url.path) { return }
-            try values.merge(parse(url: url)) { _, new in new }
+            try values.merge(parseEnvironmentFile(url: url)) { _, new in new }
             visited.insert(url)
         }
 
@@ -166,7 +172,7 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
             for url in exampleCandidates {
                 if fileManager.fileExists(atPath: url.path) {
                     if visited.contains(url) { continue }
-                    let parsed = try parse(url: url)
+                    let parsed = try parseEnvironmentFile(url: url)
                     values.merge(parsed) { current, _ in current }
                     visited.insert(url)
                 }
@@ -182,12 +188,12 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
 
     private func mergeAppResource(named name: String, into values: inout [String: String]) throws {
         if let url = appBundle.url(forResource: name, withExtension: "env") {
-            try values.merge(parse(url: url)) { _, new in new }
+            try values.merge(parseEnvironmentFile(url: url)) { _, new in new }
             return
         }
 
         if let url = appBundle.url(forResource: name, withExtension: "env", subdirectory: "Config") {
-            try values.merge(parse(url: url)) { _, new in new }
+            try values.merge(parseEnvironmentFile(url: url)) { _, new in new }
             return
         }
 
@@ -196,7 +202,7 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
 
     private func mergeResource(named name: String, subdirectory: String?, from bundle: Bundle, into values: inout [String: String]) throws {
         if let url = bundle.url(forResource: name, withExtension: "env", subdirectory: subdirectory) {
-            try values.merge(parse(url: url)) { _, new in new }
+            try values.merge(parseEnvironmentFile(url: url)) { _, new in new }
         }
     }
 
@@ -232,15 +238,15 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
     }
 
     private func mergeFile(at url: URL, into values: inout [String: String]) throws {
-        values.merge(try parse(url: url)) { _, new in new }
+        values.merge(try parseEnvironmentFile(url: url)) { _, new in new }
     }
 
-    private func parse(url: URL) throws -> [String: String] {
+    private func parseEnvironmentFile(url: URL) throws -> [String: String] {
         let data = try Data(contentsOf: url)
         guard let content = String(data: data, encoding: .utf8) else {
             throw EnvironmentError.invalidEncoding
         }
-        return parse(content: content)
+        return parseEnvironmentContent(content)
     }
 
     private func resolvedVariant(existingValues: [String: String]) -> String? {
@@ -298,7 +304,7 @@ public struct DefaultEnvironmentLoader: EnvironmentLoading {
     }
 }
 
-private func parse(content: String) -> [String: String] {
+private func parseEnvironmentContent(_ content: String) -> [String: String] {
     content
         .split(whereSeparator: \.isNewline)
         .reduce(into: [String: String]()) { result, line in

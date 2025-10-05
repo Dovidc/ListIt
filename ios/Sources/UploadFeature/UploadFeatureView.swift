@@ -30,7 +30,9 @@ public struct UploadFeatureView: View {
                         .font(designSystem.typography.headline)
                 }
                 .buttonStyle(ListItPrimaryButtonStyle())
-                .onChange(of: selection, perform: handleSelection)
+                .onChange(of: selection) { 
+                    handleSelection(selection)
+                }
 
                 ProgressView(value: progress)
                     .tint(designSystem.colors.accent)
@@ -56,7 +58,16 @@ public struct UploadFeatureView: View {
             do {
                 progress = 0
                 statusMessage = nil
-                try await uploadService.uploadPhoto(from: item, progress: { value in
+                
+                // Load the data from PhotosPickerItem
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    statusMessage = "Failed to load photo"
+                    capabilityEmitter("haptic", ["style": "error"])
+                    return
+                }
+                
+                // Use the new uploadPhotoData method
+                try await uploadService.uploadPhotoData(data, progress: { value in
                     await MainActor.run { progress = value }
                 })
                 statusMessage = "Upload complete"

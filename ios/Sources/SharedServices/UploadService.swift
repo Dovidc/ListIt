@@ -1,5 +1,4 @@
 import Foundation
-import PhotosUI
 import SharedCoreBridge
 
 public final class UploadService {
@@ -8,11 +7,8 @@ public final class UploadService {
     public init(runtime: SharedRuntime) {
         self.runtime = runtime
     }
-
-    public func uploadPhoto(from item: PhotosPickerItem, progress: @escaping (Double) async -> Void) async throws {
-        guard let data = try await item.loadTransferable(type: Data.self) else {
-            throw UploadError.assetUnavailable
-        }
+    
+    public func uploadPhotoData(_ data: Data, progress: @escaping (Double) async -> Void) async throws {
         let base64 = data.base64EncodedString()
         let response = try runtime.call(function: "upload_photo", with: [base64])
         guard response.toBool() else {

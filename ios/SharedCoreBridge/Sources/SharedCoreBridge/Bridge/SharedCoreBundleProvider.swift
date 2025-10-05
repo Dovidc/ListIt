@@ -1,5 +1,7 @@
 import Foundation
 
+final class SharedCoreBundleLocator {}
+
 public protocol SharedCoreBundleProviding {
     func loadScript(named bundleName: String, configuration: EnvironmentConfigurationProviding) throws -> String
 }
@@ -8,28 +10,37 @@ public struct SharedCoreBundleProvider: SharedCoreBundleProviding {
     private let fileManager: FileManager
     private let resourceBundle: Bundle
 
-    public init(fileManager: FileManager = .default, resourceBundle: Bundle = .module) {
+    public init(fileManager: FileManager = .default, resourceBundle: Bundle = Bundle(for: SharedCoreBundleLocator.self)) {
         self.fileManager = fileManager
         self.resourceBundle = resourceBundle
     }
 
     public func loadScript(named bundleName: String, configuration: EnvironmentConfigurationProviding) throws -> String {
+        print("🔍 Looking for script: \(bundleName).js")
+        
         if let overridePath = configuration.extraEnvironment["LISTIT_CORE_BUNDLE_PATH"] {
+            print("📂 Checking override path: \(overridePath)")
             return try loadScript(fromFilesystemPath: overridePath, bundleName: bundleName)
         }
 
         if shouldPreferXCFramework(using: configuration) {
+            print("📦 Checking XCFramework...")
             return try loadScriptFromXCFramework(configuration: configuration, bundleName: bundleName)
         }
 
+        print("📱 Checking main bundle...")
         if let script = try? loadScriptFromMainBundle(bundleName: bundleName) {
+            print("✅ Found script in main bundle")
             return script
         }
 
+        print("📦 Checking package bundle...")
         if let script = try? loadScriptFromPackageBundle(bundleName: bundleName) {
+            print("✅ Found script in package bundle")
             return script
         }
 
+        print("❌ Script not found in any location")
         throw BootstrapError.bundleNotFound(name: bundleName)
     }
 }

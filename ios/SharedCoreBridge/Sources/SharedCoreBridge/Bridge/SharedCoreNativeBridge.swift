@@ -44,8 +44,4 @@ public extension EnvironmentConfigurationProviding {
             return extraEnvironment[key]
         }
     }
-
-    var apiBaseURL: URL { get }
-    var websocketURL: URL { get }
-    var extraEnvironment: [String: String] { get }
 }
