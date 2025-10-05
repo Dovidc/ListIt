@@ -259,7 +259,8 @@
 		E6FBEA26259CEFE24EE81BD7 /* SharedServicesTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SharedServicesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BFAF0F091007538A741C63 /* ListItAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ListItAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF7C837894480892D3FFB1A7 /* PlatformCapabilities-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "PlatformCapabilities-Info.plist"; sourceTree = "<group>"; };
-		F19BCAF7B60106302C5E7DD8 /* CachedListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedListing.swift; sourceTree = "<group>"; };
+                F19BCAF7B60106302C5E7DD8 /* CachedListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedListing.swift; sourceTree = "<group>"; };
+                FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -479,12 +480,13 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		F267026D4EA6B1B4FDA0C90D = {
-			isa = PBXGroup;
-			children = (
-				03754222CF0A37F44EB85A7A /* App */,
-				6558B7598F9523714EE3352D /* AppTests */,
-				0E152DC8CBC9B8E5516483EE /* AuthFeature */,
+                F267026D4EA6B1B4FDA0C90D = {
+                        isa = PBXGroup;
+                        children = (
+                                F6FBB5B1C79E1E5D623CC2B8 /* Config */,
+                                03754222CF0A37F44EB85A7A /* App */,
+                                6558B7598F9523714EE3352D /* AppTests */,
+                                0E152DC8CBC9B8E5516483EE /* AuthFeature */,
 				8C54F9FEAACEEA46578F4CC0 /* DesignSystem */,
 				C502E326925C4030FA071783 /* ListingsFeature */,
 				378A57924F188D6BAE8992B9 /* Packages */,
@@ -494,11 +496,20 @@
 				A6DBD8C63E458E9E35C5DFA7 /* UploadFeature */,
 				15281EFA6D0E84F6A704AAB1 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		F6D83B234F6320263236B49F /* SharedServicesTests */ = {
-			isa = PBXGroup;
-			children = (
+                        sourceTree = "<group>";
+                };
+                F6FBB5B1C79E1E5D623CC2B8 /* Config */ = {
+                        isa = PBXGroup;
+                        children = (
+                                FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */,
+                        );
+                        name = Config;
+                        path = Config;
+                        sourceTree = "<group>";
+                };
+                F6D83B234F6320263236B49F /* SharedServicesTests */ = {
+                        isa = PBXGroup;
+                        children = (
 				B2D6EA15A9A182D9B8418E32 /* AuthServiceTests.swift */,
 				2846C4CD9DA339E1FE6F1E30 /* CoreDataListingsPersistenceTests.swift */,
 				8B0828EA770AA2F285324C35 /* EnvironmentConfigurationTests.swift */,
@@ -1261,9 +1272,10 @@
 			};
 			name = Staging;
 		};
-		7EB95E40BF9F0B6BB9A214E2 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
+                7EB95E40BF9F0B6BB9A214E2 /* Release */ = {
+                        isa = XCBuildConfiguration;
+                        baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
+                        buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1336,9 +1348,10 @@
 			};
 			name = Debug;
 		};
-		85A90B166C72B86CCA904488 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
+                85A90B166C72B86CCA904488 /* Debug */ = {
+                        isa = XCBuildConfiguration;
+                        baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
+                        buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1491,9 +1504,10 @@
 			};
 			name = Release;
 		};
-		A7441941518B8914793D9DAD /* Staging */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
+                A7441941518B8914793D9DAD /* Staging */ = {
+                        isa = XCBuildConfiguration;
+                        baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
+                        buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
