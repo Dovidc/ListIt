@@ -24,24 +24,22 @@ open class SharedRuntime {
 
         if name.contains(".") {
             let path = name.split(separator: ".").map(String.init)
-            guard !path.isEmpty else {
+            guard let methodName = path.last else {
                 throw SharedRuntimeError.missingExport(name: name)
             }
 
-            var current: JSValue? = context.globalObject
-            var parent: JSValue? = context.globalObject
-
-            for component in path {
-                parent = current
-                current = current?.forProperty(component)
+            // Resolve the parent object for the method
+            let parentPath = path.dropLast()
+            var target: JSValue? = context.globalObject
+            for component in parentPath {
+                target = target?.forProperty(component)
             }
 
-            guard let function = current, !function.isUndefined else {
+            guard let resolvedTarget = target, !resolvedTarget.isUndefined else {
                 throw SharedRuntimeError.missingExport(name: name)
             }
 
-            let target = parent ?? context.globalObject
-            result = function.call(withArguments: arguments, on: target)
+            result = resolvedTarget.invokeMethod(methodName, withArguments: arguments)
         } else {
             guard let function = context.objectForKeyedSubscript(name) else {
                 throw SharedRuntimeError.missingExport(name: name)
