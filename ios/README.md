@@ -61,6 +61,18 @@ from the web application.
    open ListIt.xcworkspace
    ```
 
+### Preserving Local Signing Overrides
+
+- All targets import `Config/Signing.xcconfig`, which seeds default bundle identifiers and the shared development team.
+- Create `ios/Config/Signing.local.xcconfig` (this file is gitignored) to override values like `LISTIT_APP_BUNDLE_IDENTIFIER` or `LISTIT_DEVELOPMENT_TEAM` so your personal settings survive future `xcodegen generate` runs and pull requests.
+- For example:
+  ```xcconfig
+  LISTIT_APP_BUNDLE_IDENTIFIER = com.yourcompany.listit
+  LISTIT_BUNDLE_PREFIX = com.yourcompany.listit
+  LISTIT_DEVELOPMENT_TEAM = ABC1234567
+  ```
+- `Signing.local.xcconfig` is included only when present, allowing each contributor to keep device provisioning details out of version control while avoiding repeated manual edits in Xcode.
+
 ## Shared Core Integration
 
 The workspace expects the web build to produce a distributable JavaScript bundle under `packages/core/dist`. The

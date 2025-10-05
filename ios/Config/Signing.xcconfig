@@ -1,0 +1,14 @@
+#include? "Signing.local.xcconfig"
+
+// Default bundle identifier prefix used by non-application targets.
+LISTIT_BUNDLE_PREFIX = com.listit
+
+// Default application identifier used by the main app target.
+LISTIT_APP_BUNDLE_IDENTIFIER = com.listit.app
+
+// Default development team for automatic signing.
+LISTIT_DEVELOPMENT_TEAM = H9JP539MT9
+
+// Apply defaults so each target inherits a stable identifier and signing team.
+PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_BUNDLE_PREFIX).$(PRODUCT_NAME:rfc1034identifier)
+DEVELOPMENT_TEAM = $(LISTIT_DEVELOPMENT_TEAM)
