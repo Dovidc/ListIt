@@ -1100,6 +1100,133 @@ function createCoreEnvironment(options = {}) {
   return { api, auth, listings, uploads, helpers };
 }
 
+function createApiExport(api) {
+  return {
+    request: (path, init, meta) => api.request(path, init, meta),
+    me: (meta) => api.me(meta),
+    login: (email, password, meta) => api.login(email, password, meta),
+    register: (payload, meta) => api.register(payload || {}, meta),
+    logout: (meta) => api.logout(meta),
+    pushSubscribe: (subscription, meta) => api.pushSubscribe(subscription, meta),
+    pushUnsubscribe: (subscription, meta) => api.pushUnsubscribe(subscription, meta),
+    updatePaypalEmail: (paypalEmail, meta) => api.updatePaypalEmail(paypalEmail, meta),
+    listAll: (params, locOrMeta, meta) => api.listAll(params, locOrMeta, meta),
+    listListings: (params, meta) => api.listListings(params, meta),
+    listByUser: (userId, meta) => api.listByUser(userId, meta),
+    listMine: (meta) => api.listMine(meta),
+    createListing: (payload, meta) => api.createListing(payload || {}, meta),
+    updateListing: (id, payload, meta) => api.updateListing(id, payload || {}, meta),
+    markListingSold: (id, sold, meta) => api.markListingSold(id, sold, meta),
+    deleteListing: (id, meta) => api.deleteListing(id, meta),
+    adminDeleteListing: (id, meta) => api.adminDeleteListing(id, meta),
+    adminDeleteAll: (meta) => api.adminDeleteAll(meta),
+    adminSeedListings: (payload, meta) => api.adminSeedListings(payload || {}, meta),
+    adminDeleteSeedListings: (meta) => api.adminDeleteSeedListings(meta),
+    listAds: (meta) => api.listAds(meta),
+    adminListFlagged: (meta) => api.adminListFlagged(meta),
+    adminDeleteFlagged: (id, meta) => api.adminDeleteFlagged(id, meta),
+    adminListAds: (meta) => api.adminListAds(meta),
+    adminCreateAd: (payload, meta) => api.adminCreateAd(payload || {}, meta),
+    adminUpdateAd: (id, payload, meta) => api.adminUpdateAd(id, payload || {}, meta),
+    adminDeleteAd: (id, meta) => api.adminDeleteAd(id, meta),
+    searchCities: (query, meta) => api.searchCities(query, meta),
+    ensureConversation: (payload, meta) => api.ensureConversation(payload || {}, meta),
+    listConversations: (meta) => api.listConversations(meta),
+    getMessages: (id, meta) => api.getMessages(id, meta),
+    sendMessage: (id, body, images, meta) => api.sendMessage(id, body, images, meta),
+    deleteConversation: (id, meta) => api.deleteConversation(id, meta),
+    getListingImages: (id, meta) => api.getListingImages(id, meta),
+    getCoversBatch: (ids, meta) => api.getCoversBatch(ids, meta),
+    aiAnalyze: (payload, meta) => api.aiAnalyze(payload || {}, meta),
+    reverseGeocode: (lat, lon, meta) => api.reverseGeocode(lat, lon, meta),
+    listNearby: (lat, lon, radiusMeters, meta) => api.listNearby(lat, lon, radiusMeters, meta),
+    reportSeller: (payload, meta) => api.reportSeller(payload || {}, meta),
+    adminSearchUsers: (params, meta) => api.adminSearchUsers(params || {}, meta),
+    adminGetUser: (id, meta) => api.adminGetUser(id, meta),
+    adminGetUserReports: (id, params, meta) => api.adminGetUserReports(id, params || {}, meta),
+    adminUpdateUserStatus: (id, payload, meta) => api.adminUpdateUserStatus(id, payload || {}, meta),
+    adminTopReports: (params, meta) => api.adminTopReports(params || {}, meta),
+    adminClearUserReports: (id, payload, meta) => api.adminClearUserReports(id, payload || {}, meta),
+    signUpload: (payload, meta) => api.signUpload(payload || {}, meta),
+    finalizeUpload: (payload, meta) => api.finalizeUpload(payload || {}, meta)
+  };
+}
+
+function createAuthExport(auth) {
+  return {
+    signIn: (payload, meta) => auth.signIn(payload || {}, meta),
+    signOut: (meta) => auth.signOut(meta),
+    validateCredentials: (payload) => auth.validateCredentials(payload || {}),
+    extractTokens: (response) => auth.extractTokens(response)
+  };
+}
+
+function createListingsExport(listings) {
+  return {
+    fetch: (params, meta) => listings.fetch(params || {}, meta),
+    fetchSummaries: (params, meta) => listings.fetchSummaries(params || {}, meta),
+    toSummary: (listing) => listings.toSummary(listing),
+    normalize: (value, limit) => listings.normalize(value, limit)
+  };
+}
+
+function createUploadsExport(uploads) {
+  return {
+    clearDraftCacheForFile: (file) => uploads.clearDraftCacheForFile?.(file),
+    uploadFileDraft: (file) => uploads.uploadFileDraft?.(file),
+    fetchListingImagesCached: (listingId, options) => uploads.fetchListingImagesCached?.(listingId, options),
+    prepareListingForModal: (listing, coverHint) => uploads.prepareListingForModal(listing, coverHint),
+    warmListingImages: (listingId, baseImages) => uploads.warmListingImages(listingId, baseImages),
+    uploadFilesForListing: (listingId, files) => uploads.uploadFilesForListing?.(listingId, files),
+    uploadOneMessageImage: (conversationIdOrFile, maybeFile) => uploads.uploadOneMessageImage(conversationIdOrFile, maybeFile),
+    listingImageCache: uploads.listingImageCache,
+    listingImageInFlight: uploads.listingImageInFlight,
+    uploadBase64Image: (data, options) => uploads.uploadBase64Image(data, options)
+  };
+}
+
+function createSharedCoreExports(core) {
+  return {
+    api: createApiExport(core.api),
+    auth: createAuthExport(core.auth),
+    listings: createListingsExport(core.listings),
+    uploads: createUploadsExport(core.uploads),
+    helpers: {
+      formatCurrency,
+      formatDistance,
+      haversineMeters,
+      normalizeListingsResponse,
+      asArray
+    }
+  };
+}
+
+function resolveSharedExport(method, exports) {
+  if (!method || typeof method !== 'string') {
+    throw new Error('shared_core_call requires a method name.');
+  }
+  const segments = method.split('.');
+  let current = exports;
+  for (const segment of segments) {
+    if (!segment) continue;
+    if (current && typeof current === 'object' && segment in current) {
+      current = current[segment];
+    } else {
+      throw new Error(`Missing shared core export: ${method}`);
+    }
+  }
+  if (typeof current !== 'function') {
+    throw new Error(`Shared core export is not callable: ${method}`);
+  }
+  return current;
+}
+
+function invokeSharedExport(method, args, exports) {
+  const fn = resolveSharedExport(method, exports);
+  const normalizedArgs = Array.isArray(args) ? args : [args];
+  return fn(...normalizedArgs);
+}
+
 function installNativeBindings(options = {}) {
   const logger = options.logger || globalThis?.NativeBridge || null;
   const log = typeof logger?.log === 'function' ? logger.log.bind(logger) : () => {};
@@ -1109,11 +1236,26 @@ function installNativeBindings(options = {}) {
     return core;
   }
 
+  const sharedExports = createSharedCoreExports(core);
+  globalThis.ListItCoreExports = sharedExports;
+  globalThis.shared_core_exports = sharedExports;
+
+  const sharedCaller = (method, args) => {
+    try {
+      return invokeSharedExport(method, args, sharedExports);
+    } catch (error) {
+      log(`[shared_core_call] ${method} failed: ${error?.message || error}`);
+      throw error;
+    }
+  };
+
+  globalThis.shared_core_call = (method, args = []) => sharedCaller(method, args);
+
   const { auth, listings, uploads } = core;
 
   globalThis.auth_signIn = (payload) => {
     try {
-      const promise = auth.signIn(payload || {});
+      const promise = sharedCaller('auth.signIn', [payload || {}]);
       return Promise.resolve(promise).then((result) => {
         if (result?.tokens) {
           const output = {
@@ -1138,13 +1280,14 @@ function installNativeBindings(options = {}) {
 
   globalThis.listings_fetch = (params) => {
     try {
-      return Promise.resolve(listings.fetchSummaries(params || {})).then((items) => (
-        items.map((item) => ({
+      return Promise.resolve(sharedCaller('listings.fetchSummaries', [params || {}])).then((result) => {
+        const items = Array.isArray(result?.items) ? result.items : [];
+        return items.map((item) => ({
           id: item.id,
           title: item.title,
           subtitle: item.subtitle
-        }))
-      ));
+        }));
+      });
     } catch (error) {
       log(`listings_fetch failed: ${error?.message || error}`);
       return [];
@@ -1153,7 +1296,7 @@ function installNativeBindings(options = {}) {
 
   globalThis.upload_photo = (base64, options = {}) => {
     try {
-      return Promise.resolve(uploads.uploadBase64Image(base64, options)).then(() => true);
+      return Promise.resolve(sharedCaller('uploads.uploadBase64Image', [base64, options])).then(() => true);
     } catch (error) {
       log(`upload_photo failed: ${error?.message || error}`);
       return false;
@@ -1174,7 +1317,8 @@ const defaultExport = {
   createListingsService,
   createUploadsService,
   createCoreEnvironment,
-  installNativeBindings
+  installNativeBindings,
+  createSharedCoreExports
 };
 
 
@@ -1191,5 +1335,6 @@ module.exports = {
   createUploadsService,
   createCoreEnvironment,
   installNativeBindings,
+  createSharedCoreExports,
   default: defaultExport
 };
