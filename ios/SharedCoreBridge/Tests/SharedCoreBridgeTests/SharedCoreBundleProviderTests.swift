@@ -41,6 +41,43 @@ final class SharedCoreBundleProviderTests: XCTestCase {
         XCTAssertTrue(script.contains("xcframework"))
     }
 
+    func testAutoDiscoversXCFrameworkWithNormalizedName() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let infoPlistURL = tempDirectory.appendingPathComponent("Info.plist")
+        let infoPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.listit.testbundle",
+            "CFBundleName": "ListItTestBundle"
+        ]
+        let infoData = try PropertyListSerialization.data(fromPropertyList: infoPlist, format: .xml, options: 0)
+        try infoData.write(to: infoPlistURL)
+
+        guard let resourceBundle = Bundle(path: tempDirectory.path) else {
+            return XCTFail("Failed to load bundle at temporary path")
+        }
+
+        let xcframeworkURL = tempDirectory.appendingPathComponent("ListItCore.xcframework")
+        let resourcesURL = xcframeworkURL
+            .appendingPathComponent("ios-arm64")
+            .appendingPathComponent("Resources")
+        try FileManager.default.createDirectory(at: resourcesURL, withIntermediateDirectories: true)
+
+        let scriptURL = resourcesURL.appendingPathComponent("\(bundleName).js")
+        try "console.log('auto xcframework');".write(to: scriptURL, atomically: true, encoding: .utf8)
+
+        let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: resourceBundle)
+        let configuration = TestEnvironmentConfiguration(extraEnvironment: [
+            "LISTIT_CORE_DISTRIBUTION": "xcframework"
+        ])
+
+        let script = try provider.loadScript(named: bundleName, configuration: configuration)
+        XCTAssertTrue(script.contains("auto xcframework"))
+    }
+
     func testFallsBackToBundledResource() throws {
         let provider = SharedCoreBundleProvider(fileManager: .default, resourceBundle: .module)
         let configuration = TestEnvironmentConfiguration()

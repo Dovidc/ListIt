@@ -113,10 +113,17 @@ private extension SharedCoreBundleProvider {
             Bundle.main.bundleURL
         ].compactMap { $0 }
 
+        let normalizedBundleName = normalizeFrameworkName(bundleName)
+
         for baseURL in searchURLs {
             if let enumerator = fileManager.enumerator(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]) {
                 for case let candidate as URL in enumerator {
-                    if candidate.pathExtension == "xcframework" && candidate.lastPathComponent.localizedCaseInsensitiveContains(bundleName) {
+                    guard candidate.pathExtension == "xcframework" else { continue }
+
+                    let candidateName = candidate.deletingPathExtension().lastPathComponent
+                    let normalizedCandidateName = normalizeFrameworkName(candidateName)
+
+                    if normalizedCandidateName.contains(normalizedBundleName) {
                         return candidate
                     }
                 }
@@ -141,5 +148,9 @@ private extension SharedCoreBundleProvider {
             throw BootstrapError.invalidEncoding
         }
         return script
+    }
+
+    func normalizeFrameworkName(_ name: String) -> String {
+        return name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 }
