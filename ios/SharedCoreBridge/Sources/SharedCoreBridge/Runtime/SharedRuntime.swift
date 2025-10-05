@@ -20,10 +20,35 @@ open class SharedRuntime {
     }
 
     open func call(function name: String, with arguments: [Any]) throws -> JSValue {
-        guard let function = context.objectForKeyedSubscript(name) else {
-            throw SharedRuntimeError.missingExport(name: name)
+        let result: JSValue?
+
+        if name.contains(".") {
+            let path = name.split(separator: ".").map(String.init)
+            guard !path.isEmpty else {
+                throw SharedRuntimeError.missingExport(name: name)
+            }
+
+            var current: JSValue? = context.globalObject
+            var parent: JSValue? = context.globalObject
+
+            for component in path {
+                parent = current
+                current = current?.forProperty(component)
+            }
+
+            guard let function = current, !function.isUndefined else {
+                throw SharedRuntimeError.missingExport(name: name)
+            }
+
+            let target = parent ?? context.globalObject
+            result = function.call(withArguments: arguments, on: target)
+        } else {
+            guard let function = context.objectForKeyedSubscript(name) else {
+                throw SharedRuntimeError.missingExport(name: name)
+            }
+            result = function.call(withArguments: arguments)
         }
-        let result = function.call(withArguments: arguments)
+
         if let exception = context.exception {
             throw SharedRuntimeError.javascript(message: exception.toString())
         }

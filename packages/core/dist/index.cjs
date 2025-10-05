@@ -1111,6 +1111,23 @@ function installNativeBindings(options = {}) {
 
   const { auth, listings, uploads } = core;
 
+  const namespace = typeof globalThis.ListItCore === 'object' && globalThis.ListItCore
+    ? globalThis.ListItCore
+    : (globalThis.ListItCore = {});
+
+  try {
+    Object.assign(namespace, {
+      core,
+      api: core.api,
+      auth,
+      listings,
+      uploads,
+      helpers: core.helpers
+    });
+  } catch (error) {
+    log(`Failed to augment ListItCore namespace: ${error?.message || error}`);
+  }
+
   globalThis.auth_signIn = (payload) => {
     try {
       const promise = auth.signIn(payload || {});
