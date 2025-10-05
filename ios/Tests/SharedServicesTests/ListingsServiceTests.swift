@@ -41,6 +41,52 @@ final class ListingsServiceTests: XCTestCase {
         let service = ListingsService(runtime: runtime, persistence: persistence)
         XCTAssertThrowsError(try waitFor { try await service.fetchListings() })
     }
+
+    func testFetchNearbyListingsReturnsDistance() throws {
+        let runtime = FakeRuntime()
+        let context = JSContext()!
+        let rawListing: [String: Any] = [
+            "id": "5",
+            "title": "Cafe",
+            "subtitle": "Downtown",
+            "distance_meters": 120.0
+        ]
+
+        runtime.stubbedResponses["api.listNearby"] = JSValue(object: [rawListing], in: context)
+        runtime.stubbedResponses["helpers.asArray"] = JSValue(object: [rawListing], in: context)
+        runtime.stubbedResponses["listings.toSummary"] = JSValue(object: ["id": "5", "title": "Cafe", "subtitle": "Downtown"], in: context)
+
+        let service = ListingsService(runtime: runtime, persistence: FakeListingsPersistence())
+        let nearby = try waitFor { try await service.fetchNearbyListings(latitude: 0, longitude: 0) }
+
+        XCTAssertEqual(nearby.first?.summary.id, "5")
+        XCTAssertEqual(nearby.first?.distanceMeters, 120.0)
+    }
+
+    func testFetchFlaggedListingsParsesReasons() throws {
+        let runtime = FakeRuntime()
+        let context = JSContext()!
+        let flagged: [String: Any] = [
+            "id": 99,
+            "title": "Vintage Bike",
+            "username": "moderator",
+            "reasons": ["spam", "offensive"],
+            "report_count": 3,
+            "flagged_at": ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
+        ]
+
+        runtime.stubbedResponses["api.adminListFlagged"] = JSValue(object: [flagged], in: context)
+        runtime.stubbedResponses["helpers.asArray"] = JSValue(object: [flagged], in: context)
+        runtime.stubbedResponses["listings.toSummary"] = JSValue(object: ["id": "99", "title": "Vintage Bike", "subtitle": ""], in: context)
+
+        let service = ListingsService(runtime: runtime, persistence: FakeListingsPersistence())
+        let flaggedListings = try waitFor { try await service.fetchFlaggedListings() }
+
+        XCTAssertEqual(flaggedListings.first?.id, "99")
+        XCTAssertEqual(flaggedListings.first?.reporterCount, 3)
+        XCTAssertEqual(Set(flaggedListings.first?.reasons ?? []), Set(["spam", "offensive"]))
+        XCTAssertTrue(flaggedListings.first?.subtitle.contains("Reporter") ?? false)
+    }
 }
 
 private final class FakeRuntime: SharedRuntime {

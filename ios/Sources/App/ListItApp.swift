@@ -1,9 +1,11 @@
 import Combine
 import SwiftUI
-import Combine
 import AuthFeature
 import ListingsFeature
+import NearbyFeature
+import MessagesFeature
 import UploadFeature
+import AdminFeature
 import SharedServices
 import SharedCoreBridge
 import DesignSystem
@@ -32,13 +34,6 @@ struct RootTabView: View {
 
     var body: some View {
         TabView {
-            AuthFeatureView(authService: environment.authService) { name, payload in
-                environment.emitCapabilityEvent(name, payload: payload)
-            }
-                .tabItem {
-                    Label("Account", systemImage: "person")
-                }
-
             ListingsFeatureView(listingsService: environment.listingsService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
@@ -46,11 +41,39 @@ struct RootTabView: View {
                     Label("Listings", systemImage: "list.bullet")
                 }
 
+            NearbyFeatureView(listingsService: environment.listingsService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Nearby", systemImage: "location.circle")
+                }
+
+            MessagesFeatureView(conversationsService: environment.conversationsService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Messages", systemImage: "bubble.left.and.bubble.right")
+                }
+
             UploadFeatureView(uploadService: environment.uploadService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
                 .tabItem {
-                    Label("Uploads", systemImage: "icloud.and.arrow.up")
+                    Label("Upload", systemImage: "icloud.and.arrow.up")
+                }
+
+            AuthFeatureView(authService: environment.authService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Account", systemImage: "person")
+                }
+
+            AdminFeatureView(listingsService: environment.listingsService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Admin", systemImage: "shield.lefthalf.filled")
                 }
         }
         .environmentObject(environment.configuration)
@@ -62,6 +85,7 @@ final class AppEnvironment: ObservableObject {
     @Published var theme: DesignSystemTheme
     let authService: AuthService
     let listingsService: ListingsService
+    let conversationsService: ConversationsService
     let uploadService: UploadService
     private let capabilityRouter: CapabilityRouting
     private var cancellables: Set<AnyCancellable> = []
@@ -82,6 +106,7 @@ final class AppEnvironment: ObservableObject {
         SharedRuntimeRegistry.shared.register(runtime: sharedRuntime)
         self.authService = AuthService(runtime: sharedRuntime)
         self.listingsService = ListingsService(runtime: sharedRuntime)
+        self.conversationsService = ConversationsService(runtime: sharedRuntime)
         self.uploadService = UploadService(runtime: sharedRuntime)
 
         bind(to: configuration)

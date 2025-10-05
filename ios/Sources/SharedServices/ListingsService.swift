@@ -27,6 +27,32 @@ public struct ListingsPage {
     }
 }
 
+public struct NearbyListingResult: Equatable {
+    public let summary: ListingSummary
+    public let distanceMeters: Double?
+
+    public init(summary: ListingSummary, distanceMeters: Double?) {
+        self.summary = summary
+        self.distanceMeters = distanceMeters
+    }
+}
+
+public struct AdminFlaggedListing: Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let reporterCount: Int?
+    public let reasons: [String]
+
+    public init(id: String, title: String, subtitle: String, reporterCount: Int?, reasons: [String]) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.reporterCount = reporterCount
+        self.reasons = reasons
+    }
+}
+
 public final class ListingsService {
     private let runtime: SharedRuntime
     private let client: SharedCoreClient
@@ -166,6 +192,26 @@ public final class ListingsService {
         return try client.callObject("api.listNearby", arguments: arguments)
     }
 
+    public func fetchNearbyListings(latitude: Double,
+                                    longitude: Double,
+                                    radiusMeters: Double? = nil,
+                                    meta: SharedCoreRequestMeta? = nil) async throws -> [NearbyListingResult] {
+        guard let response = try await listNearby(latitude: latitude, longitude: longitude, radiusMeters: radiusMeters, meta: meta) else {
+            return []
+        }
+        let rows = try client.callArray("helpers.asArray", arguments: [response])
+        return rows.compactMap { raw -> NearbyListingResult? in
+            guard let summary = summary(from: raw) else { return nil }
+            let distance: Double?
+            if let dictionary = raw as? [String: Any] {
+                distance = distanceMeters(from: dictionary)
+            } else {
+                distance = nil
+            }
+            return NearbyListingResult(summary: summary, distanceMeters: distance)
+        }
+    }
+
     public func reportSeller(payload: [String: Any], meta: SharedCoreRequestMeta? = nil) async throws -> Any? {
         var arguments: [Any] = [payload]
         appendMeta(&arguments, meta: meta)
@@ -232,6 +278,40 @@ public final class ListingsService {
         var arguments: [Any] = []
         appendMeta(&arguments, meta: meta)
         return try client.callObject("api.adminListFlagged", arguments: arguments)
+    }
+
+    public func fetchFlaggedListings(meta: SharedCoreRequestMeta? = nil) async throws -> [AdminFlaggedListing] {
+        guard let response = try await adminListFlagged(meta: meta) else { return [] }
+        let rows = try client.callArray("helpers.asArray", arguments: [response])
+        return rows.compactMap { raw -> AdminFlaggedListing? in
+            guard let dictionary = raw as? [String: Any] else { return nil }
+            guard let identifier = stringIdentifier(from: dictionary["id"]) ?? stringIdentifier(from: dictionary["listing_id"]) else {
+                return nil
+            }
+
+            let summary = listingSummary(from: dictionary) ?? ListingSummary(
+                id: identifier,
+                title: (dictionary["listing_title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ??
+                    (dictionary["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ??
+                    "Listing #\(identifier)",
+                subtitle: (dictionary["username"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            )
+
+            let reporterCount = integerValue(from: dictionary["report_count"]) ??
+                integerValue(from: dictionary["reports"]) ??
+                integerValue(from: dictionary["reportCount"])
+
+            let subtitle = makeFlaggedSubtitle(from: dictionary, fallback: summary.subtitle)
+            let reasons = reasons(from: dictionary)
+
+            return AdminFlaggedListing(
+                id: identifier,
+                title: summary.title,
+                subtitle: subtitle,
+                reporterCount: reporterCount,
+                reasons: reasons
+            )
+        }
     }
 
     public func adminDeleteFlagged(id: CustomStringConvertible, meta: SharedCoreRequestMeta? = nil) async throws {
@@ -363,5 +443,106 @@ public final class ListingsService {
         default:
             return nil
         }
+    }
+
+    private func distanceMeters(from dictionary: [String: Any]) -> Double? {
+        if let nested = dictionary["distance"] as? [String: Any] {
+            if let meters = nested["meters"] {
+                return doubleValue(from: meters)
+            }
+        }
+        if let meters = dictionary["distance_meters"] ?? dictionary["distanceMeters"] ?? dictionary["distance"] {
+            return doubleValue(from: meters)
+        }
+        return nil
+    }
+
+    private func doubleValue(from value: Any?) -> Double? {
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let string = value as? String, let double = Double(string) { return double }
+        return nil
+    }
+
+    private func integerValue(from value: Any?) -> Int? {
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String, let int = Int(string) { return int }
+        return nil
+    }
+
+    private func makeFlaggedSubtitle(from dictionary: [String: Any], fallback: String) -> String {
+        var components: [String] = []
+
+        if let reporter = stringIdentifier(from: dictionary["username"]) ??
+            stringIdentifier(from: dictionary["reported_by"]) ??
+            stringIdentifier(from: dictionary["reporter_name"]) {
+            components.append("Reporter: \(reporter)")
+        }
+
+        if let flaggedDescription = formattedFlaggedDate(from: dictionary["flagged_at"]) {
+            components.append(flaggedDescription)
+        }
+
+        if components.isEmpty {
+            return fallback
+        }
+        return components.joined(separator: " • ")
+    }
+
+    private func formattedFlaggedDate(from value: Any?) -> String? {
+        guard let date = date(from: value) else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func date(from value: Any?) -> Date? {
+        if let date = value as? Date { return date }
+        if let number = value as? TimeInterval { return Date(timeIntervalSince1970: number) }
+        if let string = value as? String {
+            let isoFormatter = ISO8601DateFormatter()
+            if let parsed = isoFormatter.date(from: string) { return parsed }
+            if let interval = TimeInterval(string) { return Date(timeIntervalSince1970: interval) }
+        }
+        return nil
+    }
+
+    private func reasons(from dictionary: [String: Any]) -> [String] {
+        if let reasons = dictionary["reasons"] as? [String] {
+            return reasons.compactMap { reason in
+                let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        }
+
+        if let reason = dictionary["reason"] as? String {
+            let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return [trimmed] }
+        }
+
+        if let reason = dictionary["report_reason"] as? String {
+            let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return [trimmed] }
+        }
+
+        if let detail = dictionary["detail"] as? [String: Any] {
+            var collected: [String] = []
+            if let categories = detail["categories"] as? [String] {
+                collected.append(contentsOf: categories.compactMap { category in
+                    let trimmed = category.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                })
+            }
+            if let reason = detail["reason"] as? String {
+                let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { collected.append(trimmed) }
+            }
+            if let type = detail["type"] as? String {
+                let trimmed = type.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { collected.append(trimmed.capitalized) }
+            }
+            return Array(Set(collected))
+        }
+
+        return []
     }
 }
