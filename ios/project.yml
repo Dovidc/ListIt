@@ -39,6 +39,11 @@ settings:
       SWIFT_COMPILATION_MODE: wholemodule
       SWIFT_OPTIMIZATION_LEVEL: -O
 
+  configFiles:
+    Debug: Config/Signing.xcconfig
+    Staging: Config/Signing.xcconfig
+    Release: Config/Signing.xcconfig
+
 targets:
   # -------------------- App --------------------
   ListItApp:
@@ -60,9 +65,9 @@ targets:
       base:
         INFOPLIST_FILE: Sources/App/Info.plist
         PRODUCT_NAME: ListIt
-        PRODUCT_BUNDLE_IDENTIFIER: com.listit.app
+        PRODUCT_BUNDLE_IDENTIFIER: $(LISTIT_APP_BUNDLE_IDENTIFIER)
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: H9JP539MT9
+        DEVELOPMENT_TEAM: $(LISTIT_DEVELOPMENT_TEAM)
         GENERATE_INFOPLIST_FILE: NO   # app uses a real plist, not generated
     scheme:
       testTargets:
