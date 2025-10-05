@@ -8,4 +8,11 @@ final class SharedRuntimeTests: XCTestCase {
         let result = try runtime.call(function: "eval", with: ["value"])
         XCTAssertEqual(result.toInt32(), 42)
     }
+
+    func testResolvesPromiseResults() throws {
+        let runtime = SharedRuntime()
+        try runtime.evaluate("function asyncValue() { return Promise.resolve(99); }")
+        let result = try runtime.call(function: "asyncValue", with: [])
+        XCTAssertEqual(result.toInt32(), 99)
+    }
 }

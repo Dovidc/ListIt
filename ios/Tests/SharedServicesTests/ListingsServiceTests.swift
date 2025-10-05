@@ -7,7 +7,13 @@ final class ListingsServiceTests: XCTestCase {
     func testMapsListingSummaries() throws {
         let runtime = FakeRuntime()
         let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: context)
+        let page = JSValue(object: [
+            "rows": [],
+            "items": [["id": "1", "title": "Test", "subtitle": "Demo"]],
+            "hasNext": false,
+            "nextCursor": NSNull()
+        ], in: context)
+        runtime.stubbedResponses["listings.fetchSummaries"] = page
         let persistence = FakeListingsPersistence()
         let service = ListingsService(runtime: runtime, persistence: persistence)
         let listings = try waitFor { try await service.fetchListings() }
@@ -17,7 +23,7 @@ final class ListingsServiceTests: XCTestCase {
 
     func testReturnsCachedListingsWhenFetchFails() throws {
         let runtime = FakeRuntime()
-        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        runtime.stubbedError = SharedRuntimeError.javascript(message: "boom")
         let cached = [ListingSummary(id: "cached", title: "Offline", subtitle: "Cached")]
         let persistence = FakeListingsPersistence()
         persistence.stubbedCached = cached
@@ -29,7 +35,7 @@ final class ListingsServiceTests: XCTestCase {
 
     func testPropagatesErrorWhenCacheIsEmpty() {
         let runtime = FakeRuntime()
-        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        runtime.stubbedError = SharedRuntimeError.javascript(message: "fail")
         let persistence = FakeListingsPersistence()
 
         let service = ListingsService(runtime: runtime, persistence: persistence)
@@ -38,15 +44,20 @@ final class ListingsServiceTests: XCTestCase {
 }
 
 private final class FakeRuntime: SharedRuntime {
-    var stubbedResponse: JSValue?
+    var stubbedResponses: [String: JSValue] = [:]
     var stubbedError: Error?
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
         if let stubbedError {
             throw stubbedError
         }
-        guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
-        return stubbedResponse
+        guard name == "shared_core_call",
+              let method = arguments.first as? String,
+              let response = stubbedResponses[method]
+        else {
+            throw SharedRuntimeError.missingExport(name: name)
+        }
+        return response
     }
 }
 

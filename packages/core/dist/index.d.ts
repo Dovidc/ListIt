@@ -216,6 +216,31 @@ export interface InstallNativeBindingsOptions extends CoreEnvironmentOptions {
 
 export declare function installNativeBindings(options?: InstallNativeBindingsOptions): CoreEnvironment;
 
+export interface SharedCoreExports {
+  api: ReturnType<typeof createApiClient>;
+  auth: ReturnType<typeof createAuthService>;
+  listings: ReturnType<typeof createListingsService>;
+  uploads: ReturnType<typeof createUploadsService>;
+  helpers: {
+    formatCurrency: typeof formatCurrency;
+    formatDistance: typeof formatDistance;
+    haversineMeters: typeof haversineMeters;
+    normalizeListingsResponse: typeof normalizeListingsResponse;
+    asArray: typeof asArray;
+  };
+}
+
+export declare function createSharedCoreExports(core: CoreEnvironment): SharedCoreExports;
+
+declare global {
+  var ListItCore: typeof import('./index');
+  var ListItCoreExports: SharedCoreExports | undefined;
+  var shared_core_exports: SharedCoreExports | undefined;
+  var shared_core_call: (method: string, args?: unknown[]) => unknown;
+}
+
+export {};
+
 declare const _default: {
   createApiClient: typeof createApiClient;
   formatCurrency: typeof formatCurrency;
