@@ -957,7 +957,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
+                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1146,7 +1146,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
+                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1239,7 +1239,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
+                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
