@@ -940,6 +940,7 @@
 /* Begin XCBuildConfiguration section */
 		037DCA99578F955C16118FE9 /* Staging */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -956,6 +957,7 @@
 		};
 		03BBA2D9B751CFA98994B766 /* Staging */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -968,7 +970,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
+                               PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1145,6 +1147,7 @@
 		};
 		5198C6553965E5C41C4D7A72 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -1157,7 +1160,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
+                               PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1238,6 +1241,7 @@
 		};
 		752E82C21831E1281DB370BE /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -1250,7 +1254,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-                               PRODUCT_BUNDLE_IDENTIFIER = com.listit.app;
+                               PRODUCT_BUNDLE_IDENTIFIER = $(LISTIT_APP_BUNDLE_IDENTIFIER);
 				PRODUCT_NAME = ListIt;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1418,6 +1422,7 @@
 		};
 		874DD3E552DF511B90998674 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1574,6 +1579,7 @@
 		};
 		B8104B838CC1D369BCD50731 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FBA5C6E4179AE0B5D3BB1A2F /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

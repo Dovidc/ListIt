@@ -71,6 +71,10 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: $(LISTIT_DEVELOPMENT_TEAM)
         GENERATE_INFOPLIST_FILE: NO   # app uses a real plist, not generated
+      configFiles:
+        Debug: Config/Signing.xcconfig
+        Staging: Config/Signing.xcconfig
+        Release: Config/Signing.xcconfig
     scheme:
       testTargets:
         - ListItAppTests
@@ -85,6 +89,11 @@ targets:
     dependencies:
       - target: ListItApp
       - target: PlatformCapabilities
+    settings:
+      configFiles:
+        Debug: Config/Signing.xcconfig
+        Staging: Config/Signing.xcconfig
+        Release: Config/Signing.xcconfig
 
   # -------------------- Features / Frameworks --------------------
   AuthFeature:
