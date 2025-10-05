@@ -63,17 +63,20 @@ final class AppEnvironment: ObservableObject {
     let authService: AuthService
     let listingsService: ListingsService
     let uploadService: UploadService
+    let preferencesService: PreferencesService
     private let capabilityRouter: CapabilityRouting
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         sharedRuntime: SharedRuntime = SharedRuntime(),
         configuration: EnvironmentConfiguration = EnvironmentConfiguration(),
-        capabilityRouter: CapabilityRouting = CapabilityRouter()
+        capabilityRouter: CapabilityRouting = CapabilityRouter(),
+        preferencesService: PreferencesService = PreferencesService()
     ) {
         self.configuration = configuration
         self.theme = DesignSystemTheme()
         self.capabilityRouter = capabilityRouter
+        self.preferencesService = preferencesService
 
         configuration.setCapabilityEventHandler { [capabilityRouter] name, payload in
             capabilityRouter.handle(event: CapabilityEvent(name: name, payload: payload))

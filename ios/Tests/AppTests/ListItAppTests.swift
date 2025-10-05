@@ -11,6 +11,7 @@ final class ListItAppTests: XCTestCase {
         XCTAssertNotNil(environment.authService)
         XCTAssertNotNil(environment.listingsService)
         XCTAssertNotNil(environment.uploadService)
+        XCTAssertFalse(environment.preferencesService.autoListEnabled)
     }
 
     func testEmitCapabilityEventRoutesToRouter() {
