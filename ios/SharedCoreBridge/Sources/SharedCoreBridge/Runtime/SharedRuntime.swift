@@ -4,6 +4,7 @@ import Dispatch
 
 open class SharedRuntime {
     private let context: JSContext
+    public var jsContext: JSContext { context }
     public init(context: JSContext = JSContext()!) {
         self.context = context
         self.context.exceptionHandler = { _, exception in
@@ -16,7 +17,8 @@ open class SharedRuntime {
     open func evaluate(_ script: String) throws {
         context.evaluateScript(script)
         if let exception = context.exception {
-            throw SharedRuntimeError.javascript(message: exception.toString())
+            let message = exception.toString() ?? "Unknown JavaScript error"
+            throw SharedRuntimeError.javascript(message: message)
         }
     }
 
@@ -26,7 +28,8 @@ open class SharedRuntime {
         }
         let result = function.call(withArguments: arguments)
         if let exception = context.exception {
-            throw SharedRuntimeError.javascript(message: exception.toString())
+            let message = exception.toString() ?? "Unknown JavaScript error"
+            throw SharedRuntimeError.javascript(message: message)
         }
 
         guard let evaluatedResult = try resolveIfNeeded(result, functionName: name) else {
@@ -92,26 +95,21 @@ private extension SharedRuntime {
         let timeout = DispatchTime.now() + .seconds(30)
         let runLoop = RunLoop.current
 
-        context.virtualMachine?.performMicrotaskCheckpoint()
-
         while resolved == nil && rejected == nil {
-            let waitUntil = DispatchTime.now() + .milliseconds(10)
-            switch semaphore.wait(timeout: waitUntil) {
+            let waitResult = semaphore.wait(timeout: .now() + .milliseconds(10))
+            switch waitResult {
             case .success:
                 break
             case .timedOut:
                 if DispatchTime.now() >= timeout {
                     throw SharedRuntimeError.promiseTimedOut(name: functionName)
                 }
-                context.virtualMachine?.performMicrotaskCheckpoint()
                 runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.001))
-                continue
             }
-            break
         }
 
         if let rejection = rejected {
-            let message = rejection.toString()
+            let message = rejection.toString() ?? "Unknown JavaScript error"
             throw SharedRuntimeError.javascript(message: message)
         }
 
