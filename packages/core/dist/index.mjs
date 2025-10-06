@@ -1109,7 +1109,7 @@ export function installNativeBindings(options = {}) {
     return core;
   }
 
-  const { auth, listings, uploads } = core;
+  const { auth, listings, uploads, helpers } = core;
 
   const namespace = typeof globalThis.ListItCore === 'object' && globalThis.ListItCore
     ? globalThis.ListItCore
@@ -1164,6 +1164,176 @@ export function installNativeBindings(options = {}) {
       ));
     } catch (error) {
       log(`listings_fetch failed: ${error?.message || error}`);
+      return [];
+    }
+  };
+
+  const toNumber = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    if (value instanceof Date) return value.getTime();
+    if (value != null && typeof value.valueOf === 'function') {
+      const numeric = Number(value.valueOf());
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    return null;
+  };
+
+  const parseTags = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map((tag) => String(tag || '').trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const resolveDistanceMeters = (row, lat, lon) => {
+    const explicitDistance = toNumber(row?.distance_m ?? row?.distanceMeters ?? row?.distance);
+    if (Number.isFinite(explicitDistance)) return explicitDistance;
+    const rowLat = toNumber(row?.lat ?? row?.latitude);
+    const rowLon = toNumber(row?.lon ?? row?.longitude);
+    if (Number.isFinite(rowLat) && Number.isFinite(rowLon) && Number.isFinite(lat) && Number.isFinite(lon)) {
+      try {
+        return helpers.haversineMeters(lat, lon, rowLat, rowLon);
+      } catch (error) {
+        log(`nearby_fetch distance calculation failed: ${error?.message || error}`);
+      }
+    }
+    return null;
+  };
+
+  const parseTimestamp = (value) => {
+    const numeric = toNumber(value);
+    if (Number.isFinite(numeric)) {
+      if (numeric > 1e12) return Math.floor(numeric / 1000);
+      if (numeric > 1e10) return Math.floor(numeric);
+      return numeric;
+    }
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
+    }
+    return null;
+  };
+
+  const normalizeNearbyItems = (rows, lat, lon) => {
+    if (!rows) return [];
+    const array = Array.isArray(rows) ? rows : helpers.asArray(rows);
+    return array
+      .map((row) => {
+        if (!row || typeof row !== 'object') return null;
+        const summary = typeof listings.toSummary === 'function' ? listings.toSummary(row) : null;
+        if (!summary) return null;
+
+        const tags = parseTags(row.tags ?? summary.raw?.tags);
+        const normalizedTags = tags.map((tag) => tag.toLowerCase());
+        const distanceMeters = resolveDistanceMeters(row, lat, lon);
+        const distanceText = Number.isFinite(distanceMeters) ? helpers.formatDistance(distanceMeters) : '';
+        const createdAt = parseTimestamp(row.created_at ?? row.createdAt ?? summary.raw?.created_at);
+
+        return {
+          id: summary.id,
+          title: summary.title,
+          subtitle: summary.subtitle,
+          location: summary.location ?? null,
+          price: summary.price ?? null,
+          distanceText,
+          distanceMeters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+          tags,
+          createdAt,
+          isBoosted: normalizedTags.some((tag) => tag === 'boosted' || tag === 'featured'),
+          isFavorite: normalizedTags.some((tag) => tag === 'favorite' || tag === 'saved')
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const fallbackNearby = (lat, lon) => (
+    Promise.resolve(listings.fetchSummaries({ limit: 40 })).then((result) => {
+      const source = Array.isArray(result?.rows) ? result.rows : result?.items;
+      return normalizeNearbyItems(source, lat, lon);
+    })
+  );
+
+  globalThis.nearby_fetch = (params) => {
+    try {
+      const input = params || {};
+      const lat = toNumber(input.lat ?? input.latitude);
+      const lon = toNumber(input.lon ?? input.longitude);
+      const radiusMeters = toNumber(input.radius_m ?? input.radiusMeters ?? input.radius) ?? 150;
+
+      const performFetch = () => {
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          return fallbackNearby(lat, lon);
+        }
+
+        return Promise.resolve(core.api.listNearby(lat, lon, radiusMeters)).then((rows) => {
+          const normalized = normalizeNearbyItems(rows, lat, lon);
+          if (normalized.length) {
+            return normalized;
+          }
+          return fallbackNearby(lat, lon);
+        });
+      };
+
+      return performFetch()
+        .then((items) => {
+          const query = typeof input.query === 'string' ? input.query.trim().toLowerCase() : '';
+          const filter = typeof input.filter === 'string' ? input.filter : '';
+
+          let filtered = Array.isArray(items) ? [...items] : [];
+
+          if (query) {
+            filtered = filtered.filter((item) => {
+              if (!item) return false;
+              const haystacks = [item.title, item.subtitle, item.location]
+                .filter(Boolean)
+                .map((value) => value.toLowerCase());
+              const tagMatch = Array.isArray(item.tags)
+                ? item.tags.some((tag) => String(tag).toLowerCase().includes(query))
+                : false;
+              return haystacks.some((value) => value.includes(query)) || tagMatch;
+            });
+          }
+
+          switch (filter) {
+            case 'newest':
+              filtered.sort((a, b) => (b?.createdAt ?? 0) - (a?.createdAt ?? 0));
+              break;
+            case 'priceDrops':
+              filtered = filtered.filter((item) => (
+                Array.isArray(item?.tags)
+                  ? item.tags.some((tag) => {
+                      const normalized = String(tag).toLowerCase();
+                      return normalized.includes('price_drop') || normalized.includes('reduced');
+                    })
+                  : false
+              ));
+              break;
+            case 'favorites':
+              filtered = filtered.filter((item) => item?.isFavorite);
+              break;
+            default:
+              break;
+          }
+
+          return filtered;
+        })
+        .catch((error) => {
+          log(`nearby_fetch failed: ${error?.message || error}`);
+          return [];
+        });
+    } catch (error) {
+      log(`nearby_fetch threw: ${error?.message || error}`);
       return [];
     }
   };

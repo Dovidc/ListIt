@@ -40,7 +40,7 @@ struct RootTabView: View {
                     Label("Listings", systemImage: "list.bullet")
                 }
 
-            NearbyFeatureView { name, payload in
+            NearbyFeatureView(nearbyService: environment.nearbyService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
                 .tabItem {
@@ -80,6 +80,7 @@ final class AppEnvironment: ObservableObject {
     @Published var theme: DesignSystemTheme
     let authService: AuthService
     let listingsService: ListingsService
+    let nearbyService: NearbyService
     let uploadService: UploadService
     let preferencesService: PreferencesService
     private let capabilityRouter: CapabilityRouting
@@ -103,6 +104,7 @@ final class AppEnvironment: ObservableObject {
         SharedRuntimeRegistry.shared.register(runtime: sharedRuntime)
         self.authService = AuthService(runtime: sharedRuntime)
         self.listingsService = ListingsService(runtime: sharedRuntime)
+        self.nearbyService = NearbyService(runtime: sharedRuntime)
         self.uploadService = UploadService(runtime: sharedRuntime)
 
         bind(to: configuration)
