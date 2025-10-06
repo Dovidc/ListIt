@@ -86,6 +86,7 @@ public struct TypographyScale: Equatable {
     public var calloutFont: TypographyFont
     public var subheadlineFont: TypographyFont
     public var footnoteFont: TypographyFont
+    public var captionFont: TypographyFont
 
     public init(largeTitle: TypographyFont,
                 title: TypographyFont,
@@ -93,7 +94,8 @@ public struct TypographyScale: Equatable {
                 body: TypographyFont,
                 callout: TypographyFont,
                 subheadline: TypographyFont,
-                footnote: TypographyFont) {
+                footnote: TypographyFont,
+                caption: TypographyFont) {
         self.largeTitleFont = largeTitle
         self.titleFont = title
         self.headlineFont = headline
@@ -101,6 +103,7 @@ public struct TypographyScale: Equatable {
         self.calloutFont = callout
         self.subheadlineFont = subheadline
         self.footnoteFont = footnote
+        self.captionFont = caption
     }
 
     public var largeTitle: Font { largeTitleFont.swiftUI }
@@ -110,6 +113,7 @@ public struct TypographyScale: Equatable {
     public var callout: Font { calloutFont.swiftUI }
     public var subheadline: Font { subheadlineFont.swiftUI }
     public var footnote: Font { footnoteFont.swiftUI }
+    public var caption: Font { captionFont.swiftUI }
 
     public var largeTitleUIFont: UIFont { largeTitleFont.uiKit }
     public var titleUIFont: UIFont { titleFont.uiKit }
@@ -118,6 +122,7 @@ public struct TypographyScale: Equatable {
     public var calloutUIFont: UIFont { calloutFont.uiKit }
     public var subheadlineUIFont: UIFont { subheadlineFont.uiKit }
     public var footnoteUIFont: UIFont { footnoteFont.uiKit }
+    public var captionUIFont: UIFont { captionFont.uiKit }
 }
 
 public extension TypographyScale {
@@ -261,6 +266,7 @@ public enum TypographyPreset: String, CaseIterable {
             case .callout: return TypographyOverrideDescriptor()
             case .subheadline: return TypographyOverrideDescriptor(weight: .medium)
             case .footnote: return TypographyOverrideDescriptor(design: .monospaced)
+            case .caption: return TypographyOverrideDescriptor()
             }
         case .system:
             switch style {
@@ -270,6 +276,7 @@ public enum TypographyPreset: String, CaseIterable {
             case .body, .callout: return TypographyOverrideDescriptor()
             case .subheadline: return TypographyOverrideDescriptor(weight: .medium)
             case .footnote: return TypographyOverrideDescriptor()
+            case .caption: return TypographyOverrideDescriptor()
             }
         case .serif:
             switch style {
@@ -279,6 +286,7 @@ public enum TypographyPreset: String, CaseIterable {
             case .body, .callout: return TypographyOverrideDescriptor(design: .serif)
             case .subheadline: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
             case .footnote: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
+            case .caption: return TypographyOverrideDescriptor(design: .serif)
             }
         case .monospaced:
             switch style {
@@ -288,6 +296,7 @@ public enum TypographyPreset: String, CaseIterable {
             case .body, .callout: return TypographyOverrideDescriptor(design: .monospaced)
             case .subheadline: return TypographyOverrideDescriptor(design: .monospaced, weight: .medium)
             case .footnote: return TypographyOverrideDescriptor(design: .monospaced)
+            case .caption: return TypographyOverrideDescriptor(design: .monospaced)
             }
         case .editorial:
             switch style {
@@ -297,6 +306,7 @@ public enum TypographyPreset: String, CaseIterable {
             case .body, .callout: return TypographyOverrideDescriptor(design: .serif)
             case .subheadline: return TypographyOverrideDescriptor(design: .serif, weight: .medium)
             case .footnote: return TypographyOverrideDescriptor(design: .serif, weight: .regular, scale: 0.96)
+            case .caption: return TypographyOverrideDescriptor(design: .serif, weight: .regular, scale: 0.96)
             }
         }
     }
@@ -329,6 +339,7 @@ private enum TypographyStyle: CaseIterable {
     case callout
     case subheadline
     case footnote
+    case caption
 
     var environmentKey: String {
         switch self {
@@ -339,6 +350,7 @@ private enum TypographyStyle: CaseIterable {
         case .callout: return "LISTIT_IOS_THEME_FONT_CALLOUT"
         case .subheadline: return "LISTIT_IOS_THEME_FONT_SUBHEADLINE"
         case .footnote: return "LISTIT_IOS_THEME_FONT_FOOTNOTE"
+        case .caption: return "LISTIT_IOS_THEME_FONT_CAPTION"
         }
     }
 
@@ -351,6 +363,7 @@ private enum TypographyStyle: CaseIterable {
         case .callout: return .callout
         case .subheadline: return .subheadline
         case .footnote: return .footnote
+        case .caption: return .caption1
         }
     }
 
@@ -358,7 +371,7 @@ private enum TypographyStyle: CaseIterable {
         switch self {
         case .largeTitle, .title: return .display
         case .headline, .body, .callout: return .content
-        case .subheadline, .footnote: return .meta
+        case .subheadline, .footnote, .caption: return .meta
         }
     }
 }
@@ -509,7 +522,8 @@ private struct TypographyEnvironmentResolver {
             body: fonts[.body]!,
             callout: fonts[.callout]!,
             subheadline: fonts[.subheadline]!,
-            footnote: fonts[.footnote]!
+            footnote: fonts[.footnote]!,
+            caption: fonts[.caption]!
         )
     }
 }
@@ -525,11 +539,11 @@ private extension UIFontDescriptor {
 private extension UIFontDescriptor.SystemDesign {
     init?(token: String) {
         switch token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "rounded": self = .rounded
-        case "serif": self = .serif
-        case "monospaced", "mono", "code": self = .monospaced
-        case "default", "system": self = .default
-        default: return nil
+            case "rounded": self = .rounded
+            case "serif": self = .serif
+            case "monospaced", "mono", "code": self = .monospaced
+            case "default", "system": self = .default
+            default: return nil
         }
     }
 }

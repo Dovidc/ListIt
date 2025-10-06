@@ -52,7 +52,7 @@ public struct NearbyFeatureView: View {
                 locationManager.requestInitialAuthorization()
                 await loadNearby(reason: .initial)
             }
-            .onChange(of: locationManager.authorizationStatus) { newStatus in
+            .onChange(of: locationManager.authorizationStatus) { _, newStatus in
                 if newStatus.isAuthorized {
                     locationManager.refreshLocation()
                 }
@@ -63,15 +63,15 @@ public struct NearbyFeatureView: View {
             .onReceive(locationManager.$lastLocation.compactMap { $0 }) { _ in
                 Task { await loadNearby(reason: .locationChange) }
             }
-            .onChange(of: selectedFilter) { _ in
+            .onChange(of: selectedFilter) { _, _ in
                 capabilityEmitter("haptic", ["style": "impact.light"])
                 Task { await loadNearby(reason: .filterChange) }
             }
-            .onChange(of: radiusMiles) { _ in
+            .onChange(of: radiusMiles) { _, _ in
                 capabilityEmitter("haptic", ["style": "selection"])
                 scheduleReload()
             }
-            .onChange(of: searchText) { _ in
+            .onChange(of: searchText) { _, _ in
                 scheduleReload()
             }
         }

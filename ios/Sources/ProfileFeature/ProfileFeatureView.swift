@@ -44,7 +44,7 @@ public struct ProfileFeatureView: View {
                     detail: "new uploads",
                     description: "Automatically publish new listings with your saved defaults when you finish uploading.",
                     binding: binding(get: { preferences.autoListEnabled }) { value in
-                        await preferences.setAutoListEnabled(value)
+                        preferences.setAutoListEnabled(value)
                     }
                 )
 
@@ -56,7 +56,7 @@ public struct ProfileFeatureView: View {
                         detail: "replace price with offer line",
                         description: "Swap the price field for an offer prompt whenever Auto-list posts on your behalf.",
                         binding: binding(get: { preferences.autoInquiryEnabled }) { value in
-                            await preferences.setAutoInquiryEnabled(value)
+                            preferences.setAutoInquiryEnabled(value)
                         }
                     )
                 }
@@ -68,7 +68,7 @@ public struct ProfileFeatureView: View {
                     detail: "fill description for you",
                     description: "Let ListIt write draft descriptions using the same AI helpers from the web composer.",
                     binding: binding(get: { preferences.aiDescriptionEnabled }) { value in
-                        await preferences.setAiDescriptionEnabled(value)
+                        preferences.setAiDescriptionEnabled(value)
                     }
                 )
 
@@ -79,7 +79,7 @@ public struct ProfileFeatureView: View {
                     detail: "auto-list extra option",
                     description: "Uses your most recent saved location so Auto-list shares listings to the Nearby feed automatically.",
                     binding: binding(get: { preferences.autoPostNearbyEnabled }) { value in
-                        await preferences.setAutoPostNearbyEnabled(value)
+                        preferences.setAutoPostNearbyEnabled(value)
                     }
                 )
             }
@@ -94,17 +94,18 @@ public struct ProfileFeatureView: View {
                 detail: "messages & activity",
                 description: "Enable shared-core message notifications and activity toasts so you never miss a conversation.",
                 binding: binding(get: { preferences.notificationsEnabled }) { value in
-                    await preferences.setNotificationsEnabled(value)
+                    preferences.setNotificationsEnabled(value)
                 }
             )
         }
     }
 
-    private func binding(get: @escaping () -> Bool, set: @escaping (Bool) async -> Void) -> Binding<Bool> {
+    // Accept a non-async, @MainActor setter and hop to the main actor inside.
+    private func binding(get: @escaping () -> Bool, set: @escaping @MainActor (Bool) -> Void) -> Binding<Bool> {
         Binding(
             get: get,
             set: { newValue in
-                Task { await set(newValue) }
+                Task { @MainActor in set(newValue) }
                 let style = newValue ? "success" : "impact.light"
                 capabilityEmitter("haptic", ["style": style])
             }

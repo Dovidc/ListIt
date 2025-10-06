@@ -44,8 +44,8 @@ public struct UploadFeatureView: View {
                     .font(designSystem.typography.headline)
             }
             .buttonStyle(ListItPrimaryButtonStyle())
-            .onChange(of: selection) {
-                handleSelection(selection)
+            .onChange(of: selection) { _, newValue in
+                handleSelection(newValue)
             }
 
             ProgressView(value: progress)
