@@ -45,7 +45,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Generate Xcode workspace/project
+      - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
 
@@ -62,14 +62,14 @@ jobs:
         run: |
           xcodebuild -version
           xcrun simctl list devices | head -100
-          xcodebuild -list -workspace ios/ListIt.xcworkspace
+          xcodebuild -list -project ios/ListIt.xcodeproj
 
       - name: "Preflight: build on iPhone 15 simulator"
         working-directory: ios
         run: |
           set -eo pipefail
           xcodebuild \
-            -workspace "ListIt.xcworkspace" \
+            -project "ListIt.xcodeproj" \
             -scheme "ListItApp" \
             -configuration "Debug" \
             -destination "platform=iOS Simulator,name=iPhone 15" \
