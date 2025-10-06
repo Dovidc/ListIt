@@ -68,6 +68,7 @@ targets:
         INFOPLIST_FILE: Sources/App/Info.plist
         PRODUCT_NAME: ListIt
         PRODUCT_BUNDLE_IDENTIFIER: $(LISTIT_APP_BUNDLE_IDENTIFIER)
+        INFOPLIST_KEY_CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: $(LISTIT_DEVELOPMENT_TEAM)
         GENERATE_INFOPLIST_FILE: NO   # app uses a real plist, not generated
