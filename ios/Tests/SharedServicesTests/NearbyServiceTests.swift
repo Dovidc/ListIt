@@ -54,13 +54,41 @@ final class NearbyServiceTests: XCTestCase {
 
         XCTAssertTrue(listings.isEmpty)
     }
+
+    func testOmitsInvalidCoordinatesFromPayload() throws {
+        let runtime = FakeRuntime()
+        let context = JSContext()!
+        runtime.stubbedResponse = JSValue(object: [], in: context)
+
+        let service = NearbyService(runtime: runtime)
+        _ = try waitFor {
+            try await service.fetchNearby(latitude: nil,
+                                          longitude: .nan,
+                                          radiusMeters: 500,
+                                          query: "   ",
+                                          filter: "")
+        }
+
+        let payload = try XCTUnwrap(runtime.lastPayload)
+        XCTAssertEqual(payload["radius_m"] as? Double, 500)
+        XCTAssertNil(payload["lat"])
+        XCTAssertNil(payload["lon"])
+        XCTAssertNil(payload["query"])
+        XCTAssertNil(payload["filter"])
+    }
 }
 
 private final class FakeRuntime: SharedRuntime {
     var stubbedResponse: JSValue?
     var stubbedError: Error?
+    var lastPayload: [String: Any]?
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
+        if let payload = arguments.first as? [String: Any] {
+            lastPayload = payload
+        } else {
+            lastPayload = nil
+        }
         if let stubbedError {
             throw stubbedError
         }
