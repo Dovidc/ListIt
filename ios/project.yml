@@ -138,6 +138,7 @@ targets:
     sources:
       - path: Sources/NearbyFeature
     dependencies:
+      - target: SharedServices
       - target: DesignSystem
     settings:
       base:
