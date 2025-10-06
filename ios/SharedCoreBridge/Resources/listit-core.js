@@ -1046,9 +1046,9 @@
         height: dims.height,
         bytes: size
       }, { silent: true, ...(options.meta || {}) });
-  
+
       if (finalizeRes?.error) throw new Error(finalizeRes.error);
-      return true;
+      return finalizeRes;
     }
   
     return {
@@ -1112,6 +1112,7 @@
     }
   
     const { auth, listings, uploads, helpers } = core;
+    const api = core.api;
   
     const namespace = typeof globalThis.ListItCore === 'object' && globalThis.ListItCore
       ? globalThis.ListItCore
@@ -1169,7 +1170,143 @@
         return [];
       }
     };
-  
+
+    const coerceString = (value) => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || null;
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+      }
+      return null;
+    };
+
+    const coerceNumber = (value) => {
+      const numeric = toNumber(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+
+    const normalizeGalleryForNative = (raw) => {
+      if (!isRecord(raw)) return [];
+      const sources = [];
+      if (Array.isArray(raw.images)) sources.push(...raw.images);
+      if (Array.isArray(raw.gallery)) sources.push(...raw.gallery);
+      if (Array.isArray(raw.photos)) sources.push(...raw.photos);
+      return sources
+        .map((entry) => {
+          if (typeof entry === 'string') {
+            const url = coerceString(entry);
+            return url ? { url, width: null, height: null } : null;
+          }
+          if (!isRecord(entry)) return null;
+          const url = coerceString(entry.url || entry.image || entry.image_data || entry.src || entry.thumb_url);
+          if (!url) return null;
+          const width = coerceNumber(entry.width ?? entry.w);
+          const height = coerceNumber(entry.height ?? entry.h);
+          return { url, width, height };
+        })
+        .filter(Boolean);
+    };
+
+    const deriveSellerName = (raw) => (
+      coerceString(
+        raw?.owner_name ||
+        raw?.owner_username ||
+        raw?.owner?.name ||
+        raw?.owner?.username ||
+        raw?.seller ||
+        raw?.user?.username ||
+        raw?.user?.name ||
+        raw?.username
+      )
+    );
+
+    const deriveSellerAvatar = (raw) => (
+      coerceString(
+        raw?.owner_avatar ||
+        raw?.avatar ||
+        raw?.owner?.avatar ||
+        raw?.user?.avatar
+      )
+    );
+
+    const resolveNativeCoverImage = (summary, raw, gallery) => {
+      const candidates = [
+        summary?.coverImageURL,
+        raw?.__cover,
+        raw?.cover,
+        raw?.image_data,
+        raw?.thumb_url,
+        raw?.primary_image,
+        raw?.primaryImage,
+        raw?.hero,
+        raw?.hero_image,
+        Array.isArray(raw?.images) && raw.images.length ? raw.images[0]?.url || raw.images[0]?.image_data : null,
+        gallery.length ? gallery[0].url : null
+      ];
+      for (const candidate of candidates) {
+        const url = coerceString(candidate);
+        if (url) return url;
+      }
+      return null;
+    };
+
+    const normalizeListingForNative = (summary, rawRow) => {
+      if (!isRecord(summary)) return null;
+      const raw = isRecord(summary.raw) ? summary.raw : isRecord(rawRow) ? rawRow : {};
+      const gallery = normalizeGalleryForNative(raw);
+      const tags = parseTags(raw.tags || raw.labels || raw.tag_list || raw.tagList || summary.tags);
+      const normalizedTags = tags.map((tag) => tag.toLowerCase());
+      const location = coerceString(summary.location || raw.location || raw.city || raw.region);
+      const priceLabel = coerceString(summary.priceText || raw.price_label || raw.priceLabel || summary.subtitle?.split('•')[0]);
+      const description = coerceString(raw.description || raw.body || raw.details || raw.caption) || '';
+      const sellerName = deriveSellerName(raw);
+      const sellerAvatar = deriveSellerAvatar(raw);
+      const createdAt = coerceNumber(raw.created_at ?? raw.createdAt ?? raw.created);
+      const distanceText = coerceString(raw.distance_text || raw.distanceText || raw.distance_label);
+      const distanceMeters = coerceNumber(raw.distance_meters ?? raw.distanceMeters ?? raw.distance ?? raw.distance_m);
+      const coverImage = resolveNativeCoverImage(summary, raw, gallery);
+      const isFavorite = normalizedTags.includes('favorite') || normalizedTags.includes('saved') || raw.is_favorite === true;
+      const isBoosted = normalizedTags.includes('boosted') || normalizedTags.includes('featured');
+      const isSold = raw.sold === true || normalizedTags.includes('sold');
+
+      return {
+        id: summary.id,
+        title: summary.title || 'Untitled',
+        subtitle: summary.subtitle || '',
+        priceText: priceLabel,
+        price: Number.isFinite(summary.price) ? summary.price : coerceNumber(raw.price ?? raw.price_cents ?? raw.amount),
+        location,
+        description,
+        tags,
+        coverImage,
+        gallery,
+        sellerName,
+        sellerAvatar,
+        createdAt,
+        isFavorite,
+        isBoosted,
+        isSold,
+        distanceText,
+        distanceMeters
+      };
+    };
+
+    const normalizeListingFeed = (result) => {
+      const base = isRecord(result) ? result : { items: Array.isArray(result) ? result : [] };
+      const items = Array.isArray(base.items) ? base.items : Array.isArray(base.rows) ? base.rows : [];
+      const rows = Array.isArray(base.rows) ? base.rows : [];
+      const normalized = items
+        .map((summary, index) => normalizeListingForNative(summary, rows[index]))
+        .filter(Boolean);
+      const nextCursor = base.nextCursor ?? base.cursor ?? null;
+      const hasNextFlag = base.hasNext ?? base.next ?? false;
+      const hasNext = Boolean(hasNextFlag) || (!!nextCursor && normalized.length > 0);
+      return { items: normalized, hasNext, nextCursor: nextCursor ?? null };
+    };
+
+
     const toNumber = (value) => {
       if (typeof value === 'number' && Number.isFinite(value)) return value;
       if (typeof value === 'string') {
@@ -1196,6 +1333,131 @@
           .filter(Boolean);
       }
       return [];
+    };
+
+    const normalizeListingMutation = (result) => {
+      if (!isRecord(result)) return null;
+      try {
+        const summary = typeof listings.toSummary === 'function'
+          ? listings.toSummary(result)
+          : {
+              id: coerceString(result.id) || '',
+              title: coerceString(result.title) || 'Untitled',
+              subtitle: coerceString(result.subtitle) || '',
+              price: toNumber(result.price) ?? null,
+              priceText: coerceString(result.price_text || result.priceText) || null,
+              location: coerceString(result.location) || ''
+            };
+        return normalizeListingForNative(summary, result);
+      } catch (error) {
+        log(`normalizeListingMutation failed: ${error?.message || error}`);
+        return null;
+      }
+    };
+
+    globalThis.listings_feed = (params) => {
+      try {
+        const input = params || {};
+        return Promise.resolve(listings.fetchSummaries(input)).then((result) => normalizeListingFeed(result));
+      } catch (error) {
+        log(`listings_feed failed: ${error?.message || error}`);
+        return { items: [], hasNext: false, nextCursor: null };
+      }
+    };
+
+    globalThis.listings_create = (payload) => {
+      try {
+        const input = isRecord(payload) ? payload : {};
+        return Promise.resolve(listings.createListing(input)).then((result) => {
+          const normalized = normalizeListingMutation(result);
+          if (!normalized) throw new Error('invalid_listing_response');
+          return normalized;
+        }).catch((error) => {
+          log(`listings_create failed: ${error?.message || error}`);
+          throw error;
+        });
+      } catch (error) {
+        log(`listings_create threw: ${error?.message || error}`);
+        return Promise.reject(error);
+      }
+    };
+
+    globalThis.listings_update = (id, payload = {}) => {
+      try {
+        return Promise.resolve(listings.updateListing(id, payload)).then((result) => {
+          const normalized = normalizeListingMutation(result);
+          if (!normalized) throw new Error('invalid_listing_response');
+          return normalized;
+        }).catch((error) => {
+          log(`listings_update failed: ${error?.message || error}`);
+          throw error;
+        });
+      } catch (error) {
+        log(`listings_update threw: ${error?.message || error}`);
+        return Promise.reject(error);
+      }
+    };
+
+    globalThis.listings_delete = (id) => {
+      try {
+        return Promise.resolve(listings.deleteListing(id)).then((result) => Boolean(result?.ok ?? result));
+      } catch (error) {
+        log(`listings_delete failed: ${error?.message || error}`);
+        return false;
+      }
+    };
+
+    globalThis.listings_mark_sold = (id, sold) => {
+      try {
+        return Promise.resolve(listings.markListingSold(id, sold)).then((result) => {
+          const normalized = normalizeListingMutation(result);
+          if (!normalized) throw new Error('invalid_listing_response');
+          return normalized;
+        }).catch((error) => {
+          log(`listings_mark_sold failed: ${error?.message || error}`);
+          throw error;
+        });
+      } catch (error) {
+        log(`listings_mark_sold threw: ${error?.message || error}`);
+        return Promise.reject(error);
+      }
+    };
+
+    globalThis.listings_ai_analyze = (params) => {
+      try {
+        const payload = isRecord(params) ? params : {};
+        return Promise.resolve(api.aiAnalyze({
+          images: Array.isArray(payload.images) ? payload.images : [],
+          hint: payload.hint || ''
+        }, payload.meta)).catch((error) => {
+          log(`listings_ai_analyze failed: ${error?.message || error}`);
+          throw error;
+        });
+      } catch (error) {
+        log(`listings_ai_analyze threw: ${error?.message || error}`);
+        return Promise.reject(error);
+      }
+    };
+
+    globalThis.listings_get_images = (id, options = {}) => {
+      try {
+        return Promise.resolve(uploads.fetchListingImagesCached(id, options)).then((images) => {
+          const array = Array.isArray(images) ? images : [];
+          return array
+            .map((entry) => ({
+              url: coerceString(entry?.url || entry),
+              width: toNumber(entry?.width),
+              height: toNumber(entry?.height)
+            }))
+            .filter((entry) => entry.url);
+        }).catch((error) => {
+          log(`listings_get_images failed: ${error?.message || error}`);
+          throw error;
+        });
+      } catch (error) {
+        log(`listings_get_images threw: ${error?.message || error}`);
+        return Promise.reject(error);
+      }
     };
   
     const resolveDistanceMeters = (row, lat, lon) => {
@@ -1342,10 +1604,25 @@
   
     globalThis.upload_photo = (base64, options = {}) => {
       try {
-        return Promise.resolve(uploads.uploadBase64Image(base64, options)).then(() => true);
+        return Promise.resolve(uploads.uploadBase64Image(base64, options)).then((result) => {
+          if (isRecord(result)) {
+            return {
+              ok: true,
+              uploadToken: coerceString(result.uploadToken),
+              url: coerceString(result.url || result.publicUrl) || null,
+              width: toNumber(result.width),
+              height: toNumber(result.height),
+              bytes: toNumber(result.bytes)
+            };
+          }
+          return { ok: Boolean(result) };
+        }).catch((error) => {
+          log(`upload_photo failed: ${error?.message || error}`);
+          throw error;
+        });
       } catch (error) {
-        log(`upload_photo failed: ${error?.message || error}`);
-        return false;
+        log(`upload_photo threw: ${error?.message || error}`);
+        return Promise.reject(error);
       }
     };
   

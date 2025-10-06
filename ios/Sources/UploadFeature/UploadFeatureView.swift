@@ -78,7 +78,7 @@ public struct UploadFeatureView: View {
                 }
                 
                 // Use the new uploadPhotoData method
-                try await uploadService.uploadPhotoData(data, progress: { value in
+                _ = try await uploadService.uploadPhotoData(data, progress: { value in
                     await MainActor.run { progress = value }
                 })
                 statusMessage = "Upload complete"

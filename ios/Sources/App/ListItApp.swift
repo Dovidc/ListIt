@@ -33,7 +33,7 @@ struct RootTabView: View {
 
     var body: some View {
         TabView {
-            ListingsFeatureView(listingsService: environment.listingsService) { name, payload in
+            ListingsFeatureView(listingsService: environment.listingsService, uploadService: environment.uploadService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
                 .tabItem {

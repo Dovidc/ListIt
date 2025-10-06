@@ -58,12 +58,104 @@ public final class CoreDataStack {
         subtitleAttribute.attributeType = .stringAttributeType
         subtitleAttribute.isOptional = true
 
+        let priceTextAttribute = NSAttributeDescription()
+        priceTextAttribute.name = "priceText"
+        priceTextAttribute.attributeType = .stringAttributeType
+        priceTextAttribute.isOptional = true
+
+        let priceValueAttribute = NSAttributeDescription()
+        priceValueAttribute.name = "priceValue"
+        priceValueAttribute.attributeType = .doubleAttributeType
+        priceValueAttribute.isOptional = true
+
+        let locationAttribute = NSAttributeDescription()
+        locationAttribute.name = "locationLabel"
+        locationAttribute.attributeType = .stringAttributeType
+        locationAttribute.isOptional = true
+
+        let descriptionAttribute = NSAttributeDescription()
+        descriptionAttribute.name = "descriptionText"
+        descriptionAttribute.attributeType = .stringAttributeType
+        descriptionAttribute.isOptional = true
+
+        let tagsAttribute = NSAttributeDescription()
+        tagsAttribute.name = "tagsString"
+        tagsAttribute.attributeType = .stringAttributeType
+        tagsAttribute.isOptional = true
+
+        let coverAttribute = NSAttributeDescription()
+        coverAttribute.name = "coverURL"
+        coverAttribute.attributeType = .stringAttributeType
+        coverAttribute.isOptional = true
+
+        let sellerNameAttribute = NSAttributeDescription()
+        sellerNameAttribute.name = "sellerName"
+        sellerNameAttribute.attributeType = .stringAttributeType
+        sellerNameAttribute.isOptional = true
+
+        let sellerAvatarAttribute = NSAttributeDescription()
+        sellerAvatarAttribute.name = "sellerAvatar"
+        sellerAvatarAttribute.attributeType = .stringAttributeType
+        sellerAvatarAttribute.isOptional = true
+
+        let createdAtAttribute = NSAttributeDescription()
+        createdAtAttribute.name = "createdAt"
+        createdAtAttribute.attributeType = .dateAttributeType
+        createdAtAttribute.isOptional = true
+
+        let isFavoriteAttribute = NSAttributeDescription()
+        isFavoriteAttribute.name = "isFavorite"
+        isFavoriteAttribute.attributeType = .booleanAttributeType
+        isFavoriteAttribute.isOptional = false
+        isFavoriteAttribute.defaultValue = false
+
+        let isBoostedAttribute = NSAttributeDescription()
+        isBoostedAttribute.name = "isBoosted"
+        isBoostedAttribute.attributeType = .booleanAttributeType
+        isBoostedAttribute.isOptional = false
+        isBoostedAttribute.defaultValue = false
+
+        let isSoldAttribute = NSAttributeDescription()
+        isSoldAttribute.name = "isSold"
+        isSoldAttribute.attributeType = .booleanAttributeType
+        isSoldAttribute.isOptional = false
+        isSoldAttribute.defaultValue = false
+
+        let distanceTextAttribute = NSAttributeDescription()
+        distanceTextAttribute.name = "distanceText"
+        distanceTextAttribute.attributeType = .stringAttributeType
+        distanceTextAttribute.isOptional = true
+
+        let distanceValueAttribute = NSAttributeDescription()
+        distanceValueAttribute.name = "distanceValue"
+        distanceValueAttribute.attributeType = .doubleAttributeType
+        distanceValueAttribute.isOptional = true
+
         let updatedAtAttribute = NSAttributeDescription()
         updatedAtAttribute.name = "updatedAt"
         updatedAtAttribute.attributeType = .dateAttributeType
         updatedAtAttribute.isOptional = false
 
-        entity.properties = [idAttribute, titleAttribute, subtitleAttribute, updatedAtAttribute]
+        entity.properties = [
+            idAttribute,
+            titleAttribute,
+            subtitleAttribute,
+            priceTextAttribute,
+            priceValueAttribute,
+            locationAttribute,
+            descriptionAttribute,
+            tagsAttribute,
+            coverAttribute,
+            sellerNameAttribute,
+            sellerAvatarAttribute,
+            createdAtAttribute,
+            isFavoriteAttribute,
+            isBoostedAttribute,
+            isSoldAttribute,
+            distanceTextAttribute,
+            distanceValueAttribute,
+            updatedAtAttribute
+        ]
         entity.uniquenessConstraints = [["id"]]
 
         model.entities = [entity]
@@ -95,6 +187,20 @@ public final class CoreDataListingsPersistence: ListingsPersisting {
                     cached.id = listing.id
                     cached.title = listing.title
                     cached.subtitle = listing.subtitle
+                    cached.priceText = listing.priceText
+                    if let price = listing.price { cached.priceValue = NSNumber(value: price) }
+                    cached.locationLabel = listing.location
+                    cached.descriptionText = listing.description
+                    cached.tagsString = listing.tags.joined(separator: ",")
+                    cached.coverURL = listing.coverImageURL?.absoluteString
+                    cached.sellerName = listing.sellerName
+                    cached.sellerAvatar = listing.sellerAvatarURL?.absoluteString
+                    cached.createdAt = listing.createdAt
+                    cached.isFavorite = listing.isFavorite
+                    cached.isBoosted = listing.isBoosted
+                    cached.isSold = listing.isSold
+                    cached.distanceText = listing.distanceText
+                    if let distance = listing.distanceMeters { cached.distanceValue = NSNumber(value: distance) }
                     cached.updatedAt = now
                 }
                 if context.hasChanges {
@@ -115,7 +221,28 @@ public final class CoreDataListingsPersistence: ListingsPersisting {
                 let request: NSFetchRequest<CachedListing> = CachedListing.fetchRequest()
                 request.sortDescriptors = [NSSortDescriptor(key: #keyPath(CachedListing.updatedAt), ascending: false)]
                 let fetched = try context.fetch(request)
-                results = fetched.map { ListingSummary(id: $0.id, title: $0.title, subtitle: $0.subtitle ?? "") }
+                results = fetched.map { cached in
+                    ListingSummary(
+                        id: cached.id,
+                        title: cached.title,
+                        subtitle: cached.subtitle ?? "",
+                        priceText: cached.priceText,
+                        price: cached.priceValue?.doubleValue,
+                        location: cached.locationLabel,
+                        description: cached.descriptionText ?? "",
+                        tags: cached.tagsString?.split(separator: ",").map { String($0) } ?? [],
+                        coverImageURL: cached.coverURL.flatMap(URL.init(string:)),
+                        galleryImages: [],
+                        sellerName: cached.sellerName,
+                        sellerAvatarURL: cached.sellerAvatar.flatMap(URL.init(string:)),
+                        createdAt: cached.createdAt,
+                        isFavorite: cached.isFavorite,
+                        isBoosted: cached.isBoosted,
+                        isSold: cached.isSold,
+                        distanceText: cached.distanceText,
+                        distanceMeters: cached.distanceValue?.doubleValue
+                    )
+                }
             } catch {
                 thrownError = error
             }

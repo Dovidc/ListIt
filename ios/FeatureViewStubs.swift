@@ -21,10 +21,12 @@ public struct AuthFeatureView: View {
 
 public struct ListingsFeatureView: View {
     let listingsService: ListingsService
+    let uploadService: UploadService
     let eventHandler: (String, [String: Any]) -> Void
-    
-    public init(listingsService: ListingsService, eventHandler: @escaping (String, [String: Any]) -> Void) {
+
+    public init(listingsService: ListingsService, uploadService: UploadService, eventHandler: @escaping (String, [String: Any]) -> Void) {
         self.listingsService = listingsService
+        self.uploadService = uploadService
         self.eventHandler = eventHandler
     }
     

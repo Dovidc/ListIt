@@ -7,17 +7,37 @@ final class ListingsServiceTests: XCTestCase {
     func testMapsListingSummaries() throws {
         let runtime = FakeRuntime()
         let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: context)
+        let item: [String: Any] = [
+            "id": "1",
+            "title": "Test",
+            "subtitle": "Demo",
+            "priceText": "$10",
+            "price": 10,
+            "location": "Portland, OR",
+            "description": "Sample",
+            "tags": ["home", "decor"],
+            "coverImage": "https://example.com/cover.jpg",
+            "sellerName": "Alex",
+            "sellerAvatar": "https://example.com/avatar.png",
+            "createdAt": 1_700_000_000,
+            "isFavorite": true,
+            "isSold": false,
+            "distanceText": "2 mi",
+            "distanceMeters": 3218
+        ]
+        runtime.stubbedResponse = JSValue(object: ["items": [item], "hasNext": false], in: context)
         let persistence = FakeListingsPersistence()
         let service = ListingsService(runtime: runtime, persistence: persistence)
-        let listings = try waitFor { try await service.fetchListings() }
-        XCTAssertEqual(listings.first?.title, "Test")
+        let page = try waitFor { try await service.fetchListings(query: ListingsQuery(), cursor: nil, limit: 10) }
+        XCTAssertEqual(page.listings.first?.title, "Test")
+        XCTAssertEqual(page.listings.first?.tags, ["home", "decor"])
         XCTAssertEqual(persistence.storedListings.first?.id, "1")
+        XCTAssertFalse(page.hasNext)
     }
 
     func testReturnsCachedListingsWhenFetchFails() throws {
         let runtime = FakeRuntime()
-        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_feed")
         let cached = [ListingSummary(id: "cached", title: "Offline", subtitle: "Cached")]
         let persistence = FakeListingsPersistence()
         persistence.stubbedCached = cached
@@ -29,7 +49,7 @@ final class ListingsServiceTests: XCTestCase {
 
     func testPropagatesErrorWhenCacheIsEmpty() {
         let runtime = FakeRuntime()
-        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_fetch")
+        runtime.stubbedError = SharedRuntimeError.missingExport(name: "listings_feed")
         let persistence = FakeListingsPersistence()
 
         let service = ListingsService(runtime: runtime, persistence: persistence)
