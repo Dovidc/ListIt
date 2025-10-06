@@ -1,6 +1,6 @@
 # ListIt
 
-ListIt is a dual-platform marketplace application with a Node/Express backend, a modular web frontend, and a native SwiftUI iOS client that reuses the shared JavaScript core. The repository roots contain documentation and tooling to help you stand up each surface.
+ListIt is a dual-platform marketplace application with a Node/Express backend, a modular web frontend, and a native SwiftUI iOS client that reuses the shared JavaScript core. The repository roots contain documentation and tooling to help you stand up each surface. (Minor edit to trigger macOS CI.)
 
 ## Getting Started on macOS
 
