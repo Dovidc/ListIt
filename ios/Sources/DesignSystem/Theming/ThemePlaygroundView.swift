@@ -69,14 +69,20 @@ public struct ThemePlaygroundView: View {
 
                 Section("Preview") {
                     VStack(spacing: theme.spacing.large) {
-                        Text("ListIt")
-                            .font(theme.typography.largeTitle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ListItBrandHeader(
+                            title: "ListIt Nearby",
+                            eyebrow: "Discover",
+                            subtitle: "Good things are around the corner",
+                            description: "Gradient hero treatment that mirrors the marketing shell and creates space for feature-specific art.",
+                            action: {
+                                Button("Browse nearby deals") {}
+                                    .buttonStyle(ListItPrimaryButtonStyle())
+                            }
+                        )
+
                         ListItCard(title: "Curated Listing", subtitle: "Native preview") {
                             Text("Give designers and engineers playgrounds to explore themes without touching production builds.")
                         }
-                        Button("Primary Action") {}
-                            .buttonStyle(ListItPrimaryButtonStyle())
                     }
                     .padding(theme.spacing.large)
                     .listRowBackground(Color.clear)
