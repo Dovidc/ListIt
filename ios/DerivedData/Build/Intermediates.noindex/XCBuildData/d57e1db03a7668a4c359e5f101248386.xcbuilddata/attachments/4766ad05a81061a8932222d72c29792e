@@ -1,0 +1,4 @@
+framework module AdminFeature {
+  header "AdminFeature-Swift.h"
+  requires objc
+}

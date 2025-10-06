@@ -1,0 +1,4 @@
+framework module ListingsFeature {
+  header "ListingsFeature-Swift.h"
+  requires objc
+}

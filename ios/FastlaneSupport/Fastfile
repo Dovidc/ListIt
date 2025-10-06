@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# --- Optional: load ios/.env if present (won't crash if dotenv isn't installed) ---
+# Optional: load ios/.env if present (won't crash if dotenv isn't installed)
 begin
   require "dotenv"
   env_path = File.expand_path("../.env", __dir__)
@@ -11,62 +11,55 @@ end
 
 default_platform(:ios)
 
-# --- Helpers ---
+# Helpers
 def shared_env
-  # If you want logging:
   env_path = File.expand_path("../.env", __dir__)
   UI.message("Loading env from #{env_path}") if File.exist?(env_path)
-  # .env is loaded above via Dotenv if available
 end
 
-def ensure_workspace
-  workspace = File.expand_path("../ListIt.xcworkspace", __dir__)
-  unless File.exist?(workspace)
-    UI.message("Workspace missing, generating via XcodeGen…")
+def ensure_project
+  proj = File.expand_path("../ListIt.xcodeproj", __dir__)
+  unless File.exist?(proj)
+    UI.message("Project missing, generating via XcodeGen…")
     sh("cd .. && xcodegen generate")
   end
 end
 
 platform :ios do
-  desc "Build & run tests on iPhone 15 Simulator"
+  desc "Build & run tests on iPhone 15 Simulator (project)"
   lane :ci_tests do
     shared_env
-    ensure_workspace
+    ensure_project
 
-    # Prefer scan (aka run_tests) so CI+local behave the same
     scan(
-      workspace: "../ListIt.xcworkspace",
-      scheme: "ListItApp",          # <-- change if your shared scheme differs
+      project: "../ListIt.xcodeproj",
+      scheme: "ListItApp",          # change if your shared scheme differs
       configuration: "Debug",
-      devices: ["iPhone 15"],       # Matches CI destination
+      devices: ["iPhone 15"],
       clean: true,
-      build_for_testing: false,
       code_coverage: false,
       include_simulator_logs: true,
       skip_detect_devices: false
     )
   end
 
-  desc "Build and (optionally) upload a TestFlight beta"
+  desc "Archive the iOS app (project)"
   lane :beta do
     shared_env
-    ensure_workspace
+    ensure_project
 
-    # Bumps build number inside the .xcodeproj
     increment_build_number(
       xcodeproj: "../ListIt.xcodeproj"
     )
 
-    # Create an archive. Adjust export_method/signing to your setup.
     gym(
-      workspace: "../ListIt.xcworkspace",
-      scheme: "ListItApp",          # <-- change if needed
+      project: "../ListIt.xcodeproj",
+      scheme: "ListItApp",          # change if needed
       configuration: "Release",
       clean: true
-      # export_method: "app-store"   # uncomment when signing is configured
+      # export_method: "app-store"   # uncomment/configure when signing is ready
     )
 
-    # Will require App Store Connect credentials/config; comment out if not ready
-    # upload_to_testflight
+    # upload_to_testflight  # enable once App Store Connect creds/signing are set up
   end
 end
