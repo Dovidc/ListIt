@@ -15,7 +15,7 @@ This roadmap outlines the steps required to deliver a fully native SwiftUI imple
 - [x] Surface profile/preferences toggles (auto list, AI description, auto-post nearby, inquiry, notifications) in native settings screens with the same defaults and helper text as the React experience.
 
 ## Feature Parity Builds
-- [ ] Implement a SwiftUI Nearby feature with geolocation prompts, radius/search controls, masonry results, and listing actions powered by shared-core data.
+- [x] Implement a SwiftUI Nearby feature with geolocation prompts, radius/search controls, masonry results, and listing actions powered by shared-core data.
 - [ ] Expand Listings to include search, filters, infinite scrolling, detail sheets, AI-assisted creation/editing, mass list, and cover management via shared-core helpers and upload services.
 - [ ] Port the messaging inbox and thread UI, including unread indicators, attachments, lightbox, and deletion flows, backed by shared messaging APIs.
 - [ ] Rebuild admin dashboards, ads management, and reporting workflows using the admin endpoints exposed through the shared core.
