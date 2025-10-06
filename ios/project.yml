@@ -60,6 +60,9 @@ targets:
       - target: AuthFeature
       - target: ListingsFeature
       - target: UploadFeature
+      - target: NearbyFeature
+      - target: MessagesFeature
+      - target: AdminFeature
       - target: ProfileFeature
       - package: SharedCoreBridge
       - target: DesignSystem
@@ -124,6 +127,45 @@ targets:
     dependencies:
       - target: SharedServices
       - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+
+  NearbyFeature:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/NearbyFeature
+    dependencies:
+      - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+
+  MessagesFeature:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/MessagesFeature
+    dependencies:
+      - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+
+  AdminFeature:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/AdminFeature
+    dependencies:
+      - target: SharedServices
+      - target: DesignSystem
+      - target: AuthFeature
+      - target: UploadFeature
     settings:
       base:
         CODE_SIGNING_ALLOWED: NO

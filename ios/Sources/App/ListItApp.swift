@@ -1,13 +1,14 @@
 import Combine
 import SwiftUI
 import ListingsFeature
-import UploadFeature
 import SharedServices
 import SharedCoreBridge
 import DesignSystem
 import PlatformCapabilities
-import AuthFeature
 import ProfileFeature
+import NearbyFeature
+import MessagesFeature
+import AdminFeature
 
 @main
 struct ListItApp: App {
@@ -32,13 +33,6 @@ struct RootTabView: View {
 
     var body: some View {
         TabView {
-            AuthFeatureView(authService: environment.authService) { name, payload in
-                environment.emitCapabilityEvent(name, payload: payload)
-            }
-                .tabItem {
-                    Label("Account", systemImage: "person")
-                }
-
             ListingsFeatureView(listingsService: environment.listingsService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
@@ -46,11 +40,18 @@ struct RootTabView: View {
                     Label("Listings", systemImage: "list.bullet")
                 }
 
-            UploadFeatureView(uploadService: environment.uploadService) { name, payload in
+            NearbyFeatureView { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
                 .tabItem {
-                    Label("Uploads", systemImage: "icloud.and.arrow.up")
+                    Label("Nearby", systemImage: "location.circle")
+                }
+
+            MessagesFeatureView { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Messages", systemImage: "bubble.left.and.bubble.right")
                 }
 
             ProfileFeatureView(preferencesService: environment.preferencesService) { name, payload in
@@ -58,6 +59,16 @@ struct RootTabView: View {
             }
                 .tabItem {
                     Label("Profile", systemImage: "person.crop.circle")
+                }
+
+            AdminFeatureView(
+                authService: environment.authService,
+                uploadService: environment.uploadService
+            ) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Admin", systemImage: "gearshape.2")
                 }
         }
         .environmentObject(environment.configuration)

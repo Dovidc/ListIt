@@ -7,78 +7,89 @@ public struct AuthFeatureView: View {
     @State private var state = AuthViewState()
     private let authService: AuthService
     private let capabilityEmitter: (String, [String: Any]) -> Void
+    private let showsNavigationChrome: Bool
 
-    public init(authService: AuthService, capabilityEmitter: @escaping (String, [String: Any]) -> Void = { _, _ in }) {
+    public init(
+        authService: AuthService,
+        capabilityEmitter: @escaping (String, [String: Any]) -> Void = { _, _ in },
+        showsNavigationChrome: Bool = true
+    ) {
         self.authService = authService
         self.capabilityEmitter = capabilityEmitter
+        self.showsNavigationChrome = showsNavigationChrome
     }
 
     public var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: designSystem.spacing.large) {
-                    ListItCard(title: "Credentials") {
-                        VStack(alignment: .leading, spacing: designSystem.spacing.small) {
-                            TextField("Email", text: $state.email)
-                                .textContentType(.username)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .font(designSystem.typography.body)
-                                .padding(.vertical, designSystem.spacing.xSmall)
-                            Divider()
-                            SecureField("Password", text: $state.password)
-                                .font(designSystem.typography.body)
-                                .padding(.vertical, designSystem.spacing.xSmall)
-                        }
-                    }
-
-                    Button(action: signIn) {
-                        if state.isLoading {
-                            ProgressView()
-                        } else {
-                            Text("Sign In")
-                        }
-                    }
-                    .buttonStyle(ListItPrimaryButtonStyle())
-                    .disabled(!state.canSubmit)
-
-                    if let error = state.errorMessage {
-                        ListItCard(title: "Error") {
-                            Text(error)
-                                .font(designSystem.typography.callout)
-                                .foregroundStyle(designSystem.colors.danger)
-                        }
-                    }
-
-                    if let tokens = state.tokens {
-                        ListItCard(title: "Active Session") {
-                            VStack(alignment: .leading, spacing: designSystem.spacing.small) {
-                                TokenRow(label: "Access Token", value: tokens.accessToken)
-                                if let refresh = tokens.refreshToken {
-                                    TokenRow(label: "Refresh Token", value: refresh)
-                                }
-                                if let expiry = tokens.expiresAt {
-                                    TokenRow(label: "Expires", value: expiry.formatted(date: .numeric, time: .shortened))
-                                }
-                                Button(role: .destructive, action: signOut) {
-                                    Text("Sign Out")
-                                }
-                                .buttonStyle(ListItSecondaryButtonStyle())
-                            }
-                        }
-                    }
-                }
-                .padding(designSystem.spacing.large)
-                .background(designSystem.colors.background.ignoresSafeArea())
-            }
-            .navigationTitle("Account")
-            .navigationBarTitleDisplayMode(designSystem.enablesLargeTitles ? .large : .inline)
+        content
+            .applyNavigationChrome(
+                if: showsNavigationChrome,
+                title: "Account",
+                displayMode: designSystem.enablesLargeTitles ? .large : .inline
+            )
             .alert("Signed In", isPresented: $state.isSignedIn) {
                 Button("OK", role: .cancel) { }
             }
             .task {
                 state.tokens = authService.currentTokens()
             }
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(spacing: designSystem.spacing.large) {
+                ListItCard(title: "Credentials") {
+                    VStack(alignment: .leading, spacing: designSystem.spacing.small) {
+                        TextField("Email", text: $state.email)
+                            .textContentType(.username)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .font(designSystem.typography.body)
+                            .padding(.vertical, designSystem.spacing.xSmall)
+                        Divider()
+                        SecureField("Password", text: $state.password)
+                            .font(designSystem.typography.body)
+                            .padding(.vertical, designSystem.spacing.xSmall)
+                    }
+                }
+
+                Button(action: signIn) {
+                    if state.isLoading {
+                        ProgressView()
+                    } else {
+                        Text("Sign In")
+                    }
+                }
+                .buttonStyle(ListItPrimaryButtonStyle())
+                .disabled(!state.canSubmit)
+
+                if let error = state.errorMessage {
+                    ListItCard(title: "Error") {
+                        Text(error)
+                            .font(designSystem.typography.callout)
+                            .foregroundStyle(designSystem.colors.danger)
+                    }
+                }
+
+                if let tokens = state.tokens {
+                    ListItCard(title: "Active Session") {
+                        VStack(alignment: .leading, spacing: designSystem.spacing.small) {
+                            TokenRow(label: "Access Token", value: tokens.accessToken)
+                            if let refresh = tokens.refreshToken {
+                                TokenRow(label: "Refresh Token", value: refresh)
+                            }
+                            if let expiry = tokens.expiresAt {
+                                TokenRow(label: "Expires", value: expiry.formatted(date: .numeric, time: .shortened))
+                            }
+                            Button(role: .destructive, action: signOut) {
+                                Text("Sign Out")
+                            }
+                            .buttonStyle(ListItSecondaryButtonStyle())
+                        }
+                    }
+                }
+            }
+            .padding(designSystem.spacing.large)
+            .background(designSystem.colors.background.ignoresSafeArea())
         }
     }
 
@@ -109,6 +120,25 @@ public struct AuthFeatureView: View {
         } catch {
             state.errorMessage = error.localizedDescription
             capabilityEmitter("haptic", ["style": "error"])
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func applyNavigationChrome(
+        if showsNavigationChrome: Bool,
+        title: String,
+        displayMode: NavigationBarItem.TitleDisplayMode
+    ) -> some View {
+        if showsNavigationChrome {
+            NavigationStack {
+                self
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(displayMode)
+            }
+        } else {
+            self
         }
     }
 }
