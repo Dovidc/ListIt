@@ -17,10 +17,12 @@ public struct ListingsFeatureView: View {
     @State private var appliedLocation = ""
     @State private var selectedSort: ListingsRequest.Sort = .newest
 
-    @State private var selectedListing: Listing?
+    @State private var selectedListing: ListingPresentation?
     @State private var showingSortSheet = false
     @State private var showingLocationSheet = false
-    @State private var showingComposer = false
+    @State private var composerMode: ComposerMode?
+    @State private var showingMassComposer = false
+    @State private var coverByID: [String: String] = [:]
 
     @State private var searchDebounceTask: Task<Void, Never>?
 
@@ -62,17 +64,31 @@ public struct ListingsFeatureView: View {
             .task {
                 await loadListings(reset: true)
             }
-            .sheet(item: $selectedListing) { listing in
-                ListingDetailSheet(listing: listing)
+            .sheet(item: $selectedListing) { presentation in
+                ListingDetailSheet(listing: presentation.listing, coverURL: presentation.coverURL)
             }
-            .sheet(isPresented: $showingComposer) {
+            .sheet(item: $composerMode) { mode in
                 NavigationStack {
-                    AIComposerSheet()
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Done") { showingComposer = false }
-                            }
+                    ListingComposerSheet(
+                        mode: mode,
+                        listingsService: listingsService,
+                        capabilityEmitter: capabilityEmitter,
+                        onComplete: {
+                            Task { await loadListings(reset: true) }
                         }
+                    )
+                }
+                .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showingMassComposer) {
+                NavigationStack {
+                    MassListingSheet(
+                        listingsService: listingsService,
+                        capabilityEmitter: capabilityEmitter,
+                        onComplete: {
+                            Task { await loadListings(reset: true) }
+                        }
+                    )
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -116,21 +132,49 @@ public struct ListingsFeatureView: View {
                 .listRowBackground(Color.clear)
 
             ForEach(listings) { listing in
-                ListItCard(title: listing.title, subtitle: listing.subtitle) {
-                    VStack(alignment: .leading, spacing: designSystem.spacing.xSmall) {
-                        if let formattedPrice = listing.formattedPrice {
-                            Label(formattedPrice, systemImage: "tag")
+                ListItCard {
+                    HStack(alignment: .top, spacing: designSystem.spacing.medium) {
+                        ListingCoverThumbnail(url: coverURL(for: listing))
+
+                        VStack(alignment: .leading, spacing: designSystem.spacing.xSmall) {
+                            Text(listing.title)
+                                .font(designSystem.typography.headline)
+
+                            if !listing.subtitle.isEmpty {
+                                Text(listing.subtitle)
+                                    .font(designSystem.typography.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if let formattedPrice = listing.formattedPrice {
+                                Label(formattedPrice, systemImage: "tag")
+                            }
+                            if let location = listing.location, !location.isEmpty {
+                                Label(location, systemImage: "mappin.and.ellipse")
+                            }
+
+                            Text("Powered by the shared core listings service.")
+                                .font(designSystem.typography.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        if let location = listing.location, !location.isEmpty {
-                            Label(location, systemImage: "mappin.and.ellipse")
-                        }
-                        Text("Powered by the shared core listings service.")
-                            .foregroundStyle(.secondary)
                     }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    selectedListing = listing
+                    let cover = coverByID[listing.id]
+                    selectedListing = ListingPresentation(listing: listing, coverURL: cover)
+                }
+                .contextMenu {
+                    Button {
+                        composerMode = .edit(listing: listing, intent: .manual)
+                    } label: {
+                        Label("Edit listing", systemImage: "square.and.pencil")
+                    }
+                    Button {
+                        composerMode = .edit(listing: listing, intent: .ai)
+                    } label: {
+                        Label("Enhance with AI", systemImage: "sparkles")
+                    }
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -224,10 +268,26 @@ public struct ListingsFeatureView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showingComposer = true
+            Menu {
+                Button {
+                    composerMode = .create(intent: .manual)
+                } label: {
+                    Label("New listing", systemImage: "plus")
+                }
+
+                Button {
+                    composerMode = .create(intent: .ai)
+                } label: {
+                    Label("AI-assisted draft", systemImage: "sparkles")
+                }
+
+                Button {
+                    showingMassComposer = true
+                } label: {
+                    Label("Mass list items", systemImage: "rectangle.stack.badge.plus")
+                }
             } label: {
-                Label("AI Draft", systemImage: "sparkles")
+                Label("Compose", systemImage: "square.and.pencil")
             }
         }
     }
@@ -257,15 +317,22 @@ private extension ListingsFeatureView {
         do {
             let page = try await listingsService.fetchListings(request: request)
             let mapped = page.listings.map(Listing.init(summary:))
+            let newListings: [Listing]
             if reset {
                 listings = mapped
+                newListings = mapped
             } else {
                 let existingIDs = Set(listings.map { $0.id })
-                listings.append(contentsOf: mapped.filter { !existingIDs.contains($0.id) })
+                let appended = mapped.filter { !existingIDs.contains($0.id) }
+                if !appended.isEmpty {
+                    listings.append(contentsOf: appended)
+                }
+                newListings = appended
             }
             nextCursor = page.nextCursor
             hasNextPage = page.hasNext
             errorMessage = nil
+            await fetchCoversIfNeeded(newListings: newListings, reset: reset)
         } catch {
             if listings.isEmpty {
                 errorMessage = error.localizedDescription
@@ -309,6 +376,37 @@ private extension ListingsFeatureView {
         selectedSort = .newest
         Task { await loadListings(reset: true) }
     }
+
+    func fetchCoversIfNeeded(newListings: [Listing], reset: Bool) async {
+        let ids: [String]
+        if reset {
+            ids = Array(newListings.prefix(24).map(\.id))
+        } else {
+            ids = newListings.map(\.id)
+        }
+        guard !ids.isEmpty else { return }
+
+        do {
+            let covers = try await listingsService.fetchCovers(for: ids)
+            if reset {
+                coverByID = covers
+            } else {
+                for (id, cover) in covers {
+                    coverByID[id] = cover
+                }
+            }
+        } catch {
+            // Swallow cover fetch failures so listings still render.
+        }
+    }
+
+    func coverURL(for listing: Listing) -> URL? {
+        guard let value = coverByID[listing.id]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: value) else {
+            return nil
+        }
+        return url
+    }
 }
 
 private extension ListingsFeatureView {
@@ -334,6 +432,55 @@ private extension ListingsFeatureView {
         var formattedPrice: String? {
             guard let price else { return nil }
             return ListingsFeatureView.priceFormatter.string(from: NSNumber(value: price))
+        }
+    }
+
+    struct ListingPresentation: Identifiable, Equatable {
+        let listing: Listing
+        let coverURL: String?
+
+        var id: String { listing.id }
+    }
+
+    enum ComposerIntent: Equatable {
+        case manual
+        case ai
+
+        fileprivate var identifier: String {
+            switch self {
+            case .manual: return "manual"
+            case .ai: return "ai"
+            }
+        }
+    }
+
+    enum ComposerMode: Identifiable, Equatable {
+        case create(intent: ComposerIntent)
+        case edit(listing: Listing, intent: ComposerIntent)
+
+        var id: String {
+            switch self {
+            case .create(let intent):
+                return "create-\(intent.identifier)"
+            case .edit(let listing, let intent):
+                return "edit-\(listing.id)-\(intent.identifier)"
+            }
+        }
+
+        var intent: ComposerIntent {
+            switch self {
+            case .create(let intent): return intent
+            case .edit(_, let intent): return intent
+            }
+        }
+
+        var navigationTitle: String {
+            switch self {
+            case .create:
+                return "New listing"
+            case .edit:
+                return "Edit listing"
+            }
         }
     }
 
@@ -423,15 +570,90 @@ private struct ListingsHeroBanner: View {
     }
 }
 
+private struct ListingCoverThumbnail: View {
+    @Environment(\.designSystem) private var designSystem
+    let url: URL?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                .fill(designSystem.colors.surface.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                        .stroke(designSystem.colors.onSurface.opacity(0.08), lineWidth: 1)
+                )
+
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholder
+                    case .empty:
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    @unknown default:
+                        placeholder
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous))
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 96, height: 96)
+        .clipped()
+    }
+
+    private var placeholder: some View {
+        VStack(spacing: designSystem.spacing.xSmall) {
+            Image(systemName: "photo")
+                .font(.system(size: 24))
+            Text("No cover")
+                .font(designSystem.typography.caption)
+        }
+        .foregroundStyle(.secondary)
+    }
+}
+
 private struct ListingDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.designSystem) private var designSystem
 
     let listing: ListingsFeatureView.Listing
+    let coverURL: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: designSystem.spacing.large) {
+                if let coverURL, let url = URL(string: coverURL) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            placeholder
+                        case .empty:
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                        @unknown default:
+                            placeholder
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: designSystem.corners.medium, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: designSystem.corners.medium, style: .continuous)
+                            .stroke(designSystem.colors.onSurface.opacity(0.05), lineWidth: 1)
+                    )
+                }
+
                 Text(listing.title)
                     .font(designSystem.typography.largeTitle)
                     .foregroundStyle(designSystem.colors.onBackground)
@@ -463,46 +685,646 @@ private struct ListingDetailSheet: View {
             }
         }
     }
+
+    private var placeholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: designSystem.corners.medium, style: .continuous)
+                .fill(designSystem.colors.surface)
+            Image(systemName: "photo")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+        }
+    }
 }
 
-private struct AIComposerSheet: View {
+private struct ListingComposerSheet: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.designSystem) private var designSystem
-    @State private var prompt: String = ""
+
+    let mode: ListingsFeatureView.ComposerMode
+    let listingsService: ListingsService
+    let capabilityEmitter: (String, [String: Any]) -> Void
+    let onComplete: () -> Void
+
+    @State private var title: String
+    @State private var description: String
+    @State private var location: String
+    @State private var priceText: String
+    @State private var tagsText: String
+    @State private var enableNearby: Bool
+    @State private var latitudeText: String
+    @State private var longitudeText: String
+    @State private var showAISection: Bool
+
+    @State private var aiImageSources: String = ""
+    @State private var aiHint: String = ""
+    @State private var isAIRunning = false
+    @State private var lastAIAnalysis: ListingAIAnalysis?
+    @State private var aiError: String?
+
+    @State private var isSaving = false
+    @State private var saveError: String?
+
+    @State private var existingImages: [String] = []
+    @State private var markedForDeletion: Set<String> = []
+    @State private var isLoadingImages = false
+
+    init(mode: ListingsFeatureView.ComposerMode,
+         listingsService: ListingsService,
+         capabilityEmitter: @escaping (String, [String: Any]) -> Void,
+         onComplete: @escaping () -> Void) {
+        self.mode = mode
+        self.listingsService = listingsService
+        self.capabilityEmitter = capabilityEmitter
+        self.onComplete = onComplete
+
+        switch mode {
+        case .create(let intent):
+            _title = State(initialValue: "")
+            _description = State(initialValue: "")
+            _location = State(initialValue: "")
+            _priceText = State(initialValue: "")
+            _tagsText = State(initialValue: "")
+            _enableNearby = State(initialValue: false)
+            _latitudeText = State(initialValue: "")
+            _longitudeText = State(initialValue: "")
+            _showAISection = State(initialValue: intent == .ai)
+        case .edit(let listing, let intent):
+            _title = State(initialValue: listing.title)
+            _description = State(initialValue: listing.subtitle)
+            _location = State(initialValue: listing.location ?? "")
+            let priceString: String
+            if let price = listing.price {
+                priceString = String(format: "%.2f", price)
+            } else {
+                priceString = ""
+            }
+            _priceText = State(initialValue: priceString)
+            _tagsText = State(initialValue: "")
+            _enableNearby = State(initialValue: false)
+            _latitudeText = State(initialValue: "")
+            _longitudeText = State(initialValue: "")
+            _showAISection = State(initialValue: intent == .ai)
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: designSystem.spacing.medium) {
-            Text("AI-assisted Listing Draft")
-                .font(designSystem.typography.title)
-
-            Text("Describe what you want to sell and we will prefill the native composer using the shared AI helpers. This stub mirrors the upcoming integration point.")
-                .font(designSystem.typography.body)
-                .foregroundStyle(.secondary)
-
-            TextEditor(text: $prompt)
-                .padding(8)
-                .frame(minHeight: 160)
-                .background(
-                    RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
-                        .fill(designSystem.colors.surface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
-                        .stroke(designSystem.colors.onSurface.opacity(0.1), lineWidth: 1)
-                )
-
-            Button {
-                // future: trigger shared-core AI helpers
-            } label: {
-                Label("Generate draft", systemImage: "wand.and.stars")
-                    .frame(maxWidth: .infinity)
+        Form {
+            detailsSection
+            aiSection
+            imagesSection
+            if let saveError {
+                Section {
+                    Text(saveError)
+                        .foregroundStyle(designSystem.colors.danger)
+                }
             }
-            .buttonStyle(ListItPrimaryButtonStyle())
-            .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-            Spacer(minLength: 0)
         }
-        .padding(designSystem.spacing.large)
-        .background(designSystem.colors.background)
+        .navigationTitle(mode.navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(isSaving ? "Saving…" : "Save") {
+                    save()
+                }
+                .disabled(isSaving)
+            }
+        }
+        .disabled(isSaving)
+        .task {
+            await loadExistingImagesIfNeeded()
+        }
+    }
+
+    private var detailsSection: some View {
+        Section("Details") {
+            TextField("Title", text: $title)
+                .textInputAutocapitalization(.sentences)
+
+            VStack(alignment: .leading, spacing: designSystem.spacing.xSmall) {
+                Text("Description")
+                    .font(designSystem.typography.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $description)
+                    .frame(minHeight: 140)
+                    .padding(4)
+                    .background(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .fill(designSystem.colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .stroke(designSystem.colors.onSurface.opacity(0.08), lineWidth: 1)
+                    )
+            }
+
+            TextField("Location", text: $location)
+                .textInputAutocapitalization(.words)
+
+            TextField("Price", text: $priceText)
+                .keyboardType(.decimalPad)
+
+            TextField("Tags (comma separated)", text: $tagsText)
+
+            Toggle("Enable Nearby exposure", isOn: $enableNearby)
+
+            if enableNearby {
+                TextField("Latitude", text: $latitudeText)
+                    .keyboardType(.decimalPad)
+                TextField("Longitude", text: $longitudeText)
+                    .keyboardType(.decimalPad)
+            }
+        }
+    }
+
+    private var aiSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showAISection) {
+                Text("Paste image URLs (comma or newline separated). The shared core AI helpers will suggest copy, pricing, and tags.")
+                    .font(designSystem.typography.caption)
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $aiImageSources)
+                    .frame(minHeight: 80)
+                    .padding(4)
+                    .background(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .fill(designSystem.colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .stroke(designSystem.colors.onSurface.opacity(0.08), lineWidth: 1)
+                    )
+
+                TextField("Optional hint for the AI model", text: $aiHint)
+
+                Button {
+                    generateWithAI()
+                } label: {
+                    Label(isAIRunning ? "Generating…" : "Generate with AI", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ListItPrimaryButtonStyle())
+                .disabled(isAIRunning || sanitizedImageSources().isEmpty)
+
+                if isAIRunning {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                }
+
+                if let analysis = lastAIAnalysis {
+                    VStack(alignment: .leading, spacing: designSystem.spacing.xSmall) {
+                        Text("AI suggestions applied")
+                            .font(designSystem.typography.subheadline)
+                        if !analysis.title.isEmpty {
+                            Label(analysis.title, systemImage: "textformat")
+                                .font(designSystem.typography.caption)
+                        }
+                        if let price = analysis.suggestedPrice {
+                            let formatted = ListingsFeatureView.priceFormatter.string(from: NSNumber(value: price)) ?? String(format: "%.2f", price)
+                            Label(formatted, systemImage: "tag")
+                                .font(designSystem.typography.caption)
+                        }
+                        if !analysis.tags.isEmpty {
+                            Label(analysis.tags.joined(separator: ", "), systemImage: "number")
+                                .font(designSystem.typography.caption)
+                        }
+                    }
+                    .padding(designSystem.spacing.small)
+                    .background(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .fill(designSystem.colors.surface)
+                    )
+                }
+
+                if let aiError {
+                    Text(aiError)
+                        .font(designSystem.typography.caption)
+                        .foregroundStyle(designSystem.colors.danger)
+                }
+            } label: {
+                Label("AI assist", systemImage: "sparkles")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var imagesSection: some View {
+        Section("Images & cover") {
+            switch mode {
+            case .create:
+                Text("Upload images via the Upload tab to obtain tokens, then attach them through mass listing or by editing after creation. The first stored image becomes the cover.")
+                    .font(designSystem.typography.caption)
+                    .foregroundStyle(.secondary)
+            case .edit:
+                if isLoadingImages {
+                    ProgressView("Loading images…")
+                } else if existingImages.isEmpty {
+                    Text("No images found for this listing yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("The first remaining image will be promoted to the cover when you save.")
+                        .font(designSystem.typography.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(existingImages, id: \\.self) { image in
+                        ListingImageRow(
+                            urlString: image,
+                            isMarked: markedForDeletion.contains(image),
+                            action: { toggleDeletion(for: image) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func loadExistingImagesIfNeeded() async {
+        guard case .edit(let listing, _) = mode else { return }
+        guard existingImages.isEmpty else { return }
+        isLoadingImages = true
+        defer { isLoadingImages = false }
+        do {
+            let images = try await listingsService.fetchListingImages(id: listing.id)
+            existingImages = images
+        } catch {
+            // Ignore failures so editing can continue.
+        }
+    }
+
+    private func sanitizedImageSources() -> [URL] {
+        aiImageSources
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .compactMap { URL(string: $0) }
+    }
+
+    private func generateWithAI() {
+        let sources = sanitizedImageSources()
+        guard !sources.isEmpty else {
+            aiError = "Provide at least one image URL."
+            capabilityEmitter("haptic", ["style": "error"])
+            return
+        }
+
+        aiError = nil
+        isAIRunning = true
+
+        Task {
+            do {
+                let analysis = try await listingsService.analyze(images: sources, hint: aiHint.trimmingCharacters(in: .whitespacesAndNewlines))
+                await MainActor.run {
+                    applyAnalysis(analysis)
+                    lastAIAnalysis = analysis
+                    isAIRunning = false
+                    capabilityEmitter("haptic", ["style": "success"])
+                }
+            } catch {
+                await MainActor.run {
+                    aiError = error.localizedDescription
+                    isAIRunning = false
+                    capabilityEmitter("haptic", ["style": "error"])
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func applyAnalysis(_ analysis: ListingAIAnalysis) {
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !analysis.title.isEmpty {
+            title = analysis.title
+        }
+        if description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !analysis.description.isEmpty {
+            description = analysis.description
+        }
+        if let price = analysis.suggestedPrice {
+            priceText = String(format: "%.2f", price)
+        }
+        if !analysis.tags.isEmpty {
+            let combined = Set(csvStrings(from: tagsText) + analysis.tags)
+            tagsText = combined.sorted().joined(separator: ", ")
+        }
+    }
+
+    private func toggleDeletion(for image: String) {
+        if markedForDeletion.contains(image) {
+            markedForDeletion.remove(image)
+        } else {
+            markedForDeletion.insert(image)
+        }
+    }
+
+    private func save() {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            saveError = "Title is required."
+            capabilityEmitter("haptic", ["style": "error"])
+            return
+        }
+
+        isSaving = true
+        saveError = nil
+
+        let draft = ListingDraft(
+            title: trimmedTitle,
+            description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+            location: location.trimmingCharacters(in: .whitespacesAndNewlines),
+            price: parseDouble(priceText),
+            tags: csvStrings(from: tagsText),
+            enableNearby: enableNearby,
+            latitude: enableNearby ? parseDouble(latitudeText) : nil,
+            longitude: enableNearby ? parseDouble(longitudeText) : nil,
+            uploadTokens: [],
+            deletedImages: Array(markedForDeletion)
+        )
+
+        Task {
+            do {
+                _ = try await performSave(with: draft)
+                await MainActor.run {
+                    isSaving = false
+                    capabilityEmitter("haptic", ["style": "success"])
+                    onComplete()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveError = error.localizedDescription
+                    capabilityEmitter("haptic", ["style": "error"])
+                }
+            }
+        }
+    }
+
+    private func performSave(with draft: ListingDraft) async throws -> ListingDetail {
+        switch mode {
+        case .create:
+            return try await listingsService.createListing(from: draft)
+        case .edit(let listing, _):
+            return try await listingsService.updateListing(id: listing.id, with: draft)
+        }
+    }
+
+    private func parseDouble(_ string: String) -> Double? {
+        let filtered = string.filter { "0123456789.,-".contains($0) }
+        let normalized = filtered.replacingOccurrences(of: ",", with: ".")
+        return Double(normalized)
+    }
+
+    private func csvStrings(from text: String) -> [String] {
+        text.split(whereSeparator: { $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
+private struct ListingImageRow: View {
+    @Environment(\.designSystem) private var designSystem
+    let urlString: String
+    let isMarked: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: designSystem.spacing.small) {
+            if let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholder
+                    case .empty:
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    @unknown default:
+                        placeholder
+                    }
+                }
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous))
+            } else {
+                placeholder
+                    .frame(width: 60, height: 60)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(urlString)
+                    .font(designSystem.typography.caption)
+                    .lineLimit(2)
+                if isMarked {
+                    Text("Marked for deletion")
+                        .font(designSystem.typography.caption)
+                        .foregroundStyle(designSystem.colors.danger)
+                }
+            }
+
+            Spacer()
+
+            Button(isMarked ? "Keep" : "Remove", action: action)
+                .buttonStyle(.bordered)
+                .tint(isMarked ? designSystem.colors.accent : designSystem.colors.danger)
+        }
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+            .fill(designSystem.colors.surface.opacity(0.8))
+            .overlay(
+                Image(systemName: "photo")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
+            )
+    }
+}
+
+private struct MassListingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.designSystem) private var designSystem
+
+    let listingsService: ListingsService
+    let capabilityEmitter: (String, [String: Any]) -> Void
+    let onComplete: () -> Void
+
+    @State private var bulkInput: String = ""
+    @State private var isProcessing = false
+    @State private var progress: Double = 0
+    @State private var statusMessage: String?
+    @State private var errors: [String] = []
+
+    var body: some View {
+        Form {
+            Section("Instructions") {
+                Text("Enter one listing per line using the format:")
+                    .font(designSystem.typography.caption)
+                Text("Title | Description | Price | Location | Tags | Upload tokens | Enable nearby | Latitude | Longitude")
+                    .font(designSystem.typography.caption)
+                    .foregroundStyle(.secondary)
+                Text("Upload tokens are optional but required when attaching new images. Leave trailing fields blank if they are not needed.")
+                    .font(designSystem.typography.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Bulk entries") {
+                TextEditor(text: $bulkInput)
+                    .frame(minHeight: 200)
+                    .padding(4)
+                    .background(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .fill(designSystem.colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: designSystem.corners.small, style: .continuous)
+                            .stroke(designSystem.colors.onSurface.opacity(0.08), lineWidth: 1)
+                    )
+            }
+
+            if isProcessing {
+                Section {
+                    ProgressView(value: progress)
+                    if let statusMessage {
+                        Text(statusMessage)
+                    }
+                }
+            } else if let statusMessage {
+                Section {
+                    Text(statusMessage)
+                }
+            }
+
+            if !errors.isEmpty {
+                Section("Errors") {
+                    ForEach(errors, id: \\.self) { error in
+                        Text(error)
+                            .font(designSystem.typography.caption)
+                            .foregroundStyle(designSystem.colors.danger)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Mass list items")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(isProcessing ? "Processing…" : "Start") {
+                    process()
+                }
+                .disabled(isProcessing || bulkInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private func process() {
+        let lines = bulkInput
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !lines.isEmpty else {
+            statusMessage = "Add at least one entry before starting."
+            capabilityEmitter("haptic", ["style": "error"])
+            return
+        }
+
+        isProcessing = true
+        progress = 0
+        statusMessage = nil
+        errors = []
+
+        Task {
+            var successes = 0
+            var failures: [String] = []
+
+            for (index, line) in lines.enumerated() {
+                let components = line
+                    .split(separator: "|", omittingEmptySubsequences: false)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+                let title = components[safe: 0]
+                let description = components[safe: 1] ?? ""
+                let priceString = components[safe: 2] ?? ""
+                let location = components[safe: 3] ?? ""
+                let tags = csvStrings(from: components[safe: 4] ?? "")
+                let tokens = csvStrings(from: components[safe: 5] ?? "")
+                let enableNearby = parseBool(components[safe: 6] ?? "")
+                let latitude = enableNearby ? parseDouble(components[safe: 7] ?? "") : nil
+                let longitude = enableNearby ? parseDouble(components[safe: 8] ?? "") : nil
+
+                if let title, !title.isEmpty {
+                    let draft = ListingDraft(
+                        title: title,
+                        description: description,
+                        location: location,
+                        price: parseDouble(priceString),
+                        tags: tags,
+                        enableNearby: enableNearby,
+                        latitude: latitude,
+                        longitude: longitude,
+                        uploadTokens: tokens
+                    )
+                    do {
+                        _ = try await listingsService.createListing(from: draft)
+                        successes += 1
+                    } catch {
+                        failures.append("Line \(index + 1): \(error.localizedDescription)")
+                    }
+                } else {
+                    failures.append("Line \(index + 1): missing title")
+                }
+
+                await MainActor.run {
+                    progress = Double(index + 1) / Double(lines.count)
+                }
+            }
+
+            await MainActor.run {
+                isProcessing = false
+                statusMessage = "Created \(successes) of \(lines.count) listings"
+                errors = failures
+                if successes > 0 {
+                    capabilityEmitter("haptic", ["style": "success"])
+                    onComplete()
+                    if failures.isEmpty {
+                        dismiss()
+                    }
+                } else {
+                    capabilityEmitter("haptic", ["style": "error"])
+                }
+            }
+        }
+    }
+
+    private func csvStrings(from text: String) -> [String] {
+        text.split(whereSeparator: { $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func parseDouble(_ text: String) -> Double? {
+        let filtered = text.filter { "0123456789.,-".contains($0) }
+        let normalized = filtered.replacingOccurrences(of: ",", with: ".")
+        return Double(normalized)
+    }
+
+    private func parseBool(_ text: String) -> Bool {
+        let normalized = text.lowercased()
+        return ["true", "yes", "y", "1"].contains(normalized)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else { return nil }
+        return self[index]
     }
 }
 
