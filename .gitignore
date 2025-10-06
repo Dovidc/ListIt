@@ -2,3 +2,8 @@ node_modules/
 .DS_Store
 npm-debug.log*
 ios/Config/Signing.local.xcconfig
+
+# Xcode user-specific data
+*.xcuserstate
+*.xcuserdatad/
+**/xcuserdata/
