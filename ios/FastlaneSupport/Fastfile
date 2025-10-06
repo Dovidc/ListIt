@@ -1,41 +1,72 @@
-import Foundation
+# frozen_string_literal: true
 
-def shared_env
+# --- Optional: load ios/.env if present (won't crash if dotenv isn't installed) ---
+begin
+  require "dotenv"
   env_path = File.expand_path("../.env", __dir__)
-  UI.message("Loading env from #{env_path}")
-  Dotenv.load(env_path)
+  Dotenv.load(env_path) if File.exist?(env_path)
+rescue LoadError
+  # dotenv not installed; skip
+end
+
+default_platform(:ios)
+
+# --- Helpers ---
+def shared_env
+  # If you want logging:
+  env_path = File.expand_path("../.env", __dir__)
+  UI.message("Loading env from #{env_path}") if File.exist?(env_path)
+  # .env is loaded above via Dotenv if available
 end
 
 def ensure_workspace
-  unless File.exist?(File.expand_path("../ListIt.xcworkspace", __dir__))
-    UI.message("Workspace missing, generating via XcodeGen")
+  workspace = File.expand_path("../ListIt.xcworkspace", __dir__)
+  unless File.exist?(workspace)
+    UI.message("Workspace missing, generating via XcodeGen…")
     sh("cd .. && xcodegen generate")
   end
 end
 
-desc "Run unit tests for all schemes"
-lane :ci_tests do
-  shared_env
-  ensure_workspace
-  run_tests(
-    workspace: "../ListIt.xcworkspace",
-    scheme: "ListItApp",
-    clean: true,
-    configuration: "Debug"
-  )
-end
+platform :ios do
+  desc "Build & run tests on iPhone 15 Simulator"
+  lane :ci_tests do
+    shared_env
+    ensure_workspace
 
-desc "Build and upload a TestFlight beta"
-lane :beta do
-  shared_env
-  ensure_workspace
-  increment_build_number(
-    xcodeproj: "../ListIt.xcodeproj"
-  )
-  build_app(
-    workspace: "../ListIt.xcworkspace",
-    scheme: "ListItApp",
-    export_method: "app-store"
-  )
-  upload_to_testflight
+    # Prefer scan (aka run_tests) so CI+local behave the same
+    scan(
+      workspace: "../ListIt.xcworkspace",
+      scheme: "ListItApp",          # <-- change if your shared scheme differs
+      configuration: "Debug",
+      devices: ["iPhone 15"],       # Matches CI destination
+      clean: true,
+      build_for_testing: false,
+      code_coverage: false,
+      include_simulator_logs: true,
+      skip_detect_devices: false
+    )
+  end
+
+  desc "Build and (optionally) upload a TestFlight beta"
+  lane :beta do
+    shared_env
+    ensure_workspace
+
+    # Bumps build number inside the .xcodeproj
+    increment_build_number(
+      xcodeproj: "../ListIt.xcodeproj"
+    )
+
+    # Create an archive. Adjust export_method/signing to your setup.
+    gym(
+      workspace: "../ListIt.xcworkspace",
+      scheme: "ListItApp",          # <-- change if needed
+      configuration: "Release",
+      clean: true
+      # export_method: "app-store"   # uncomment when signing is configured
+    )
+
+    # Will require App Store Connect credentials/config; comment out if not ready
+    # upload_to_testflight
+  end
 end

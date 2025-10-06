@@ -1,4 +1,10 @@
 source "https://rubygems.org"
 
-gem "fastlane"
-gem "dotenv"
+# Modern Fastlane (v2)
+gem "fastlane", ">= 2.221.1"
+
+# Needed if you want to load .env in the Fastfile
+gem "dotenv", ">= 2.8"
+
+# Used by actions like increment_build_number
+gem "xcodeproj", ">= 1.24.0"
