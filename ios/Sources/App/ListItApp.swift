@@ -1,13 +1,13 @@
 import Combine
 import SwiftUI
-import Combine
-import AuthFeature
 import ListingsFeature
 import UploadFeature
 import SharedServices
 import SharedCoreBridge
 import DesignSystem
 import PlatformCapabilities
+import AuthFeature
+import ProfileFeature
 
 @main
 struct ListItApp: App {
@@ -51,6 +51,13 @@ struct RootTabView: View {
             }
                 .tabItem {
                     Label("Uploads", systemImage: "icloud.and.arrow.up")
+                }
+
+            ProfileFeatureView(preferencesService: environment.preferencesService) { name, payload in
+                environment.emitCapabilityEvent(name, payload: payload)
+            }
+                .tabItem {
+                    Label("Profile", systemImage: "person.crop.circle")
                 }
         }
         .environmentObject(environment.configuration)
