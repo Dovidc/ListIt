@@ -366,8 +366,8 @@ public struct NearbyFeatureView: View {
         do {
             let radiusMeters = radiusMiles * 1609.344
             let summaries = try await nearbyService.fetchNearby(
-                latitude: coordinate?.latitude ?? .nan,
-                longitude: coordinate?.longitude ?? .nan,
+                latitude: coordinate?.latitude,
+                longitude: coordinate?.longitude,
                 radiusMeters: radiusMeters,
                 query: searchText,
                 filter: selectedFilter.queryValue

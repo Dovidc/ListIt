@@ -46,16 +46,22 @@ public final class NearbyService {
         self.runtime = runtime
     }
 
-    public func fetchNearby(latitude: Double,
-                            longitude: Double,
+    public func fetchNearby(latitude: Double? = nil,
+                            longitude: Double? = nil,
                             radiusMeters: Double,
                             query: String? = nil,
                             filter: String? = nil) async throws -> [NearbyListingSummary] {
         var payload: [String: Any] = [
-            "lat": latitude,
-            "lon": longitude,
             "radius_m": radiusMeters
         ]
+
+        if let latitude, latitude.isFinite {
+            payload["lat"] = latitude
+        }
+
+        if let longitude, longitude.isFinite {
+            payload["lon"] = longitude
+        }
 
         if let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmedQuery.isEmpty {
             payload["query"] = trimmedQuery
