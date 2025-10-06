@@ -13,6 +13,7 @@ public final class PreferencesService: ObservableObject {
     @Published public private(set) var aiDescriptionEnabled: Bool
     @Published public private(set) var autoPostNearbyEnabled: Bool
     @Published public private(set) var autoInquiryEnabled: Bool
+    @Published public private(set) var notificationsEnabled: Bool
 
     private let store: PreferencesStoring
 
@@ -21,6 +22,7 @@ public final class PreferencesService: ObservableObject {
         static let aiDescriptions = "listit_ai_descriptions"
         static let autoPostNearby = "listit_auto_post_nearby"
         static let autoInquiry = "listit_auto_inquiry"
+        static let notifications = "listit_notifications_enabled"
     }
 
     public init(store: PreferencesStoring = UserDefaults.standard) {
@@ -29,6 +31,7 @@ public final class PreferencesService: ObservableObject {
         self.aiDescriptionEnabled = Self.readToggle(forKey: Keys.aiDescriptions, defaultValue: false, store: store)
         self.autoPostNearbyEnabled = Self.readToggle(forKey: Keys.autoPostNearby, defaultValue: false, store: store)
         self.autoInquiryEnabled = Self.readToggle(forKey: Keys.autoInquiry, defaultValue: true, store: store)
+        self.notificationsEnabled = Self.readToggle(forKey: Keys.notifications, defaultValue: true, store: store)
     }
 
     @MainActor
@@ -49,6 +52,11 @@ public final class PreferencesService: ObservableObject {
     @MainActor
     public func setAutoInquiryEnabled(_ enabled: Bool) {
         update(&autoInquiryEnabled, key: Keys.autoInquiry, value: enabled)
+    }
+
+    @MainActor
+    public func setNotificationsEnabled(_ enabled: Bool) {
+        update(&notificationsEnabled, key: Keys.notifications, value: enabled)
     }
 
     private func update(_ property: inout Bool, key: String, value: Bool) {

@@ -60,6 +60,7 @@ targets:
       - target: AuthFeature
       - target: ListingsFeature
       - target: UploadFeature
+      - target: ProfileFeature
       - package: SharedCoreBridge
       - target: DesignSystem
       - target: PlatformCapabilities
@@ -120,6 +121,19 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources/UploadFeature
+    dependencies:
+      - target: SharedServices
+      - target: DesignSystem
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: NO
+
+  ProfileFeature:
+    type: framework
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/ProfileFeature
     dependencies:
       - target: SharedServices
       - target: DesignSystem

@@ -12,7 +12,7 @@ This roadmap outlines the steps required to deliver a fully native SwiftUI imple
 
 ## Navigation & Surface Structure
 - [ ] Mirror the browser shell's navigation entry points (Listings, Nearby, Messages, Profile, Admin) within the SwiftUI tab/stack hierarchy so the native app exposes the same primary flows.
-- [ ] Surface profile/preferences toggles (auto list, AI description, auto-post nearby, inquiry, notifications) in native settings screens with the same defaults and helper text as the React experience.
+- [x] Surface profile/preferences toggles (auto list, AI description, auto-post nearby, inquiry, notifications) in native settings screens with the same defaults and helper text as the React experience.
 
 ## Feature Parity Builds
 - [ ] Implement a SwiftUI Nearby feature with geolocation prompts, radius/search controls, masonry results, and listing actions powered by shared-core data.
