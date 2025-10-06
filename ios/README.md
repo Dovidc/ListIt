@@ -111,6 +111,9 @@ All variables can be supplied through `.env`, the Fastlane pipeline, or scheme-s
 - `DesignSystem/` exposes `DesignSystemTheme` and a SwiftUI `DesignSystemProvider` that wraps any view hierarchy with brand
   colors, typography, spacing, and component styles. Teams can override theme tokens via `.env` or scheme-based configuration
   files (`LISTIT_IOS_THEME_*`) without touching source code.
+- `BrandHeaderView` recreates the Creegslist badge, title, and tagline using `DesignSystem` tokens so native surfaces can drop
+  a consistent hero header (with optional trailing controls) into settings, onboarding, or marketing flows without custom
+  styling.
 - UIKit chrome now consumes the same tokens: `AppearanceConfigurator` translates the active typography scale into navigation bar,
   tab bar, and toolbar fonts so per-scheme overrides stay consistent across SwiftUI and UIKit surfaces.
 - Theme tokens accept granular overrides so product teams can reskin ListIt without recompiling JavaScript:
