@@ -11,7 +11,7 @@ This roadmap outlines the steps required to deliver a fully native SwiftUI imple
 - [ ] Add reusable SwiftUI component variants (brand headers, masonry grids, modal cards, pill filters) that echo key web visuals, enabling native screens to opt into familiar patterns without bespoke styling.
 
 ## Navigation & Surface Structure
-- [ ] Mirror the browser shell's navigation entry points (Listings, Nearby, Messages, Profile, Admin) within the SwiftUI tab/stack hierarchy so the native app exposes the same primary flows.
+- [x] Mirror the browser shell's navigation entry points (Listings, Nearby, Messages, Profile, Admin) within the SwiftUI tab/stack hierarchy so the native app exposes the same primary flows.
 - [x] Surface profile/preferences toggles (auto list, AI description, auto-post nearby, inquiry, notifications) in native settings screens with the same defaults and helper text as the React experience.
 
 ## Feature Parity Builds
