@@ -7,12 +7,42 @@ final class ListingsServiceTests: XCTestCase {
     func testMapsListingSummaries() throws {
         let runtime = FakeRuntime()
         let context = JSContext()!
-        runtime.stubbedResponse = JSValue(object: [["id": "1", "title": "Test", "subtitle": "Demo"]], in: context)
+        runtime.stubbedResponse = JSValue(object: [
+            "items": [["id": "1", "title": "Test", "subtitle": "Demo", "price": 42.0, "location": "LA"]],
+            "hasNext": true,
+            "nextCursor": "next"
+        ], in: context)
         let persistence = FakeListingsPersistence()
         let service = ListingsService(runtime: runtime, persistence: persistence)
-        let listings = try waitFor { try await service.fetchListings() }
-        XCTAssertEqual(listings.first?.title, "Test")
+        let page = try waitFor { try await service.fetchListings(request: ListingsRequest()) }
+        let first = page.listings.first
+        XCTAssertEqual(first?.title, "Test")
+        XCTAssertEqual(first?.price, 42.0)
+        XCTAssertEqual(page.hasNext, true)
+        XCTAssertEqual(page.nextCursor, "next")
         XCTAssertEqual(persistence.storedListings.first?.id, "1")
+    }
+
+    func testForwardsRequestParametersToSharedCore() throws {
+        let runtime = FakeRuntime()
+        let context = JSContext()!
+        runtime.stubbedResponse = JSValue(object: [
+            "items": [],
+            "hasNext": false,
+            "nextCursor": NSNull()
+        ], in: context)
+        let persistence = FakeListingsPersistence()
+        let service = ListingsService(runtime: runtime, persistence: persistence)
+        let request = ListingsRequest(query: "bike", location: "NYC", sort: .priceHigh, limit: 40, cursor: "cursor")
+
+        _ = try waitFor { try await service.fetchListings(request: request) }
+
+        let payload = runtime.capturedParameters as? [String: Any]
+        XCTAssertEqual(payload?["query"] as? String, "bike")
+        XCTAssertEqual(payload?["location"] as? String, "NYC")
+        XCTAssertEqual(payload?["sort"] as? String, ListingsRequest.Sort.priceHigh.rawValue)
+        XCTAssertEqual(payload?["cursor"] as? String, "cursor")
+        XCTAssertEqual(payload?["limit"] as? Int, 40)
     }
 
     func testReturnsCachedListingsWhenFetchFails() throws {
@@ -23,8 +53,9 @@ final class ListingsServiceTests: XCTestCase {
         persistence.stubbedCached = cached
 
         let service = ListingsService(runtime: runtime, persistence: persistence)
-        let listings = try waitFor { try await service.fetchListings() }
-        XCTAssertEqual(listings.first?.id, "cached")
+        let page = try waitFor { try await service.fetchListings(request: ListingsRequest()) }
+        XCTAssertEqual(page.listings.first?.id, "cached")
+        XCTAssertFalse(page.hasNext)
     }
 
     func testPropagatesErrorWhenCacheIsEmpty() {
@@ -33,18 +64,20 @@ final class ListingsServiceTests: XCTestCase {
         let persistence = FakeListingsPersistence()
 
         let service = ListingsService(runtime: runtime, persistence: persistence)
-        XCTAssertThrowsError(try waitFor { try await service.fetchListings() })
+        XCTAssertThrowsError(try waitFor { try await service.fetchListings(request: ListingsRequest()) })
     }
 }
 
 private final class FakeRuntime: SharedRuntime {
     var stubbedResponse: JSValue?
     var stubbedError: Error?
+    var capturedParameters: Any?
 
     override func call(function name: String, with arguments: [Any]) throws -> JSValue {
         if let stubbedError {
             throw stubbedError
         }
+        capturedParameters = arguments.first
         guard let stubbedResponse else { throw SharedRuntimeError.missingExport(name: name) }
         return stubbedResponse
     }

@@ -1155,16 +1155,29 @@ export function installNativeBindings(options = {}) {
 
   globalThis.listings_fetch = (params) => {
     try {
-      return Promise.resolve(listings.fetchSummaries(params || {})).then((items) => (
-        items.map((item) => ({
-          id: item.id,
-          title: item.title,
-          subtitle: item.subtitle
-        }))
-      ));
+      return Promise.resolve(listings.fetchSummaries(params || {})).then((result) => {
+        const source = result && typeof result === 'object' ? result : {};
+        const items = Array.isArray(source.items) ? source.items : Array.isArray(source.rows) ? source.rows : [];
+
+        return {
+          items: items.map((item) => ({
+            id: item?.id,
+            title: item?.title,
+            subtitle: item?.subtitle,
+            price: item?.price ?? null,
+            location: item?.location ?? null
+          })),
+          hasNext: Boolean(source.hasNext),
+          nextCursor: source.nextCursor ?? source.cursor ?? null
+        };
+      });
     } catch (error) {
       log(`listings_fetch failed: ${error?.message || error}`);
-      return [];
+      return {
+        items: [],
+        hasNext: false,
+        nextCursor: null
+      };
     }
   };
 

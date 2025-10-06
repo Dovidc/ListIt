@@ -17,6 +17,10 @@ This roadmap outlines the steps required to deliver a fully native SwiftUI imple
 ## Feature Parity Builds
 - [x] Implement a SwiftUI Nearby feature with geolocation prompts, radius/search controls, masonry results, and listing actions powered by shared-core data.
 - [ ] Expand Listings to include search, filters, infinite scrolling, detail sheets, AI-assisted creation/editing, mass list, and cover management via shared-core helpers and upload services.
+  - [x] Add SwiftUI search, filter pills, and infinite scrolling backed by shared-core pagination metadata.
+  - [x] Provide native detail preview and AI-assisted draft entry point that mirror the web experience and design system.
+  - [ ] Wire full AI-assisted creation/editing flows.
+  - [ ] Implement mass listing workflows and cover image management.
 - [ ] Port the messaging inbox and thread UI, including unread indicators, attachments, lightbox, and deletion flows, backed by shared messaging APIs.
 - [ ] Rebuild admin dashboards, ads management, and reporting workflows using the admin endpoints exposed through the shared core.
 

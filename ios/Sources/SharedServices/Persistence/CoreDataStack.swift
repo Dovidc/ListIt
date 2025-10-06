@@ -58,12 +58,22 @@ public final class CoreDataStack {
         subtitleAttribute.attributeType = .stringAttributeType
         subtitleAttribute.isOptional = true
 
+        let locationAttribute = NSAttributeDescription()
+        locationAttribute.name = "location"
+        locationAttribute.attributeType = .stringAttributeType
+        locationAttribute.isOptional = true
+
+        let priceAttribute = NSAttributeDescription()
+        priceAttribute.name = "price"
+        priceAttribute.attributeType = .doubleAttributeType
+        priceAttribute.isOptional = true
+
         let updatedAtAttribute = NSAttributeDescription()
         updatedAtAttribute.name = "updatedAt"
         updatedAtAttribute.attributeType = .dateAttributeType
         updatedAtAttribute.isOptional = false
 
-        entity.properties = [idAttribute, titleAttribute, subtitleAttribute, updatedAtAttribute]
+        entity.properties = [idAttribute, titleAttribute, subtitleAttribute, locationAttribute, priceAttribute, updatedAtAttribute]
         entity.uniquenessConstraints = [["id"]]
 
         model.entities = [entity]
@@ -95,6 +105,12 @@ public final class CoreDataListingsPersistence: ListingsPersisting {
                     cached.id = listing.id
                     cached.title = listing.title
                     cached.subtitle = listing.subtitle
+                    cached.location = listing.location
+                    if let price = listing.price {
+                        cached.price = NSNumber(value: price)
+                    } else {
+                        cached.price = nil
+                    }
                     cached.updatedAt = now
                 }
                 if context.hasChanges {
@@ -115,7 +131,16 @@ public final class CoreDataListingsPersistence: ListingsPersisting {
                 let request: NSFetchRequest<CachedListing> = CachedListing.fetchRequest()
                 request.sortDescriptors = [NSSortDescriptor(key: #keyPath(CachedListing.updatedAt), ascending: false)]
                 let fetched = try context.fetch(request)
-                results = fetched.map { ListingSummary(id: $0.id, title: $0.title, subtitle: $0.subtitle ?? "") }
+                results = fetched.map {
+                    let priceValue = $0.price?.doubleValue
+                    return ListingSummary(
+                        id: $0.id,
+                        title: $0.title,
+                        subtitle: $0.subtitle ?? "",
+                        price: priceValue,
+                        location: $0.location
+                    )
+                }
             } catch {
                 thrownError = error
             }
