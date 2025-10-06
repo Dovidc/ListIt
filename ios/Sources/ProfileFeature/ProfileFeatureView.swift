@@ -16,6 +16,7 @@ public struct ProfileFeatureView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: designSystem.spacing.large) {
+                    brandHeader
                     introCard
                     automationCard
                     notificationsCard
@@ -25,6 +26,30 @@ public struct ProfileFeatureView: View {
             .background(designSystem.colors.background.ignoresSafeArea())
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(designSystem.enablesLargeTitles ? .large : .inline)
+        }
+    }
+
+    private var brandHeader: some View {
+        ListItBrandHeader(title: "Profile & preferences",
+                          subtitle: "Keep automations and notifications aligned across native and web surfaces.",
+                          icon: Image(systemName: "person.crop.circle.badge.checkmark")) {
+            Button {
+                capabilityEmitter("profile.manageAccount", [:])
+            } label: {
+                Label("Manage account", systemImage: "arrow.up.right.square")
+                    .labelStyle(.titleAndIcon)
+                    .padding(.vertical, designSystem.spacing.xSmall)
+                    .padding(.horizontal, designSystem.spacing.medium)
+                    .background(
+                        Capsule()
+                            .fill(designSystem.colors.onPrimary.opacity(0.18))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(designSystem.colors.onPrimary.opacity(0.3), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 

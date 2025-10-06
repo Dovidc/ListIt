@@ -141,20 +141,15 @@ public struct NearbyFeatureView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: designSystem.spacing.small) {
                     ForEach(NearbyFilter.allCases, id: \.self) { filter in
-                        Button {
-                            withAnimation(.easeInOut) {
+                        ListItPillFilter(title: filter.title,
+                                         subtitle: filter.subtitle,
+                                         systemImageName: filter.iconName,
+                                         badge: filter.badge,
+                                         isSelected: filter == selectedFilter) {
+                            withAnimation(.easeInOut(duration: 0.18)) {
                                 selectedFilter = filter
                             }
-                        } label: {
-                            Text(filter.title)
-                                .font(designSystem.typography.callout)
-                                .padding(.vertical, designSystem.spacing.xSmall)
-                                .padding(.horizontal, designSystem.spacing.medium)
-                                .background(filterBackground(for: filter))
-                                .foregroundStyle(filterForeground(for: filter))
-                                .clipShape(Capsule())
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -335,14 +330,6 @@ public struct NearbyFeatureView: View {
         }
     }
 
-    private func filterBackground(for filter: NearbyFilter) -> Color {
-        filter == selectedFilter ? designSystem.colors.primary : designSystem.colors.surface
-    }
-
-    private func filterForeground(for filter: NearbyFilter) -> Color {
-        filter == selectedFilter ? designSystem.colors.onPrimary : designSystem.colors.onSurface
-    }
-
     private func scheduleReload() {
         reloadTask?.cancel()
         reloadTask = Task { @MainActor in
@@ -439,6 +426,32 @@ private enum NearbyFilter: CaseIterable {
         case .newest: return "Newest"
         case .priceDrops: return "Price drops"
         case .favorites: return "Favorites"
+        }
+    }
+
+
+    var subtitle: String? {
+        switch self {
+        case .trending: return "Popular now"
+        case .newest: return "Latest arrivals"
+        case .priceDrops: return "Fresh discounts"
+        case .favorites: return "Saved for later"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .trending: return "sparkles"
+        case .newest: return "clock.badge.checkmark"
+        case .priceDrops: return "tag"
+        case .favorites: return "heart.fill"
+        }
+    }
+
+    var badge: String? {
+        switch self {
+        case .priceDrops: return "Deals"
+        default: return nil
         }
     }
 

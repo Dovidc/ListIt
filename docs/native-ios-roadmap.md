@@ -9,6 +9,7 @@ This roadmap outlines the steps required to deliver a fully native SwiftUI imple
 ## Visual Alignment & Theming
 - [ ] Capture the web palette, typography, spacing, and control shapes in environment theme tokens so `DesignSystemProvider` reproduces comparable styling by default across SwiftUI and UIKit surfaces.
 - [ ] Add reusable SwiftUI component variants (brand headers, masonry grids, modal cards, pill filters) that echo key web visuals, enabling native screens to opt into familiar patterns without bespoke styling.
+  - [x] Introduced ListItBrandHeader and ListItPillFilter components in the design system and adopted them in feature flows.
 
 ## Navigation & Surface Structure
 - [x] Mirror the browser shell's navigation entry points (Listings, Nearby, Messages, Profile, Admin) within the SwiftUI tab/stack hierarchy so the native app exposes the same primary flows.
