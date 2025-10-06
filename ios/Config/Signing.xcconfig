@@ -6,8 +6,17 @@ LISTIT_BUNDLE_PREFIX ?= com.listit
 // Default application identifier used by the main app target.
 LISTIT_APP_BUNDLE_IDENTIFIER ?= com.listit.app
 
-// Default development team for automatic signing.
-LISTIT_DEVELOPMENT_TEAM ?= H9JP539MT9
+// Default development team for automatic signing. Empty by default so CI and
+// fresh clones don't require a configured Apple Developer account just to build
+// for the simulator. Override in `Signing.local.xcconfig` when you need device
+// signing.
+LISTIT_DEVELOPMENT_TEAM ?= ""
+
+// Avoid code signing failures on CI when no certificates are installed. These
+// can be overridden locally if you need to produce signed builds.
+CODE_SIGN_IDENTITY ?= -
+CODE_SIGNING_ALLOWED ?= NO
+CODE_SIGNING_REQUIRED ?= NO
 
 // Apply defaults so each target inherits a stable identifier and signing team.
 PRODUCT_BUNDLE_IDENTIFIER ?= $(LISTIT_BUNDLE_PREFIX).$(PRODUCT_NAME:rfc1034identifier)

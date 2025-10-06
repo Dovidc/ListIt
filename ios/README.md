@@ -63,14 +63,18 @@ from the web application.
 
 ### Preserving Local Signing Overrides
 
-- All targets import `Config/Signing.xcconfig`, which centralizes the default bundle prefix, app identifier, and shared development team.
+- All targets import `Config/Signing.xcconfig`, which centralizes the default bundle prefix, app identifier, and shared development team. Code signing is disabled by default so CI and fresh clones can build for the simulator without provisioning profiles.
 - Create `ios/Config/Signing.local.xcconfig` (this file is gitignored) to override values like `LISTIT_APP_BUNDLE_IDENTIFIER`, `LISTIT_BUNDLE_PREFIX`, or `LISTIT_DEVELOPMENT_TEAM` so your personal settings survive future `xcodegen generate` runs and pull requests.
 - For example:
   ```xcconfig
   LISTIT_APP_BUNDLE_IDENTIFIER = com.yourcompany.listit
   LISTIT_BUNDLE_PREFIX = com.yourcompany.listit
   LISTIT_DEVELOPMENT_TEAM = ABC1234567
+  CODE_SIGNING_ALLOWED = YES
+  CODE_SIGNING_REQUIRED = YES
+  CODE_SIGN_IDENTITY = Apple Development
   ```
+- When you're ready to archive for TestFlight or run on devices, flip the signing flags back to `YES` (or remove them) in your local overrides so Xcode can manage provisioning.
 - `Signing.local.xcconfig` is included only when present, allowing each contributor to keep device provisioning details out of version control while avoiding repeated manual edits in Xcode.
 - Once you override `LISTIT_BUNDLE_PREFIX`, every framework and test target automatically inherits the new identifier via `$(LISTIT_BUNDLE_PREFIX).$(PRODUCT_NAME:rfc1034identifier)`, so you never have to rename modules manually after running XcodeGen.
 
