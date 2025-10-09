@@ -1,0 +1,4 @@
+framework module MessagesFeature {
+  header "MessagesFeature-Swift.h"
+  requires objc
+}

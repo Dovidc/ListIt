@@ -1,0 +1,4 @@
+framework module NearbyFeature {
+  header "NearbyFeature-Swift.h"
+  requires objc
+}

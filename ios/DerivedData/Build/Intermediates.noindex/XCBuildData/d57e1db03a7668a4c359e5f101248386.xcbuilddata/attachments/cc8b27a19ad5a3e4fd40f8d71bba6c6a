@@ -1,0 +1,4 @@
+framework module DesignSystem {
+  header "DesignSystem-Swift.h"
+  requires objc
+}

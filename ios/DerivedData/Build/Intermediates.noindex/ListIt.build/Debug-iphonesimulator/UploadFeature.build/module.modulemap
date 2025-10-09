@@ -1,0 +1,4 @@
+framework module UploadFeature {
+  header "UploadFeature-Swift.h"
+  requires objc
+}

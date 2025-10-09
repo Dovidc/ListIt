@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeature-primary.dia",
+    "emit-module-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeature-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeature-primary-emit-module.dia",
+    "pch" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeature-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeature-primary.swiftdeps"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/UploadFeature/UploadFeatureView.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/UploadFeature.build/Objects-normal/arm64/UploadFeatureView~partial.swiftmodule"
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "" : {
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/SharedServices-primary.dia",
+    "emit-module-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/SharedServices-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/SharedServices-primary-emit-module.dia",
+    "pch" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/SharedServices-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/SharedServices-primary.swiftdeps"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/AuthService.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/AuthService~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/EnvironmentConfiguration.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/EnvironmentConfiguration~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/ListingsService.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/ListingsService~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/NearbyService.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/NearbyService~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/CachedListing.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CachedListing~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/CoreDataStack.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/CoreDataStack~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/KeychainStore.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/KeychainStore~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/PreferencesService.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/PreferencesService~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/UploadService.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/SharedServices.build/Objects-normal/arm64/UploadService~partial.swiftmodule"
+  }
+}
