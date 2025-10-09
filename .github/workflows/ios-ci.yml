@@ -1,0 +1,127 @@
+name: iOS CI
+
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+  push:
+    branches: [ "main" ]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: "ios-ci-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_15.4.app/Contents/Developer" || true
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Install XcodeGen (if needed)
+        run: |
+          if ! command -v xcodegen >/dev/null; then
+            brew update || true
+            brew install xcodegen xcbeautify || true
+          fi
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: $HOME/Library/Developer/Xcode/DerivedData/SourcePackages
+          key: "${{ runner.os }}-spm-${{ hashFiles('ios/**/Package.resolved') }}"
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Generate Xcode workspace/project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ios/DerivedData
+          key: "${{ runner.os }}-dd-${{ hashFiles('ios/project.yml', 'ios/**/Package.resolved') }}"
+          restore-keys: |
+            ${{ runner.os }}-dd-
+
+      # ---- Preflight (no Fastlane): prove workspace/scheme/simulator ----
+      - name: "Preflight: list Xcode / simulators / schemes"
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices | head -100
+          xcodebuild -list -workspace ios/ListIt.xcworkspace
+
+      - name: "Preflight: build on iPhone 15 simulator"
+        working-directory: ios
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -workspace "ListIt.xcworkspace" \
+            -scheme "ListItApp" \
+            -configuration "Debug" \
+            -destination "platform=iOS Simulator,name=iPhone 15" \
+            -parallelizeTargets -jobs 2 \
+            -derivedDataPath ./DerivedData \
+            clean build | tee xcodebuild.log
+
+      # -------------------- Fastlane-driven tests --------------------
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: false
+
+      - name: Cache Bundler (FastlaneSupport)
+        uses: actions/cache@v4
+        with:
+          path: ios/FastlaneSupport/vendor/bundle
+          key: "${{ runner.os }}-bundle-${{ hashFiles('ios/FastlaneSupport/Gemfile.lock') }}"
+          restore-keys: |
+            ${{ runner.os }}-bundle-
+
+      - name: Bundle install (FastlaneSupport)
+        working-directory: ios/FastlaneSupport
+        run: |
+          bundle config set path vendor/bundle
+          bundle install --jobs 4 --retry 3
+
+      # If your app needs an env file in CI, uncomment:
+      # - name: Ensure iOS env file
+      #   working-directory: ios
+      #   run: cp -n .env.example .env || true
+
+      - name: Run tests (Fastlane ci_tests)
+        working-directory: ios/FastlaneSupport
+        env:
+          LC_ALL: en_US.UTF-8
+          LANG: en_US.UTF-8
+        run: bundle exec fastlane ci_tests
+
+      - name: Archive build (Fastlane beta)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ios/FastlaneSupport
+        env:
+          LC_ALL: en_US.UTF-8
+          LANG: en_US.UTF-8
+        run: bundle exec fastlane beta
+
+      # ---------------- Diagnostics on failure ----------------
+      - name: Upload xcodebuild log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ios/xcodebuild.log
