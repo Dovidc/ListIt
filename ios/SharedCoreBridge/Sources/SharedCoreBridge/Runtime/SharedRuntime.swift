@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import Dispatch
 
 open class SharedRuntime {
     private let context: JSContext
@@ -57,11 +58,60 @@ open class SharedRuntime {
         guard let resolvedResult = result ?? JSValue(nullIn: context) else {
             throw SharedRuntimeError.javascript(message: "Unable to evaluate function \(name)")
         }
+        if SharedRuntime.isPromise(resolvedResult) {
+            return try resolvePromise(resolvedResult, functionName: name)
+        }
         return resolvedResult
     }
 
     open func installNativeBridge(_ bridge: SharedCoreNativeBridge) {
         context.setObject(bridge, forKeyedSubscript: "NativeBridge" as (NSCopying & NSObjectProtocol))
+    }
+}
+
+private extension SharedRuntime {
+    static func isPromise(_ value: JSValue) -> Bool {
+        guard value.isObject else { return false }
+        return value.hasProperty("then")
+    }
+
+    func resolvePromise(_ value: JSValue, functionName: String, timeout: TimeInterval = 30) throws -> JSValue {
+        let semaphore = DispatchSemaphore(value: 0)
+        var resolved: JSValue?
+        var rejection: JSValue?
+
+        typealias PromiseHandler = @convention(block) (JSValue?) -> Void
+        let fulfill: PromiseHandler = { result in
+            resolved = result
+            semaphore.signal()
+        }
+        let reject: PromiseHandler = { error in
+            rejection = error
+            semaphore.signal()
+        }
+
+        value.invokeMethod("then", withArguments: [fulfill, reject])
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while semaphore.wait(timeout: .now()) == .timedOut {
+            if Date() > deadline {
+                throw SharedRuntimeError.javascript(message: "Timed out waiting for Promise from \(functionName)")
+            }
+            context.virtualMachine?.performMicrotaskCheckpoint()
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+
+        if let rejection, !rejection.isUndefined {
+            throw SharedRuntimeError.javascript(message: rejection.toString())
+        }
+
+        guard let resolvedValue = resolved ?? JSValue(nullIn: context) else {
+            throw SharedRuntimeError.javascript(message: "Promise from \(functionName) resolved with no value")
+        }
+        if SharedRuntime.isPromise(resolvedValue) {
+            return try resolvePromise(resolvedValue, functionName: functionName, timeout: timeout)
+        }
+        return resolvedValue
     }
 }
 
