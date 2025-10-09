@@ -1,0 +1,59 @@
+{
+  "" : {
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem-primary.dia",
+    "emit-module-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem-primary-emit-module.dia",
+    "pch" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem-primary.swiftdeps"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/DesignSystem/Components/ListItCard.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ListItCard~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/DesignSystem/Components/PrimaryButtonStyle.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/PrimaryButtonStyle~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/DesignSystem/DesignSystem.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignSystem~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/DesignSystem/DesignTokens.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/DesignTokens~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/DesignSystem/Theming/ThemePlaygroundView.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/DesignSystem.build/Objects-normal/arm64/ThemePlaygroundView~partial.swiftmodule"
+  }
+}

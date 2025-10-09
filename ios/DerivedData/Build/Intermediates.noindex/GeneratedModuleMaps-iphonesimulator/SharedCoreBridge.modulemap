@@ -1,0 +1,4 @@
+module SharedCoreBridge {
+header "SharedCoreBridge-Swift.h"
+export *
+}

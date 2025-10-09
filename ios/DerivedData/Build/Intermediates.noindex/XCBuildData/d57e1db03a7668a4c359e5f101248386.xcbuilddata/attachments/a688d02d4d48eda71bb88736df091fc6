@@ -1,0 +1,9 @@
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/AuthService.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/CachedListing.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/CoreDataStack.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/EnvironmentConfiguration.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/Persistence/KeychainStore.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/ListingsService.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/NearbyService.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/PreferencesService.swift
+/Users/dovidcreeger/ListIt/ios/Sources/SharedServices/UploadService.swift
