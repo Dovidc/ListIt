@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+# This wrapper allows running fastlane from ios/FastlaneSupport by
+# delegating to the existing top-level Fastfile.
+require_relative File.expand_path("../Fastfile", __dir__)

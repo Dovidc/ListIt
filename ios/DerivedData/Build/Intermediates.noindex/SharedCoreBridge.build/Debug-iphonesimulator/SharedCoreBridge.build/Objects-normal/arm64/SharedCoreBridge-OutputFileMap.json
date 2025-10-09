@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridge-primary.dia",
+    "emit-module-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridge-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridge-primary-emit-module.dia",
+    "pch" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridge-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridge-primary.swiftdeps"
+  },
+  "/Users/dovidcreeger/ListIt/ios/SharedCoreBridge/Sources/SharedCoreBridge/Bridge/SharedCoreBridgeBootstrap.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.dia",
+    "index-unit-output-path" : "/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBridgeBootstrap~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/SharedCoreBridge/Sources/SharedCoreBridge/Bridge/SharedCoreBundleProvider.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.dia",
+    "index-unit-output-path" : "/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreBundleProvider~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/SharedCoreBridge/Sources/SharedCoreBridge/Bridge/SharedCoreNativeBridge.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.dia",
+    "index-unit-output-path" : "/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedCoreNativeBridge~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/SharedCoreBridge/Sources/SharedCoreBridge/Runtime/SharedRuntime.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.dia",
+    "index-unit-output-path" : "/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/SharedCoreBridge.build/Debug-iphonesimulator/SharedCoreBridge.build/Objects-normal/arm64/SharedRuntime~partial.swiftmodule"
+  }
+}

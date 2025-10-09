@@ -1,0 +1,4 @@
+framework module SharedServices {
+  header "SharedServices-Swift.h"
+  requires objc
+}
