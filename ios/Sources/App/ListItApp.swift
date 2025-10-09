@@ -47,7 +47,7 @@ struct RootTabView: View {
                     Label("Nearby", systemImage: "location.circle")
                 }
 
-            MessagesFeatureView { name, payload in
+            MessagesFeatureView(messagesService: environment.messagesService) { name, payload in
                 environment.emitCapabilityEvent(name, payload: payload)
             }
                 .tabItem {
@@ -82,6 +82,7 @@ final class AppEnvironment: ObservableObject {
     let listingsService: ListingsService
     let nearbyService: NearbyService
     let uploadService: UploadService
+    let messagesService: MessagesService
     let preferencesService: PreferencesService
     private let capabilityRouter: CapabilityRouting
     private var cancellables: Set<AnyCancellable> = []
@@ -106,6 +107,7 @@ final class AppEnvironment: ObservableObject {
         self.listingsService = ListingsService(runtime: sharedRuntime)
         self.nearbyService = NearbyService(runtime: sharedRuntime)
         self.uploadService = UploadService(runtime: sharedRuntime)
+        self.messagesService = MessagesService(runtime: sharedRuntime)
 
         bind(to: configuration)
     }
