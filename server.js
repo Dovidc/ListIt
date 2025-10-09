@@ -6303,6 +6303,88 @@ app.delete('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 const geoCache = new Map();
+const GEO_USER_AGENT = process.env.GEOCODE_USER_AGENT || 'ListIt/1.0 (reverse-geocode contact@creegslist.com)';
+
+function normalizeNominatim(payload = {}) {
+  const address = payload.address || {};
+  const city = address.city || address.town || address.village || address.hamlet || '';
+  const state = address.state || address.region || address.state_district || '';
+  const country = address.country || address.country_code || '';
+  const display = payload.display_name || '';
+  if (!(city || state || country || display)) return null;
+  return { city, state, country, display };
+}
+
+function normalizeBigDataCloud(payload = {}) {
+  const city = payload.city || payload.locality || payload.principalSubdivisionLocality || '';
+  const stateCode = typeof payload.principalSubdivisionCode === 'string'
+    ? payload.principalSubdivisionCode.split('-').pop()
+    : '';
+  const state = payload.principalSubdivision || stateCode || '';
+  const country = payload.countryCode || payload.countryName || '';
+  const display = payload.locality || payload.city || '';
+  if (!(city || state || country || display)) return null;
+  return { city, state, country, display };
+}
+
+function finalizeGeoResult(result, lat, lon, key) {
+  const city = typeof result.city === 'string' ? result.city : '';
+  const state = typeof result.state === 'string' ? result.state : '';
+  let country = typeof result.country === 'string' ? result.country : '';
+  if (country.length === 2) country = country.toUpperCase();
+  const display = (typeof result.display === 'string' && result.display.trim())
+    ? result.display
+    : [city, state || country].filter(Boolean).join(', ') || key;
+  return { city, state, country, display, lat, lon };
+}
+
+const REVERSE_GEOCODE_PROVIDERS = [
+  {
+    name: 'nominatim',
+    url: (lat, lon) => `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`,
+    normalize: normalizeNominatim
+  },
+  {
+    name: 'maps-co',
+    url: (lat, lon) => `https://geocode.maps.co/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
+    normalize: normalizeNominatim
+  },
+  {
+    name: 'bigdatacloud',
+    url: (lat, lon) => `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`,
+    normalize: normalizeBigDataCloud
+  }
+];
+
+async function reverseGeocodeLookup(lat, lon, key) {
+  const headers = { 'User-Agent': GEO_USER_AGENT, Accept: 'application/json' };
+  let lastError;
+
+  for (const provider of REVERSE_GEOCODE_PROVIDERS) {
+    try {
+      const response = await fetch(provider.url(lat, lon), { headers });
+      if (!response.ok) {
+        lastError = new Error(`provider ${provider.name} responded with status ${response.status}`);
+        console.error(`[geo] ${lastError.message}`);
+        continue;
+      }
+      const payload = await response.json();
+      const normalize = provider.normalize || ((data) => data);
+      const normalized = normalize(payload, { lat, lon, key });
+      if (!normalized || typeof normalized !== 'object') {
+        lastError = new Error(`provider ${provider.name} returned unusable payload`);
+        console.error(`[geo] ${lastError.message}`);
+        continue;
+      }
+      return finalizeGeoResult(normalized, lat, lon, key);
+    } catch (err) {
+      lastError = err;
+      console.error(`[geo] provider ${provider.name} failed:`, err);
+    }
+  }
+
+  throw lastError || new Error('reverse_geocode_failed');
+}
 
 app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
@@ -6318,7 +6400,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     }
 
-    
+
 
     const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 
@@ -6326,29 +6408,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 
 
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
-
-    const resp = await fetch(url, { headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }});
-
-    if (!resp.ok) return res.status(502).json({ error: 'geocode_failed' });
-
-    const data = await resp.json();
-
-
-
-    const a = data.address || {};
-
-    const city = a.city || a.town || a.village || a.hamlet || '';
-
-    const state = a.state || a.region || '';
-
-    const country = a.country || (a.country_code ? a.country_code.toUpperCase() : '');
-
-    const display = [city, state || country].filter(Boolean).join(', ') || data.display_name || key;
-
-
-
-    const out = { city, state, country, display, lat, lon };
+    const out = await reverseGeocodeLookup(lat, lon, key);
 
     geoCache.set(key, out);
 
@@ -6358,7 +6418,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     console.error('reverse geocode error', e);
 
-    res.status(500).json({ error: 'server_error' });
+    res.status(502).json({ error: 'geocode_failed' });
 
   }
 
