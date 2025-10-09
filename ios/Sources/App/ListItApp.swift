@@ -12,19 +12,29 @@ import AdminFeature
 
 @main
 struct ListItApp: App {
-    @StateObject private var appEnvironment = AppEnvironment()
-
     init() {
         AppearanceConfigurator.configure()
     }
 
     var body: some Scene {
         WindowGroup {
-            DesignSystemProvider(theme: appEnvironment.theme) {
-                RootTabView(environment: appEnvironment)
+            if WebShellLauncher.shouldUseShell {
+                WebShellRootView()
+            } else {
+                NativeRootView()
             }
-            .task { await appEnvironment.bootstrap() }
         }
+    }
+}
+
+struct NativeRootView: View {
+    @StateObject private var appEnvironment = AppEnvironment()
+
+    var body: some View {
+        DesignSystemProvider(theme: appEnvironment.theme) {
+            RootTabView(environment: appEnvironment)
+        }
+        .task { await appEnvironment.bootstrap() }
     }
 }
 
