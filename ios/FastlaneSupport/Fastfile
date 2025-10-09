@@ -1,0 +1,65 @@
+# frozen_string_literal: true
+
+# Optional: load ios/.env if present (won't crash if dotenv isn't installed)
+begin
+  require "dotenv"
+  env_path = File.expand_path("../.env", __dir__)
+  Dotenv.load(env_path) if File.exist?(env_path)
+rescue LoadError
+  # dotenv not installed; skip
+end
+
+default_platform(:ios)
+
+# Helpers
+def shared_env
+  env_path = File.expand_path("../.env", __dir__)
+  UI.message("Loading env from #{env_path}") if File.exist?(env_path)
+end
+
+def ensure_project
+  proj = File.expand_path("../ListIt.xcodeproj", __dir__)
+  unless File.exist?(proj)
+    UI.message("Project missing, generating via XcodeGen…")
+    sh("cd .. && xcodegen generate")
+  end
+end
+
+platform :ios do
+  desc "Build & run tests on iPhone 15 Simulator (project)"
+  lane :ci_tests do
+    shared_env
+    ensure_project
+
+    scan(
+      project: "../ListIt.xcodeproj",
+      scheme: "ListItApp",          # change if your shared scheme differs
+      configuration: "Debug",
+      devices: ["iPhone 15"],
+      clean: true,
+      code_coverage: false,
+      include_simulator_logs: true,
+      skip_detect_devices: false
+    )
+  end
+
+  desc "Archive the iOS app (project)"
+  lane :beta do
+    shared_env
+    ensure_project
+
+    increment_build_number(
+      xcodeproj: "../ListIt.xcodeproj"
+    )
+
+    gym(
+      project: "../ListIt.xcodeproj",
+      scheme: "ListItApp",          # change if needed
+      configuration: "Release",
+      clean: true
+      # export_method: "app-store"   # uncomment/configure when signing is ready
+    )
+
+    # upload_to_testflight  # enable once App Store Connect creds/signing are set up
+  end
+end

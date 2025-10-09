@@ -1,0 +1,4 @@
+framework module AuthFeature {
+  header "AuthFeature-Swift.h"
+  requires objc
+}

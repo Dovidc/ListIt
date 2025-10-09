@@ -1,0 +1,4 @@
+framework module PlatformCapabilities {
+  header "PlatformCapabilities-Swift.h"
+  requires objc
+}

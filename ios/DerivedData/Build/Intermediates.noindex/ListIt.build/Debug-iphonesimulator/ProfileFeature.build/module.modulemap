@@ -1,0 +1,4 @@
+framework module ProfileFeature {
+  header "ProfileFeature-Swift.h"
+  requires objc
+}

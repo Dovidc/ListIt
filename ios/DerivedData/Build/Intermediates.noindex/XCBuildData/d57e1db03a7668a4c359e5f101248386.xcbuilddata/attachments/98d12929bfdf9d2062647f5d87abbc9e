@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp-primary.dia",
+    "emit-module-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp-primary-emit-module.dia",
+    "pch" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp-primary.swiftdeps"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/App/AppearanceConfigurator.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/AppearanceConfigurator~partial.swiftmodule"
+  },
+  "/Users/dovidcreeger/ListIt/ios/Sources/App/ListItApp.swift" : {
+    "const-values" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.swiftconstvalues",
+    "dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.d",
+    "diagnostics" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.dia",
+    "index-unit-output-path" : "/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.o",
+    "llvm-bc" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.bc",
+    "object" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.o",
+    "swift-dependencies" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp.swiftdeps",
+    "swiftmodule" : "/Users/dovidcreeger/ListIt/ios/DerivedData/Build/Intermediates.noindex/ListIt.build/Debug-iphonesimulator/ListItApp.build/Objects-normal/arm64/ListItApp~partial.swiftmodule"
+  }
+}
