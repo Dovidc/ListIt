@@ -11,6 +11,7 @@ final class ListItAppTests: XCTestCase {
         XCTAssertNotNil(environment.authService)
         XCTAssertNotNil(environment.listingsService)
         XCTAssertNotNil(environment.uploadService)
+        XCTAssertNotNil(environment.messagesService)
         XCTAssertFalse(environment.preferencesService.autoListEnabled)
     }
 
