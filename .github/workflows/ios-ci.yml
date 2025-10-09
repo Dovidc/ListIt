@@ -1,0 +1,73 @@
+name: iOS CI
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pick your Xcode. Options vary by runner image; 15.4 is a safe default.
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_15.4.app/Contents/Developer"
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Install Homebrew deps
+        run: |
+          brew update || true
+          brew install xcodegen xcbeautify || true
+
+      - name: Generate Xcode workspace/project
+        working-directory: ios
+        run: xcodegen generate
+
+      # Set up Ruby for Fastlane (runs at repo root). No working-directory here.
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false  # we'll cache manually in the Fastlane dir
+
+      - name: Cache Bundler (FastlaneSupport)
+        uses: actions/cache@v4
+        with:
+          path: ios/FastlaneSupport/vendor/bundle
+          key: ${{ runner.os }}-bundle-${{ hashFiles('ios/FastlaneSupport/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bundle-
+
+      - name: Bundle install (FastlaneSupport)
+        working-directory: ios/FastlaneSupport
+        run: |
+          bundle config set path vendor/bundle
+          bundle install --jobs 4 --retry 3
+
+      - name: Run tests (Fastlane ci_tests)
+        working-directory: ios/FastlaneSupport
+        env:
+          LC_ALL: en_US.UTF-8
+          LANG: en_US.UTF-8
+        run: bundle exec fastlane ci_tests
+
+      - name: Archive build (Fastlane beta)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ios/FastlaneSupport
+        env:
+          LC_ALL: en_US.UTF-8
+          LANG: en_US.UTF-8
+        run: bundle exec fastlane beta
