@@ -199,10 +199,11 @@ console.log('WebSocket server configured on path:', (wss.options && wss.options.
 // S3 presign module
 
 let presignUpload;
+let presignDownload;
 
 try {
 
-  ({ presignUpload } = require('./s3'));
+  ({ presignUpload, presignDownload } = require('./s3'));
 
   console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'bucket=', process.env.S3_BUCKET);
 
@@ -2116,6 +2117,82 @@ function canonicalAssetUrl(value) {
   }
 
   return trimmed;
+
+}
+
+
+
+function assetKeyFromUrl(value) {
+
+  if (!S3_BUCKET) return null;
+
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed.startsWith('data:')) return null;
+
+  const prefixes = [];
+
+  if (CDN_BASE) prefixes.push(CDN_BASE);
+
+  prefixes.push(...LEGACY_S3_PREFIXES);
+
+  for (const prefix of prefixes) {
+
+    if (startsWithAssetPrefix(trimmed, prefix)) {
+
+      let suffix = trimmed.slice(prefix.length);
+
+      if (suffix.startsWith('/')) suffix = suffix.slice(1);
+
+      suffix = suffix.split('?')[0].split('#')[0];
+
+      return suffix || null;
+
+    }
+
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+
+    const normalized = trimmed.replace(/^\/+/, '').split('?')[0].split('#')[0];
+
+    return normalized || null;
+
+  }
+
+  return null;
+
+}
+
+
+
+async function toOpenAIImageUrl(value) {
+
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+
+  if (!trimmed) return trimmed;
+
+  if (!presignDownload || typeof presignDownload !== 'function') return trimmed;
+
+  const key = assetKeyFromUrl(trimmed);
+
+  if (!key) return trimmed;
+
+  try {
+
+    return await presignDownload({ key, expiresIn: 120 });
+
+  } catch (err) {
+
+    console.warn('Failed to presign asset for OpenAI:', err && err.message ? err.message : err);
+
+    return trimmed;
+
+  }
 
 }
 
@@ -5139,13 +5216,20 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 
 
+      const openAIImages = await Promise.all(images.map((img) => toOpenAIImageUrl(img)));
+
       const moderationInputs = [];
       if (hint) moderationInputs.push(`hint: ${hint}`);
-      for (const img of images) {
-        if (typeof img === 'string' && img.trim()) {
-          moderationInputs.push(img.trim());
+      openAIImages.forEach((img, idx) => {
+        const trimmedAI = typeof img === 'string' ? img.trim() : '';
+        if (trimmedAI) {
+          moderationInputs.push(trimmedAI);
+          return;
         }
-      }
+        const original = images[idx];
+        const trimmedOriginal = typeof original === 'string' ? original.trim() : '';
+        if (trimmedOriginal) moderationInputs.push(trimmedOriginal);
+      });
 
       if (moderationInputs.length) {
         try {
@@ -5171,7 +5255,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
             } else {
               const imgIndex = index - hintOffset;
               entry.type = 'image';
-              entry.target = images[imgIndex];
+              entry.target = images[imgIndex] || openAIImages[imgIndex];
             }
 
             const categories = result.categories || {};
@@ -5225,7 +5309,11 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
       if (hint) content.push({ type: 'text', text: `User hint: ${hint}` });
 
-      for (const img of images) content.push({ type: 'image_url', image_url: { url: img } });
+      for (const img of openAIImages) {
+        if (typeof img === 'string' && img.trim()) {
+          content.push({ type: 'image_url', image_url: { url: img.trim() } });
+        }
+      }
 
 
 
