@@ -832,6 +832,142 @@ async function initializeSchema() {
 
     `);
 
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN key TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN url TEXT'); } catch {}
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN width INTEGER'); } catch {}
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN height INTEGER'); } catch {}
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN bytes INTEGER'); } catch {}
+    try { await db.exec('ALTER TABLE listing_images ADD COLUMN created_at INTEGER DEFAULT 0'); } catch {}
+
+
+
+    if (!IS_POSTGRES) {
+      const listingCols = await db.prepare("PRAGMA table_info('listings')").all();
+      const listingImageData = listingCols.find((col) => col.name === 'image_data');
+      const needsListingRebuild = listingImageData?.notnull;
+
+      if (needsListingRebuild) {
+        const fkStateRow = await db.prepare('PRAGMA foreign_keys').get();
+        const foreignKeysInitiallyOn = Number(fkStateRow?.foreign_keys) === 1;
+
+        await db.exec('PRAGMA foreign_keys=OFF;');
+        await db.exec('BEGIN TRANSACTION;');
+        try {
+          await db.exec('ALTER TABLE listings RENAME TO listings_old;');
+          await db.exec(`
+            CREATE TABLE listings (
+              id ${PRIMARY_KEY},
+              user_id INTEGER NOT NULL REFERENCES users(id),
+              image_data TEXT,
+              title TEXT,
+              description TEXT NOT NULL,
+              location TEXT NOT NULL,
+              price REAL NOT NULL,
+              created_at TEXT NOT NULL,
+              tags TEXT,
+              lat REAL,
+              lon REAL,
+              enable_nearby INTEGER DEFAULT 0,
+              inquiry_enabled INTEGER DEFAULT 0,
+              sold INTEGER DEFAULT 0,
+              is_test_listing INTEGER DEFAULT 0
+            );
+          `);
+          await db.exec(`
+            INSERT INTO listings (
+              id, user_id, image_data, title, description, location, price, created_at,
+              tags, lat, lon, enable_nearby, inquiry_enabled, sold, is_test_listing
+            )
+            SELECT
+              id,
+              user_id,
+              NULLIF(image_data, ''),
+              title,
+              description,
+              location,
+              price,
+              created_at,
+              tags,
+              lat,
+              lon,
+              COALESCE(enable_nearby, 0),
+              COALESCE(inquiry_enabled, 0),
+              COALESCE(sold, 0),
+              COALESCE(is_test_listing, 0)
+            FROM listings_old;
+          `);
+          await db.exec('DROP TABLE listings_old;');
+          await db.exec('COMMIT;');
+        } catch (err) {
+          await db.exec('ROLLBACK;');
+          throw err;
+        } finally {
+          await db.exec(`PRAGMA foreign_keys=${foreignKeysInitiallyOn ? 'ON' : 'OFF'};`);
+        }
+
+        try {
+          await db.exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM listings) WHERE name = 'listings';");
+        } catch {}
+      }
+
+      const listingImageCols = await db.prepare("PRAGMA table_info('listing_images')").all();
+      const listingImageDataCol = listingImageCols.find((col) => col.name === 'image_data');
+      const needsImageRebuild = listingImageDataCol?.notnull;
+
+      if (needsImageRebuild) {
+        const fkStateRow = await db.prepare('PRAGMA foreign_keys').get();
+        const foreignKeysInitiallyOn = Number(fkStateRow?.foreign_keys) === 1;
+
+        await db.exec('PRAGMA foreign_keys=OFF;');
+        await db.exec('BEGIN TRANSACTION;');
+        try {
+          await db.exec('ALTER TABLE listing_images RENAME TO listing_images_old;');
+          await db.exec(`
+            CREATE TABLE listing_images (
+              id ${PRIMARY_KEY},
+              listing_id INTEGER NOT NULL REFERENCES listings(id),
+              image_data TEXT,
+              position INTEGER NOT NULL,
+              key TEXT,
+              url TEXT,
+              width INTEGER,
+              height INTEGER,
+              bytes INTEGER,
+              created_at INTEGER DEFAULT 0
+            );
+          `);
+          await db.exec(`
+            INSERT INTO listing_images (
+              id, listing_id, image_data, position, key, url, width, height, bytes, created_at
+            )
+            SELECT
+              id,
+              listing_id,
+              NULLIF(image_data, ''),
+              position,
+              key,
+              url,
+              width,
+              height,
+              bytes,
+              COALESCE(created_at, 0)
+            FROM listing_images_old;
+          `);
+          await db.exec('DROP TABLE listing_images_old;');
+          await db.exec('COMMIT;');
+        } catch (err) {
+          await db.exec('ROLLBACK;');
+          throw err;
+        } finally {
+          await db.exec(`PRAGMA foreign_keys=${foreignKeysInitiallyOn ? 'ON' : 'OFF'};`);
+        }
+
+        try {
+          await db.exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM listing_images) WHERE name = 'listing_images';");
+        } catch {}
+      }
+    }
+
 
 
     await db.exec(`
