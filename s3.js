@@ -2,7 +2,7 @@
 'use strict';
 
 const crypto = require('crypto');
-let S3Client, PutObjectCommand;
+let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
 let _s3 = null;
 
@@ -55,4 +55,23 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
   return { Bucket, Key, uploadUrl, publicUrl };
 }
 
-module.exports = { presignUpload };
+function normalizeKey(key = '') {
+  if (typeof key !== 'string') throw new Error('Invalid key');
+  const trimmed = key.trim();
+  if (!trimmed) throw new Error('Missing key');
+  if (trimmed.includes('..')) throw new Error('Invalid key');
+  return trimmed.replace(/^\/+/, '');
+}
+
+async function presignDownload({ key, expiresIn = 120 } = {}) {
+  const s3 = getS3();
+  const Bucket = need('S3_BUCKET');
+  if (!GetObjectCommand) {
+    ({ GetObjectCommand } = require('@aws-sdk/client-s3'));
+  }
+  const Key = normalizeKey(key);
+  const cmd = new GetObjectCommand({ Bucket, Key });
+  return await getSignedUrl(s3, cmd, { expiresIn });
+}
+
+module.exports = { presignUpload, presignDownload };
