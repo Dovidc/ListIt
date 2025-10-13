@@ -562,9 +562,12 @@ if (FRONTEND_ORIGIN && cors) {
 
   };
 
+   // Must come before your routes
   app.use(cors(corsCfg));
 
-  app.options('*', cors(corsCfg));
+  // Enable preflight across-the-board (fixes the path-to-regexp error)
+  // app.options('*', cors(corsCfg));    // ← changed from '/*' to '*'
+  // or: app.options('/:splat(*)', cors(corsCfg));
 
 }
 
