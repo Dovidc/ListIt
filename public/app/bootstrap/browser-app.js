@@ -368,6 +368,7 @@
     }
     const { ProfilePanel } = profileFeatureFactory({
       React: runtimeReact,
+      ReactDOM: runtimeReactDOM,
       api,
       helpers: { asArray },
       components: {
