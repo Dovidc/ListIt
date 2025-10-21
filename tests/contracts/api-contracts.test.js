@@ -10,6 +10,7 @@ const {
   validateCreateListingRequest,
   validateUpdateListingRequest
 } = require('../../contracts/http-schemas');
+const smsService = require('../../sms-service');
 
 async function resetDb() {
   const res = await request(app).post('/__test/reset');
@@ -43,13 +44,32 @@ describe('API contracts', () => {
     await resetDb();
   });
 
-  it('returns a stable payload for registration', async () => {
-    const res = await request(app)
+  async function registerAndVerify(agent, payload) {
+    const registerRes = await agent
       .post('/api/register')
       .set('X-API-Version', API_VERSIONS.latest)
-      .send({ email: 'snapshot@test.com', password: 'secret1', username: 'snapshotUser' });
+      .send(payload);
 
-    expect(res.status).toBe(200);
+    expect(registerRes.status).toBe(202);
+    expect(registerRes.body).toMatchObject({ verification_required: true });
+
+    const code = smsService.__getLastCode(payload.phone);
+    expect(code).toMatch(/^\d{6}$/);
+
+    const verifyRes = await agent
+      .post('/api/register/verify')
+      .set('X-API-Version', API_VERSIONS.latest)
+      .send({ email: payload.email, code });
+
+    expect(verifyRes.status).toBe(200);
+    return verifyRes;
+  }
+
+  it('returns a stable payload for registration', async () => {
+    const agent = request.agent(app);
+    const registerPayload = { email: 'snapshot@test.com', password: 'secret1', username: 'snapshotUser', phone: '+15555550001' };
+    const res = await registerAndVerify(agent, registerPayload);
+
     expect(res.headers['x-api-version']).toBe(API_VERSIONS.latest);
     const scrubbed = scrubAuthPayload(res.body);
     expect(scrubbed).toMatchInlineSnapshot(`
@@ -59,7 +79,7 @@ describe('API contracts', () => {
   "email": "snapshot@test.com",
   "id": "[id]",
   "is_admin": false,
-  "last_login_at": null,
+  "last_login_at": "[iso]",
   "push_meta": {
     "available": false,
     "vapid_public_key": null,
@@ -76,7 +96,7 @@ describe('API contracts', () => {
     const res = await request(app)
       .post('/api/register')
       .set('X-API-Version', API_VERSIONS.latest)
-      .send({ email: 'not-an-email', password: '123', username: 'ab' });
+      .send({ email: 'not-an-email', password: '123', username: 'ab', phone: '555' });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: 'invalid_request' });
@@ -91,7 +111,7 @@ describe('API contracts', () => {
     const res = await request(app)
       .post('/api/register')
       .set('X-API-Version', '2022-01-01')
-      .send({ email: 'foo@test.com', password: 'secret1', username: 'foo' });
+      .send({ email: 'foo@test.com', password: 'secret1', username: 'foo', phone: '+15555550002' });
 
     expect(res.status).toBe(412);
     expect(res.body).toEqual({
@@ -105,15 +125,9 @@ describe('API contracts', () => {
     const alice = request.agent(app);
     const bob = request.agent(app);
 
-    await alice
-      .post('/api/register')
-      .set('X-API-Version', API_VERSIONS.latest)
-      .send({ email: 'alice@test.com', password: 'secret1', username: 'aliceUser' });
+    const aliceRes = await registerAndVerify(alice, { email: 'alice@test.com', password: 'secret1', username: 'aliceUser', phone: '+15555550003' });
 
-    const bobRes = await bob
-      .post('/api/register')
-      .set('X-API-Version', API_VERSIONS.latest)
-      .send({ email: 'bob@test.com', password: 'secret1', username: 'bobUser' });
+    const bobRes = await registerAndVerify(bob, { email: 'bob@test.com', password: 'secret1', username: 'bobUser', phone: '+15555550004' });
 
     const convoRes = await alice
       .post('/api/conversations')

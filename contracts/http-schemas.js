@@ -106,11 +106,23 @@ function failure(issues) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
+function normalizePhoneNumber(raw) {
+  const trimmed = coerceTrimmed(raw);
+  if (!trimmed) return '';
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (hasPlus) return `+${digits}`;
+  return digits;
+}
+
 function validateRegisterRequest(raw = {}) {
   const issues = [];
   const username = coerceTrimmed(raw.username) || coerceTrimmed(raw.name);
   const email = coerceTrimmed(raw.email).toLowerCase();
   const password = typeof raw.password === 'string' ? raw.password : '';
+  const phoneRaw = raw.phone ?? raw.phone_number ?? raw.phoneNumber;
+  const phone = normalizePhoneNumber(phoneRaw);
 
   if (!username) {
     issues.push(issue('username', 'Username is required', 'required'));
@@ -134,13 +146,86 @@ function validateRegisterRequest(raw = {}) {
     issues.push(issue('password', 'Password must be 128 characters or less', 'too_long'));
   }
 
+  if (!phone) {
+    issues.push(issue('phone', 'Phone number is required', 'required'));
+  } else {
+    const digits = phone.startsWith('+') ? phone.slice(1) : phone;
+    if (digits.length < 10 || digits.length > 15) {
+      issues.push(issue('phone', 'Phone number must contain 10-15 digits', 'invalid_phone'));
+    }
+  }
+
   if (issues.length) return failure(issues);
 
   return success({
     username,
     email,
-    password
+    password,
+    phone
   });
+}
+
+function validateVerifyPhoneRequest(raw = {}) {
+  const issues = [];
+  const email = coerceTrimmed(raw.email).toLowerCase();
+  const code = coerceTrimmed(raw.code);
+
+  if (!email) {
+    issues.push(issue('email', 'Email is required', 'required'));
+  } else if (!EMAIL_RE.test(email)) {
+    issues.push(issue('email', 'Email must be valid', 'invalid_email'));
+  }
+
+  if (!code) {
+    issues.push(issue('code', 'Verification code is required', 'required'));
+  } else if (!/^\d{6}$/.test(code)) {
+    issues.push(issue('code', 'Verification code must be 6 digits', 'invalid_code'));
+  }
+
+  if (issues.length) return failure(issues);
+  return success({ email, code });
+}
+
+function validatePasswordResetRequest(raw = {}) {
+  const issues = [];
+  const email = coerceTrimmed(raw.email).toLowerCase();
+
+  if (!email) {
+    issues.push(issue('email', 'Email is required', 'required'));
+  } else if (!EMAIL_RE.test(email)) {
+    issues.push(issue('email', 'Email must be valid', 'invalid_email'));
+  }
+
+  if (issues.length) return failure(issues);
+  return success({ email });
+}
+
+function validatePasswordResetConfirmRequest(raw = {}) {
+  const issues = [];
+  const email = coerceTrimmed(raw.email).toLowerCase();
+  const token = coerceTrimmed(raw.token);
+  const password = typeof raw.password === 'string' ? raw.password : '';
+
+  if (!email) {
+    issues.push(issue('email', 'Email is required', 'required'));
+  } else if (!EMAIL_RE.test(email)) {
+    issues.push(issue('email', 'Email must be valid', 'invalid_email'));
+  }
+
+  if (!token) {
+    issues.push(issue('token', 'Reset token is required', 'required'));
+  }
+
+  if (!password) {
+    issues.push(issue('password', 'Password is required', 'required'));
+  } else if (password.length < 6) {
+    issues.push(issue('password', 'Password must be at least 6 characters', 'too_short'));
+  } else if (password.length > 128) {
+    issues.push(issue('password', 'Password must be 128 characters or less', 'too_long'));
+  }
+
+  if (issues.length) return failure(issues);
+  return success({ email, token, password });
 }
 
 function validateLoginRequest(raw = {}) {
@@ -445,6 +530,9 @@ module.exports = {
   validateCreateListingRequest,
   validateUpdateListingRequest,
   validateSendMessageRequest,
+  validateVerifyPhoneRequest,
+  validatePasswordResetRequest,
+  validatePasswordResetConfirmRequest,
   validateAuthResponse,
   validateListingResponse,
   validateMessageEnvelopeResponse

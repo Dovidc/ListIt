@@ -7,6 +7,8 @@ const request = require('supertest');
 const app = require('../server');
 
 const db = app._db;
+const smsService = require('../sms-service');
+const mailService = require('../mail-service');
 
 function bodyItems(body) {
   if (Array.isArray(body)) return body;
@@ -44,6 +46,20 @@ async function uploadTestImage(agent, overrides = {}) {
 
 }
 
+async function registerAndVerify(agent, { email, username, password, phone }) {
+  let res = await agent.post('/api/register').send({ email, username, password, phone });
+  expect(res.status).toBe(202);
+  expect(res.body.verification_required).toBe(true);
+
+  const code = smsService.__getLastCode(phone);
+  expect(code).toMatch(/^\d{6}$/);
+
+  res = await agent.post('/api/register/verify').send({ email, code });
+  expect(res.status).toBe(200);
+  expect(res.body.email).toBe(email);
+  return res.body;
+}
+
 async function resetDb() {
   const res = await request(app).post('/__test/reset');
   if (res.status !== 200) {
@@ -69,15 +85,12 @@ describe('ListIt API basic flows', () => {
     const seller = request.agent(app);
     const buyer = request.agent(app);
 
-    let res = await seller.post('/api/register').send({ email: 'seller@test.com', password: 'secret1', username: 'sellerA' });
-    expect(res.status).toBe(200);
-
-    res = await buyer.post('/api/register').send({ email: 'buyer@test.com', password: 'secret1', username: 'buyerB' });
-    expect(res.status).toBe(200);
+    await registerAndVerify(seller, { email: 'seller@test.com', password: 'secret1', username: 'sellerA', phone: '+15550000001' });
+    await registerAndVerify(buyer, { email: 'buyer@test.com', password: 'secret1', username: 'buyerB', phone: '+15550000002' });
 
     const uploadToken = await uploadTestImage(seller);
 
-    res = await seller.post('/api/listings').send({ title: 'Test Bike', description: 'Road ready bike', location: 'NYC, NY', price: 120, upload_tokens: [uploadToken] });
+    let res = await seller.post('/api/listings').send({ title: 'Test Bike', description: 'Road ready bike', location: 'NYC, NY', price: 120, upload_tokens: [uploadToken] });
     expect(res.status).toBe(200);
     const listingId = res.body.id;
     const sellerId = res.body.user_id;
@@ -108,19 +121,15 @@ describe('ListIt API basic flows', () => {
 
 
 
-    let res = await alice.post('/api/register').send({ email: 'alice@test.com', password: 'secret1', username: 'aliceUser' });
+    await registerAndVerify(alice, { email: 'alice@test.com', password: 'secret1', username: 'aliceUser', phone: '+15550000003' });
 
-    expect(res.status).toBe(200);
+    const bobUser = await registerAndVerify(bob, { email: 'bob@test.com', password: 'secret1', username: 'bobUser', phone: '+15550000004' });
 
-    res = await bob.post('/api/register').send({ email: 'bob@test.com', password: 'secret1', username: 'bobUser' });
-
-    expect(res.status).toBe(200);
-
-    const bobId = res.body.id;
+    const bobId = bobUser.id;
 
 
 
-    res = await alice.post('/api/conversations').send({ with_user_id: bobId });
+    let res = await alice.post('/api/conversations').send({ with_user_id: bobId });
 
     expect(res.status).toBe(200);
 
@@ -192,6 +201,32 @@ describe('ListIt API basic flows', () => {
 
     expect(bobMessages.body.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('allows users to reset their password via email', async () => {
+    await resetDb();
+
+    const agent = request.agent(app);
+    const email = 'reset@test.com';
+
+    await registerAndVerify(agent, { email, password: 'secret1', username: 'resetUser', phone: '+15550000005' });
+
+    let res = await agent.post('/api/password/reset/request').send({ email });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const token = mailService.__getLastToken(email);
+    expect(typeof token).toBe('string');
+    expect(token.length).toBeGreaterThan(0);
+
+    res = await agent.post('/api/password/reset/confirm').send({ email, token, password: 'newpass1' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const loginAgent = request.agent(app);
+    res = await loginAgent.post('/api/login').send({ email, password: 'newpass1' });
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe(email);
+  });
 });
 
 describe('Admin reports dashboard', () => {
@@ -201,16 +236,14 @@ describe('Admin reports dashboard', () => {
     const seller = request.agent(app);
     const reporter = request.agent(app);
 
-    let res = await admin.post('/api/register').send({ email: 'admin@test.com', password: 'secret1', username: 'adminUser' });
-    expect(res.status).toBe(200);
-    const adminId = res.body.id;
+    const adminUser = await registerAndVerify(admin, { email: 'admin@test.com', password: 'secret1', username: 'adminUser', phone: '+15550000006' });
+    const adminId = adminUser.id;
     await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
-    res = await admin.post('/api/login').send({ email: 'admin@test.com', password: 'secret1' });
+    let res = await admin.post('/api/login').send({ email: 'admin@test.com', password: 'secret1' });
     expect(res.status).toBe(200);
 
-    res = await seller.post('/api/register').send({ email: 'seller@test.com', password: 'secret1', username: 'sellerUser' });
-    expect(res.status).toBe(200);
-    const sellerId = res.body.id;
+    const sellerUser = await registerAndVerify(seller, { email: 'seller@test.com', password: 'secret1', username: 'sellerUser', phone: '+15550000007' });
+    const sellerId = sellerUser.id;
 
     const uploadToken = await uploadTestImage(seller);
 
@@ -218,8 +251,7 @@ describe('Admin reports dashboard', () => {
     expect(res.status).toBe(200);
     const listingId = res.body.id;
 
-    res = await reporter.post('/api/register').send({ email: 'reporter@test.com', password: 'secret1', username: 'reporterUser' });
-    expect(res.status).toBe(200);
+    await registerAndVerify(reporter, { email: 'reporter@test.com', password: 'secret1', username: 'reporterUser', phone: '+15550000008' });
 
     const reportPayload = {
       reported_user_id: sellerId,
@@ -262,12 +294,11 @@ describe('Admin test listing utilities', () => {
 
     const admin = request.agent(app);
 
-    let res = await admin.post('/api/register').send({ email: 'seed-admin@test.com', password: 'secret1', username: 'seedAdmin' });
-    expect(res.status).toBe(200);
-    const adminId = res.body.id;
+    const adminUser = await registerAndVerify(admin, { email: 'seed-admin@test.com', password: 'secret1', username: 'seedAdmin', phone: '+15550000009' });
+    const adminId = adminUser.id;
     await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
 
-    res = await admin.post('/api/login').send({ email: 'seed-admin@test.com', password: 'secret1' });
+    let res = await admin.post('/api/login').send({ email: 'seed-admin@test.com', password: 'secret1' });
     expect(res.status).toBe(200);
 
     res = await admin.post('/api/admin/listings/seed').send({ count: 3 });
@@ -309,20 +340,17 @@ describe('Locked account restrictions', () => {
     const seller = request.agent(app);
     const buyer = request.agent(app);
 
-    let res = await admin.post('/api/register').send({ email: 'admin2@test.com', password: 'secret1', username: 'superAdmin' });
-    expect(res.status).toBe(200);
-    const adminId = res.body.id;
+    const adminUser = await registerAndVerify(admin, { email: 'admin2@test.com', password: 'secret1', username: 'superAdmin', phone: '+15550000010' });
+    const adminId = adminUser.id;
     await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(adminId);
     await admin.post('/api/login').send({ email: 'admin2@test.com', password: 'secret1' });
 
-    res = await seller.post('/api/register').send({ email: 'seller2@test.com', password: 'secret1', username: 'lockableSeller' });
-    expect(res.status).toBe(200);
-    const sellerId = res.body.id;
+    const sellerUser = await registerAndVerify(seller, { email: 'seller2@test.com', password: 'secret1', username: 'lockableSeller', phone: '+15550000011' });
+    const sellerId = sellerUser.id;
     await seller.post('/api/login').send({ email: 'seller2@test.com', password: 'secret1' });
 
-    res = await buyer.post('/api/register').send({ email: 'buyer2@test.com', password: 'secret1', username: 'regularBuyer' });
-    expect(res.status).toBe(200);
-    const buyerId = res.body.id;
+    const buyerUser = await registerAndVerify(buyer, { email: 'buyer2@test.com', password: 'secret1', username: 'regularBuyer', phone: '+15550000012' });
+    const buyerId = buyerUser.id;
 
     const listingPayload = { title: 'Road Bike', description: 'Great condition', location: 'NYC, NY', price: 250 };
     const uploadToken = await uploadTestImage(seller);
@@ -376,7 +404,7 @@ describe('Nearby listings endpoint', () => {
     expect(app._features.postgisNearby).toBe(false);
 
     const seller = request.agent(app);
-    await seller.post('/api/register').send({ email: 'geo@test.com', password: 'secret1', username: 'geoSeller' });
+    await registerAndVerify(seller, { email: 'geo@test.com', password: 'secret1', username: 'geoSeller', phone: '+15550000013' });
 
     const uploadToken = await uploadTestImage(seller);
 

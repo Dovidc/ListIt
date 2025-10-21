@@ -107,6 +107,24 @@
       body: JSON.stringify(payload || {})
     }, meta);
   
+    const verifyRegistration = (email, code, meta) => request('/api/register/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    }, meta);
+  
+    const requestPasswordReset = (email, meta) => request('/api/password/reset/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    }, meta);
+  
+    const confirmPasswordReset = (email, token, password, meta) => request('/api/password/reset/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, token, password })
+    }, meta);
+  
     const logout = async (meta) => {
       try {
         await request('/api/logout', { method: 'POST' }, meta);
@@ -368,6 +386,9 @@
       me,
       login,
       register,
+      verifyRegistration,
+      requestPasswordReset,
+      confirmPasswordReset,
       logout,
       pushSubscribe,
       pushUnsubscribe,
