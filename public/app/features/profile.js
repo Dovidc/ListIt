@@ -1,6 +1,7 @@
 (() => {
   function createProfileFeature({
     React,
+    ReactDOM,
     api,
     helpers = {},
     components = {},
@@ -8,6 +9,10 @@
   } = {}) {
     if (!React || typeof React.createElement !== 'function') {
       throw new Error('Profile feature requires React.');
+    }
+    const resolvedReactDOM = ReactDOM || (typeof window !== 'undefined' ? window.ReactDOM : null);
+    if (!resolvedReactDOM || typeof resolvedReactDOM.createPortal !== 'function') {
+      throw new Error('Profile feature requires ReactDOM.');
     }
     if (!api) {
       throw new Error('Profile feature requires an API client.');
@@ -45,8 +50,10 @@
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
     const {
       useState,
-      useCallback
+      useCallback,
+      useEffect
     } = React;
+    const { createPortal } = resolvedReactDOM;
 
     const navBridge = appNav || { setUser: () => {} };
 
@@ -76,6 +83,171 @@
       });
     });
 
+    const ProfileSettingsModal = React.memo(function ProfileSettingsModal({
+      open,
+      onClose,
+      autoListEnabled,
+      setAutoListEnabled,
+      autoInquiryEnabled,
+      setAutoInquiryEnabled,
+      aiDescriptionEnabled,
+      setAiDescriptionEnabled,
+      autoPostNearbyEnabled,
+      setAutoPostNearbyEnabled,
+      isMobile,
+      onOpenHelp
+    }) {
+      const modalRoot = typeof document !== 'undefined' ? document.body : null;
+
+      useEffect(() => {
+        if (!open) return undefined;
+        const handleKeyDown = (event) => {
+          if (event.key === 'Escape') {
+            onClose?.();
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [open, onClose]);
+
+      if (!open || !modalRoot) {
+        return null;
+      }
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: (evt) => {
+            if (evt.target?.classList?.contains('modal')) {
+              onClose?.();
+            }
+          }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '520px',
+              width: 'min(520px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close settings',
+              'aria-label': 'Close settings'
+            }, '×'),
+            H('h2', { style: { margin: '0 0 12px', fontSize: 24 } }, 'Profile settings'),
+            H('p', { className: 'muted', style: { margin: '0 0 16px', fontSize: 14 } }, 'Manage automation and AI preferences.'),
+            H('div', { style: { display: 'grid', gap: 12 } },
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoListEnabled,
+                  onChange: (e) => {
+                    const checked = e.target.checked;
+                    setAutoListEnabled?.(checked);
+                    if (typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(checked);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); onOpenHelp?.('auto'); },
+                  title: 'About Auto-list',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoInquiryEnabled,
+                  onChange: (e) => {
+                    if (typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(e.target.checked);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); onOpenHelp?.('inquiry'); },
+                  title: 'Inquiry mode info',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!aiDescriptionEnabled,
+                  onChange: (e) => setAiDescriptionEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); onOpenHelp?.('ai'); },
+                  title: 'AI description tips',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              isMobile && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoPostNearbyEnabled,
+                  onChange: (e) => setAutoPostNearbyEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Auto Nearby'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'auto-list extra option')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); onOpenHelp?.('nearby'); },
+                  title: 'Nearby auto-post info',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              )
+            )
+          )
+        ),
+        modalRoot
+      );
+    });
+
     const ProfilePanel = React.memo(function ProfilePanel({
       isMobile,
       user,
@@ -98,6 +270,11 @@
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
+      const [settingsOpen, setSettingsOpen] = useState(false);
+
+      const openHelpModal = useCallback((type) => {
+        setHelpModal(type);
+      }, []);
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
@@ -113,6 +290,15 @@
         if (onAdminDelete) await onAdminDelete(id);
         setProfileSelected(null);
       }, [onAdminDelete]);
+
+      const handleOpenSettings = useCallback(() => {
+        setSettingsOpen(true);
+      }, []);
+
+      const handleCloseSettings = useCallback(() => {
+        setSettingsOpen(false);
+        setHelpModal(null);
+      }, [setHelpModal]);
 
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
@@ -144,103 +330,22 @@
               H('div', { className: 'muted' }, 'Your account')
             ),
             H('div', { className: 'row', style: { gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
-              H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!autoListEnabled,
-                  onChange: (e) => {
-                    const checked = e.target.checked;
-                    setAutoListEnabled(checked);
-                    if (typeof setAutoInquiryEnabled === 'function') {
-                      setAutoInquiryEnabled(checked);
-                    }
-                  }
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
-                ),
-                H('button', {
-                  type: 'button',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('auto'); },
-                  title: 'About Auto-list',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                  }
-                }, '?')
-              ),
-              autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!autoInquiryEnabled,
-                  onChange: (e) => {
-                    if (typeof setAutoInquiryEnabled === 'function') {
-                      setAutoInquiryEnabled(e.target.checked);
-                    }
-                  }
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
-                ),
-                H('button', {
-                  type: 'button',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('inquiry'); },
-                  title: 'Inquiry mode info',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                  }
-                }, '?')
-              ),
-              H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!aiDescriptionEnabled,
-                  onChange: (e) => setAiDescriptionEnabled(e.target.checked)
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
-                ),
-                H('button', {
-                  type: 'button',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
-                  title: 'AI description tips',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                  }
-                }, '?')
-              ),
-              isMobile && H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!autoPostNearbyEnabled,
-                  onChange: (e) => setAutoPostNearbyEnabled(e.target.checked)
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Auto Nearby'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'auto-list extra option')
-                ),
-                H('button', {
-                  type: 'button',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('nearby'); },
-                  title: 'Nearby auto-post info',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                  }
-                }, '?')
+              H('button', {
+                className: 'btn',
+                type: 'button',
+                onClick: handleOpenSettings,
+                title: 'Profile settings',
+                'aria-label': 'Open profile settings',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '6px 12px',
+                  width: 40,
+                  height: 40
+                }
+              },
+                H('span', { 'aria-hidden': true, style: { fontSize: 18 } }, '⚙️')
               ),
               H('button', {
                 className: 'btn primary',
@@ -375,6 +480,21 @@
         helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
+
+        H(ProfileSettingsModal, {
+          open: settingsOpen,
+          onClose: handleCloseSettings,
+          autoListEnabled,
+          setAutoListEnabled,
+          autoInquiryEnabled,
+          setAutoInquiryEnabled,
+          aiDescriptionEnabled,
+          setAiDescriptionEnabled,
+          autoPostNearbyEnabled,
+          setAutoPostNearbyEnabled,
+          isMobile,
+          onOpenHelp: openHelpModal
+        }),
 
         H(ListingModal, {
           open: !!profileSelected,
