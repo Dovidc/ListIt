@@ -82,6 +82,169 @@
       });
     });
 
+    const ProfileSettingsModal = React.memo(function ProfileSettingsModal({
+      open,
+      onClose,
+      onRequestHelp,
+      autoListEnabled,
+      setAutoListEnabled,
+      autoInquiryEnabled,
+      setAutoInquiryEnabled,
+      aiDescriptionEnabled,
+      setAiDescriptionEnabled,
+      autoPostNearbyEnabled,
+      setAutoPostNearbyEnabled,
+      isMobile
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const requestHelp = (topic) => {
+        if (typeof onRequestHelp === 'function') {
+          onRequestHelp(topic);
+        }
+      };
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '520px',
+              width: 'min(520px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close settings'
+            }, 'x'),
+            H('h2', { style: { margin: '0 0 12px', fontSize: 24 } }, 'Profile settings'),
+            H('p', { className: 'muted', style: { margin: '0 0 16px', fontSize: 14 } }, 'Manage automation and AI preferences.'),
+            H('div', { style: { display: 'grid', gap: 12 } },
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoListEnabled,
+                  onChange: (e) => {
+                    const checked = e.target.checked;
+                    setAutoListEnabled?.(checked);
+                    if (checked && typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(true);
+                    }
+                    if (!checked && typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(false);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('auto'); },
+                  title: 'About Auto-list',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoInquiryEnabled,
+                  onChange: (e) => {
+                    if (typeof setAutoInquiryEnabled === 'function') {
+                      setAutoInquiryEnabled(e.target.checked);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('inquiry'); },
+                  title: 'Inquiry mode info',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!aiDescriptionEnabled,
+                  onChange: (e) => setAiDescriptionEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('ai'); },
+                  title: 'AI description tips',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              ),
+              isMobile && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!autoPostNearbyEnabled,
+                  onChange: (e) => setAutoPostNearbyEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Auto Nearby'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'auto-list extra option')
+                ),
+                H('button', {
+                  type: 'button',
+                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('nearby'); },
+                  title: 'Nearby auto-post info',
+                  style: {
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                  }
+                }, '?')
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     const ProfilePanel = React.memo(function ProfilePanel({
       isMobile,
       user,
@@ -309,138 +472,20 @@
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
 
-        settingsOpen && (typeof document !== 'undefined' && document.body
-          ? createPortal(
-            H('div', {
-              className: 'modal open',
-              onClick: (evt) => {
-                if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
-                  handleCloseSettings();
-                }
-              }
-            },
-              H('div', {
-                className: 'modal-inner',
-                style: {
-                  maxWidth: '520px',
-                  width: 'min(520px, 92vw)',
-                  padding: '24px',
-                  background: '#fff',
-                  color: '#111',
-                  borderRadius: 16
-                }
-              },
-                H('button', {
-                  className: 'close',
-                  onClick: handleCloseSettings,
-                  title: 'Close settings'
-                }, 'x'),
-                H('h2', { style: { margin: '0 0 12px', fontSize: 24 } }, 'Profile settings'),
-                H('p', { className: 'muted', style: { margin: '0 0 16px', fontSize: 14 } }, 'Manage automation and AI preferences.'),
-                H('div', { style: { display: 'grid', gap: 12 } },
-                  H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                    H('input', {
-                      type: 'checkbox',
-                      className: 'toggle-input',
-                      checked: !!autoListEnabled,
-                      onChange: (e) => {
-                        const checked = e.target.checked;
-                        setAutoListEnabled(checked);
-                        if (typeof setAutoInquiryEnabled === 'function') {
-                          setAutoInquiryEnabled(checked);
-                        }
-                      }
-                    }),
-                    H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                    H('div', { className: 'toggle-copy' },
-                      H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
-                      H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
-                    ),
-                    H('button', {
-                      type: 'button',
-                      onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('auto'); },
-                      title: 'About Auto-list',
-                      style: {
-                        marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                        borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                      }
-                    }, '?')
-                  ),
-                  autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                    H('input', {
-                      type: 'checkbox',
-                      className: 'toggle-input',
-                      checked: !!autoInquiryEnabled,
-                      onChange: (e) => {
-                        if (typeof setAutoInquiryEnabled === 'function') {
-                          setAutoInquiryEnabled(e.target.checked);
-                        }
-                      }
-                    }),
-                    H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                    H('div', { className: 'toggle-copy' },
-                      H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
-                      H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
-                    ),
-                    H('button', {
-                      type: 'button',
-                      onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('inquiry'); },
-                      title: 'Inquiry mode info',
-                      style: {
-                        marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                        borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                      }
-                    }, '?')
-                  ),
-                  H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                    H('input', {
-                      type: 'checkbox',
-                      className: 'toggle-input',
-                      checked: !!aiDescriptionEnabled,
-                      onChange: (e) => setAiDescriptionEnabled(e.target.checked)
-                    }),
-                    H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                    H('div', { className: 'toggle-copy' },
-                      H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
-                      H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
-                    ),
-                    H('button', {
-                      type: 'button',
-                      onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('ai'); },
-                      title: 'AI description tips',
-                      style: {
-                        marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                        borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                      }
-                    }, '?')
-                  ),
-                  isMobile && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                    H('input', {
-                      type: 'checkbox',
-                      className: 'toggle-input',
-                      checked: !!autoPostNearbyEnabled,
-                      onChange: (e) => setAutoPostNearbyEnabled(e.target.checked)
-                    }),
-                    H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                    H('div', { className: 'toggle-copy' },
-                      H('div', { style: { fontWeight: 700 } }, 'Auto Nearby'),
-                      H('div', { className: 'muted', style: { fontSize: 12 } }, 'auto-list extra option')
-                    ),
-                    H('button', {
-                      type: 'button',
-                      onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHelpModal('nearby'); },
-                      title: 'Nearby auto-post info',
-                      style: {
-                        marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                        borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                      }
-                    }, '?')
-                  )
-                )
-              )
-          ),
-          document.body
-        ) : null),
+        H(ProfileSettingsModal, {
+          open: settingsOpen,
+          onClose: handleCloseSettings,
+          onRequestHelp: setHelpModal,
+          autoListEnabled,
+          setAutoListEnabled,
+          autoInquiryEnabled,
+          setAutoInquiryEnabled,
+          aiDescriptionEnabled,
+          setAiDescriptionEnabled,
+          autoPostNearbyEnabled,
+          setAutoPostNearbyEnabled,
+          isMobile
+        }),
 
         H(ListingModal, {
           open: !!profileSelected,
