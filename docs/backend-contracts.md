@@ -12,15 +12,33 @@ This document captures the server-side API surface that both the web client and 
 
 ### Register `POST /api/register`
 
-* **Body** – `{ username, email, password }` (username 3–32 chars, password ≥6 chars, email valid format). Older clients may still post `name`; the validator normalises it to `username`.
-* **Response** – User record plus session token: `{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta }`. `push_meta` advertises push subscription availability and the VAPID key when configured.
-* **Notes** – Registers automatically log the new user in by setting the JWT cookie and returning the token in the response payload. Schema validation guards missing/short credentials and ensures consistent casing.
+* **Body** – `{ username, email, password, phone }` (username 3–32 chars, password ≥6 chars, phone 10–15 digits with optional leading `+`). Older clients may still post `name`; the validator normalises it to `username`.
+* **Response** – `202 Accepted` with `{ user_id, verification_required: true }`.
+* **Notes** – Registration triggers a six-digit SMS code and marks the account as `pending_verification`. Clients must call the verification endpoint before the user receives a session cookie.
+
+### Verify Registration `POST /api/register/verify`
+
+* **Body** – `{ email, code }` where `code` is the six-digit SMS token.
+* **Response** – Authenticated user payload identical to the login response (`{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta }`).
+* **Errors** – `400` for invalid or expired codes, `403 account_banned`, `404 user_not_found`.
 
 ### Login `POST /api/login`
 
 * **Body** – `{ email, password }` (same formatting rules as register).
 * **Response** – Same payload shape as registration with `last_login_at` reflecting the latest login timestamp.
-* **Errors** – `401` for invalid credentials, `403` for banned accounts. Validation errors land as `400 invalid_request` with per-field issues.
+* **Errors** – `401` for invalid credentials, `403` for banned accounts, and `403 phone_unverified` when verification is still pending. Validation errors land as `400 invalid_request` with per-field issues.
+
+### Password Reset `POST /api/password/reset/request`
+
+* **Body** – `{ email }`.
+* **Response** – `{ ok: true }` regardless of whether the email exists (to avoid disclosure).
+* **Behaviour** – Generates a one-hour reset token, stores its hash on the user record, and sends the plaintext token via the configured support email transport.
+
+### Password Reset Confirm `POST /api/password/reset/confirm`
+
+* **Body** – `{ email, token, password }`.
+* **Response** – `{ ok: true }` once the password is updated and the token cleared.
+* **Errors** – `400 invalid_token` for unknown tokens, `400 token_expired` when the stored token has lapsed, `500 reset_failed` for unexpected errors.
 
 ### Session Management
 

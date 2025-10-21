@@ -66,10 +66,16 @@ const {
   validateCreateListingRequest,
   validateUpdateListingRequest,
   validateSendMessageRequest,
+  validateVerifyPhoneRequest,
+  validatePasswordResetRequest,
+  validatePasswordResetConfirmRequest,
   validateAuthResponse,
   validateListingResponse,
   validateMessageEnvelopeResponse
 } = require('./contracts/http-schemas');
+
+const smsService = require('./sms-service');
+const mailService = require('./mail-service');
 
 
 
@@ -717,6 +723,18 @@ async function initializeSchema() {
 
         username TEXT UNIQUE,
 
+        phone_number TEXT,
+
+        phone_verified INTEGER DEFAULT 0,
+
+        phone_verification_code_hash TEXT,
+
+        phone_verification_expires_at TEXT,
+
+        reset_token_hash TEXT,
+
+        reset_token_expires_at TEXT,
+
         is_admin INTEGER DEFAULT 0,
 
         paypal_email TEXT,
@@ -746,6 +764,18 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN status_updated_at TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN last_login_at TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN phone_number TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN phone_verified INTEGER DEFAULT 0"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN phone_verification_code_hash TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN phone_verification_expires_at TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_hash TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_expires_at TEXT"); } catch {}
 
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
@@ -1532,6 +1562,46 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+function hashValue(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex');
+}
+
+function safeCompare(expected, actual) {
+  if (typeof expected !== 'string' || typeof actual !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(actual);
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function generateVerificationCode() {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+async function issuePhoneVerification(user) {
+  if (!user || !user.id || !user.phone_number) return null;
+  const code = generateVerificationCode();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const hash = hashValue(code);
+  const nextStatus = user.account_status === 'banned' ? 'banned' : 'pending_verification';
+
+  await db.prepare(`
+    UPDATE users
+       SET phone_verified = 0,
+           phone_verification_code_hash = ?,
+           phone_verification_expires_at = ?,
+           account_status = ?
+     WHERE id = ?
+  `).run(hash, expiresAt, nextStatus, user.id);
+
+  await smsService.sendVerificationCode(user.phone_number, code);
+  return { code, expiresAt };
+}
 
 function normalizePushSubscriptionInput(raw) {
   let source = raw;
@@ -2813,45 +2883,35 @@ app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), a
 
   try {
 
-    const { username, email, password } = req.body;
-
-
+    const { username, email, password, phone } = req.body;
 
     const hash = await bcrypt.hash(password, 10);
 
     const createdAt = nowIso();
 
-    const info = await db.prepare('INSERT INTO users (email, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 0)')
+    const accountStatus = 'pending_verification';
 
-      .run(email, username, hash, createdAt);
-
-    
+    const info = await db.prepare(`
+      INSERT INTO users (email, username, password_hash, created_at, phone_number, account_status, is_admin)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `).run(email, username, hash, createdAt, phone, accountStatus);
 
     const user = {
-
       id: info.lastInsertRowid,
-
       email,
-
       username,
-
       is_admin: false,
-
-      account_status: 'active',
-
+      account_status: accountStatus,
       created_at: createdAt,
-
       status_note: null,
-
       status_updated_at: null,
-
-      last_login_at: null
-
+      last_login_at: null,
+      phone_number: phone
     };
 
-    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: false, account_status: 'active' });
+    await issuePhoneVerification(user);
 
-    return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
+    return res.status(202).json({ user_id: user.id, verification_required: true });
 
   } catch (e) {
 
@@ -2870,6 +2930,108 @@ app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), a
 });
 
 
+
+
+app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyPhoneRequest), async (req, res) => {
+
+  try {
+
+    const { email, code } = req.body;
+
+    const row = await db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+    if (!row) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    if (row.account_status === 'banned') {
+      clearAuthCookie(res);
+      return res.status(403).json({ error: 'account_banned' });
+    }
+
+    if (!row.phone_number) {
+      return res.status(400).json({ error: 'verification_unavailable' });
+    }
+
+    if (row.phone_verified && row.account_status !== 'pending_verification') {
+      const now = nowIso();
+      await db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, row.id);
+
+      const user = {
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        is_admin: !!row.is_admin,
+        account_status: row.account_status || 'active',
+        created_at: row.created_at,
+        status_note: row.status_note,
+        status_updated_at: row.status_updated_at,
+        last_login_at: now
+      };
+      const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: user.account_status });
+      return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
+    }
+
+    if (!row.phone_verification_code_hash || !row.phone_verification_expires_at) {
+      await issuePhoneVerification(row);
+      return res.status(400).json({ error: 'verification_not_requested' });
+    }
+
+    const expiresTs = Date.parse(row.phone_verification_expires_at);
+    if (!Number.isFinite(expiresTs) || expiresTs < Date.now()) {
+      await issuePhoneVerification(row);
+      return res.status(400).json({ error: 'verification_expired' });
+    }
+
+    const expectedHash = row.phone_verification_code_hash;
+    const actualHash = hashValue(code);
+
+    if (!safeCompare(expectedHash, actualHash)) {
+      return res.status(400).json({ error: 'invalid_code' });
+    }
+
+    const now = nowIso();
+    const accountStatus = row.account_status === 'banned' ? 'banned' : 'active';
+
+    await db.prepare(`
+      UPDATE users
+         SET phone_verified = 1,
+             phone_verification_code_hash = NULL,
+             phone_verification_expires_at = NULL,
+             account_status = ?,
+             last_login_at = ?
+       WHERE id = ?
+    `).run(accountStatus, now, row.id);
+
+    if (accountStatus === 'banned') {
+      clearAuthCookie(res);
+      return res.status(403).json({ error: 'account_banned' });
+    }
+
+    const user = {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      is_admin: !!row.is_admin,
+      account_status: accountStatus,
+      created_at: row.created_at,
+      status_note: row.status_note,
+      status_updated_at: row.status_updated_at,
+      last_login_at: now
+    };
+
+    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
+
+    return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
+
+  } catch (err) {
+
+    console.error('Verification error:', err);
+    return res.status(400).json({ error: 'invalid_code' });
+
+  }
+
+});
 
 app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (req, res) => {
 
@@ -2909,6 +3071,12 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
     }
 
+    if (row.phone_number) {
+      if (!row.phone_verified || accountStatus === 'pending_verification') {
+        await issuePhoneVerification(row);
+        return res.status(403).json({ error: 'phone_unverified' });
+      }
+    }
 
 
     const now = nowIso();
@@ -2962,6 +3130,79 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 });
 
 
+
+
+app.post('/api/password/reset/request', writeLimiter, validateBody(validatePasswordResetRequest), async (req, res) => {
+
+  const { email } = req.body;
+
+  try {
+    const row = await db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
+
+    if (row) {
+      const token = crypto.randomBytes(24).toString('hex');
+      const tokenHash = hashValue(token);
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      await db.prepare(`
+        UPDATE users
+           SET reset_token_hash = ?,
+               reset_token_expires_at = ?
+         WHERE id = ?
+      `).run(tokenHash, expiresAt, row.id);
+
+      await mailService.sendPasswordResetEmail(row.email, token);
+    }
+  } catch (err) {
+    console.error('Password reset request failed:', err);
+  }
+
+  return res.json({ ok: true });
+
+});
+
+app.post('/api/password/reset/confirm', writeLimiter, validateBody(validatePasswordResetConfirmRequest), async (req, res) => {
+
+  const { email, token, password } = req.body;
+
+  try {
+    const row = await db.prepare(`
+      SELECT id, reset_token_hash, reset_token_expires_at
+      FROM users
+      WHERE email = ?
+    `).get(email);
+
+    if (!row || !row.reset_token_hash) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
+    const expiresTs = Date.parse(row.reset_token_expires_at || '');
+    if (!Number.isFinite(expiresTs) || expiresTs < Date.now()) {
+      await db.prepare('UPDATE users SET reset_token_hash = NULL, reset_token_expires_at = NULL WHERE id = ?').run(row.id);
+      return res.status(400).json({ error: 'token_expired' });
+    }
+
+    if (!safeCompare(row.reset_token_hash, hashValue(token))) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
+    const newHash = await bcrypt.hash(password, 10);
+
+    await db.prepare(`
+      UPDATE users
+         SET password_hash = ?,
+             reset_token_hash = NULL,
+             reset_token_expires_at = NULL
+       WHERE id = ?
+    `).run(newHash, row.id);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Password reset confirm failed:', err);
+    return res.status(500).json({ error: 'reset_failed' });
+  }
+
+});
 
 app.post('/api/logout', (_req, res) => {
 
@@ -7696,6 +7937,8 @@ if (IS_TEST) {
 
       }
 
+      if (smsService.__reset) smsService.__reset();
+      if (mailService.__reset) mailService.__reset();
       invalidateNearbyCache();
 
       res.json({ ok: true });
