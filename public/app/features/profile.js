@@ -134,8 +134,6 @@
               onClick: onClose,
               title: 'Close settings'
             }, 'x'),
-            H('h2', { style: { margin: '0 0 12px', fontSize: 24 } }, 'Profile settings'),
-            H('p', { className: 'muted', style: { margin: '0 0 16px', fontSize: 14 } }, 'Manage automation and AI preferences.'),
             H('div', { style: { display: 'grid', gap: 12 } },
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
