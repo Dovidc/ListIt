@@ -247,7 +247,6 @@
       isMobile,
       user,
       items,
-      onNewListing,
       onEdit,
       onDelete,
       onLogout,
@@ -294,6 +293,18 @@
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
 
+      const visuallyHidden = {
+        position: 'absolute',
+        width: 1,
+        height: 1,
+        padding: 0,
+        margin: -1,
+        overflow: 'hidden',
+        clip: 'rect(0, 0, 0, 0)',
+        whiteSpace: 'nowrap',
+        border: 0
+      };
+
       async function savePaypal() {
         const r = await api.updatePaypalEmail((paypalEmail || '').trim());
         if (r?.error) { alert(r.error); return; }
@@ -320,7 +331,7 @@
               H('div', { style: { fontWeight: 800, fontSize: 18 } }, user.username ? `@${user.username}` : user.email),
               H('div', { className: 'muted' }, 'Your account')
             ),
-            H('div', { className: 'row', style: { gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
               H('button', {
                 className: 'btn',
                 type: 'button',
@@ -329,23 +340,32 @@
                 style: {
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 12px'
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  padding: 0
                 }
               },
                 H('span', { 'aria-hidden': true, style: { fontSize: 18 } }, '⚙️'),
-                H('span', null, 'Settings')
+                H('span', { style: visuallyHidden }, 'Open profile settings')
               ),
-              H('button', {
-                className: 'btn primary',
-                type: 'button',
-                onClick: onNewListing
-              }, 'New listing'),
               H('button', {
                 className: 'btn',
                 type: 'button',
-                onClick: onLogout
-              }, 'Log out')
+                onClick: onLogout,
+                title: 'Log out',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  padding: 0
+                }
+              },
+                H('span', { 'aria-hidden': true, style: { fontSize: 18 } }, '🚪'),
+                H('span', { style: visuallyHidden }, 'Log out')
+              )
             )
           ),
 
