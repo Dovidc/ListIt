@@ -3140,8 +3140,9 @@ app.post('/api/password/reset/request', writeLimiter, validateBody(validatePassw
     const row = await db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
 
     if (row) {
-      const token = crypto.randomBytes(24).toString('hex');
-      const tokenHash = hashValue(token);
+      const resetDigits = generateVerificationCode();
+      const token = `${resetDigits.slice(0, 3)} ${resetDigits.slice(3)}`;
+      const tokenHash = hashValue(resetDigits);
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
       await db.prepare(`
@@ -3164,6 +3165,7 @@ app.post('/api/password/reset/request', writeLimiter, validateBody(validatePassw
 app.post('/api/password/reset/confirm', writeLimiter, validateBody(validatePasswordResetConfirmRequest), async (req, res) => {
 
   const { email, token, password } = req.body;
+  const normalizedToken = String(token ?? '').replace(/\D/g, '');
 
   try {
     const row = await db.prepare(`
@@ -3182,7 +3184,11 @@ app.post('/api/password/reset/confirm', writeLimiter, validateBody(validatePassw
       return res.status(400).json({ error: 'token_expired' });
     }
 
-    if (!safeCompare(row.reset_token_hash, hashValue(token))) {
+    if (normalizedToken.length !== 6) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
+    if (!safeCompare(row.reset_token_hash, hashValue(normalizedToken))) {
       return res.status(400).json({ error: 'invalid_token' });
     }
 
