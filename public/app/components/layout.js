@@ -94,13 +94,8 @@
         return H('header', null,
           H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
             H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
-              H('div', { className: 'brand-badge' },
-                H('div', { className: 'brand-ring' }),
-                H('div', { className: 'brand-initials' }, 'CL')
-              ),
               H('div', { className: 'brand-copy' },
-                H('div', { className: 'brand-title' }, 'Creegslist'),
-                H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+                H('div', { className: 'brand-title' }, 'Trovlr')
               )
             ),
             H('div', { className: 'row', style: { gap: 8 } },
@@ -167,13 +162,8 @@
       return H('header', null,
         H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
           H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
-            H('div', { className: 'brand-badge' },
-              H('div', { className: 'brand-ring' }),
-              H('div', { className: 'brand-initials' }, 'CL')
-            ),
             H('div', { className: 'brand-copy' },
-              H('div', { className: 'brand-title' }, 'Creegslist'),
-              H('div', { className: 'brand-tagline' }, 'Sell on the spot')
+              H('div', { className: 'brand-title' }, 'Trovlr')
             )
           ),
           H('nav', { className: 'row' },
