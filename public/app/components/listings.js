@@ -283,8 +283,8 @@
     }
 
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob }) {
-      const [files, setFiles] = useState([]); // Files to upload to S3
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+      const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
 
@@ -320,6 +320,15 @@
       const [showInquiryHelp, setShowInquiryHelp] = useState(false);
 
       const isMobile = isMobileDevice();
+
+      useEffect(() => {
+        if (!Array.isArray(initialFiles)) return;
+        if (initialFiles.length === 0) {
+          setFiles([]);
+          return;
+        }
+        setFiles(initialFiles.slice());
+      }, [initialFiles]);
 
       // Load current images (URLs/base64; new uploads use files[])
       useEffect(() => {
@@ -776,13 +785,24 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob }) {
-      const [files, setFiles] = useState([]);
+    function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+      const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
       const filePreviews = useFilePreviews(files);
 
       const fileRef = useRef();
+
+      useEffect(() => {
+        if (!Array.isArray(initialFiles)) return;
+        if (initialFiles.length === 0) {
+          setFiles([]);
+          if (fileRef.current) fileRef.current.value = '';
+          return;
+        }
+        setFiles(initialFiles.slice());
+        if (fileRef.current) fileRef.current.value = '';
+      }, [initialFiles]);
 
       function pick(e){
         const MAX_EACH_MB = 20;

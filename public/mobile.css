@@ -138,6 +138,11 @@ header nav.row .btn.primary .nav-unread-dot {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
 }
 
+/* Bottom dashboard replaces header navigation on phones */
+header nav.row {
+  display: none !important;
+}
+
 /* 2) Auth area buttons (right side, includes Log out) - lighter pills */
 header .container > .row:last-child .btn {
   width: auto !important;
@@ -198,6 +203,182 @@ select { width: auto; }
 
 /* Forms */
 textarea { min-height: 100px; }
+
+/* Creation shortcuts */
+.mobile-create-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  margin-bottom: 18px;
+}
+
+.mobile-create-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  background: #e2e8f0;
+  border-radius: 999px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.mobile-create-toggle-track {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mobile-create-toggle-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transition: transform 180ms ease;
+}
+
+.mobile-create-toggle-btn {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 10px 0;
+}
+
+.mobile-create-toggle-btn.is-active {
+  color: #ffffff;
+}
+
+.mobile-create-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mobile-create-icon {
+  flex: 1;
+  border: none;
+  background: #f1f5f9;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  color: #1d4ed8;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+  transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.mobile-create-icon:hover {
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.24);
+}
+
+.mobile-create-icon:active {
+  transform: translateY(1px);
+}
+
+.mobile-create-icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-create-icon-shell svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Bottom navigation */
+.mobile-dashboard {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.18);
+  z-index: 1200;
+}
+
+.mobile-dashboard__button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  position: relative;
+}
+
+.mobile-dashboard__button.is-active {
+  color: #1d4ed8;
+}
+
+.mobile-dashboard__icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-dashboard__button.is-active .mobile-dashboard__icon {
+  background: rgba(37, 99, 235, 0.22);
+}
+
+.mobile-dashboard__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+
+.mobile-dashboard__badge {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(16px);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.mobile-dashboard__button.is-active .mobile-dashboard__badge {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.mobile-dashboard__label {
+  line-height: 1.1;
+}
+
+main.container {
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+}
 label { font-weight: 600; }
 
 /* Keep content visible above mobile keyboards */

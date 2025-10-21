@@ -172,7 +172,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -249,7 +249,8 @@
               backgroundQueueEnabled,
               enqueueListingJob,
               showTags,
-              setShowTags
+              setShowTags,
+              initialFiles
             }) : H(ListingForm, {
               draft,
               onCancel: onClose,
@@ -259,7 +260,8 @@
               autoPostNearbyEnabled,
               autoInquiryEnabled,
               backgroundQueueEnabled,
-              enqueueListingJob
+              enqueueListingJob,
+              initialFiles
             })
           )
         )
@@ -268,9 +270,9 @@
       return ReactDOM.createPortal(modal, document.body);
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags, initialFiles = [] }) {
       const fileRef = useRef();
-      const [files, setFiles] = useState([]);
+      const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [existingUrls, setExistingUrls] = useState([]);
       const [originalUrls, setOriginalUrls] = useState([]);
       const filePreviews = useFilePreviews(files);
@@ -302,6 +304,17 @@
         return !!autoListEnabled;
       });
       const [showInquiryHelp, setShowInquiryHelp] = useState(false);
+
+      useEffect(() => {
+        if (!Array.isArray(initialFiles)) return;
+        if (initialFiles.length === 0) {
+          setFiles([]);
+          if (fileRef.current) fileRef.current.value = '';
+          return;
+        }
+        setFiles(initialFiles.slice());
+        if (fileRef.current) fileRef.current.value = '';
+      }, [initialFiles]);
 
       function pickFiles(e) {
         const MAX_MB = 20;
