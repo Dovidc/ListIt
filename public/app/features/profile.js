@@ -56,6 +56,52 @@
 
     const navBridge = appNav || { setUser: () => {} };
 
+    const iconButtonStyle = {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 36,
+      height: 36,
+      padding: 0
+    };
+
+    function SettingsIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: 20,
+        height: 20,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.7,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+      H('path', {
+        d: 'M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.17a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.17a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33h.17A1.7 1.7 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.17a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82v.17a1.7 1.7 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.17a1.7 1.7 0 0 0-1.51 1z'
+      }),
+      H('circle', { cx: 12, cy: 12, r: 3.2 }));
+    }
+
+    function LogoutIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: 20,
+        height: 20,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.8,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+      H('path', { d: 'M14 5h5a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5' }),
+      H('polyline', { points: '9 8 4 12 9 16' }),
+      H('line', { x1: 4, y1: 12, x2: 16, y2: 12 }));
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -337,16 +383,9 @@
                 type: 'button',
                 onClick: handleOpenSettings,
                 title: 'Profile settings',
-                style: {
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 36,
-                  height: 36,
-                  padding: 0
-                }
+                style: iconButtonStyle
               },
-                H('span', { 'aria-hidden': true, style: { fontSize: 18 } }, '⚙️'),
+                H(SettingsIcon, null),
                 H('span', { style: visuallyHidden }, 'Open profile settings')
               ),
               H('button', {
@@ -354,16 +393,9 @@
                 type: 'button',
                 onClick: onLogout,
                 title: 'Log out',
-                style: {
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 36,
-                  height: 36,
-                  padding: 0
-                }
+                style: iconButtonStyle
               },
-                H('span', { 'aria-hidden': true, style: { fontSize: 18 } }, '🚪'),
+                H(LogoutIcon, null),
                 H('span', { style: visuallyHidden }, 'Log out')
               )
             )
