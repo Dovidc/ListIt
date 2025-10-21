@@ -14,6 +14,81 @@
       );
     }
 
+    const navIcons = {
+      browse: () => H('svg', {
+        viewBox: '0 0 24 24',
+        className: 'nav-icon-svg',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.7,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      },
+        H('rect', { x: 4, y: 4, width: 6.5, height: 6.5, rx: 1.6 }),
+        H('rect', { x: 13.5, y: 4, width: 6.5, height: 6.5, rx: 1.6 }),
+        H('rect', { x: 4, y: 13.5, width: 6.5, height: 6.5, rx: 1.6 }),
+        H('rect', { x: 13.5, y: 13.5, width: 6.5, height: 6.5, rx: 1.6 })
+      ),
+      nearby: () => H('svg', {
+        viewBox: '0 0 24 24',
+        className: 'nav-icon-svg',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.7,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      },
+        H('path', { d: 'M12 21s-6-5.1-6-10.2C6 6.9 8.7 4 12 4s6 2.9 6 6.8C18 15.9 12 21 12 21z' }),
+        H('circle', { cx: 12, cy: 10.5, r: 2.4 })
+      ),
+      messages: () => H('svg', {
+        viewBox: '0 0 24 24',
+        className: 'nav-icon-svg',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.7,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      },
+        H('path', { d: 'M5.4 5h13.2A1.4 1.4 0 0 1 20 6.4v7.8a1.4 1.4 0 0 1-1.4 1.4H9.8L6 19.2V15.6H5.4A1.4 1.4 0 0 1 4 14.2V6.4A1.4 1.4 0 0 1 5.4 5z' })
+      ),
+      profile: () => H('svg', {
+        viewBox: '0 0 24 24',
+        className: 'nav-icon-svg',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.7,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      },
+        H('circle', { cx: 12, cy: 9, r: 3.2 }),
+        H('path', { d: 'M6.5 18.5a6 6 0 0 1 11 0' })
+      ),
+      admin: () => H('svg', {
+        viewBox: '0 0 24 24',
+        className: 'nav-icon-svg',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.7,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      },
+        H('path', { d: 'M12 4.5 19 7v5c0 4.2-3 7.8-7 8.5-4-.7-7-4.3-7-8.5V7l7-2.5z' }),
+        H('path', { d: 'M12 10.5v3' }),
+        H('path', { d: 'M12 16.5h.01' })
+      )
+    };
+
     function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, isMobile, onAuthClick, hasAdminUnread }) {
       if (!user) {
         return H('header', null,
@@ -37,6 +112,34 @@
       }
 
       const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+      const profileButtonLabel = isMobile ? 'Profile' : profileLabel;
+
+      function navButton(key, label, onClick, extraChild, extraProps) {
+        const iconFactory = navIcons[key];
+        const children = [];
+        if (isMobile && typeof iconFactory === 'function') {
+          children.push(
+            H('span', { className: 'nav-icon', 'aria-hidden': 'true' }, iconFactory())
+          );
+          children.push(H('span', { className: 'nav-label' }, label));
+        } else {
+          children.push(label);
+        }
+        if (extraChild) {
+          children.push(extraChild);
+        }
+
+        const mergedProps = Object.assign({}, extraProps || {}, {
+          className: ['btn', active === key ? 'primary' : '', extraProps && extraProps.className || ''].filter(Boolean).join(' '),
+          onClick
+        });
+
+        if (!mergedProps.type) {
+          mergedProps.type = 'button';
+        }
+
+        return H('button', mergedProps, ...children);
+      }
 
       const authArea = user
         ? H('div', { className: 'row', style: { gap: 8 } },
@@ -53,16 +156,12 @@
 
       const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
 
-      const messagesBtn = H('button', {
-        className: `btn ${active==='messages'?'primary':''}`,
-        style: { position: 'relative' },
-        onClick: () => {
-          if (!user) { alert('Log in to view messages.'); return; }
-          onNav('messages');
-        }
-      }, 'Messages',
-        (unreadCount > 0) &&
-          H('span', { style: { position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: 10, background: unreadDotColor } })
+      const messagesBtn = navButton('messages', 'Messages', () => {
+        if (!user) { alert('Log in to view messages.'); return; }
+        onNav('messages');
+      },
+        (unreadCount > 0) && H('span', { className: 'nav-unread-dot', style: { background: unreadDotColor } }),
+        { style: { position: 'relative' } }
       );
 
       return H('header', null,
@@ -78,11 +177,11 @@
             )
           ),
           H('nav', { className: 'row' },
-            H('button', { className: `btn ${active==='browse'?'primary':''}`, onClick: () => onNav('browse') }, 'Listings'),
-            isMobile && H('button', { className: `btn ${active==='nearby'?'primary':''}`, onClick: () => onNav('nearby') }, 'Nearby'),
+            navButton('browse', 'Listings', () => onNav('browse')),
+            isMobile && navButton('nearby', 'Nearby', () => onNav('nearby')),
             messagesBtn,
-            H('button', { className: `btn ${active==='profile'?'primary':''}`, onClick: () => onNav('profile'), title: 'Profile & settings' }, profileLabel),
-            user?.is_admin && H('button', { className: `btn ${active==='admin'?'primary':''}`, onClick: () => onNav('admin') }, 'Admin')
+            navButton('profile', profileButtonLabel, () => onNav('profile'), null, { title: 'Profile & settings' }),
+            user?.is_admin && navButton('admin', 'Admin', () => onNav('admin'))
           ),
           authArea
         )

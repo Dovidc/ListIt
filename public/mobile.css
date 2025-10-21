@@ -50,29 +50,98 @@ input, textarea, select, .btn {
    HEADER: compact controls
    ========================= */
 
-/* 1) Ensure header buttons DON'T stretch full width */
-header nav .btn,
-header .container > .row:last-child .btn {
-  width: auto !important;            /* override width:100% */
-  display: inline-flex;
+/* 1) Keep nav inline with modern icon pills */
+header nav.row {
+  width: 100%;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+  margin: 0 -4px;
+  scrollbar-width: none;
 }
 
-/* 2) Tabs (Listings / Nearby / Messages) - smaller pills */
-header nav .btn {
+header nav.row::-webkit-scrollbar {
+  display: none;
+}
+
+header nav.row .btn {
+  width: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
   font-size: 14px !important;
-  padding: 8px 14px !important;
-  min-height: 34px !important;
+  font-weight: 600;
+  padding: 8px 16px !important;
+  min-height: 40px !important;
   border-radius: 999px !important;
+  background: #ffffff;
+  color: #0f172a;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-/* Optional: add a touch more glow for the active tab */
-header nav .btn.primary {
+header nav.row .btn:not(.primary):hover {
+  transform: translateY(-1px);
+}
+
+header nav.row .btn:active {
+  transform: translateY(1px);
+}
+
+header nav.row .btn.primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
   box-shadow: 0 18px 36px rgba(37, 99, 235, 0.32);
 }
 
-/* 3) Auth area buttons (right side, includes Log out) - lighter pills */
+header nav.row .btn .nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: inherit;
+  flex: 0 0 auto;
+}
+
+header nav.row .btn.primary .nav-icon {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+header nav.row .btn .nav-icon-svg {
+  width: 16px;
+  height: 16px;
+}
+
+header nav.row .btn .nav-label {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+header nav.row .btn .nav-unread-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+header nav.row .btn.primary .nav-unread-dot {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+/* 2) Auth area buttons (right side, includes Log out) - lighter pills */
 header .container > .row:last-child .btn {
+  width: auto !important;
+  display: inline-flex;
   font-size: 13px !important;
   padding: 8px 12px !important;
   min-height: 34px !important;
@@ -80,7 +149,7 @@ header .container > .row:last-child .btn {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
-/* 4) Make Log out the SMALLEST (last button in that group) */
+/* 3) Make Log out the SMALLEST (last button in that group) */
 header .container > .row:last-child .btn:last-child {
   font-size: 12px !important;
   padding: 6px 12px !important;
