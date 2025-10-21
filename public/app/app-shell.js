@@ -32,7 +32,8 @@
     const {
       useState,
       useEffect,
-      useMemo
+      useMemo,
+      useRef
     } = React;
 
     const {
@@ -158,6 +159,11 @@
         isMobile
       } = appView;
       const [showForm, setShowForm] = useState(false);
+      const [mobileCreateMode, setMobileCreateMode] = useState('list');
+      const [initialListingFiles, setInitialListingFiles] = useState([]);
+      const [initialMassListFiles, setInitialMassListFiles] = useState([]);
+      const galleryInputRef = useRef(null);
+      const cameraInputRef = useRef(null);
       const {
         autoListEnabled,
         setAutoListEnabled,
@@ -292,6 +298,159 @@
         setTab('browse');
       }
 
+      function ensureCanCreate() {
+        if (!user) {
+          alert('Log in to create a listing.');
+          handleAuthClick('login');
+          return false;
+        }
+        if (user.account_status === 'locked') {
+          showLockedBanner();
+          return false;
+        }
+        return true;
+      }
+
+      function handleMobileCaptureClick(kind) {
+        if (!isMobile) return;
+        if (!ensureCanCreate()) return;
+        const ref = kind === 'camera' ? cameraInputRef.current : galleryInputRef.current;
+        if (ref) {
+          ref.click();
+        }
+      }
+
+      function normalizeFiles(fileList) {
+        const MAX_MB = 20;
+        const arr = Array.from(fileList || []);
+        const valid = [];
+        for (const file of arr) {
+          if (!file?.type?.startsWith?.('image/')) {
+            continue;
+          }
+          if (file.size > MAX_MB * 1024 * 1024) {
+            alert(`Each image must be under ${MAX_MB}MB.`);
+            continue;
+          }
+          valid.push(file);
+        }
+        return valid;
+      }
+
+      function handleMobileFilesSelected(fileList) {
+        if (!fileList || fileList.length === 0) {
+          return;
+        }
+        const files = normalizeFiles(fileList);
+        if (!files.length) {
+          return;
+        }
+        if (mobileCreateMode === 'masslist') {
+          setInitialMassListFiles(files);
+          setShowMassList(true);
+          return;
+        }
+        setEditing(null);
+        setInitialListingFiles(files);
+        setShowForm(true);
+      }
+
+      function handleGalleryChange(evt) {
+        handleMobileFilesSelected(evt?.target?.files);
+        if (evt?.target) {
+          evt.target.value = '';
+        }
+      }
+
+      function handleCameraChange(evt) {
+        handleMobileFilesSelected(evt?.target?.files);
+        if (evt?.target) {
+          evt.target.value = '';
+        }
+      }
+
+      function handleMobileNav(target) {
+        if (target === 'messages' && !user) {
+          alert('Log in to view messages.');
+          handleAuthClick('login');
+          return;
+        }
+        if (target === 'profile' && !user) {
+          handleAuthClick('login');
+          return;
+        }
+        handleTabChange(target);
+      }
+
+      const mobileNavIcons = {
+        browse: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('rect', { x: 3.5, y: 4, width: 7, height: 6.5, rx: 1.6 }),
+          H('rect', { x: 13.5, y: 4, width: 7, height: 6.5, rx: 1.6 }),
+          H('rect', { x: 3.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 }),
+          H('rect', { x: 13.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 })
+        ),
+        messages: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('path', { d: 'M5 5.8h14a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2H10l-3.6 2.6V15.4H5a2 2 0 0 1-2-2V7.8a2 2 0 0 1 2-2z' })
+        ),
+        profile: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('circle', { cx: 12, cy: 9, r: 3.2 }),
+          H('path', { d: 'M6.2 18.4a6.3 6.3 0 0 1 11.6 0' })
+        )
+      };
+
+      const mobileCreateIcons = {
+        gallery: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 3 }),
+          H('circle', { cx: 9, cy: 10, r: 2.2 }),
+          H('path', { d: 'M21 16l-4.8-4.8-3.8 3.9-2.2-2.2L3 18' })
+        ),
+        camera: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('path', { d: 'M5.5 7h3l1.4-2.2h4.2L15.5 7H19a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z' }),
+          H('circle', { cx: 12, cy: 13, r: 3.5 })
+        )
+      };
+
+      const mobileNavLabels = {
+        browse: 'Home',
+        messages: 'Messages',
+        profile: 'Profile'
+      };
+
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
           H(React.Fragment, null,
@@ -349,7 +508,7 @@
                   H('option', { value:'city' }, 'City (A -> Z)')
                 )
               ),
-              H('div', { className:'row', style:{ gap:8 } },
+              !isMobile && H('div', { className:'row', style:{ gap:8 } },
                 H('button', { className:'btn primary', onClick:()=>{
                   if(!user){ alert('Log in to create a listing.'); return; }
                   if(user.account_status === 'locked'){ showLockedBanner(); return; }
@@ -362,6 +521,69 @@
                   setShowMassList(true);
                 } }, 'MassList')
               )
+            ),
+
+            isMobile && H('section', {
+              className: 'mobile-create-card',
+              role: 'region',
+              'aria-label': 'Create listings'
+            },
+              H('div', { className: 'mobile-create-toggle' },
+                H('div', { className: 'mobile-create-toggle-track' }),
+                H('div', {
+                  className: 'mobile-create-toggle-thumb',
+                  style: { transform: mobileCreateMode === 'masslist' ? 'translateX(100%)' : 'translateX(0%)' }
+                }),
+                H('button', {
+                  type: 'button',
+                  className: ['mobile-create-toggle-btn', mobileCreateMode === 'list' ? 'is-active' : ''].filter(Boolean).join(' '),
+                  onClick: () => setMobileCreateMode('list'),
+                  'aria-pressed': mobileCreateMode === 'list'
+                }, 'List'),
+                H('button', {
+                  type: 'button',
+                  className: ['mobile-create-toggle-btn', mobileCreateMode === 'masslist' ? 'is-active' : ''].filter(Boolean).join(' '),
+                  onClick: () => setMobileCreateMode('masslist'),
+                  'aria-pressed': mobileCreateMode === 'masslist'
+                }, 'Masslist')
+              ),
+              H('div', { className: 'mobile-create-actions' },
+                H('button', {
+                  type: 'button',
+                  className: 'mobile-create-icon',
+                  onClick: () => handleMobileCaptureClick('gallery'),
+                  'aria-label': mobileCreateMode === 'masslist' ? 'Select gallery photos for Masslist' : 'Select gallery photos for a listing'
+                },
+                  H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.gallery())
+                ),
+                H('button', {
+                  type: 'button',
+                  className: 'mobile-create-icon',
+                  onClick: () => handleMobileCaptureClick('camera'),
+                  'aria-label': mobileCreateMode === 'masslist' ? 'Use camera for Masslist' : 'Use camera for a listing'
+                },
+                  H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.camera())
+                )
+              ),
+              H('input', {
+                key: `gallery-${mobileCreateMode}`,
+                ref: galleryInputRef,
+                type: 'file',
+                accept: 'image/*',
+                multiple: mobileCreateMode === 'masslist',
+                style: { display: 'none' },
+                onChange: handleGalleryChange
+              }),
+              H('input', {
+                key: `camera-${mobileCreateMode}`,
+                ref: cameraInputRef,
+                type: 'file',
+                accept: 'image/*',
+                multiple: mobileCreateMode === 'masslist',
+                capture: 'environment',
+                style: { display: 'none' },
+                onChange: handleCameraChange
+              })
             ),
 
             H(ListingsGrid, {
@@ -491,8 +713,8 @@
         ),
 
         showMassList && H(MassListModal, {
-          onClose: () => setShowMassList(false),
-          onDone: () => {},
+          onClose: () => { setShowMassList(false); setInitialMassListFiles([]); },
+          onDone: () => { setInitialMassListFiles([]); },
           reloadAll: refreshListings,
           reloadMine: reloadMineOnly,
           user,
@@ -501,20 +723,22 @@
           aiDescriptionEnabled,
           autoInquiryEnabled,
           backgroundQueueEnabled,
-          enqueueListingJob
+          enqueueListingJob,
+          initialFiles: initialMassListFiles
         }),
 
         showForm && H(ListingFormModal, {
           isOpen: showForm,
           draft: editing,
-          onClose: () => { setShowForm(false); setEditing(null); },
-          onSaved: async () => { await refreshListings({ preserveExisting: true }); },
+          onClose: () => { setShowForm(false); setEditing(null); setInitialListingFiles([]); },
+          onSaved: async () => { await refreshListings({ preserveExisting: true }); setInitialListingFiles([]); },
           autoListEnabled,
           aiDescriptionEnabled,
           autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
           autoInquiryEnabled,
           backgroundQueueEnabled,
-          enqueueListingJob
+          enqueueListingJob,
+          initialFiles: initialListingFiles
         }),
 
         H(AuthModal, {
@@ -546,6 +770,33 @@
             H('div', { className: 'message-toast__title' }, toast.title),
             H('div', { className: 'message-toast__preview' }, toast.preview)
           ))
+        ),
+
+        isMobile && H('nav', {
+          className: 'mobile-dashboard',
+          role: 'navigation',
+          'aria-label': 'Primary'
+        },
+          ['browse', 'messages', 'profile'].map((key) => {
+            const label = mobileNavLabels[key];
+            const icon = mobileNavIcons[key];
+            const isActive = tab === key || (key === 'browse' && tab === 'browse');
+            return H('button', {
+              key,
+              type: 'button',
+              className: ['mobile-dashboard__button', isActive ? 'is-active' : ''].filter(Boolean).join(' '),
+              onClick: () => handleMobileNav(key),
+              'aria-current': isActive ? 'page' : undefined,
+              'aria-label': label
+            },
+              H('span', { className: 'mobile-dashboard__icon', 'aria-hidden': 'true' }, icon?.()),
+              H('span', { className: 'mobile-dashboard__label' }, label),
+              (key === 'messages' && unreadCount > 0) && H('span', {
+                className: 'mobile-dashboard__badge',
+                'aria-hidden': 'true'
+              })
+            );
+          })
         )
           )
         )
