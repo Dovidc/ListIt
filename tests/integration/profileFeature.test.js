@@ -13,12 +13,14 @@ const profileFeaturePath = path.join(
 function resetGlobals() {
   delete global.window;
   delete global.alert;
+  delete global.document;
 }
 
 function loadFactory() {
   jest.resetModules();
   resetGlobals();
   global.window = { ListItApp: { features: {} } };
+  global.document = { body: {} };
   global.alert = jest.fn();
   // eslint-disable-next-line global-require, import/no-dynamic-require
   require(profileFeaturePath);
@@ -68,7 +70,15 @@ function collectNodes(node, nodes = []) {
   }
 
   nodes.push(node);
-  const { children } = node.props || {};
+  const props = node.props || {};
+  const { children } = props;
+
+  if (typeof node.type === 'function') {
+    const rendered = node.type(props);
+    if (rendered) {
+      collectNodes(rendered, nodes);
+    }
+  }
 
   if (Array.isArray(children)) {
     children.forEach((child) => collectNodes(child, nodes));
@@ -91,18 +101,21 @@ describe('profile feature integration', () => {
     expect(() => createProfileFeature({})).toThrow('Profile feature requires React.');
 
     const React = { createElement: () => {} };
-    expect(() => createProfileFeature({ React })).toThrow('Profile feature requires an API client.');
+    expect(() => createProfileFeature({ React })).toThrow('Profile feature requires ReactDOM.');
+
+    const ReactDOM = { createPortal: jest.fn() };
+    expect(() => createProfileFeature({ React, ReactDOM })).toThrow('Profile feature requires an API client.');
 
     const api = {};
-    expect(() => createProfileFeature({ React, api })).toThrow('Profile feature requires asArray helper.');
+    expect(() => createProfileFeature({ React, ReactDOM, api })).toThrow('Profile feature requires asArray helper.');
 
     const helpers = { asArray: () => [] };
-    expect(() => createProfileFeature({ React, api, helpers })).toThrow('Profile feature requires ImageWithSkeleton component.');
+    expect(() => createProfileFeature({ React, ReactDOM, api, helpers })).toThrow('Profile feature requires ImageWithSkeleton component.');
   });
 
   test('ProfilePanel wires feature toggles, persistence, and listing actions', async () => {
     const createProfileFeature = loadFactory();
-    const { React, states } = createReactMocks([undefined, undefined, undefined, 'updated@example.com']);
+    const { React, states } = createReactMocks([undefined, undefined, true, undefined, 'updated@example.com']);
 
     const api = {
       updatePaypalEmail: jest.fn().mockResolvedValue({}),
@@ -120,7 +133,8 @@ describe('profile feature integration', () => {
     };
     const appNav = { setUser: jest.fn() };
 
-    const feature = createProfileFeature({ React, api, helpers, components, appNav });
+    const ReactDOM = { createPortal: jest.fn((node) => node) };
+    const feature = createProfileFeature({ React, ReactDOM, api, helpers, components, appNav });
     const { ProfilePanel } = feature;
 
     const props = {
@@ -206,7 +220,7 @@ describe('profile feature integration', () => {
 
   test('omits nearby auto-post toggle on desktop', () => {
     const createProfileFeature = loadFactory();
-    const { React } = createReactMocks();
+    const { React } = createReactMocks([undefined, undefined, true]);
 
     const api = {
       updatePaypalEmail: jest.fn().mockResolvedValue({}),
@@ -225,7 +239,8 @@ describe('profile feature integration', () => {
       ListingModal: jest.fn()
     };
 
-    const feature = createProfileFeature({ React, api, helpers, components, appNav: { setUser: jest.fn() } });
+    const ReactDOM = { createPortal: jest.fn((node) => node) };
+    const feature = createProfileFeature({ React, ReactDOM, api, helpers, components, appNav: { setUser: jest.fn() } });
     const { ProfilePanel } = feature;
 
     const props = {
