@@ -396,6 +396,17 @@
           H('rect', { x: 3.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 }),
           H('rect', { x: 13.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 })
         ),
+        nearby: () => H('svg', {
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        },
+          H('path', { d: 'M12 21s-6-5.1-6-10.2C6 6.9 8.7 4 12 4s6 2.9 6 6.8C18 15.9 12 21 12 21z' }),
+          H('circle', { cx: 12, cy: 10.5, r: 2.4 })
+        ),
         messages: () => H('svg', {
           viewBox: '0 0 24 24',
           fill: 'none',
@@ -447,6 +458,7 @@
 
       const mobileNavLabels = {
         browse: 'Home',
+        nearby: 'Nearby',
         messages: 'Messages',
         profile: 'Profile'
       };
@@ -777,7 +789,7 @@
           role: 'navigation',
           'aria-label': 'Primary'
         },
-          ['browse', 'messages', 'profile'].map((key) => {
+          ['browse', 'nearby', 'messages', 'profile'].map((key) => {
             const label = mobileNavLabels[key];
             const icon = mobileNavIcons[key];
             const isActive = tab === key || (key === 'browse' && tab === 'browse');
