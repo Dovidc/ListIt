@@ -65,9 +65,40 @@
       return '';
     };
 
+    const normalizeCityStateLabel = (value) => {
+      const raw = typeof value === 'string' ? value.trim() : '';
+      if (!raw) return '';
+
+      const throwawayPattern = /(^\d|#|\b(?:apt|apartment|suite|unit|floor|building|room)\b)/i;
+      const segments = raw.split(',').map((part) => part.trim()).filter(Boolean);
+      if (!segments.length) return '';
+
+      const filtered = [];
+      for (const segment of segments) {
+        if (!segment) continue;
+        if (!filtered.length && throwawayPattern.test(segment)) continue;
+        filtered.push(segment);
+      }
+
+      if (!filtered.length) return '';
+      if (filtered.length === 1) return filtered[0];
+
+      const city = filtered[0];
+      const stateCandidate = filtered[1];
+      const stateParts = stateCandidate.split(/\s+/).filter(Boolean);
+      while (stateParts.length > 1 && /[0-9]/.test(stateParts[stateParts.length - 1])) {
+        stateParts.pop();
+      }
+      let state = (stateParts.join(' ') || stateCandidate).trim();
+      if (/^[A-Za-z]{2}$/.test(state)) state = state.toUpperCase();
+
+      return [city, state].filter(Boolean).join(', ');
+    };
+
     const formatFallbackLocation = (item) => {
       const parts = [];
-      if (item?.location) parts.push(String(item.location));
+      const locationLabel = normalizeCityStateLabel(item?.location);
+      if (locationLabel) parts.push(locationLabel);
       if (item?.owner_username) parts.push(`Seller: ${item.owner_username}`);
       return parts.join(' • ');
     };
