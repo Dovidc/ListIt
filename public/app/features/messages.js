@@ -44,25 +44,50 @@
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    function PaypalPresetIcon({ size = 22, stroke = '#9ca3af', style, ...rest } = {}) {
+      return H('svg', Object.assign({
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke,
+        'stroke-width': 1.8,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true',
+        style
+      }, rest),
+      H('rect', { x: 3.2, y: 4.2, width: 17.6, height: 15.6, rx: 3.2, ry: 3.2 }),
+      H('circle', { cx: 12, cy: 12, r: 4.2 }),
+      H('path', { d: 'M12 9.2v5.6' }),
+      H('path', { d: 'M10.3 10.7c0-.9.7-1.6 1.6-1.6h.9a1.7 1.7 0 0 1 0 3.4h-1.4a1.7 1.7 0 0 0 0 3.4h1a1.7 1.7 0 0 0 1.7-1.3' }));
+    }
+
     function AttachButton({ onClick, title = 'Attach images', variant = 'library' }) {
-      const icon = variant === 'camera'
-        ? H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
-            H('rect', { x: 3, y: 6, width: 18, height: 13, rx: 3, stroke: '#9ca3af', 'stroke-width': 2 }),
-            H('path', { d: 'M9 6l1.5-2h3L15 6', stroke: '#9ca3af', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
-            H('circle', { cx: 12, cy: 12.5, r: 3, stroke: '#9ca3af', 'stroke-width': 2 })
-          )
-        : H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
-            H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
-            H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
-            H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-          );
+      let icon;
+      if (variant === 'camera') {
+        icon = H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+          H('rect', { x: 3, y: 6, width: 18, height: 13, rx: 3, stroke: '#9ca3af', 'stroke-width': 2 }),
+          H('path', { d: 'M9 6l1.5-2h3L15 6', stroke: '#9ca3af', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+          H('circle', { cx: 12, cy: 12.5, r: 3, stroke: '#9ca3af', 'stroke-width': 2 })
+        );
+      } else if (variant === 'paypal') {
+        icon = H(PaypalPresetIcon, { size: 22, stroke: '#9ca3af' });
+      } else {
+        icon = H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+          H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
+          H('circle', { cx: 9, cy: 10, r: 2, fill: '#9ca3af' }),
+          H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#9ca3af', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+        );
+      }
       return H('button', {
         className: 'icon-btn',
         type: 'button',
         onClick,
         title,
         'aria-label': title,
-        'data-testid': 'dm-attach',
+        'data-testid': variant === 'paypal' ? 'dm-paypal' : 'dm-attach',
         style: {
           width: 40, height: 40, borderRadius: 12,
           border: '1px solid #e5e7eb',
@@ -257,6 +282,11 @@
         title: 'Attach from photos',
         variant: 'library'
       }),
+      canRevealPaypal && H(AttachButton, {
+        onClick: onRevealPaypal,
+        title: 'Reveal PayPal preset',
+        variant: 'paypal'
+      }),
       H('textarea', {
         placeholder: 'Type a message...  (Tip: paste or drag images)',
         value: input,
@@ -271,7 +301,6 @@
         },
         style: { flex: 1, resize: 'vertical' }
       }),
-      canRevealPaypal && H('button', { className: 'btn', onClick: onRevealPaypal }, 'Reveal PayPal address'),
       H('button', { className: 'btn primary', onClick: onSend }, 'Send'));
     }
 
