@@ -231,6 +231,8 @@ const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 
 const PUBLIC_ASSET_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim();
 
+const MAPBOX_ACCESS_TOKEN = (process.env.MAPBOX_ACCESS_TOKEN || '').trim();
+
 const S3_ORIGIN = (process.env.S3_BUCKET && process.env.S3_REGION)
 
   ? `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION}.amazonaws.com`
@@ -6821,6 +6823,16 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
   try {
 
+    if (!MAPBOX_ACCESS_TOKEN) {
+
+      console.error('reverse geocode error: MAPBOX_ACCESS_TOKEN missing');
+
+      return res.status(500).json({ error: 'geocode_not_configured' });
+
+    }
+
+
+
     const lat = Number(req.query.lat);
 
     const lon = Number(req.query.lon);
@@ -6831,7 +6843,7 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     }
 
-    
+
 
     const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 
@@ -6839,25 +6851,85 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 
 
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
+    const params = new URLSearchParams({
 
-    const resp = await fetch(url, { headers: { 'User-Agent': 'ListIt/1.0 (reverse-geocode)' }});
+      access_token: MAPBOX_ACCESS_TOKEN,
 
-    if (!resp.ok) return res.status(502).json({ error: 'geocode_failed' });
+      limit: '1',
+
+      types: 'address,place,locality,region,country'
+
+    });
+
+
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lon)},${encodeURIComponent(lat)}.json?${params.toString()}`;
+
+
+
+    const resp = await fetch(url);
+
+    if (!resp.ok) {
+
+      console.error('reverse geocode error: mapbox request failed', resp.status);
+
+      return res.status(502).json({ error: 'geocode_failed' });
+
+    }
+
+
 
     const data = await resp.json();
 
+    const feature = data && Array.isArray(data.features) ? data.features[0] : null;
 
 
-    const a = data.address || {};
 
-    const city = a.city || a.town || a.village || a.hamlet || '';
+    if (!feature) {
 
-    const state = a.state || a.region || '';
+      const out = { city: '', state: '', country: '', display: key, lat, lon };
 
-    const country = a.country || (a.country_code ? a.country_code.toUpperCase() : '');
+      geoCache.set(key, out);
 
-    const display = [city, state || country].filter(Boolean).join(', ') || data.display_name || key;
+      return res.json(out);
+
+    }
+
+
+
+    const pickContext = (type) => {
+
+      if (Array.isArray(feature.place_type) && feature.place_type.includes(type)) {
+
+        return feature;
+
+      }
+
+      return (feature.context || []).find((c) => typeof c.id === 'string' && c.id.startsWith(`${type}.`));
+
+    };
+
+
+
+    const nameOf = (obj) => (obj && (obj.text || obj.place_name || '')) || '';
+
+
+
+    const cityCtx = pickContext('place') || pickContext('locality') || pickContext('neighborhood');
+
+    const stateCtx = pickContext('region') || pickContext('district');
+
+    const countryCtx = pickContext('country');
+
+
+
+    const city = nameOf(cityCtx);
+
+    const state = nameOf(stateCtx);
+
+    const country = nameOf(countryCtx);
+
+    const display = feature.place_name || [city, state || country].filter(Boolean).join(', ') || key;
 
 
 
