@@ -115,7 +115,7 @@ describe('profile feature integration', () => {
 
   test('ProfilePanel wires feature toggles, persistence, and listing actions', async () => {
     const createProfileFeature = loadFactory();
-    const { React, states } = createReactMocks([undefined, undefined, true, undefined, 'updated@example.com']);
+    const { React, states } = createReactMocks([undefined, undefined, true, true, undefined, 'updated@example.com']);
 
     const api = {
       updatePaypalEmail: jest.fn().mockResolvedValue({}),
@@ -161,6 +161,12 @@ describe('profile feature integration', () => {
 
     const tree = ProfilePanel(props);
     const nodes = collectNodes(tree);
+
+    const paypalPresetButton = nodes.find((node) => node?.props?.title === 'Manage PayPal preset');
+    expect(paypalPresetButton).toBeDefined();
+    states[3].setter.mockClear();
+    paypalPresetButton.props.onClick();
+    expect(states[3].setter).toHaveBeenCalledWith(true);
 
     expect(helpers.asArray).toHaveBeenNthCalledWith(1, props.items);
     expect(helpers.asArray).toHaveBeenNthCalledWith(2, props.items);
