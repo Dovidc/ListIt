@@ -63,6 +63,32 @@ describe('location helpers integration', () => {
     expect(result).toEqual({ lat: 98.76, lon: 54.32, display: 'Testopolis' });
   });
 
+  test('fetchCoordsAndReverse prefers city and state for display when provided', async () => {
+    const getCurrentPosition = global.navigator.geolocation.getCurrentPosition;
+    getCurrentPosition.mockImplementation((success) => {
+      success({ coords: { latitude: 40.44, longitude: -79.94 } });
+    });
+
+    const api = {
+      reverseGeocode: jest.fn().mockResolvedValue({
+        lat: 40.44,
+        lon: -79.94,
+        display: '1806 Shady Avenue, Pittsburgh, Pennsylvania 15217, United States',
+        city: 'Pittsburgh',
+        state: 'PA',
+        country: 'US'
+      })
+    };
+
+    const factory = loadFactory();
+    const { fetchCoordsAndReverse } = factory({ api });
+
+    const result = await fetchCoordsAndReverse();
+
+    expect(api.reverseGeocode).toHaveBeenCalledWith(40.44, -79.94);
+    expect(result).toEqual({ lat: 40.44, lon: -79.94, display: 'Pittsburgh, PA' });
+  });
+
   test('fetchCoordsAndReverse falls back to browser coordinates when API omits overrides', async () => {
     const getCurrentPosition = global.navigator.geolocation.getCurrentPosition;
     getCurrentPosition.mockImplementation((success) => {

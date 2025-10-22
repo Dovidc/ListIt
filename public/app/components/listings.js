@@ -115,6 +115,20 @@
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    function formatLocationDisplay(result, fallback = '') {
+      const safeFallback = typeof fallback === 'string' ? fallback : '';
+      if (!result || typeof result !== 'object') return safeFallback;
+      const city = typeof result.city === 'string' ? result.city.trim() : '';
+      const state = typeof result.state === 'string' ? result.state.trim() : '';
+      const country = typeof result.country === 'string' ? result.country.trim() : '';
+      const primary = city;
+      const secondary = state || country;
+      const joined = [primary, secondary].filter(Boolean).join(', ');
+      if (joined) return joined;
+      const display = typeof result.display === 'string' ? result.display.trim() : '';
+      return display || safeFallback;
+    }
+
     async function fetchCoordsAndReverseInternal() {
       if (typeof fetchCoordsAndReverse === 'function') {
         return fetchCoordsAndReverse();
@@ -125,10 +139,11 @@
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
       );
       const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+      const fallback = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
       return {
         lat: r?.lat ?? coords.latitude,
         lon: r?.lon ?? coords.longitude,
-        display: r?.display || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+        display: formatLocationDisplay(r, fallback)
       };
     }
 
@@ -430,7 +445,8 @@
             )
           );
           const r = await api.reverseGeocode(coords.lat, coords.lon);
-          setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+          const fallback = `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`;
+          setLocation(formatLocationDisplay(r, fallback));
           setLat(r?.lat ?? coords.lat);
           setLon(r?.lon ?? coords.lon);
         } catch { setGeoErr('Could not get your location'); }
@@ -486,7 +502,7 @@
               const c = await ensureCoords();
               enableNearbyAuto = 1;
               latAuto = c.lat; lonAuto = c.lon;
-              if (!locAuto) locAuto = c.display || '';
+              if (!locAuto) locAuto = formatLocationDisplay(c, c?.display || '');
             } catch (_) {
               enableNearbyAuto = 0;
             }
@@ -495,7 +511,7 @@
           if (!locAuto) {
             try {
               const c = await ensureCoords();
-              locAuto = c?.display || '';
+              locAuto = formatLocationDisplay(c, c?.display || '');
               if (enableNearbyAuto && c) {
                 latAuto = c.lat;
                 lonAuto = c.lon;
