@@ -58,6 +58,18 @@
       throw new Error('Listing forms feature requires price formatter.');
     }
 
+    function formatLocationDisplay(result, fallback = '') {
+      const safeFallback = typeof fallback === 'string' ? fallback : '';
+      if (!result || typeof result !== 'object') return safeFallback;
+      const city = typeof result.city === 'string' ? result.city.trim() : '';
+      const state = typeof result.state === 'string' ? result.state.trim() : '';
+      const country = typeof result.country === 'string' ? result.country.trim() : '';
+      const joined = [city, state || country].filter(Boolean).join(', ');
+      if (joined) return joined;
+      const display = typeof result.display === 'string' ? result.display.trim() : '';
+      return display || safeFallback;
+    }
+
     const { ListingForm, ImageWithSkeleton } = components;
     if (typeof ListingForm !== 'function') {
       throw new Error('Listing forms feature requires ListingForm component.');
@@ -434,7 +446,8 @@
             )
           );
           const r = await api.reverseGeocode(coords.lat, coords.lon);
-          setLocation(r?.display || `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`);
+          const fallback = `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`;
+          setLocation(formatLocationDisplay(r, fallback));
           setLat(r?.lat ?? coords.lat);
           setLon(r?.lon ?? coords.lon);
         } catch {
@@ -492,7 +505,7 @@
               const c = await ensureCoords();
               enableNearbyAuto = 1;
               latAuto = c.lat; lonAuto = c.lon;
-              if (!locAuto) locAuto = c.display || '';
+              if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
             } catch (_) {
               enableNearbyAuto = 0;
             }
@@ -501,7 +514,7 @@
           if (!locAuto) {
             try {
               const c = await ensureCoords();
-              locAuto = c?.display || '';
+              locAuto = formatLocationDisplay(c, c?.display || '');
               if (enableNearbyAuto && c) {
                 latAuto = c.lat;
                 lonAuto = c.lon;

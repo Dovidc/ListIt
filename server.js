@@ -6912,6 +6912,13 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 
     const nameOf = (obj) => (obj && (obj.text || obj.place_name || '')) || '';
+    const shortCode = (obj) => {
+      const code = obj?.short_code;
+      if (typeof code !== 'string') return '';
+      const parts = code.split('-');
+      const last = parts[parts.length - 1];
+      return last ? last.toUpperCase() : '';
+    };
 
 
 
@@ -6925,11 +6932,17 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     const city = nameOf(cityCtx);
 
-    const state = nameOf(stateCtx);
+    const state = shortCode(stateCtx) || nameOf(stateCtx);
 
-    const country = nameOf(countryCtx);
+    const country = shortCode(countryCtx) || nameOf(countryCtx);
 
-    const display = feature.place_name || [city, state || country].filter(Boolean).join(', ') || key;
+    const featureIsPlace = Array.isArray(feature.place_type) && feature.place_type.some((t) => t === 'place' || t === 'locality');
+    const fallbackPrimary = featureIsPlace ? nameOf(feature) : '';
+    const primary = city || fallbackPrimary;
+    const secondary = state || country;
+
+    const displayParts = [primary, secondary].filter(Boolean);
+    const display = displayParts.length ? displayParts.join(', ') : (nameOf(feature) || country || feature.place_name || key);
 
 
 
