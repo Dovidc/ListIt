@@ -52,6 +52,7 @@
       useState,
       useCallback
     } = React;
+    const useEffect = typeof React.useEffect === 'function' ? React.useEffect : null;
     const { createPortal } = resolvedReactDOM;
 
     const navBridge = appNav || { setUser: () => {} };
@@ -128,6 +129,27 @@
       H('polyline', { points: '15.5 12.2 17 13.8 19 11.2' }));
     }
 
+    function PaypalPresetIcon(props = {}) {
+      const { size = 22, stroke = 'currentColor', style, ...rest } = props;
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: size,
+        height: size,
+        fill: 'none',
+        stroke,
+        'stroke-width': 1.8,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true',
+        style
+      }, rest),
+      H('rect', { x: 3.2, y: 4.2, width: 17.6, height: 15.6, rx: 3.2, ry: 3.2 }),
+      H('circle', { cx: 12, cy: 12, r: 4.2 }),
+      H('path', { d: 'M12 9.2v5.6' }),
+      H('path', { d: 'M10.3 10.7c0-.9.7-1.6 1.6-1.6h.9a1.7 1.7 0 0 1 0 3.4h-1.4a1.7 1.7 0 0 0 0 3.4h1a1.7 1.7 0 0 0 1.7-1.3' }));
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -196,13 +218,19 @@
               title: 'Close preset settings'
             }, 'x'),
             H('div', { style: { display: 'grid', gap: 8 } },
-              H('h2', {
+            H('h2', {
                 style: {
                   fontSize: 20,
                   fontWeight: 800,
-                  margin: 0
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
                 }
-              }, 'PayPal preset'),
+              },
+              'PayPal preset',
+              H(PaypalPresetIcon, { size: 22 })
+            ),
               H('p', {
                 className: 'muted',
                 style: { fontSize: 13, margin: 0 }
@@ -408,6 +436,7 @@
       onDelete,
       onLogout,
       onAdminDelete,
+      onNewListing,
       autoListEnabled,
       setAutoListEnabled,
       aiDescriptionEnabled,
@@ -459,6 +488,18 @@
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
 
+      const handleNewListing = useCallback(() => {
+        if (typeof onNewListing === 'function') {
+          onNewListing();
+        }
+      }, [onNewListing]);
+
+      if (useEffect) {
+        useEffect(() => {
+          setPaypalEmail((user?.paypal_email || '').trim());
+        }, [user?.paypal_email]);
+      }
+
       const visuallyHidden = {
         position: 'absolute',
         width: 1,
@@ -472,12 +513,28 @@
       };
 
       async function savePaypal() {
-        const r = await api.updatePaypalEmail((paypalEmail || '').trim());
-        if (r?.error) { alert(r.error); return; }
-        const me = await api.me({ silent: true });
-        navBridge.setUser?.(me);
-        const nextPaypalEmail = r?.paypal_email ?? (paypalEmail || '').trim();
+        const trimmed = (paypalEmail || '').trim();
+        let response;
+        try {
+          response = await api.updatePaypalEmail(trimmed);
+        } catch (err) {
+          alert(err?.message || 'Failed to save PayPal preset.');
+          return;
+        }
+        if (response?.error) { alert(response.error); return; }
+        const nextPaypalEmail = typeof response?.paypal_email === 'string' ? response.paypal_email : trimmed;
         setPaypalEmail(nextPaypalEmail);
+        if (user) {
+          navBridge.setUser?.({ ...user, paypal_email: nextPaypalEmail });
+        }
+        try {
+          const me = await api.me({ silent: true });
+          if (me) {
+            navBridge.setUser?.(me);
+          }
+        } catch (err) {
+          console.error('Refresh user failed:', err);
+        }
         setPaypalModalOpen(false);
         alert('Saved.');
       }
@@ -530,7 +587,7 @@
                 style: iconButtonStyle
               },
                 H(LogoutIcon, null),
-                H('span', { style: visuallyHidden }, 'Log out')
+                H('span', { style: visuallyHidden, onClick: onLogout }, 'Log out')
               )
             )
           ),
@@ -544,10 +601,20 @@
               : 'No PayPal email saved yet. Use the preset icon above to add one.'),
             H('div', {
               className: 'row',
-              style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center' }
+              style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
             },
               H('div', { style: { fontWeight: 800 } }, 'Your listings'),
-              H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
+              H('div', {
+                className: 'row',
+                style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' }
+              },
+                H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`),
+                typeof onNewListing === 'function' && H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: handleNewListing
+                }, 'New listing')
+              )
             ),
             H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
               H('button', {
