@@ -323,6 +323,67 @@ describe('nearby feature integration', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  test('fallback listing card formats location as city/state only', () => {
+    const createNearbyFeature = loadFactory();
+    const sampleItem = {
+      id: 'listing-3',
+      title: 'Camera',
+      location: '123 Main St, Springfield, IL 62704',
+      owner_username: 'seller-one'
+    };
+
+    const react = createReactMocks([
+      150,
+      [sampleItem],
+      false,
+      '',
+      sampleItem,
+      '',
+      '',
+      '',
+      'new'
+    ]);
+
+    const helpers = {
+      asArray: jest.fn((value) => (Array.isArray(value) ? value : value == null ? [] : [value])),
+      selectPrimaryListingImage: jest.fn(() => ''),
+      fetchCoordsAndReverse: jest.fn().mockResolvedValue({ lat: 40.7, lon: -74.0, display: 'Springfield, IL' })
+    };
+
+    const api = {
+      listNearby: jest.fn().mockResolvedValue({ rows: [] })
+    };
+
+    const feature = createNearbyFeature({ React: react.React, api, helpers });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const tree = feature.NearbyPanel({
+        user: { id: 'user-1' },
+        mineById: {},
+        onEdit: jest.fn(),
+        onDelete: jest.fn(),
+        onMessage: jest.fn(),
+        onAdminDelete: jest.fn(),
+        onViewSeller: jest.fn(),
+        onToggleSold: jest.fn(),
+        setTab: jest.fn()
+      });
+
+      const listingComponent = findNode(tree, (node) => typeof node?.type === 'function' && node.type.name === 'NearbyFallbackListingCard');
+      expect(listingComponent).toBeTruthy();
+
+      const renderedCard = listingComponent.type(listingComponent.props);
+      const fallbackCard = findNode(renderedCard, (node) => node?.props?.className === 'nearby-card-fallback');
+      expect(fallbackCard).toBeTruthy();
+
+      const metaNode = findNode(fallbackCard, (node) => node?.type === 'p' && node?.props?.children === 'Springfield, IL • Seller: seller-one');
+      expect(metaNode).toBeTruthy();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   test('filters nearby listings by tags when searching', () => {
     const createNearbyFeature = loadFactory();
     const taggedItem = {
