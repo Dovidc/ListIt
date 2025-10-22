@@ -102,6 +102,32 @@
       H('line', { x1: 4, y1: 12, x2: 16, y2: 12 }));
     }
 
+    function PresetIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: 20,
+        height: 20,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.7,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+      H('rect', {
+        x: 3.2,
+        y: 4,
+        width: 17.6,
+        height: 16,
+        rx: 2.2,
+        ry: 2.2
+      }),
+      H('path', { d: 'M7.5 9.5h9' }),
+      H('path', { d: 'M7.5 13h5.5' }),
+      H('polyline', { points: '15.5 12.2 17 13.8 19 11.2' }));
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -126,6 +152,91 @@
         ],
         footer: 'Turn inquiry mode off to show the AI suggested price again.'
       });
+    });
+
+    const PaypalPresetModal = React.memo(function PaypalPresetModal({
+      open,
+      onClose,
+      paypalEmail,
+      onChangePaypalEmail,
+      onSavePaypal
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '460px',
+              width: 'min(460px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close preset settings'
+            }, 'x'),
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0
+                }
+              }, 'PayPal preset'),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0 }
+              }, 'Save the PayPal email you want to share when you use the preset in messages.')
+            ),
+            H('label', { style: { display: 'grid', gap: 8 } },
+              H('span', { style: { fontWeight: 600 } }, 'PayPal email'),
+              H('input', {
+                value: paypalEmail,
+                onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
+                placeholder: 'name@example.com',
+                style: { width: '100%' }
+              })
+            ),
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'flex-end'
+              }
+            },
+              H('button', {
+                className: 'btn primary',
+                type: 'button',
+                onClick: onSavePaypal
+              }, 'Save')
+            ),
+            H('p', {
+              className: 'muted',
+              style: { fontSize: 12, margin: 0 }
+            }, 'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.')
+          )
+        ),
+        document.body
+      );
     });
 
     const ProfileSettingsModal = React.memo(function ProfileSettingsModal({
@@ -311,6 +422,7 @@
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
       const [settingsOpen, setSettingsOpen] = useState(false);
+      const [paypalModalOpen, setPaypalModalOpen] = useState(false);
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
@@ -336,6 +448,14 @@
         setHelpModal(null);
       }, [setHelpModal]);
 
+      const handleOpenPaypalModal = useCallback(() => {
+        setPaypalModalOpen(true);
+      }, []);
+
+      const handleClosePaypalModal = useCallback(() => {
+        setPaypalModalOpen(false);
+      }, []);
+
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
 
@@ -356,6 +476,9 @@
         if (r?.error) { alert(r.error); return; }
         const me = await api.me({ silent: true });
         navBridge.setUser?.(me);
+        const nextPaypalEmail = r?.paypal_email ?? (paypalEmail || '').trim();
+        setPaypalEmail(nextPaypalEmail);
+        setPaypalModalOpen(false);
         alert('Saved.');
       }
 
@@ -369,6 +492,7 @@
       const activeItems = asArray(items).filter(it => !it?.sold);
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
+      const paypalSummary = (paypalEmail || '').trim();
 
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
@@ -378,6 +502,16 @@
               H('div', { className: 'muted' }, 'Your account')
             ),
             H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+              H('button', {
+                className: 'btn',
+                type: 'button',
+                onClick: handleOpenPaypalModal,
+                title: 'Manage PayPal preset',
+                style: iconButtonStyle
+              },
+                H(PresetIcon, null),
+                H('span', { style: visuallyHidden }, 'Manage PayPal preset')
+              ),
               H('button', {
                 className: 'btn',
                 type: 'button',
@@ -402,23 +536,16 @@
           ),
 
           H('section', null,
-            H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap' } },
-              H('section', { style: { marginTop: 12 } },
-                H('label', null, 'PayPal email'),
-                H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-                  H('input', {
-                    value: paypalEmail,
-                    onChange: e => setPaypalEmail(e.target.value),
-                    placeholder: 'name@example.com',
-                    style: { minWidth: 260 }
-                  }),
-                  H('button', { className: 'btn', onClick: savePaypal }, 'Save')
-                ),
-                H('div', { className: 'muted', style: { fontSize: 12, marginTop: 4 } },
-                  'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.'
-                )
-              ),
-
+            H('div', {
+              className: 'muted',
+              style: { fontSize: 12, margin: '12px 0 16px' }
+            }, paypalSummary
+              ? `Current PayPal email: ${paypalSummary}`
+              : 'No PayPal email saved yet. Use the preset icon above to add one.'),
+            H('div', {
+              className: 'row',
+              style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center' }
+            },
               H('div', { style: { fontWeight: 800 } }, 'Your listings'),
               H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
             ),
@@ -521,6 +648,14 @@
         helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
+
+        H(PaypalPresetModal, {
+          open: paypalModalOpen,
+          onClose: handleClosePaypalModal,
+          paypalEmail,
+          onChangePaypalEmail: setPaypalEmail,
+          onSavePaypal: savePaypal
+        }),
 
         H(ProfileSettingsModal, {
           open: settingsOpen,
