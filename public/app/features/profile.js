@@ -116,18 +116,12 @@
         focusable: 'false',
         'aria-hidden': 'true'
       }, props),
-      H('rect', {
-        x: 3.2,
-        y: 8,
-        width: 17.6,
-        height: 11.2,
-        rx: 2.6,
-        ry: 2.6
-      }),
-      H('path', { d: 'M6.2 8V6.4c0-2 1.6-3.6 3.6-3.6h8.2a1.8 1.8 0 0 1 0 3.6H6.2' }),
-      H('path', { d: 'M7.6 12.2h6.2' }),
-      H('path', { d: 'M7.6 15.2h4.6' }),
-      H('circle', { cx: 16.8, cy: 13.6, r: 1.6 }));
+      H('line', { x1: 4, y1: 6.5, x2: 20, y2: 6.5 }),
+      H('line', { x1: 4, y1: 12, x2: 20, y2: 12 }),
+      H('line', { x1: 4, y1: 17.5, x2: 20, y2: 17.5 }),
+      H('circle', { cx: 9, cy: 6.5, r: 2.1, fill: 'currentColor', stroke: 'none' }),
+      H('circle', { cx: 15.5, cy: 12, r: 2.1, fill: 'currentColor', stroke: 'none' }),
+      H('circle', { cx: 7.5, cy: 17.5, r: 2.1, fill: 'currentColor', stroke: 'none' }));
     }
 
     function PaypalPresetIcon(props = {}) {
