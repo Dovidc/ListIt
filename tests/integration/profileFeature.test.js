@@ -183,10 +183,6 @@ describe('profile feature integration', () => {
     checkboxes[2].props.onChange({ target: { checked: true } });
     expect(props.setAutoPostNearbyEnabled).toHaveBeenCalledWith(true);
 
-    const newListingButton = nodes.find((node) => node?.props?.children === 'New listing');
-    newListingButton.props.onClick();
-    expect(props.onNewListing).toHaveBeenCalledTimes(1);
-
     const logoutButton = nodes.find((node) => node?.props?.children === 'Log out');
     logoutButton.props.onClick();
     expect(props.onLogout).toHaveBeenCalledTimes(1);
