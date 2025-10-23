@@ -257,6 +257,7 @@
                 value: paypalEmail,
                 onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
                 placeholder: 'name@example.com',
+                maxLength: 240,
                 style: { width: '100%' }
               })
             ),
