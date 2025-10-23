@@ -3310,17 +3310,19 @@ app.put('/api/me/paypal', auth, writeLimiter, async (req, res) => {
 
   try {
 
-    const email = String(req.body?.paypal_email || '').trim().toLowerCase();
+    const paymentInfo = String(req.body?.paypal_email ?? '').trim();
 
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (paymentInfo.length > 240) {
 
-      return res.status(400).json({ error: 'Invalid email' });
+      return res.status(400).json({ error: 'Payment info too long' });
 
     }
 
-    await db.prepare('UPDATE users SET paypal_email = ? WHERE id = ?').run(email || null, req.user.id);
+    const sanitized = paymentInfo.replace(/[\u0000-\u001F\u007F]+/g, ' ').trim();
 
-    return res.json({ ok: true, paypal_email: email || '' });
+    await db.prepare('UPDATE users SET paypal_email = ? WHERE id = ?').run(sanitized || null, req.user.id);
+
+    return res.json({ ok: true, paypal_email: sanitized || '' });
 
   } catch (e) {
 
