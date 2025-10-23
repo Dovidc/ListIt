@@ -196,7 +196,8 @@
       onClose,
       paypalEmail,
       onChangePaypalEmail,
-      onSavePaypal
+      onSavePaypal,
+      statusMessage
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -273,6 +274,15 @@
                 onClick: onSavePaypal
               }, 'Save')
             ),
+            statusMessage && H('div', {
+              role: 'status',
+              'aria-live': 'polite',
+              style: {
+                fontSize: 13,
+                color: '#047857',
+                fontWeight: 600
+              }
+            }, statusMessage),
             H('p', {
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
@@ -288,7 +298,8 @@
       onClose,
       locationPreset,
       onChangeLocationPreset,
-      onSaveLocation
+      onSaveLocation,
+      statusMessage
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -365,6 +376,15 @@
                 onClick: onSaveLocation
               }, 'Save')
             ),
+            statusMessage && H('div', {
+              role: 'status',
+              'aria-live': 'polite',
+              style: {
+                fontSize: 13,
+                color: '#047857',
+                fontWeight: 600
+              }
+            }, statusMessage),
             H('p', {
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
@@ -560,6 +580,8 @@
       const [settingsOpen, setSettingsOpen] = useState(false);
       const [paypalModalOpen, setPaypalModalOpen] = useState(false);
       const [locationModalOpen, setLocationModalOpen] = useState(false);
+      const [paypalStatusMessage, setPaypalStatusMessage] = useState('');
+      const [locationStatusMessage, setLocationStatusMessage] = useState('');
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
@@ -586,31 +608,51 @@
       }, [setHelpModal]);
 
       const handleOpenPaypalModal = useCallback(() => {
+        setPaypalStatusMessage('');
         setPaypalModalOpen(true);
       }, []);
 
       const handleClosePaypalModal = useCallback(() => {
         setPaypalModalOpen(false);
+        setPaypalStatusMessage('');
       }, []);
 
       const handleOpenLocationModal = useCallback(() => {
+        setLocationStatusMessage('');
         setLocationModalOpen(true);
       }, []);
 
       const handleCloseLocationModal = useCallback(() => {
         setLocationModalOpen(false);
+        setLocationStatusMessage('');
       }, []);
 
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
       const [locationPreset, setLocationPreset] = useState(user?.location_preset || '');
 
+      const handleChangePaypalEmail = useCallback((value) => {
+        setPaypalEmail(value);
+        if (paypalStatusMessage) {
+          setPaypalStatusMessage('');
+        }
+      }, [paypalStatusMessage]);
+
+      const handleChangeLocationPreset = useCallback((value) => {
+        setLocationPreset(value);
+        if (locationStatusMessage) {
+          setLocationStatusMessage('');
+        }
+      }, [locationStatusMessage]);
+
       if (useEffect) {
         useEffect(() => {
           setPaypalEmail((user?.paypal_email || '').trim());
+          setPaypalStatusMessage('');
         }, [user?.paypal_email]);
         useEffect(() => {
           setLocationPreset((user?.location_preset || '').trim());
+          setLocationStatusMessage('');
         }, [user?.location_preset]);
       }
 
@@ -649,8 +691,7 @@
         } catch (err) {
           console.error('Refresh user failed:', err);
         }
-        setPaypalModalOpen(false);
-        alert('Saved.');
+        setPaypalStatusMessage('Saved');
       }
 
       async function saveLocationPreset() {
@@ -679,8 +720,7 @@
         } catch (err) {
           console.error('Refresh user failed:', err);
         }
-        setLocationModalOpen(false);
-        alert('Saved.');
+        setLocationStatusMessage('Saved');
       }
 
       if (!user) {
@@ -861,16 +901,18 @@
           open: paypalModalOpen,
           onClose: handleClosePaypalModal,
           paypalEmail,
-          onChangePaypalEmail: setPaypalEmail,
-          onSavePaypal: savePaypal
+          onChangePaypalEmail: handleChangePaypalEmail,
+          onSavePaypal: savePaypal,
+          statusMessage: paypalStatusMessage
         }),
 
         H(LocationPresetModal, {
           open: locationModalOpen,
           onClose: handleCloseLocationModal,
           locationPreset,
-          onChangeLocationPreset: setLocationPreset,
-          onSaveLocation: saveLocationPreset
+          onChangeLocationPreset: handleChangeLocationPreset,
+          onSaveLocation: saveLocationPreset,
+          statusMessage: locationStatusMessage
         }),
 
         H(ProfileSettingsModal, {
