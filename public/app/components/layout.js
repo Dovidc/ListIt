@@ -95,7 +95,7 @@
           H('div', { className: 'container row', style: { justifyContent: 'space-between' } },
             H('div', { className: 'row', style: { gap: 18, alignItems: 'center' } },
               H('div', { className: 'brand-copy' },
-                H('div', { className: 'brand-title' }, 'Trovlr')
+                H('div', { className: 'brand-title' }, 'Trovelr')
               )
             ),
             H('div', { className: 'row', style: { gap: 8 } },
