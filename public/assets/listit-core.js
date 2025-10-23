@@ -160,6 +160,12 @@
       body: JSON.stringify({ paypal_email: paypalEmail })
     }, meta);
   
+    const updateLocationPreset = (locationPreset, meta) => request('/api/me/location-preset', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location_preset: locationPreset })
+    }, meta);
+  
     const listAll = (a, b, meta) => {
       let q = '';
       let loc = '';
@@ -393,6 +399,8 @@
       pushSubscribe,
       pushUnsubscribe,
       updatePaypalEmail,
+  
+      updateLocationPreset,
       listAll,
       listListings,
       listByUser,

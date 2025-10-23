@@ -220,7 +220,7 @@ describe('messages feature integration', () => {
     const { useMessagesPanelState } = feature;
 
     const state = useMessagesPanelState({
-      user: { id: 5, paypal_email: 'seller@pay.test' },
+      user: { id: 5, paypal_email: 'seller@pay.test', location_preset: '123 Anywhere Rd' },
       initialActiveId: 'convo-1',
       onSeenChange,
       onConversationsUpdate
@@ -258,6 +258,16 @@ describe('messages feature integration', () => {
     msgsContainerRef.current = { scrollTop: 0, scrollHeight: 600, clientHeight: 300 };
     timeoutCallback();
     expect(msgsContainerRef.current.scrollTop).toBe(600);
+
+    deps.api.sendMessage.mockClear();
+    deps.api.getMessages.mockClear();
+    deps.api.listConversations.mockClear();
+
+    const sentLocation = await state.sendLocationPreset();
+    expect(sentLocation).toBe(true);
+    expect(deps.api.sendMessage).toHaveBeenCalledWith('convo-1', 'My address: 123 Anywhere Rd', []);
+    expect(deps.api.getMessages).toHaveBeenCalledWith('convo-1', { silent: true });
+    expect(deps.api.listConversations).toHaveBeenCalledWith({ silent: true });
 
     expect(global.alert).not.toHaveBeenCalled();
   });

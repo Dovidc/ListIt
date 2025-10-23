@@ -146,6 +146,25 @@
       H('circle', { cx: 16.8, cy: 13.4, r: 1.5 }));
     }
 
+    function LocationPresetIcon(props = {}) {
+      const { size = 22, stroke = 'currentColor', style, ...rest } = props;
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: size,
+        height: size,
+        fill: 'none',
+        stroke,
+        'stroke-width': 1.8,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true',
+        style
+      }, rest),
+      H('path', { d: 'M12 21s6-5.2 6-11a6 6 0 0 0-12 0c0 5.8 6 11 6 11z' }),
+      H('circle', { cx: 12, cy: 10, r: 2.6 }));
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -257,6 +276,98 @@
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
             }, 'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.')
+          )
+        ),
+        document.body
+      );
+    });
+
+    const LocationPresetModal = React.memo(function LocationPresetModal({
+      open,
+      onClose,
+      locationPreset,
+      onChangeLocationPreset,
+      onSaveLocation
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '460px',
+              width: 'min(460px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close location preset settings'
+            }, 'x'),
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
+              },
+              'Address preset',
+              H(LocationPresetIcon, { size: 22 })
+              ),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0 }
+              }, 'Save the address you want to quickly share in messages.')
+            ),
+            H('label', { style: { display: 'grid', gap: 8 } },
+              H('span', { style: { fontWeight: 600 } }, 'Saved address'),
+              H('textarea', {
+                value: locationPreset,
+                onChange: (evt) => onChangeLocationPreset?.(evt.target.value),
+                placeholder: '123 Main St, City, State',
+                rows: 3,
+                style: { width: '100%', resize: 'vertical' }
+              })
+            ),
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'flex-end'
+              }
+            },
+              H('button', {
+                className: 'btn primary',
+                type: 'button',
+                onClick: onSaveLocation
+              }, 'Save')
+            ),
+            H('p', {
+              className: 'muted',
+              style: { fontSize: 12, margin: 0 }
+            }, 'Press the address icon in a DM to confirm and send the saved address as a message.')
           )
         ),
         document.body
@@ -447,6 +558,7 @@
       const [profileSelected, setProfileSelected] = useState(null);
       const [settingsOpen, setSettingsOpen] = useState(false);
       const [paypalModalOpen, setPaypalModalOpen] = useState(false);
+      const [locationModalOpen, setLocationModalOpen] = useState(false);
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
@@ -480,13 +592,25 @@
         setPaypalModalOpen(false);
       }, []);
 
+      const handleOpenLocationModal = useCallback(() => {
+        setLocationModalOpen(true);
+      }, []);
+
+      const handleCloseLocationModal = useCallback(() => {
+        setLocationModalOpen(false);
+      }, []);
+
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
+      const [locationPreset, setLocationPreset] = useState(user?.location_preset || '');
 
       if (useEffect) {
         useEffect(() => {
           setPaypalEmail((user?.paypal_email || '').trim());
         }, [user?.paypal_email]);
+        useEffect(() => {
+          setLocationPreset((user?.location_preset || '').trim());
+        }, [user?.location_preset]);
       }
 
       const visuallyHidden = {
@@ -528,6 +652,36 @@
         alert('Saved.');
       }
 
+      async function saveLocationPreset() {
+        const trimmed = (locationPreset || '').trim();
+        let response;
+        try {
+          if (typeof api.updateLocationPreset !== 'function') {
+            throw new Error('updateLocationPreset unavailable');
+          }
+          response = await api.updateLocationPreset(trimmed);
+        } catch (err) {
+          alert(err?.message || 'Failed to save address preset.');
+          return;
+        }
+        if (response?.error) { alert(response.error); return; }
+        const nextLocation = typeof response?.location_preset === 'string' ? response.location_preset : trimmed;
+        setLocationPreset(nextLocation);
+        if (user) {
+          navBridge.setUser?.({ ...user, location_preset: nextLocation });
+        }
+        try {
+          const me = await api.me({ silent: true });
+          if (me) {
+            navBridge.setUser?.(me);
+          }
+        } catch (err) {
+          console.error('Refresh user failed:', err);
+        }
+        setLocationModalOpen(false);
+        alert('Saved.');
+      }
+
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -539,6 +693,7 @@
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
       const paypalSummary = (paypalEmail || '').trim();
+      const locationSummary = (locationPreset || '').trim();
 
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
@@ -557,6 +712,16 @@
               },
                 H(SettingsIcon, null),
                 H('span', { style: visuallyHidden }, 'Manage PayPal preset')
+              ),
+              H('button', {
+                className: 'btn',
+                type: 'button',
+                onClick: handleOpenLocationModal,
+                title: 'Manage address preset',
+                style: iconButtonStyle
+              },
+                H(LocationPresetIcon, null),
+                H('span', { style: visuallyHidden }, 'Manage address preset')
               ),
               H('button', {
                 className: 'btn',
@@ -584,10 +749,15 @@
           H('section', null,
             H('div', {
               className: 'muted',
-              style: { fontSize: 12, margin: '12px 0 16px' }
-            }, paypalSummary
-              ? `Current PayPal email: ${paypalSummary}`
-              : 'No PayPal email saved yet. Use the preset icon above to add one.'),
+              style: { fontSize: 12, margin: '12px 0 16px', display: 'grid', gap: 4 }
+            },
+              paypalSummary
+                ? `Current PayPal email: ${paypalSummary}`
+                : 'No PayPal email saved yet. Use the preset icon above to add one.',
+              locationSummary
+                ? `Saved address: ${locationSummary}`
+                : 'No address saved yet. Use the location preset icon to save one.'
+            ),
             H('div', {
               className: 'row',
               style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
@@ -706,6 +876,14 @@
           paypalEmail,
           onChangePaypalEmail: setPaypalEmail,
           onSavePaypal: savePaypal
+        }),
+
+        H(LocationPresetModal, {
+          open: locationModalOpen,
+          onClose: handleCloseLocationModal,
+          locationPreset,
+          onChangeLocationPreset: setLocationPreset,
+          onSaveLocation: saveLocationPreset
         }),
 
         H(ProfileSettingsModal, {

@@ -33,8 +33,10 @@
       useState,
       useEffect,
       useMemo,
-      useRef
+      useRef: providedUseRef
     } = React;
+
+    const useRef = typeof providedUseRef === 'function' ? providedUseRef : ((initial) => ({ current: initial }));
 
     const {
       H
