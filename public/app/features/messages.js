@@ -481,11 +481,11 @@
                 fontSize: 18,
                 fontWeight: 700
               }
-            }, 'Share PayPal email?'),
+            }, 'Share payment info?'),
             H('p', {
               className: 'muted',
               style: { margin: 0, fontSize: 13 }
-            }, email ? `Your PayPal email (${email}) will be sent in the chat.` : 'No PayPal email saved yet.'),
+            }, email ? `Your payment info (${email}) will be sent in the chat.` : 'No PayPal email saved yet.'),
             H('div', {
               className: 'row',
               style: { justifyContent: 'flex-end', gap: 10 }
