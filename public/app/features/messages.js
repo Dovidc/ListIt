@@ -43,6 +43,7 @@
     }
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+    const memo = typeof React.memo === 'function' ? React.memo : (component) => component;
 
     function PaypalPresetIcon({ size = 22, stroke = '#9ca3af', style, ...rest } = {}) {
       return H('svg', Object.assign({
@@ -63,6 +64,24 @@
       H('path', { d: 'M10.8 11.2h2.3a1.9 1.9 0 0 1 0 3.8h-2.3V18' }),
       H('path', { d: 'M10.8 15h1.8' }),
       H('circle', { cx: 16.8, cy: 13.4, r: 1.5 }));
+    }
+
+    function LocationPresetIcon({ size = 20, stroke = '#4b5563', style, ...rest } = {}) {
+      return H('svg', Object.assign({
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke,
+        'stroke-width': 1.8,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        focusable: 'false',
+        'aria-hidden': 'true',
+        style
+      }, rest),
+      H('path', { d: 'M12 21s6-5.2 6-11a6 6 0 0 0-12 0c0 5.8 6 11 6 11z' }),
+      H('circle', { cx: 12, cy: 10, r: 2.6 }));
     }
 
     function AttachButton({ onClick, title = 'Attach images', variant = 'library' }) {
@@ -244,6 +263,8 @@
       onDrop,
       canRevealPaypal,
       onRevealPaypal,
+      canSendLocation,
+      onRequestLocation,
       onSend
     }) {
       return H('div', {
@@ -288,22 +309,140 @@
         title: 'Reveal PayPal preset',
         variant: 'paypal'
       }),
-      H('textarea', {
-        placeholder: 'Type a message...  (Tip: paste or drag images)',
-        value: input,
-        rows: 2,
-        onPaste: onComposerPaste,
-        onChange: (event) => setInput(event.target.value),
-        onKeyDown: (event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            onSend();
+      H('div', { style: { position: 'relative', flex: 1 } },
+        H('textarea', {
+          placeholder: 'Type a message...  (Tip: paste or drag images)',
+          value: input,
+          rows: 2,
+          onPaste: onComposerPaste,
+          onChange: (event) => setInput(event.target.value),
+          onKeyDown: (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              onSend();
+            }
+          },
+          style: {
+            width: '100%',
+            resize: 'vertical',
+            paddingRight: 52
+          }
+        }),
+        H('button', {
+          type: 'button',
+          title: 'Send saved address',
+          'aria-label': 'Send saved address',
+          'data-testid': 'dm-location',
+          onClick: onRequestLocation,
+          style: {
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            display: 'grid',
+            placeItems: 'center',
+            cursor: canSendLocation ? 'pointer' : 'not-allowed',
+            opacity: canSendLocation ? 1 : 0.5
           }
         },
-        style: { flex: 1, resize: 'vertical' }
-      }),
+          H(LocationPresetIcon, { size: 18 })
+        )
+      ),
       H('button', { className: 'btn primary', onClick: onSend }, 'Send'));
     }
+
+    const ConfirmLocationModal = memo(function ConfirmLocationModal({
+      open,
+      onConfirm,
+      onCancel,
+      address
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onCancel?.();
+        }
+      };
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '360px',
+              width: 'min(360px, 92vw)',
+              padding: '20px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('h3', {
+              style: {
+                margin: 0,
+                fontSize: 18,
+                fontWeight: 700
+              }
+            }, 'Send saved address?'),
+            H('p', {
+              className: 'muted',
+              style: { margin: 0, fontSize: 13 }
+            }, address ? address : 'No address saved yet.'),
+            H('div', {
+              className: 'row',
+              style: { justifyContent: 'flex-end', gap: 10 }
+            },
+              H('button', {
+                type: 'button',
+                onClick: onCancel,
+                className: 'btn',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c'
+                }
+              },
+                H('span', { 'aria-hidden': 'true', style: { color: '#ef4444', fontSize: 18, lineHeight: 1 } }, '✕'),
+                'Cancel'
+              ),
+              H('button', {
+                type: 'button',
+                onClick: onConfirm,
+                className: 'btn',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#059669',
+                  border: '1px solid #047857',
+                  color: '#fff'
+                }
+              },
+                H('span', { 'aria-hidden': 'true', style: { fontSize: 18, lineHeight: 1 } }, '✔'),
+                'Send address'
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    });
 
     function useMessagesPanelState({ user, initialActiveId, onSeenChange, onConversationsUpdate }) {
       const [convos, setConvos] = useState([]);
@@ -557,6 +696,35 @@
         await fetchConvos();
       }
 
+      async function sendLocationPreset() {
+        if (!activeId) return false;
+        const saved = (user?.location_preset || '').trim();
+        if (!saved) { alert('Add your address in Profile first.'); return false; }
+        const msg = `My address: ${saved}`;
+        let resp;
+        try {
+          resp = await api.sendMessage(activeId, msg, []);
+        } catch (e) {
+          alert(e?.message || 'Send failed');
+          return false;
+        }
+
+        if (resp?.other_user_deleted) {
+          alert('Heads up: This user deleted the conversation. They may not see your new message.');
+        }
+
+        await fetchMsgs();
+        await fetchConvos();
+
+        setTimeout(() => {
+          if (msgsContainerRef.current) {
+            msgsContainerRef.current.scrollTop = msgsContainerRef.current.scrollHeight;
+          }
+        }, 100);
+
+        return true;
+      }
+
       const seenMap = loadSeen(user?.id);
       const convosDecorated = (convos || [])
         .map((c) => {
@@ -578,6 +746,8 @@
 
       const active = (convosDecorated.find((c) => c.id === activeId) || (convos || []).find((c) => c.id === activeId)) || null;
 
+      const locationPreset = (user?.location_preset || '').trim();
+
       const canRevealPaypal = !!(
         active &&
         active.listing_id &&
@@ -585,6 +755,8 @@
         user?.id === active.listing_owner_id &&
         user?.paypal_email
       );
+
+      const canSendLocation = !!locationPreset;
 
       return {
         user,
@@ -611,6 +783,9 @@
         send,
         revealPaypal,
         canRevealPaypal,
+        canSendLocation,
+        locationPreset,
+        sendLocationPreset,
         deleteConvo,
         openLightbox,
         closeLightbox,
@@ -728,8 +903,32 @@
         input,
         setInput,
         deleteConvo,
-        user: currentUser
+        user: currentUser,
+        canSendLocation,
+        locationPreset,
+        sendLocationPreset
       } = useMessagesPanelState(props);
+
+      const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
+
+      const handleRequestLocation = useCallback(() => {
+        if (!canSendLocation) {
+          alert('Add your address in Profile first.');
+          return;
+        }
+        setConfirmLocationOpen(true);
+      }, [canSendLocation]);
+
+      const handleCloseLocationConfirm = useCallback(() => {
+        setConfirmLocationOpen(false);
+      }, []);
+
+      const handleConfirmLocation = useCallback(async () => {
+        const ok = await sendLocationPreset();
+        if (ok) {
+          setConfirmLocationOpen(false);
+        }
+      }, [sendLocationPreset]);
 
       return H('div', { className: 'split' },
         H(ConversationsSidebar, {
@@ -766,6 +965,8 @@
             onDrop,
             canRevealPaypal,
             onRevealPaypal: revealPaypal,
+            canSendLocation,
+            onRequestLocation: handleRequestLocation,
             onSend: send
           }),
           H(Lightbox, {
@@ -776,6 +977,12 @@
             index: lb.index,
             onClose: closeLightbox,
             onIndex: setLightboxIndex
+          }),
+          H(ConfirmLocationModal, {
+            open: confirmLocationOpen,
+            address: locationPreset,
+            onCancel: handleCloseLocationConfirm,
+            onConfirm: handleConfirmLocation
           })
         )
       );
@@ -785,6 +992,7 @@
       MessagesPanel,
       useMessagesPanelState,
       MessageComposer,
+      ConfirmLocationModal,
       ImagePreviewStrip,
       MessagesThread,
       ConversationsSidebar,

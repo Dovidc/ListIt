@@ -741,6 +741,8 @@ async function initializeSchema() {
 
         paypal_email TEXT,
 
+        location_preset TEXT,
+
         account_status TEXT DEFAULT 'active',
 
         status_note TEXT,
@@ -758,6 +760,8 @@ async function initializeSchema() {
     try { await db.exec("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN paypal_email TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN location_preset TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN account_status TEXT DEFAULT 'active'"); } catch {}
 
@@ -3238,6 +3242,8 @@ app.get('/api/me', async (req, res) => {
 
              COALESCE(paypal_email, '') AS paypal_email,
 
+             COALESCE(location_preset, '') AS location_preset,
+
              created_at,
 
              COALESCE(account_status, 'active') AS account_status,
@@ -3271,6 +3277,8 @@ app.get('/api/me', async (req, res) => {
       is_admin: !!row.is_admin,
 
       paypal_email: row.paypal_email,
+
+      location_preset: row.location_preset,
 
       account_status: row.account_status,
 
@@ -3317,6 +3325,32 @@ app.put('/api/me/paypal', auth, writeLimiter, async (req, res) => {
   } catch (e) {
 
     console.error('Update PayPal failed:', e);
+
+    return res.status(500).json({ error: 'update_failed' });
+
+  }
+
+});
+
+app.put('/api/me/location-preset', auth, writeLimiter, async (req, res) => {
+
+  try {
+
+    const address = String(req.body?.location_preset || '').trim();
+
+    if (address.length > 240) {
+
+      return res.status(400).json({ error: 'Address too long' });
+
+    }
+
+    await db.prepare('UPDATE users SET location_preset = ? WHERE id = ?').run(address || null, req.user.id);
+
+    return res.json({ ok: true, location_preset: address });
+
+  } catch (e) {
+
+    console.error('Update location preset failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
 
@@ -7552,6 +7586,8 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
 
              u.paypal_email,
 
+             u.location_preset,
+
              u.is_admin,
 
              (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
@@ -7609,6 +7645,8 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
       last_login_at: row.last_login_at,
 
       paypal_email: row.paypal_email || '',
+
+      location_preset: row.location_preset || '',
 
       is_admin: !!row.is_admin,
 
