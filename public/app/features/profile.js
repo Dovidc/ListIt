@@ -118,15 +118,16 @@
       }, props),
       H('rect', {
         x: 3.2,
-        y: 4,
+        y: 8,
         width: 17.6,
-        height: 16,
-        rx: 2.2,
-        ry: 2.2
+        height: 11.2,
+        rx: 2.6,
+        ry: 2.6
       }),
-      H('path', { d: 'M7.5 9.5h9' }),
-      H('path', { d: 'M7.5 13h5.5' }),
-      H('polyline', { points: '15.5 12.2 17 13.8 19 11.2' }));
+      H('path', { d: 'M6.2 8V6.4c0-2 1.6-3.6 3.6-3.6h8.2a1.8 1.8 0 0 1 0 3.6H6.2' }),
+      H('path', { d: 'M7.6 12.2h6.2' }),
+      H('path', { d: 'M7.6 15.2h4.6' }),
+      H('circle', { cx: 16.8, cy: 13.6, r: 1.6 }));
     }
 
     function PaypalPresetIcon(props = {}) {
@@ -144,10 +145,11 @@
         'aria-hidden': 'true',
         style
       }, rest),
-      H('rect', { x: 3.2, y: 4.2, width: 17.6, height: 15.6, rx: 3.2, ry: 3.2 }),
-      H('circle', { cx: 12, cy: 12, r: 4.2 }),
-      H('path', { d: 'M12 9.2v5.6' }),
-      H('path', { d: 'M10.3 10.7c0-.9.7-1.6 1.6-1.6h.9a1.7 1.7 0 0 1 0 3.4h-1.4a1.7 1.7 0 0 0 0 3.4h1a1.7 1.7 0 0 0 1.7-1.3' }));
+      H('rect', { x: 3.2, y: 7.6, width: 17.6, height: 11.6, rx: 2.8, ry: 2.8 }),
+      H('path', { d: 'M6.2 7.6V6.1c0-2 1.6-3.6 3.6-3.6h8.2a1.8 1.8 0 0 1 0 3.6H6.2' }),
+      H('path', { d: 'M10.8 11.2h2.3a1.9 1.9 0 0 1 0 3.8h-2.3V18' }),
+      H('path', { d: 'M10.8 15h1.8' }),
+      H('circle', { cx: 16.8, cy: 13.4, r: 1.5 }));
     }
 
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
