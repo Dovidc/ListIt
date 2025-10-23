@@ -765,7 +765,7 @@
       async function revealPaypal() {
         if (!activeId) return;
         if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
-        const msg = `My PayPal address: ${user.paypal_email}`;
+        const msg = `My payment info: ${user.paypal_email}`;
         let resp;
         try {
           resp = await api.sendMessage(activeId, msg, []);
