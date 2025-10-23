@@ -432,7 +432,6 @@
       onDelete,
       onLogout,
       onAdminDelete,
-      onNewListing,
       autoListEnabled,
       setAutoListEnabled,
       aiDescriptionEnabled,
@@ -483,12 +482,6 @@
 
       const [profileTab, setProfileTab] = useState('active');
       const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
-
-      const handleNewListing = useCallback(() => {
-        if (typeof onNewListing === 'function') {
-          onNewListing();
-        }
-      }, [onNewListing]);
 
       if (useEffect) {
         useEffect(() => {
@@ -604,12 +597,7 @@
                 className: 'row',
                 style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' }
               },
-                H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`),
-                typeof onNewListing === 'function' && H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: handleNewListing
-                }, 'New listing')
+                H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
               )
             ),
             H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
