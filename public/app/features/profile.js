@@ -692,9 +692,6 @@
       const activeItems = asArray(items).filter(it => !it?.sold);
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
-      const paypalSummary = (paypalEmail || '').trim();
-      const locationSummary = (locationPreset || '').trim();
-
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
@@ -746,72 +743,61 @@
             )
           ),
 
-          H('section', null,
-            H('div', {
-              className: 'muted',
-              style: { fontSize: 12, margin: '12px 0 16px', display: 'grid', gap: 4 }
-            },
-              paypalSummary
-                ? `Current PayPal email: ${paypalSummary}`
-                : 'No PayPal email saved yet. Use the preset icon above to add one.',
-              locationSummary
-                ? `Saved address: ${locationSummary}`
-                : 'No address saved yet. Use the location preset icon to save one.'
-            ),
+        H('section', null,
+          H('div', {
+            className: 'row',
+            style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
+          },
+            H('div', { style: { fontWeight: 800 } }, 'Your listings'),
             H('div', {
               className: 'row',
-              style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
+              style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' }
             },
-              H('div', { style: { fontWeight: 800 } }, 'Your listings'),
-              H('div', {
-                className: 'row',
-                style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' }
-              },
-                H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
-              )
-            ),
-            H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
-              H('button', {
-                className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
-                type: 'button',
-                onClick: () => setProfileTab('active')
-              }, 'Active listings'),
-              H('button', {
-                className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
-                type: 'button',
-                onClick: () => setProfileTab('sold')
-              }, 'Sold listings')
-            ),
-            (shownItems.length
-              ? (() => {
-                  const COLS = isMobile ? 3 : 4;
-                  const GAP = 12;
-                  return H('section', {
-                    style: {
-                      display: 'grid',
-                      gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-                      gap: GAP
-                    }
-                  },
-                    shownItems.map(it => {
-                      const src = it.image_data || '';
-                      return H('div', {
-                        key: it.id,
-                        className: 'card',
-                        style: { padding: 0, overflow: 'hidden', borderRadius: 8, cursor: 'pointer' },
-                        onClick: () => setProfileSelected(it)
+              H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
+            )
+          ),
+          H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
+            H('button', {
+              className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
+              type: 'button',
+              onClick: () => setProfileTab('active')
+            }, 'Active listings'),
+            H('button', {
+              className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
+              type: 'button',
+              onClick: () => setProfileTab('sold')
+            }, 'Sold listings')
+          ),
+          (shownItems.length
+            ? (() => {
+                const COLS = isMobile ? 3 : 4;
+                const GAP = 12;
+                return H('section', {
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                    gap: GAP
+                  }
+                },
+                  shownItems.map(it => {
+                    const src = it.image_data || '';
+                    return H('div', {
+                      key: it.id,
+                      className: 'card',
+                      style: { padding: 0, overflow: 'hidden', borderRadius: 8, cursor: 'pointer' },
+                      onClick: () => setProfileSelected(it)
+                    },
+                      H('div', {
+                        style: {
+                          position: 'relative',
+                          width: '100%',
+                          aspectRatio: '1 / 1',
+                          background: '#f3f4f6'
+                        }
                       },
-                        H('div', {
-                          style: {
-                            position: 'relative',
-                            width: '100%',
-                            aspectRatio: '1 / 1',
-                            background: '#f3f4f6'
-                          }
-                        },
-                          src ? H(ImageWithSkeleton, {
-                            src,
-                            alt: it.title || 'Item',
+                        src ? H(ImageWithSkeleton, {
+                          src,
+                          alt: it.title || 'Item',
                             loading: 'lazy',
                             decoding: 'async',
                             fetchPriority: 'low',
