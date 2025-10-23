@@ -562,7 +562,7 @@
                 title: 'Manage PayPal preset',
                 style: iconButtonStyle
               },
-                H(PresetIcon, null),
+                H(SettingsIcon, null),
                 H('span', { style: visuallyHidden }, 'Manage PayPal preset')
               ),
               H('button', {
@@ -572,7 +572,7 @@
                 title: 'Profile settings',
                 style: iconButtonStyle
               },
-                H(SettingsIcon, null),
+                H(PresetIcon, null),
                 H('span', { style: visuallyHidden }, 'Open profile settings')
               ),
               H('button', {
