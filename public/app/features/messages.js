@@ -84,7 +84,7 @@
       H('circle', { cx: 12, cy: 10, r: 2.6 }));
     }
 
-    function AttachButton({ onClick, title = 'Attach images', variant = 'library' }) {
+    function AttachButton({ onClick, title = 'Attach images', variant = 'library', disabled = false }) {
       let icon;
       if (variant === 'camera') {
         icon = H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
@@ -94,6 +94,8 @@
         );
       } else if (variant === 'paypal') {
         icon = H(PaypalPresetIcon, { size: 22, stroke: '#9ca3af' });
+      } else if (variant === 'location') {
+        icon = H(LocationPresetIcon, { size: 20, stroke: '#6b7280' });
       } else {
         icon = H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
           H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#9ca3af', 'stroke-width': 2 }),
@@ -104,17 +106,25 @@
       return H('button', {
         className: 'icon-btn',
         type: 'button',
-        onClick,
+        onClick: disabled ? undefined : onClick,
         title,
         'aria-label': title,
-        'data-testid': variant === 'paypal' ? 'dm-paypal' : 'dm-attach',
+        'data-testid': variant === 'paypal'
+          ? 'dm-paypal'
+          : variant === 'location'
+            ? 'dm-location'
+            : 'dm-attach',
+        disabled,
         style: {
-          width: 40, height: 40, borderRadius: 12,
+          width: 40,
+          height: 40,
+          borderRadius: 12,
           border: '1px solid #e5e7eb',
           background: '#fff',
           display: 'grid',
           placeItems: 'center',
-          cursor: 'pointer'
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1
         }
       }, icon);
     }
@@ -269,7 +279,7 @@
     }) {
       return H('div', {
         className: 'row',
-        style: { alignItems: 'flex-end', gap: 8 },
+        style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' },
         ref: dropRef,
         onDragOver,
         onDrop
@@ -290,68 +300,54 @@
         onChange: onPickImages,
         style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
       }),
-      H(AttachButton, {
-        onClick: () => {
-          if (cameraFileRef?.current) cameraFileRef.current.click();
-        },
-        title: 'Take a photo',
-        variant: 'camera'
-      }),
-      H(AttachButton, {
-        onClick: () => {
-          if (libraryFileRef?.current) libraryFileRef.current.click();
-        },
-        title: 'Attach from photos',
-        variant: 'library'
-      }),
-      canRevealPaypal && H(AttachButton, {
-        onClick: onRevealPaypal,
-        title: 'Reveal PayPal preset',
-        variant: 'paypal'
-      }),
-      H('div', { style: { position: 'relative', flex: 1 } },
-        H('textarea', {
-          placeholder: 'Type a message...  (Tip: paste or drag images)',
-          value: input,
-          rows: 2,
-          onPaste: onComposerPaste,
-          onChange: (event) => setInput(event.target.value),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              onSend();
-            }
+      H('div', {
+        className: 'row',
+        style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+      },
+        H(AttachButton, {
+          onClick: () => {
+            if (cameraFileRef?.current) cameraFileRef.current.click();
           },
-          style: {
-            width: '100%',
-            resize: 'vertical',
-            paddingRight: 52
-          }
+          title: 'Take a photo',
+          variant: 'camera'
         }),
-        H('button', {
-          type: 'button',
-          title: 'Send saved address',
-          'aria-label': 'Send saved address',
-          'data-testid': 'dm-location',
+        H(AttachButton, {
+          onClick: () => {
+            if (libraryFileRef?.current) libraryFileRef.current.click();
+          },
+          title: 'Attach from photos',
+          variant: 'library'
+        }),
+        canRevealPaypal && H(AttachButton, {
+          onClick: onRevealPaypal,
+          title: 'Reveal PayPal preset',
+          variant: 'paypal'
+        }),
+        H(AttachButton, {
           onClick: onRequestLocation,
-          style: {
-            position: 'absolute',
-            right: 8,
-            bottom: 8,
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            border: '1px solid #d1d5db',
-            background: '#fff',
-            display: 'grid',
-            placeItems: 'center',
-            cursor: canSendLocation ? 'pointer' : 'not-allowed',
-            opacity: canSendLocation ? 1 : 0.5
+          title: 'Send saved address',
+          variant: 'location',
+          disabled: !canSendLocation
+        })
+      ),
+      H('textarea', {
+        placeholder: 'Type a message...  (Tip: paste or drag images)',
+        value: input,
+        rows: 2,
+        onPaste: onComposerPaste,
+        onChange: (event) => setInput(event.target.value),
+        onKeyDown: (event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            onSend();
           }
         },
-          H(LocationPresetIcon, { size: 18 })
-        )
-      ),
+        style: {
+          width: 220,
+          maxWidth: '100%',
+          resize: 'vertical'
+        }
+      }),
       H('button', { className: 'btn primary', onClick: onSend }, 'Send'));
     }
 
@@ -436,6 +432,95 @@
               },
                 H('span', { 'aria-hidden': 'true', style: { fontSize: 18, lineHeight: 1 } }, '✔'),
                 'Send address'
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
+    const ConfirmPaypalModal = memo(function ConfirmPaypalModal({
+      open,
+      email,
+      onConfirm,
+      onCancel
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onCancel?.();
+        }
+      };
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '360px',
+              width: 'min(360px, 92vw)',
+              padding: '20px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('h3', {
+              style: {
+                margin: 0,
+                fontSize: 18,
+                fontWeight: 700
+              }
+            }, 'Share PayPal email?'),
+            H('p', {
+              className: 'muted',
+              style: { margin: 0, fontSize: 13 }
+            }, email ? `Your PayPal email (${email}) will be sent in the chat.` : 'No PayPal email saved yet.'),
+            H('div', {
+              className: 'row',
+              style: { justifyContent: 'flex-end', gap: 10 }
+            },
+              H('button', {
+                type: 'button',
+                onClick: onCancel,
+                className: 'btn',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c'
+                }
+              },
+                H('span', { 'aria-hidden': 'true', style: { color: '#ef4444', fontSize: 18, lineHeight: 1 } }, '✕'),
+                'Cancel'
+              ),
+              H('button', {
+                type: 'button',
+                onClick: onConfirm,
+                className: 'btn',
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#2563eb',
+                  border: '1px solid #1d4ed8',
+                  color: '#fff'
+                }
+              },
+                H('span', { 'aria-hidden': 'true', style: { fontSize: 18, lineHeight: 1 } }, '✔'),
+                'Share PayPal'
               )
             )
           )
@@ -910,6 +995,7 @@
       } = useMessagesPanelState(props);
 
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
+      const [confirmPaypalOpen, setConfirmPaypalOpen] = useState(false);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -929,6 +1015,23 @@
           setConfirmLocationOpen(false);
         }
       }, [sendLocationPreset]);
+
+      const handleRequestPaypal = useCallback(() => {
+        if (!canRevealPaypal) {
+          alert('Add your PayPal email in Profile first.');
+          return;
+        }
+        setConfirmPaypalOpen(true);
+      }, [canRevealPaypal]);
+
+      const handleClosePaypalConfirm = useCallback(() => {
+        setConfirmPaypalOpen(false);
+      }, []);
+
+      const handleConfirmPaypal = useCallback(async () => {
+        await revealPaypal();
+        setConfirmPaypalOpen(false);
+      }, [revealPaypal]);
 
       return H('div', { className: 'split' },
         H(ConversationsSidebar, {
@@ -964,7 +1067,7 @@
             onDragOver,
             onDrop,
             canRevealPaypal,
-            onRevealPaypal: revealPaypal,
+            onRevealPaypal: handleRequestPaypal,
             canSendLocation,
             onRequestLocation: handleRequestLocation,
             onSend: send
@@ -983,6 +1086,12 @@
             address: locationPreset,
             onCancel: handleCloseLocationConfirm,
             onConfirm: handleConfirmLocation
+          }),
+          H(ConfirmPaypalModal, {
+            open: confirmPaypalOpen,
+            email: currentUser?.paypal_email,
+            onCancel: handleClosePaypalConfirm,
+            onConfirm: handleConfirmPaypal
           })
         )
       );
@@ -993,6 +1102,7 @@
       useMessagesPanelState,
       MessageComposer,
       ConfirmLocationModal,
+      ConfirmPaypalModal,
       ImagePreviewStrip,
       MessagesThread,
       ConversationsSidebar,
