@@ -520,7 +520,7 @@
                 }
               },
                 H('span', { 'aria-hidden': 'true', style: { fontSize: 18, lineHeight: 1 } }, '✔'),
-                'Share'
+                'Share info'
               )
             )
           )
