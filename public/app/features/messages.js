@@ -320,7 +320,7 @@
         }),
         canRevealPaypal && H(AttachButton, {
           onClick: onRevealPaypal,
-          title: 'Reveal PayPal preset',
+          title: 'Reveal payment info',
           variant: 'paypal'
         }),
         H(AttachButton, {

@@ -243,16 +243,16 @@
                   gap: 8
                 }
               },
-              'PayPal preset',
+              'Payment preset',
               H(PaypalPresetIcon, { size: 22 })
             ),
               H('p', {
                 className: 'muted',
                 style: { fontSize: 13, margin: 0 }
-              }, 'Save the PayPal email you want to share when you use the preset in messages.')
+              }, 'Save the payment info you want to share when you use the preset in messages.')
             ),
             H('label', { style: { display: 'grid', gap: 8 } },
-              H('span', { style: { fontWeight: 600 } }, 'PayPal email'),
+              H('span', { style: { fontWeight: 600 } }, 'Payment info'),
               H('input', {
                 value: paypalEmail,
                 onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
@@ -275,7 +275,7 @@
             H('p', {
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
-            }, 'When you press "Reveal PayPal address" in a DM, the email you save here will be sent as a normal message.')
+            }, 'When you press the above icon in a conversation, the info you save here will be sent as a normal message.')
           )
         ),
         document.body
