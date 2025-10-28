@@ -1676,12 +1676,66 @@
       );
     }
 
+    const formatElapsedSince = (input) => {
+      if (!input) return null;
+      const date = new Date(input);
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+      let diff = Date.now() - date.getTime();
+      if (!Number.isFinite(diff) || diff <= 0) return 'just now';
+      const units = [
+        { label: 'year', ms: 1000 * 60 * 60 * 24 * 365 },
+        { label: 'month', ms: 1000 * 60 * 60 * 24 * 30 },
+        { label: 'week', ms: 1000 * 60 * 60 * 24 * 7 },
+        { label: 'day', ms: 1000 * 60 * 60 * 24 },
+        { label: 'hour', ms: 1000 * 60 * 60 },
+        { label: 'minute', ms: 1000 * 60 }
+      ];
+      for (const unit of units) {
+        const value = Math.floor(diff / unit.ms);
+        if (value >= 1) {
+          return `${value} ${unit.label}${value === 1 ? '' : 's'} ago`;
+        }
+      }
+      return 'just now';
+    };
+
     function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete }) {
       const [listings, setListings] = useState([]);
       const [loading, setLoading] = useState(true);
       const [selectedListing, setSelectedListing] = useState(null);
       const [error, setError] = useState(null);
       const [tab, setTab] = useState('active');
+      const [sellerInfo, setSellerInfo] = useState(null);
+
+      useEffect(() => {
+        if (!Number.isFinite(Number(sellerId))) {
+          setSellerInfo(null);
+          return undefined;
+        }
+        if (!api || typeof api.getUser !== 'function') {
+          setSellerInfo(null);
+          return undefined;
+        }
+
+        let mounted = true;
+        setSellerInfo(null);
+
+        (async () => {
+          try {
+            const info = await api.getUser(sellerId, { silent: true });
+            if (!mounted) return;
+            if (info && typeof info === 'object') {
+              setSellerInfo(info);
+            }
+          } catch (err) {
+            if (!mounted) return;
+            console.warn('Failed to load seller info:', err);
+            setSellerInfo(null);
+          }
+        })();
+
+        return () => { mounted = false; };
+      }, [api, sellerId]);
 
       useEffect(() => {
         let mounted = true;
@@ -1822,12 +1876,19 @@
       const isMobile = isMobileDevice();
       const gridColumns = isMobile ? 3 : 4;
 
+      const sellerDisplayName = (sellerInfo && sellerInfo.username) || sellerUsername || '';
+      const sellerLabel = sellerDisplayName
+        ? (sellerDisplayName.startsWith('@') ? sellerDisplayName : `@${sellerDisplayName}`)
+        : 'Seller';
+      const sellerJoinedText = sellerInfo && sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
+
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
           H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
             H('div', null,
-              H('div', { style: { fontWeight: 800, fontSize: 20 } }, sellerUsername ? `@${sellerUsername}` : 'Seller'),
-              H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`)
+              H('div', { style: { fontWeight: 800, fontSize: 20 } }, sellerLabel),
+              H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`),
+              sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`)
             ),
             H('button', { className: 'btn', onClick: onBack }, '<- Back')
           )

@@ -202,6 +202,8 @@ export function createApiClient(options = {}) {
 
   const listListings = (params = {}, meta) => listAll(params, meta);
 
+  const getUser = (userId, meta) => request(`/api/users/${userId}`, { method: 'GET' }, meta);
+
   const listByUser = (userId, meta) => request(`/api/users/${userId}/listings`, { method: 'GET' }, meta);
 
   const listMine = (meta) => request('/api/listings?mine=1', { method: 'GET' }, meta);
@@ -401,6 +403,7 @@ export function createApiClient(options = {}) {
     updateLocationPreset,
     listAll,
     listListings,
+    getUser,
     listByUser,
     listMine,
     createListing,

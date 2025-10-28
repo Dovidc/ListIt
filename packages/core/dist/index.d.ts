@@ -25,6 +25,7 @@ export interface ApiClient {
   updatePaypalEmail(paypalEmail: string, meta?: RequestMeta): Promise<unknown>;
   listAll(params?: Record<string, unknown> | string, locOrMeta?: unknown, meta?: RequestMeta): Promise<unknown>;
   listListings(params?: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
+  getUser(userId: number | string, meta?: RequestMeta): Promise<unknown>;
   listByUser(userId: number | string, meta?: RequestMeta): Promise<unknown>;
   listMine(meta?: RequestMeta): Promise<unknown>;
   createListing(payload: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
