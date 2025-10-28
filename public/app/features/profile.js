@@ -197,7 +197,11 @@
       paypalEmail,
       onChangePaypalEmail,
       onSavePaypal,
-      statusMessage
+      statusMessage,
+      locationPreset,
+      onChangeLocationPreset,
+      onSaveLocation,
+      locationStatusMessage
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -234,7 +238,7 @@
               title: 'Close preset settings'
             }, 'x'),
             H('div', { style: { display: 'grid', gap: 8 } },
-            H('h2', {
+              H('h2', {
                 style: {
                   fontSize: 20,
                   fontWeight: 800,
@@ -250,145 +254,85 @@
               H('p', {
                 className: 'muted',
                 style: { fontSize: 13, margin: 0 }
-              }, 'Save the payment info you want to share when you use the preset in messages.')
+              }, 'Save the payment and address info you want to share when you use the preset in messages.')
             ),
-            H('label', { style: { display: 'grid', gap: 8 } },
-              H('span', { style: { fontWeight: 600 } }, 'Payment info'),
-              H('input', {
-                value: paypalEmail,
-                onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
-                placeholder: 'name@example.com',
-                maxLength: 240,
-                style: { width: '100%' }
-              })
-            ),
-            H('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'flex-end'
-              }
-            },
-              H('button', {
-                className: 'btn primary',
-                type: 'button',
-                onClick: onSavePaypal
-              }, 'Save')
-            ),
-            statusMessage && H('div', {
-              role: 'status',
-              'aria-live': 'polite',
-              style: {
-                fontSize: 13,
-                color: '#047857',
-                fontWeight: 600
-              }
-            }, statusMessage),
-            H('p', {
-              className: 'muted',
-              style: { fontSize: 12, margin: 0 }
-            }, 'When you press the above icon in a conversation, the info you save here will be sent as a normal message.')
-          )
-        ),
-        document.body
-      );
-    });
-
-    const LocationPresetModal = React.memo(function LocationPresetModal({
-      open,
-      onClose,
-      locationPreset,
-      onChangeLocationPreset,
-      onSaveLocation,
-      statusMessage
-    }) {
-      const hasDom = typeof document !== 'undefined' && document.body;
-      if (!open || !hasDom) {
-        return null;
-      }
-
-      const handleOverlayClick = (evt) => {
-        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
-          onClose?.();
-        }
-      };
-
-      return createPortal(
-        H('div', {
-          className: 'modal open',
-          onClick: handleOverlayClick
-        },
-          H('div', {
-            className: 'modal-inner',
-            style: {
-              maxWidth: '460px',
-              width: 'min(460px, 92vw)',
-              padding: '24px',
-              background: '#fff',
-              color: '#111',
-              borderRadius: 16,
-              display: 'grid',
-              gap: 16
-            }
-          },
-            H('button', {
-              className: 'close',
-              onClick: onClose,
-              title: 'Close location preset settings'
-            }, 'x'),
-            H('div', { style: { display: 'grid', gap: 8 } },
-              H('h2', {
+            H('section', { style: { display: 'grid', gap: 12 } },
+              H('label', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Payment info'),
+                H('input', {
+                  value: paypalEmail,
+                  onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
+                  placeholder: 'name@example.com',
+                  maxLength: 240,
+                  style: { width: '100%' }
+                })
+              ),
+              H('div', {
                 style: {
-                  fontSize: 20,
-                  fontWeight: 800,
-                  margin: 0,
+                  display: 'flex',
+                  justifyContent: 'flex-end'
+                }
+              },
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onSavePaypal
+                }, 'Save')
+              ),
+              statusMessage && H('div', {
+                role: 'status',
+                'aria-live': 'polite',
+                style: {
+                  fontSize: 13,
+                  color: '#047857',
+                  fontWeight: 600
+                }
+              }, statusMessage)
+            ),
+            H('section', { style: { display: 'grid', gap: 12 } },
+              H('div', {
+                style: {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8
                 }
               },
-              'Address preset',
-              H(LocationPresetIcon, { size: 22 })
+                H('span', { style: { fontWeight: 600 } }, 'Saved address'),
+                H(LocationPresetIcon, { size: 18 })
               ),
-              H('p', {
-                className: 'muted',
-                style: { fontSize: 13, margin: 0 }
-              }, 'Save the address you want to quickly share in messages.')
-            ),
-            H('label', { style: { display: 'grid', gap: 8 } },
-              H('span', { style: { fontWeight: 600 } }, 'Saved address'),
               H('textarea', {
                 value: locationPreset,
                 onChange: (evt) => onChangeLocationPreset?.(evt.target.value),
                 placeholder: '123 Main St, City, State',
                 rows: 3,
                 style: { width: '100%', resize: 'vertical' }
-              })
+              }),
+              H('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'flex-end'
+                }
+              },
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onSaveLocation
+                }, 'Save')
+              ),
+              locationStatusMessage && H('div', {
+                role: 'status',
+                'aria-live': 'polite',
+                style: {
+                  fontSize: 13,
+                  color: '#047857',
+                  fontWeight: 600
+                }
+              }, locationStatusMessage)
             ),
-            H('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'flex-end'
-              }
-            },
-              H('button', {
-                className: 'btn primary',
-                type: 'button',
-                onClick: onSaveLocation
-              }, 'Save')
-            ),
-            statusMessage && H('div', {
-              role: 'status',
-              'aria-live': 'polite',
-              style: {
-                fontSize: 13,
-                color: '#047857',
-                fontWeight: 600
-              }
-            }, statusMessage),
             H('p', {
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
-            }, 'Press the address icon in a DM to confirm and send the saved address as a message.')
+            }, 'When you press the preset icon in a conversation, the info you save here will be sent as a normal message.')
           )
         ),
         document.body
@@ -579,7 +523,6 @@
       const [profileSelected, setProfileSelected] = useState(null);
       const [settingsOpen, setSettingsOpen] = useState(false);
       const [paypalModalOpen, setPaypalModalOpen] = useState(false);
-      const [locationModalOpen, setLocationModalOpen] = useState(false);
       const [paypalStatusMessage, setPaypalStatusMessage] = useState('');
       const [locationStatusMessage, setLocationStatusMessage] = useState('');
 
@@ -609,21 +552,13 @@
 
       const handleOpenPaypalModal = useCallback(() => {
         setPaypalStatusMessage('');
+        setLocationStatusMessage('');
         setPaypalModalOpen(true);
       }, []);
 
       const handleClosePaypalModal = useCallback(() => {
         setPaypalModalOpen(false);
         setPaypalStatusMessage('');
-      }, []);
-
-      const handleOpenLocationModal = useCallback(() => {
-        setLocationStatusMessage('');
-        setLocationModalOpen(true);
-      }, []);
-
-      const handleCloseLocationModal = useCallback(() => {
-        setLocationModalOpen(false);
         setLocationStatusMessage('');
       }, []);
 
@@ -745,21 +680,11 @@
                 className: 'btn',
                 type: 'button',
                 onClick: handleOpenPaypalModal,
-                title: 'Manage PayPal preset',
+                title: 'Manage payment preset',
                 style: iconButtonStyle
               },
                 H(SettingsIcon, null),
-                H('span', { style: visuallyHidden }, 'Manage PayPal preset')
-              ),
-              H('button', {
-                className: 'btn',
-                type: 'button',
-                onClick: handleOpenLocationModal,
-                title: 'Manage address preset',
-                style: iconButtonStyle
-              },
-                H(LocationPresetIcon, null),
-                H('span', { style: visuallyHidden }, 'Manage address preset')
+                H('span', { style: visuallyHidden }, 'Manage payment preset')
               ),
               H('button', {
                 className: 'btn',
@@ -903,16 +828,11 @@
           paypalEmail,
           onChangePaypalEmail: handleChangePaypalEmail,
           onSavePaypal: savePaypal,
-          statusMessage: paypalStatusMessage
-        }),
-
-        H(LocationPresetModal, {
-          open: locationModalOpen,
-          onClose: handleCloseLocationModal,
+          statusMessage: paypalStatusMessage,
           locationPreset,
           onChangeLocationPreset: handleChangeLocationPreset,
           onSaveLocation: saveLocationPreset,
-          statusMessage: locationStatusMessage
+          locationStatusMessage: locationStatusMessage
         }),
 
         H(ProfileSettingsModal, {
