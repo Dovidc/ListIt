@@ -115,7 +115,7 @@ describe('profile feature integration', () => {
 
   test('ProfilePanel wires feature toggles, persistence, and listing actions', async () => {
     const createProfileFeature = loadFactory();
-    const { React, states } = createReactMocks([undefined, undefined, true, true, true, undefined, 'updated@example.com', 'Saved spot']);
+    const { React, states } = createReactMocks([undefined, undefined, true, true]);
 
     const api = {
       updatePaypalEmail: jest.fn().mockResolvedValue({}),
@@ -163,17 +163,11 @@ describe('profile feature integration', () => {
     const tree = ProfilePanel(props);
     const nodes = collectNodes(tree);
 
-    const paypalPresetButton = nodes.find((node) => node?.props?.title === 'Manage PayPal preset');
+    const paypalPresetButton = nodes.find((node) => node?.props?.title === 'Manage payment preset');
     expect(paypalPresetButton).toBeDefined();
     states[3].setter.mockClear();
     paypalPresetButton.props.onClick();
     expect(states[3].setter).toHaveBeenCalledWith(true);
-
-    const locationPresetButton = nodes.find((node) => node?.props?.title === 'Manage address preset');
-    expect(locationPresetButton).toBeDefined();
-    states[4].setter.mockClear();
-    locationPresetButton.props.onClick();
-    expect(states[4].setter).toHaveBeenCalledWith(true);
 
     expect(helpers.asArray).toHaveBeenNthCalledWith(1, props.items);
     expect(helpers.asArray).toHaveBeenNthCalledWith(2, props.items);
@@ -197,17 +191,29 @@ describe('profile feature integration', () => {
     const saveButtons = nodes.filter((node) => node?.props?.children === 'Save');
     expect(saveButtons).toHaveLength(2);
 
+    const paymentInput = nodes.find((node) => node?.props?.placeholder === 'name@example.com');
+    expect(paymentInput).toBeDefined();
+    states[7].setter.mockClear();
+    paymentInput.props.onChange({ target: { value: 'updated@example.com' } });
+    expect(states[7].setter).toHaveBeenCalledWith('updated@example.com');
+
     await saveButtons[0].props.onClick();
     expect(api.updatePaypalEmail).toHaveBeenCalledWith('updated@example.com');
     expect(api.me).toHaveBeenNthCalledWith(1, { silent: true });
+    expect(states[4].setter).toHaveBeenCalledWith('Saved');
+
+    const addressTextarea = nodes.find((node) => node?.props?.placeholder === '123 Main St, City, State');
+    expect(addressTextarea).toBeDefined();
+    states[8].setter.mockClear();
+    addressTextarea.props.onChange({ target: { value: 'Saved spot' } });
+    expect(states[8].setter).toHaveBeenCalledWith('Saved spot');
 
     await saveButtons[1].props.onClick();
     expect(api.updateLocationPreset).toHaveBeenCalledWith('Saved spot');
     expect(api.me).toHaveBeenNthCalledWith(2, { silent: true });
     expect(appNav.setUser.mock.calls.some((call) => call[0] && call[0].location_preset === 'Saved spot')).toBe(true);
     expect(appNav.setUser).toHaveBeenCalledWith({ id: 'me-2' });
-    expect(global.alert).toHaveBeenCalledTimes(2);
-    expect(global.alert).toHaveBeenCalledWith('Saved.');
+    expect(states[5].setter).toHaveBeenCalledWith('Saved');
 
     const listingModal = nodes.find((node) => node?.type === components.ListingModal);
     expect(listingModal).toBeDefined();
