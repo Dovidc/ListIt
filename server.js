@@ -4417,6 +4417,52 @@ app.post(
 
 /* ------------------------------------------------------------------ */
 
+app.get('/api/users/:userId', async (req, res) => {
+
+  try {
+
+    const userId = Number(req.params.userId);
+
+    if (!Number.isFinite(userId)) {
+
+      return res.status(400).json({ error: 'Invalid user ID' });
+
+    }
+
+
+
+    const user = await db.prepare('SELECT id, username, created_at FROM users WHERE id = ?').get(userId);
+
+    if (!user) {
+
+      return res.status(404).json({ error: 'User not found' });
+
+    }
+
+
+
+    return res.json({
+
+      id: user.id,
+
+      username: user.username || null,
+
+      created_at: user.created_at
+
+    });
+
+  } catch (e) {
+
+    console.error('GET /api/users/:userId failed:', e);
+
+    return res.status(500).json({ error: 'fetch_failed' });
+
+  }
+
+});
+
+
+
 app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => {
 
   try {
