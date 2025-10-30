@@ -2263,7 +2263,11 @@ async function toOpenAIImageUrl(value) {
 
   try {
 
-    return await presignDownload({ key, expiresIn: 120 });
+    // Give the presigned URL a generous lifetime so OpenAI has time to fetch it
+    // even if the analyze request queues for a bit. Short (2 minute) expirations
+    // were causing intermittent `invalid_image_url` errors when the link expired
+    // before OpenAI attempted to download the asset.
+    return await presignDownload({ key, expiresIn: 900 });
 
   } catch (err) {
 
