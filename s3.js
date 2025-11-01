@@ -5,6 +5,40 @@ const crypto = require('crypto');
 let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
 let _s3 = null;
+let _timeOffsetMs;
+
+function parseTimeOffsetMs() {
+  if (_timeOffsetMs !== undefined) return _timeOffsetMs;
+
+  const msRaw = process.env.AWS_TIME_OFFSET_MS ?? process.env.S3_TIME_OFFSET_MS;
+  const secondsRaw = process.env.AWS_TIME_OFFSET_SECONDS ?? process.env.S3_TIME_OFFSET_SECONDS;
+
+  if (msRaw != null && msRaw !== '') {
+    const value = Number(msRaw);
+    if (!Number.isFinite(value)) {
+      throw new Error('Invalid AWS/S3 time offset milliseconds value');
+    }
+    _timeOffsetMs = Math.round(value);
+    return _timeOffsetMs;
+  }
+
+  if (secondsRaw != null && secondsRaw !== '') {
+    const value = Number(secondsRaw);
+    if (!Number.isFinite(value)) {
+      throw new Error('Invalid AWS/S3 time offset seconds value');
+    }
+    _timeOffsetMs = Math.round(value * 1000);
+    return _timeOffsetMs;
+  }
+
+  _timeOffsetMs = 0;
+  return _timeOffsetMs;
+}
+
+function correctedNow() {
+  const offset = parseTimeOffsetMs();
+  return new Date(Date.now() + offset);
+}
 
 function need(name) {
   const v = process.env[name];
@@ -19,7 +53,11 @@ function getS3() {
     ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
     const region = process.env.AWS_REGION || process.env.S3_REGION;
     if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
-    _s3 = new S3Client({ region });
+    const systemClockOffset = parseTimeOffsetMs();
+    if (systemClockOffset && Number.isFinite(systemClockOffset)) {
+      console.warn('[S3] Applying system clock offset (ms):', systemClockOffset);
+    }
+    _s3 = new S3Client({ region, systemClockOffset });
   }
   return _s3;
 }
@@ -27,7 +65,7 @@ function getS3() {
 function newKey(filename = 'upload.bin') {
   const ext = (filename.split('.').pop() || 'bin').toLowerCase();
   const id = crypto.randomBytes(16).toString('hex');
-  const d = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const d = correctedNow().toISOString().slice(0, 10); // YYYY-MM-DD
   const prefix = process.env.S3_PREFIX || 'public/uploads';
   return `${prefix}/${d}/${id}.${ext}`;
 }
