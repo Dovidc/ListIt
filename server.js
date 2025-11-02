@@ -2255,23 +2255,15 @@ async function toOpenAIImageUrl(value) {
 
   if (!trimmed) return trimmed;
 
-  if (!presignDownload || typeof presignDownload !== 'function') return trimmed;
+  // Use CloudFront URL if available (publicly accessible, works with OpenAI)
+  const cdnUrl = canonicalAssetUrl(trimmed);
 
-  const key = assetKeyFromUrl(trimmed);
-
-  if (!key) return trimmed;
-
-  try {
-
-    return await presignDownload({ key, expiresIn: 120 });
-
-  } catch (err) {
-
-    console.warn('Failed to presign asset for OpenAI:', err && err.message ? err.message : err);
-
-    return trimmed;
-
+  if (typeof cdnUrl === 'string' && cdnUrl) {
+    return cdnUrl;
   }
+
+  // Fallback to original URL if no CDN conversion available
+  return trimmed;
 
 }
 
