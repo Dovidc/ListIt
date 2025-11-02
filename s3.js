@@ -6,6 +6,14 @@ let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
 let _s3 = null;
 
+const MAX_AWS_TTL = 60 * 60 * 24 * 7; // 7 days per AWS limitation
+
+function parseTtl(value, fallback) {
+  const num = Number.parseInt(value, 10);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.min(num, MAX_AWS_TTL);
+}
+
 function need(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env ${name}`);
@@ -49,7 +57,8 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
     CacheControl: 'public, max-age=31536000, immutable',
   });
 
-  const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 });
+  const uploadTtl = parseTtl(process.env.S3_UPLOAD_TTL, 300);
+  const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: uploadTtl });
   const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
   const publicUrl = `${base.replace(/\/+$/,'')}/${Key}`;
   return { Bucket, Key, uploadUrl, publicUrl };
@@ -63,7 +72,7 @@ function normalizeKey(key = '') {
   return trimmed.replace(/^\/+/, '');
 }
 
-async function presignDownload({ key, expiresIn = 120 } = {}) {
+async function presignDownload({ key, expiresIn } = {}) {
   const s3 = getS3();
   const Bucket = need('S3_BUCKET');
   if (!GetObjectCommand) {
@@ -71,7 +80,8 @@ async function presignDownload({ key, expiresIn = 120 } = {}) {
   }
   const Key = normalizeKey(key);
   const cmd = new GetObjectCommand({ Bucket, Key });
-  return await getSignedUrl(s3, cmd, { expiresIn });
+  const downloadTtl = parseTtl(expiresIn ?? process.env.S3_DOWNLOAD_TTL, 900);
+  return await getSignedUrl(s3, cmd, { expiresIn: downloadTtl });
 }
 
 module.exports = { presignUpload, presignDownload };
