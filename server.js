@@ -2661,25 +2661,91 @@ function normalizeHttpUrl(input, { allowEmpty = false } = {}) {
 
   }
 
-  if (!/^https?:\/\//i.test(str)) {
+  const attemptNormalize = (candidate) => {
 
-    str = `https://${str}`;
+    if (!candidate) return null;
+
+    let value = candidate.trim();
+
+    if (!value) return null;
+
+    if (!/^https?:\/\//i.test(value)) {
+
+      value = `https://${value}`;
+
+    }
+
+    try {
+
+      const url = new URL(value);
+
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+
+      return url.toString();
+
+    } catch {
+
+      return null;
+
+    }
+
+  };
+
+  const variants = [];
+
+  const pushVariant = (value) => {
+
+    if (!value) return;
+
+    const trimmed = value.trim();
+
+    if (!trimmed) return;
+
+    if (!variants.includes(trimmed)) {
+
+      variants.push(trimmed);
+
+    }
+
+  };
+
+  pushVariant(str);
+
+  const withoutQuotes = str
+
+    .replace(/^[\s"'`]+/, '')
+
+    .replace(/[\s"'`]+$/, '');
+
+  pushVariant(withoutQuotes);
+
+  const withoutWrappers = withoutQuotes
+
+    .replace(/^[([{<]+/, '')
+
+    .replace(/[)\]}>]+$/, '');
+
+  pushVariant(withoutWrappers);
+
+  const withoutTrailingPunctuation = withoutWrappers
+
+    .replace(/[,'"”’‘`)>\]}><.,;:!?]+$/, '');
+
+  pushVariant(withoutTrailingPunctuation);
+
+  for (const candidate of variants) {
+
+    const normalized = attemptNormalize(candidate);
+
+    if (normalized) {
+
+      return normalized;
+
+    }
 
   }
 
-  try {
-
-    const url = new URL(str);
-
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-
-    return url.toString();
-
-  } catch {
-
-    return null;
-
-  }
+  return null;
 
 }
 
@@ -8337,6 +8403,8 @@ app._startServer = startServer;
 app._db = db;
 
 app._features = GEO_FEATURES;
+
+app._normalizeHttpUrl = normalizeHttpUrl;
 
 
 
