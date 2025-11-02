@@ -2255,23 +2255,145 @@ async function toOpenAIImageUrl(value) {
 
   if (!trimmed) return trimmed;
 
+  if (trimmed.startsWith('data:image/')) return trimmed;
+
   if (!presignDownload || typeof presignDownload !== 'function') return trimmed;
 
   const key = assetKeyFromUrl(trimmed);
 
-  if (!key) return trimmed;
+  let fetchUrl = null;
+
+  if (key) {
+
+    try {
+
+      fetchUrl = await presignDownload({ key });
+
+    } catch (err) {
+
+      console.warn('Failed to presign asset for OpenAI:', err && err.message ? err.message : err);
+
+      fetchUrl = null;
+
+    }
+
+  } else if (isAllowedPublicUrl(trimmed)) {
+
+    fetchUrl = trimmed;
+
+  }
+
+  if (!fetchUrl) return null;
+
+  const fetchFn = (typeof fetch === 'function') ? fetch : null;
+
+  if (!fetchFn) return null;
+
+  const maxBytes = MAX_IMAGE_MB * 1024 * 1024;
 
   try {
 
-    return await presignDownload({ key });
+    const resp = await fetchFn(fetchUrl);
+
+    if (!resp || !resp.ok) throw new Error(`HTTP ${resp && resp.status ? resp.status : 'error'}`);
+
+    const lenHeader = resp.headers ? resp.headers.get('content-length') : null;
+
+    const declaredLength = lenHeader ? Number(lenHeader) : NaN;
+
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new Error('Image exceeds maximum size');
+
+    const rawType = resp.headers ? resp.headers.get('content-type') : '';
+
+    const mime = (typeof rawType === 'string' && rawType.trim().length && /^image\//i.test(rawType))
+
+      ? rawType.split(';')[0].trim().toLowerCase()
+
+      : 'image/jpeg';
+
+    const base64 = await streamResponseToBase64(resp, maxBytes);
+
+    if (!base64) return null;
+
+    return `data:${mime};base64,${base64}`;
 
   } catch (err) {
 
-    console.warn('Failed to presign asset for OpenAI:', err && err.message ? err.message : err);
+    console.warn('Failed to inline asset for OpenAI:', err && err.message ? err.message : err);
 
-    return trimmed;
+    return null;
 
   }
+
+}
+
+async function streamResponseToBase64(resp, maxBytes) {
+
+  if (!resp) return null;
+
+  if (resp.body && typeof resp.body.getReader === 'function') {
+
+    const reader = resp.body.getReader();
+
+    const segments = [];
+
+    let carry = Buffer.alloc(0);
+
+    let total = 0;
+
+    while (true) {
+
+      const { value, done } = await reader.read();
+
+      if (done) break;
+
+      if (!value || !value.byteLength) continue;
+
+      total += value.byteLength;
+
+      if (total > maxBytes) throw new Error('Image exceeds maximum size');
+
+      let chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+
+      if (carry.length) {
+
+        chunk = Buffer.concat([carry, chunk]);
+
+        carry = Buffer.alloc(0);
+
+      }
+
+      const remainder = chunk.length % 3;
+
+      const encodeLen = chunk.length - remainder;
+
+      if (encodeLen > 0) {
+
+        const encoded = chunk.subarray(0, encodeLen).toString('base64');
+
+        if (encoded) segments.push(encoded);
+
+      }
+
+      carry = remainder ? chunk.subarray(chunk.length - remainder) : Buffer.alloc(0);
+
+    }
+
+    if (carry.length) {
+
+      segments.push(carry.toString('base64'));
+
+    }
+
+    return segments.join('');
+
+  }
+
+  const arrayBuffer = await resp.arrayBuffer();
+
+  if (arrayBuffer.byteLength > maxBytes) throw new Error('Image exceeds maximum size');
+
+  return Buffer.from(arrayBuffer).toString('base64');
 
 }
 
