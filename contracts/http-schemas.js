@@ -122,7 +122,8 @@ function validateRegisterRequest(raw = {}) {
   const email = coerceTrimmed(raw.email).toLowerCase();
   const password = typeof raw.password === 'string' ? raw.password : '';
   const phoneRaw = raw.phone ?? raw.phone_number ?? raw.phoneNumber;
-  const phone = normalizePhoneNumber(phoneRaw);
+  const normalizedPhone = normalizePhoneNumber(phoneRaw);
+  const hasPhoneInput = phoneRaw != null && String(phoneRaw).trim() !== '';
 
   if (!username) {
     issues.push(issue('username', 'Username is required', 'required'));
@@ -146,12 +147,14 @@ function validateRegisterRequest(raw = {}) {
     issues.push(issue('password', 'Password must be 128 characters or less', 'too_long'));
   }
 
-  if (!phone) {
-    issues.push(issue('phone', 'Phone number is required', 'required'));
-  } else {
-    const digits = phone.startsWith('+') ? phone.slice(1) : phone;
-    if (digits.length < 10 || digits.length > 15) {
+  if (hasPhoneInput) {
+    if (!normalizedPhone) {
       issues.push(issue('phone', 'Phone number must contain 10-15 digits', 'invalid_phone'));
+    } else {
+      const digits = normalizedPhone.startsWith('+') ? normalizedPhone.slice(1) : normalizedPhone;
+      if (digits.length < 10 || digits.length > 15) {
+        issues.push(issue('phone', 'Phone number must contain 10-15 digits', 'invalid_phone'));
+      }
     }
   }
 
@@ -161,7 +164,7 @@ function validateRegisterRequest(raw = {}) {
     username,
     email,
     password,
-    phone
+    phone: hasPhoneInput ? normalizedPhone : undefined
   });
 }
 
@@ -184,6 +187,39 @@ function validateVerifyPhoneRequest(raw = {}) {
 
   if (issues.length) return failure(issues);
   return success({ email, code });
+}
+
+function validatePhoneVerificationStartRequest(raw = {}) {
+  const issues = [];
+  const phoneRaw = raw.phone ?? raw.phone_number ?? raw.phoneNumber;
+  const phone = normalizePhoneNumber(phoneRaw);
+
+  if (!phone) {
+    issues.push(issue('phone', 'Phone number must contain 10-15 digits', 'invalid_phone'));
+  } else {
+    const digits = phone.startsWith('+') ? phone.slice(1) : phone;
+    if (digits.length < 10 || digits.length > 15) {
+      issues.push(issue('phone', 'Phone number must contain 10-15 digits', 'invalid_phone'));
+    }
+  }
+
+  if (issues.length) return failure(issues);
+
+  return success({ phone });
+}
+
+function validatePhoneVerificationConfirmRequest(raw = {}) {
+  const issues = [];
+  const code = coerceTrimmed(raw.code);
+
+  if (!code) {
+    issues.push(issue('code', 'Verification code is required', 'required'));
+  } else if (!/^\d{6}$/.test(code)) {
+    issues.push(issue('code', 'Verification code must be 6 digits', 'invalid_code'));
+  }
+
+  if (issues.length) return failure(issues);
+  return success({ code });
 }
 
 function validatePasswordResetRequest(raw = {}) {
@@ -531,6 +567,8 @@ module.exports = {
   validateUpdateListingRequest,
   validateSendMessageRequest,
   validateVerifyPhoneRequest,
+  validatePhoneVerificationStartRequest,
+  validatePhoneVerificationConfirmRequest,
   validatePasswordResetRequest,
   validatePasswordResetConfirmRequest,
   validateAuthResponse,
