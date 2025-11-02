@@ -2283,11 +2283,25 @@ async function toOpenAIImageUrl(value) {
 
   }
 
-  if (!fetchUrl) return null;
+  if (!fetchUrl) {
+
+    if (isAllowedPublicUrl(trimmed)) return trimmed;
+
+    return null;
+
+  }
 
   const fetchFn = (typeof fetch === 'function') ? fetch : null;
 
-  if (!fetchFn) return null;
+  if (!fetchFn) {
+
+    if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
+
+    if (isAllowedPublicUrl(trimmed)) return trimmed;
+
+    return null;
+
+  }
 
   const maxBytes = MAX_IMAGE_MB * 1024 * 1024;
 
@@ -2313,13 +2327,25 @@ async function toOpenAIImageUrl(value) {
 
     const base64 = await streamResponseToBase64(resp, maxBytes);
 
-    if (!base64) return null;
+    if (!base64) {
+
+      if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
+
+      if (isAllowedPublicUrl(trimmed)) return trimmed;
+
+      return null;
+
+    }
 
     return `data:${mime};base64,${base64}`;
 
   } catch (err) {
 
     console.warn('Failed to inline asset for OpenAI:', err && err.message ? err.message : err);
+
+    if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
+
+    if (isAllowedPublicUrl(trimmed)) return trimmed;
 
     return null;
 
