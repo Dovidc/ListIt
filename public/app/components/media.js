@@ -69,12 +69,29 @@
       return false;
     }
 
+    const CURRENT_HOST = (typeof window !== 'undefined' && window.location && window.location.hostname) || '';
+    const CURRENT_ORIGIN = (typeof window !== 'undefined' && window.location && window.location.origin) || 'http://localhost';
+    const ASSET_PATH_SKIP_RESIZE = /\/(?:public\/)?uploads\//i;
+
+    function shouldResizeAsset(url) {
+      if (!url) return false;
+      const host = (url.hostname || '').toLowerCase();
+      if (!host) return false;
+      if (host.endsWith('.amazonaws.com')) return false;
+      if (host.endsWith('.cloudfront.net')) return false;
+      if (CURRENT_HOST && host === CURRENT_HOST) return false;
+      const path = (url.pathname || '').toLowerCase();
+      if (ASSET_PATH_SKIP_RESIZE.test(path)) return false;
+      return true;
+    }
+
     function buildSizedUrl(src, width) {
       if (!src || typeof src !== 'string') return src;
       if (src.startsWith('data:') || src.startsWith('blob:')) return src;
       try {
-        const url = new URL(src);
+        const url = new URL(src, CURRENT_ORIGIN);
         if (isLikelySignedAssetUrl(url)) return src;
+        if (!shouldResizeAsset(url)) return src;
         if (width && Number.isFinite(width)) url.searchParams.set('w', String(width));
         if (!url.searchParams.has('auto')) url.searchParams.set('auto', 'compress');
         return url.toString();
@@ -180,11 +197,18 @@
       skeletonStyle,
       ...imgProps
     }) {
-      const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
-      const srcSet = hasResponsive
-        ? widths.map((w) => `${buildSizedUrl(src, w)} ${w}w`).join(', ')
-        : undefined;
-      const defaultSrc = hasResponsive ? buildSizedUrl(src, widths[widths.length - 1]) : src;
+      const canAttemptResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
+      let srcSet;
+      let defaultSrc = src;
+
+      if (canAttemptResponsive) {
+        const sized = widths.map((w) => buildSizedUrl(src, w));
+        const uniqueSized = Array.from(new Set(sized.filter(Boolean)));
+        if (uniqueSized.length > 1 || (uniqueSized.length === 1 && uniqueSized[0] !== src)) {
+          srcSet = sized.map((url, idx) => `${url} ${widths[idx]}w`).join(', ');
+          defaultSrc = sized[sized.length - 1] || src;
+        }
+      }
 
       return H(ImageWithSkeleton, {
         src: defaultSrc || src,

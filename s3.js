@@ -84,4 +84,32 @@ async function presignDownload({ key, expiresIn } = {}) {
   return await getSignedUrl(s3, cmd, { expiresIn: downloadTtl });
 }
 
-module.exports = { presignUpload, presignDownload };
+async function fetchObjectBuffer({ key, maxBytes } = {}) {
+  const s3 = getS3();
+  const Bucket = need('S3_BUCKET');
+  if (!GetObjectCommand) {
+    ({ GetObjectCommand } = require('@aws-sdk/client-s3'));
+  }
+
+  const Key = normalizeKey(key);
+  const cmd = new GetObjectCommand({ Bucket, Key });
+  const resp = await s3.send(cmd);
+
+  if (!resp || !resp.Body || typeof resp.Body.transformToByteArray !== 'function') {
+    throw new Error('Unexpected S3 response');
+  }
+
+  const byteArray = await resp.Body.transformToByteArray();
+  const buffer = Buffer.from(byteArray);
+
+  if (Number.isFinite(maxBytes) && maxBytes > 0 && buffer.length > maxBytes) {
+    throw new Error('Image exceeds maximum size');
+  }
+
+  const rawType = typeof resp.ContentType === 'string' ? resp.ContentType.trim() : '';
+  const contentType = rawType ? rawType : 'image/jpeg';
+
+  return { buffer, contentType };
+}
+
+module.exports = { presignUpload, presignDownload, fetchObjectBuffer };

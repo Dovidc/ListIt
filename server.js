@@ -202,14 +202,14 @@ console.log('WebSocket server configured on path:', (wss.options && wss.options.
 
 
 
-// S3 presign module
+// S3 helpers
 
 let presignUpload;
-let presignDownload;
+let fetchObjectBuffer;
 
 try {
 
-  ({ presignUpload, presignDownload } = require('./s3'));
+  ({ presignUpload, fetchObjectBuffer } = require('./s3'));
 
   console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'bucket=', process.env.S3_BUCKET);
 
@@ -2249,65 +2249,53 @@ function assetKeyFromUrl(value) {
 
 async function toOpenAIImageUrl(value) {
 
-  if (typeof value !== 'string') return value;
+  if (typeof value !== 'string') return null;
 
   const trimmed = value.trim();
 
-  if (!trimmed) return trimmed;
+  if (!trimmed) return null;
 
   if (trimmed.startsWith('data:image/')) return trimmed;
 
-  if (!presignDownload || typeof presignDownload !== 'function') return trimmed;
+  const maxBytes = MAX_IMAGE_MB * 1024 * 1024;
 
   const key = assetKeyFromUrl(trimmed);
 
-  let fetchUrl = null;
-
-  if (key) {
+  if (key && typeof fetchObjectBuffer === 'function') {
 
     try {
 
-      fetchUrl = await presignDownload({ key });
+      const { buffer, contentType } = await fetchObjectBuffer({ key, maxBytes });
+
+      if (buffer && buffer.length) {
+
+        const mime = (typeof contentType === 'string' && contentType.trim().length && /^image\//i.test(contentType))
+
+          ? contentType.split(';')[0].trim().toLowerCase()
+
+          : 'image/jpeg';
+
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+
+      }
 
     } catch (err) {
 
-      console.warn('Failed to presign asset for OpenAI:', err && err.message ? err.message : err);
-
-      fetchUrl = null;
+      console.warn('Failed to load asset from S3 for OpenAI:', err && err.message ? err.message : err);
 
     }
 
-  } else if (isAllowedPublicUrl(trimmed)) {
-
-    fetchUrl = trimmed;
-
   }
 
-  if (!fetchUrl) {
-
-    if (isAllowedPublicUrl(trimmed)) return trimmed;
-
-    return null;
-
-  }
+  if (!isAllowedPublicUrl(trimmed)) return null;
 
   const fetchFn = (typeof fetch === 'function') ? fetch : null;
 
-  if (!fetchFn) {
-
-    if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
-
-    if (isAllowedPublicUrl(trimmed)) return trimmed;
-
-    return null;
-
-  }
-
-  const maxBytes = MAX_IMAGE_MB * 1024 * 1024;
+  if (!fetchFn) return null;
 
   try {
 
-    const resp = await fetchFn(fetchUrl);
+    const resp = await fetchFn(trimmed);
 
     if (!resp || !resp.ok) throw new Error(`HTTP ${resp && resp.status ? resp.status : 'error'}`);
 
@@ -2327,25 +2315,13 @@ async function toOpenAIImageUrl(value) {
 
     const base64 = await streamResponseToBase64(resp, maxBytes);
 
-    if (!base64) {
-
-      if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
-
-      if (isAllowedPublicUrl(trimmed)) return trimmed;
-
-      return null;
-
-    }
+    if (!base64) return null;
 
     return `data:${mime};base64,${base64}`;
 
   } catch (err) {
 
-    console.warn('Failed to inline asset for OpenAI:', err && err.message ? err.message : err);
-
-    if (typeof fetchUrl === 'string' && fetchUrl.trim()) return fetchUrl.trim();
-
-    if (isAllowedPublicUrl(trimmed)) return trimmed;
+    console.warn('Failed to inline remote asset for OpenAI:', err && err.message ? err.message : err);
 
     return null;
 
@@ -5765,6 +5741,11 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 
       const openAIImages = await Promise.all(images.map((img) => toOpenAIImageUrl(img)));
+      const usableForOpenAI = openAIImages.filter((img) => typeof img === 'string' && img.trim().startsWith('data:image/'));
+      if (!usableForOpenAI.length) {
+        console.error('Failed to inline any listing images for OpenAI');
+        return res.status(502).json({ error: 'image_inline_failed' });
+      }
 
       const moderationInputs = [];
       if (hint) moderationInputs.push(`hint: ${hint}`);
