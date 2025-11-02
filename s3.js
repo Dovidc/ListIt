@@ -32,6 +32,13 @@ async function detectAwsClockOffset(region) {
         if (!Number.isFinite(serverTime)) return resolve(0);
         const offset = serverTime - Date.now();
         if (Math.abs(offset) < 2000) return resolve(0);
+
+        // Ignore obviously invalid offsets so we don't generate wildly future keys.
+        const MAX_CLOCK_SKEW_MS = 15 * 60 * 1000; // 15 minutes
+        if (Math.abs(offset) > MAX_CLOCK_SKEW_MS) {
+          console.warn('[S3] Ignoring unrealistic AWS clock skew (ms):', offset);
+          return resolve(0);
+        }
         resolve(offset);
       },
     );
