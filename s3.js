@@ -2,9 +2,12 @@
 'use strict';
 
 const crypto = require('crypto');
+const https = require('https');
+
 let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
-let _s3 = null;
+let _s3Promise = null;
+let _clockOffsetMs = 0;
 
 function need(name) {
   const v = process.env[name];
@@ -12,28 +15,70 @@ function need(name) {
   return v;
 }
 
-function getS3() {
-  if (!_s3) {
-    // Load AWS SDKs only when needed
-    ({ S3Client, PutObjectCommand } = require('@aws-sdk/client-s3'));
-    ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
-    const region = process.env.AWS_REGION || process.env.S3_REGION;
-    if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
-    _s3 = new S3Client({ region });
+async function detectAwsClockOffset(region) {
+  const host = `s3.${region}.amazonaws.com`;
+  return await new Promise((resolve) => {
+    const request = https.request(
+      {
+        method: 'HEAD',
+        host,
+        path: '/',
+        timeout: 1500,
+      },
+      (res) => {
+        const header = res.headers['date'];
+        if (!header) return resolve(0);
+        const serverTime = Date.parse(header);
+        if (!Number.isFinite(serverTime)) return resolve(0);
+        const offset = serverTime - Date.now();
+        if (Math.abs(offset) < 2000) return resolve(0);
+        resolve(offset);
+      },
+    );
+    request.on('error', () => resolve(0));
+    request.on('timeout', () => {
+      request.destroy();
+      resolve(0);
+    });
+    request.end();
+  });
+}
+
+async function initS3() {
+  // Load AWS SDKs only when needed
+  ({ S3Client, PutObjectCommand } = require('@aws-sdk/client-s3'));
+  ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
+  const region = process.env.AWS_REGION || process.env.S3_REGION;
+  if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
+  _clockOffsetMs = await detectAwsClockOffset(region);
+  if (_clockOffsetMs) {
+    console.warn('[S3] Adjusting for detected AWS clock skew (ms):', _clockOffsetMs);
   }
-  return _s3;
+  const config = _clockOffsetMs ? { region, systemClockOffset: _clockOffsetMs } : { region };
+  return new S3Client(config);
+}
+
+async function getS3() {
+  if (!_s3Promise) {
+    _s3Promise = initS3().catch((err) => {
+      _s3Promise = null;
+      throw err;
+    });
+  }
+  return _s3Promise;
 }
 
 function newKey(filename = 'upload.bin') {
   const ext = (filename.split('.').pop() || 'bin').toLowerCase();
   const id = crypto.randomBytes(16).toString('hex');
-  const d = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const skewedNow = new Date(Date.now() + _clockOffsetMs);
+  const d = skewedNow.toISOString().slice(0, 10); // YYYY-MM-DD
   const prefix = process.env.S3_PREFIX || 'public/uploads';
   return `${prefix}/${d}/${id}.${ext}`;
 }
 
 async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 } = {}) {
-  const s3 = getS3(); // validates AWS_REGION
+  const s3 = await getS3(); // validates AWS_REGION
   const Bucket = need('S3_BUCKET');
   const region = process.env.AWS_REGION || process.env.S3_REGION;
   const PUBLIC_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim(); // optional
@@ -64,7 +109,7 @@ function normalizeKey(key = '') {
 }
 
 async function presignDownload({ key, expiresIn = 120 } = {}) {
-  const s3 = getS3();
+  const s3 = await getS3();
   const Bucket = need('S3_BUCKET');
   if (!GetObjectCommand) {
     ({ GetObjectCommand } = require('@aws-sdk/client-s3'));
