@@ -2263,7 +2263,7 @@ async function toOpenAIImageUrl(value) {
 
   try {
 
-    return await presignDownload({ key, expiresIn: 120 });
+    return await presignDownload({ key });
 
   } catch (err) {
 
