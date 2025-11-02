@@ -67,6 +67,8 @@ const {
   validateUpdateListingRequest,
   validateSendMessageRequest,
   validateVerifyPhoneRequest,
+  validatePhoneVerificationStartRequest,
+  validatePhoneVerificationConfirmRequest,
   validatePasswordResetRequest,
   validatePasswordResetConfirmRequest,
   validateAuthResponse,
@@ -1594,7 +1596,10 @@ async function issuePhoneVerification(user) {
   const code = generateVerificationCode();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const hash = hashValue(code);
-  const nextStatus = user.account_status === 'banned' ? 'banned' : 'pending_verification';
+  const currentStatus = typeof user.account_status === 'string' && user.account_status.trim()
+    ? user.account_status.trim()
+    : 'active';
+  const nextStatus = currentStatus === 'banned' ? 'banned' : currentStatus;
 
   await db.prepare(`
     UPDATE users
@@ -2881,18 +2886,20 @@ app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), a
 
   try {
 
-    const { username, email, password, phone } = req.body;
+    const { username, email, password } = req.body;
 
     const hash = await bcrypt.hash(password, 10);
 
     const createdAt = nowIso();
 
-    const accountStatus = 'pending_verification';
+    const accountStatus = 'active';
 
     const info = await db.prepare(`
-      INSERT INTO users (email, username, password_hash, created_at, phone_number, account_status, is_admin)
-      VALUES (?, ?, ?, ?, ?, ?, 0)
-    `).run(email, username, hash, createdAt, phone, accountStatus);
+      INSERT INTO users (email, username, password_hash, created_at, account_status, is_admin)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(email, username, hash, createdAt, accountStatus);
+
+    await db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(createdAt, info.lastInsertRowid);
 
     const user = {
       id: info.lastInsertRowid,
@@ -2903,13 +2910,24 @@ app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), a
       created_at: createdAt,
       status_note: null,
       status_updated_at: null,
-      last_login_at: null,
-      phone_number: phone
+      last_login_at: createdAt,
+      phone_verified: false,
+      phone_number: null
     };
 
-    await issuePhoneVerification(user);
+    const token = setAuthCookie(res, {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      is_admin: user.is_admin,
+      account_status: user.account_status
+    });
 
-    return res.status(202).json({ user_id: user.id, verification_required: true });
+    return sendSchema(res, validateAuthResponse, {
+      ...user,
+      token,
+      push_meta: publicPushMeta()
+    });
 
   } catch (e) {
 
@@ -3031,6 +3049,118 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyPhoneR
 
 });
 
+app.post(
+  '/api/me/phone/request',
+  auth,
+  writeLimiter,
+  validateBody(validatePhoneVerificationStartRequest),
+  async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        clearAuthCookie(res);
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const phone = req.body.phone;
+      const row = await db.prepare('SELECT id, email, account_status FROM users WHERE id = ?').get(userId);
+      if (!row) {
+        clearAuthCookie(res);
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      await db.prepare(`
+        UPDATE users
+           SET phone_number = ?,
+               phone_verified = 0
+         WHERE id = ?
+      `).run(phone, row.id);
+
+      await issuePhoneVerification({ ...row, phone_number: phone });
+
+      return res.json({ status: 'code_sent', phone_number: phone });
+    } catch (err) {
+      console.error('Phone verification request failed:', err);
+      return res.status(500).json({ error: 'verification_failed' });
+    }
+  }
+);
+
+app.post(
+  '/api/me/phone/verify',
+  auth,
+  writeLimiter,
+  validateBody(validatePhoneVerificationConfirmRequest),
+  async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        clearAuthCookie(res);
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const { code } = req.body;
+      const row = await db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      if (!row || !row.phone_number) {
+        return res.status(400).json({ error: 'verification_unavailable' });
+      }
+
+      if (!row.phone_verification_code_hash || !row.phone_verification_expires_at) {
+        await issuePhoneVerification(row);
+        return res.status(400).json({ error: 'verification_not_requested' });
+      }
+
+      const expiresTs = Date.parse(row.phone_verification_expires_at);
+      if (!Number.isFinite(expiresTs) || expiresTs < Date.now()) {
+        await issuePhoneVerification(row);
+        return res.status(400).json({ error: 'verification_expired' });
+      }
+
+      const expectedHash = row.phone_verification_code_hash;
+      const actualHash = hashValue(code);
+
+      if (!safeCompare(expectedHash, actualHash)) {
+        return res.status(400).json({ error: 'invalid_code' });
+      }
+
+      const now = nowIso();
+      const accountStatus = row.account_status === 'banned' ? 'banned' : (row.account_status || 'active');
+
+      await db.prepare(`
+        UPDATE users
+           SET phone_verified = 1,
+               phone_verification_code_hash = NULL,
+               phone_verification_expires_at = NULL,
+               account_status = ?,
+               last_login_at = ?
+         WHERE id = ?
+      `).run(accountStatus, now, row.id);
+
+      if (accountStatus === 'banned') {
+        clearAuthCookie(res);
+        return res.status(403).json({ error: 'account_banned' });
+      }
+
+      setAuthCookie(res, {
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        is_admin: !!row.is_admin,
+        account_status: accountStatus
+      });
+
+      return res.json({
+        phone_verified: true,
+        phone_number: row.phone_number,
+        account_status: accountStatus
+      });
+    } catch (err) {
+      console.error('Phone verification confirm failed:', err);
+      return res.status(500).json({ error: 'verification_failed' });
+    }
+  }
+);
+
 app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (req, res) => {
 
   try {
@@ -3069,11 +3199,9 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
     }
 
-    if (row.phone_number) {
-      if (!row.phone_verified || accountStatus === 'pending_verification') {
-        await issuePhoneVerification(row);
-        return res.status(403).json({ error: 'phone_unverified' });
-      }
+    if (row.phone_number && accountStatus === 'pending_verification' && !row.phone_verified) {
+      await issuePhoneVerification(row);
+      return res.status(403).json({ error: 'phone_unverified' });
     }
 
 
@@ -3236,6 +3364,10 @@ app.get('/api/me', async (req, res) => {
 
              COALESCE(location_preset, '') AS location_preset,
 
+             phone_number,
+
+             COALESCE(phone_verified, 0) AS phone_verified,
+
              created_at,
 
              COALESCE(account_status, 'active') AS account_status,
@@ -3282,7 +3414,11 @@ app.get('/api/me', async (req, res) => {
 
       last_login_at: row.last_login_at,
 
-      push_meta: publicPushMeta()
+      push_meta: publicPushMeta(),
+
+      phone_number: row.phone_number || null,
+
+      phone_verified: !!row.phone_verified
 
     });
 

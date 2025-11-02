@@ -892,12 +892,15 @@ describe('listing forms feature integration', () => {
     });
 
     const { effects, states, refs } = deps.__mocks.react;
-    expect(effects.length).toBeGreaterThanOrEqual(2);
-    effects[1]();
+    const autoListEffect = effects.find((effect) => typeof effect === 'function' && effect.toString().includes('autoRunning'));
+    expect(autoListEffect).toBeDefined();
+    autoListEffect();
     await flushAsyncEffects();
 
-    expect(states[10].setter).toHaveBeenNthCalledWith(1, true);
-    expect(states[10].setter).toHaveBeenLastCalledWith(false);
+    const loadingToggle = states.find((entry) => entry.setter.mock.calls.some(call => call[0] === false));
+    expect(loadingToggle).toBeDefined();
+    expect(loadingToggle.setter.mock.calls[0][0]).toBe(true);
+    expect(loadingToggle.setter.mock.calls[loadingToggle.setter.mock.calls.length - 1][0]).toBe(false);
     expect(deps.uploads.uploadFileDraft).toHaveBeenCalledTimes(1);
     expect(deps.uploads.uploadFileDraft.mock.calls[0][0]).toBe(autoFile);
     expect(deps.api.aiAnalyze).toHaveBeenCalledWith({ images: ['https://uploads/auto.jpg'], hint: '' }, { silent: true });
@@ -949,11 +952,15 @@ describe('listing forms feature integration', () => {
     });
 
     const { effects, states, refs } = deps.__mocks.react;
-    effects[1]();
+    const autoListEffect = effects.find((effect) => typeof effect === 'function' && effect.toString().includes('autoRunning'));
+    expect(autoListEffect).toBeDefined();
+    autoListEffect();
     await flushAsyncEffects();
 
-    expect(states[10].setter).toHaveBeenNthCalledWith(1, true);
-    expect(states[10].setter).toHaveBeenLastCalledWith(false);
+    const loadingToggle = states.find((entry) => entry.setter.mock.calls.some(call => call[0] === false));
+    expect(loadingToggle).toBeDefined();
+    expect(loadingToggle.setter.mock.calls[0][0]).toBe(true);
+    expect(loadingToggle.setter.mock.calls[loadingToggle.setter.mock.calls.length - 1][0]).toBe(false);
     expect(global.alert).toHaveBeenCalledWith('Auto-list failed: Create failed');
     expect(onSaved).not.toHaveBeenCalled();
     expect(refs[1].current).toBe(false);
@@ -991,12 +998,14 @@ describe('listing forms feature integration', () => {
     });
 
     const { effects, refs, states } = deps.__mocks.react;
-    expect(effects.length).toBeGreaterThanOrEqual(2);
-    effects[1]();
+    const autoListEffect = effects.find((effect) => typeof effect === 'function' && effect.toString().includes('autoRunning'));
+    expect(autoListEffect).toBeDefined();
+    autoListEffect();
 
     expect(enqueueListingJob).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(states[10].setter).not.toHaveBeenCalled();
+    const loadingToggle = states.find((entry) => entry.setter.mock.calls.some(call => call[0] === false));
+    expect(loadingToggle).toBeUndefined();
     expect(deps.uploads.uploadFileDraft).not.toHaveBeenCalled();
     expect(deps.api.createListing).not.toHaveBeenCalled();
     expect(deps.helpers.fetchCoordsAndReverse).not.toHaveBeenCalled();

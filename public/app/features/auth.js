@@ -84,13 +84,11 @@
       const [mode, setMode] = useState(initialMode);
       const [username, setUsername] = useState('');
       const [email, setEmail] = useState('');
-      const [phone, setPhone] = useState('');
       const [password, setPassword] = useState('');
       const [code, setCode] = useState('');
       const [resetToken, setResetToken] = useState('');
       const [pendingEmail, setPendingEmail] = useState('');
       const [pendingPassword, setPendingPassword] = useState('');
-      const [pendingPhone, setPendingPhone] = useState('');
       const [error, setError] = useState('');
       const [info, setInfo] = useState('');
       const [loading, setLoading] = useState(false);
@@ -103,13 +101,11 @@
           setInfo('');
           setUsername('');
           setEmail('');
-          setPhone('');
           setPassword('');
           setCode('');
           setResetToken('');
           setPendingEmail('');
           setPendingPassword('');
-          setPendingPhone('');
           setLoading(false);
           setResending(false);
         }
@@ -157,7 +153,6 @@
       const handleSuccess = useCallback((user) => {
         setPendingEmail('');
         setPendingPassword('');
-        setPendingPhone('');
         setCode('');
         setResetToken('');
         setInfo('');
@@ -223,25 +218,10 @@
             const payload = {
               username: username.trim(),
               email: email.trim(),
-              password,
-              phone: phone.trim()
+              password
             };
 
             const result = await api.register(payload);
-
-            if (result && result.verification_required) {
-              setPendingEmail(payload.email);
-              setPendingPassword(password);
-              setPendingPhone(payload.phone);
-              setEmail(payload.email);
-              setInfo('Enter the 6-digit code we texted to finish setting up your account.');
-              setPassword('');
-              setUsername('');
-              setPhone('');
-              setMode('verify');
-              setCode('');
-              return;
-            }
 
             handleSuccess(result);
             onClose();
@@ -275,7 +255,6 @@
             setPassword('');
             setResetToken('');
             setPendingPassword('');
-            setPendingPhone('');
             setMode('login');
             setEmail(normalizedEmail);
             return;
@@ -287,12 +266,10 @@
             const normalizedEmail = email.trim();
             setPendingEmail(normalizedEmail);
             setPendingPassword(password);
-            setPendingPhone('');
             setMode('verify');
             setInfo('Enter the 6-digit code we just texted to finish signing in.');
             setPassword('');
             setUsername('');
-            setPhone('');
             setCode('');
             return;
           }
@@ -348,7 +325,6 @@
       };
 
       const verificationEmail = pendingEmail || email.trim();
-      const displayPhone = pendingPhone || (phone ? phone.trim() : 'your phone on file');
       const submitText = loading ? (loadingLabels[mode] || 'Loading...') : (submitLabels[mode] || 'Submit');
       const disableSubmit = loading || (mode === 'verify' && code.trim().length !== 6);
       const canResend = !!(pendingEmail && pendingPassword);
@@ -379,19 +355,6 @@
           })
         ),
         H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Mobile phone'),
-          H('input', {
-            type: 'tel',
-            value: phone,
-            onChange: (e) => setPhone(e.target.value),
-            placeholder: '+15551234567',
-            required: true,
-            disabled: loading,
-            autoComplete: 'tel',
-            inputMode: 'tel'
-          })
-        ),
-        H('div', { style: { marginBottom: '16px' } },
           H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
           H('input', {
             type: 'password',
@@ -402,16 +365,7 @@
             disabled: loading,
             autoComplete: 'new-password'
           })
-        ),
-        H('p', {
-          style: {
-            marginTop: '-4px',
-            marginBottom: '16px',
-            color: '#6b7280',
-            fontSize: '14px',
-            lineHeight: '20px'
-          }
-        }, 'We will text a 6-digit code to verify your phone before enabling your account.')
+        )
       ];
 
       const loginFields = [
@@ -459,9 +413,7 @@
               setResetToken('');
               setPendingEmail('');
               setPendingPassword('');
-              setPendingPhone('');
               setUsername('');
-              setPhone('');
             },
             style: {
               color: '#111',
@@ -484,7 +436,7 @@
             fontSize: '14px',
             lineHeight: '20px'
           }
-        }, `Enter the 6-digit code we sent to ${displayPhone} for ${verificationEmail || 'your account'}.`),
+        }, `Enter the 6-digit code we sent to your phone for ${verificationEmail || 'your account'}.`),
         H('div', { style: { marginBottom: '16px' } },
           H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Verification code'),
           H('input', {
@@ -613,9 +565,7 @@
                     setResetToken('');
                     setPendingEmail('');
                     setPendingPassword('');
-                    setPendingPhone('');
                     setUsername('');
-                    setPhone('');
                   },
                   style: {
                     color: '#111',
@@ -642,9 +592,7 @@
                     setResetToken('');
                     setPendingEmail('');
                     setPendingPassword('');
-                    setPendingPhone('');
                     setUsername('');
-                    setPhone('');
                   },
                   style: {
                     color: '#111',
@@ -689,9 +637,7 @@
                     setResetToken('');
                     setPendingEmail('');
                     setPendingPassword('');
-                    setPendingPhone('');
                     setUsername('');
-                    setPhone('');
                   },
                   className: 'btn',
                   style: { flex: '1' }
@@ -712,9 +658,7 @@
                     setResetToken('');
                     setPendingEmail('');
                     setPendingPassword('');
-                    setPendingPhone('');
                     setUsername('');
-                    setPhone('');
                   },
                   style: {
                     color: '#111',
@@ -740,9 +684,7 @@
                     setResetToken('');
                     setPendingEmail('');
                     setPendingPassword('');
-                    setPendingPhone('');
                     setUsername('');
-                    setPhone('');
                   },
                   style: {
                     color: '#111',

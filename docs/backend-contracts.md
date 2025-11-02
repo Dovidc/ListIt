@@ -12,15 +12,23 @@ This document captures the server-side API surface that both the web client and 
 
 ### Register `POST /api/register`
 
-* **Body** – `{ username, email, password, phone }` (username 3–32 chars, password ≥6 chars, phone 10–15 digits with optional leading `+`). Older clients may still post `name`; the validator normalises it to `username`.
-* **Response** – `202 Accepted` with `{ user_id, verification_required: true }`.
-* **Notes** – Registration triggers a six-digit SMS code and marks the account as `pending_verification`. Clients must call the verification endpoint before the user receives a session cookie.
+* **Body** – `{ username, email, password }` (username 3–32 chars, password ≥6 chars). Older clients may still post `name`; the validator normalises it to `username`.
+* **Response** – Authenticated user payload identical to login (`{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta, phone_verified, phone_number }`).
+* **Notes** – Accounts start active with `phone_verified: false`. Phone verification is now optional and initiated from the profile via the endpoints below.
 
-### Verify Registration `POST /api/register/verify`
+### Request Phone Verification `POST /api/me/phone/request`
 
-* **Body** – `{ email, code }` where `code` is the six-digit SMS token.
-* **Response** – Authenticated user payload identical to the login response (`{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta }`).
-* **Errors** – `400` for invalid or expired codes, `403 account_banned`, `404 user_not_found`.
+* **Body** – `{ phone }` where `phone` contains 10–15 digits with an optional leading `+`.
+* **Response** – `{ status: 'code_sent', phone_number }` after storing the normalised phone number and sending a six-digit SMS code.
+* **Errors** – `400 invalid_request` for malformed numbers, `500 verification_failed` for downstream transport issues.
+
+### Confirm Phone Verification `POST /api/me/phone/verify`
+
+* **Body** – `{ code }` where `code` is the six-digit SMS token.
+* **Response** – `{ phone_verified: true, phone_number, account_status }` and a refreshed auth cookie that reflects the latest account status.
+* **Errors** – `400 invalid_code`, `400 verification_expired`, `400 verification_not_requested`, `403 account_banned`.
+
+> **Legacy clients** – `/api/register/verify` remains available for backwards compatibility. New clients should prefer the `/api/me/phone/*` endpoints.
 
 ### Login `POST /api/login`
 

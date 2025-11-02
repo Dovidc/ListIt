@@ -47,17 +47,19 @@ async function uploadTestImage(agent, overrides = {}) {
 }
 
 async function registerAndVerify(agent, { email, username, password, phone }) {
-  let res = await agent.post('/api/register').send({ email, username, password, phone });
-  expect(res.status).toBe(202);
-  expect(res.body.verification_required).toBe(true);
+  let res = await agent.post('/api/register').send({ email, username, password });
+  expect(res.status).toBe(200);
 
-  const code = smsService.__getLastCode(phone);
+  res = await agent.post('/api/me/phone/request').send({ phone });
+  expect(res.status).toBe(200);
+
+  const code = smsService.__getLastCode(res.body.phone_number || phone);
   expect(code).toMatch(/^\d{6}$/);
 
-  res = await agent.post('/api/register/verify').send({ email, code });
-  expect(res.status).toBe(200);
-  expect(res.body.email).toBe(email);
-  return res.body;
+  const verifyRes = await agent.post('/api/me/phone/verify').send({ code });
+  expect(verifyRes.status).toBe(200);
+
+  return (await agent.get('/api/me')).body;
 }
 
 async function resetDb() {
