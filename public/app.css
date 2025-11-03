@@ -815,8 +815,8 @@
 
 .messages-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(280px, 450px) minmax(0, 1fr);
+  gap: 0;
   width: 100%;
   height: clamp(420px, 70vh, 640px);
   max-width: 100%;
