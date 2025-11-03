@@ -129,8 +129,8 @@
             return 'Your account is currently banned.';
           case 'account_locked':
             return 'Your account is locked. Please contact support.';
-          case 'phone_unverified':
-            return 'Please verify the code we texted to your phone.';
+          case 'email_unverified':
+            return 'Please enter the verification code we emailed you.';
           case 'user_not_found':
             return 'We could not find an account with that email.';
           case 'invalid_code':
@@ -184,8 +184,8 @@
           }
         } catch (err) {
           const message = err?.message;
-          if (message === 'phone_unverified') {
-            setInfo('We just sent you a new code. It may take a moment to arrive.');
+          if (message === 'email_unverified') {
+            setInfo('We just emailed you a new code. It may take a moment to arrive.');
             handled = true;
           } else {
             setError(getFriendlyError(message));
@@ -196,7 +196,7 @@
         }
 
         if (!handled) {
-          setInfo('We just sent you a new code. It may take a moment to arrive.');
+          setInfo('We just emailed you a new code. It may take a moment to arrive.');
         }
       }
 
@@ -222,6 +222,16 @@
             };
 
             const result = await api.register(payload);
+
+            if (result && result.status === 'verification_required') {
+              const normalizedEmail = payload.email;
+              setPendingEmail(normalizedEmail);
+              setPendingPassword(payload.password);
+              setMode('verify');
+              setInfo('Enter the 6-digit code we emailed to finish creating your account.');
+              setCode('');
+              return;
+            }
 
             handleSuccess(result);
             onClose();
@@ -262,12 +272,12 @@
         } catch (err) {
           const message = err?.message;
 
-          if (mode === 'login' && message === 'phone_unverified') {
+          if (mode === 'login' && message === 'email_unverified') {
             const normalizedEmail = email.trim();
             setPendingEmail(normalizedEmail);
             setPendingPassword(password);
             setMode('verify');
-            setInfo('Enter the 6-digit code we just texted to finish signing in.');
+            setInfo('Enter the 6-digit code we just emailed to finish signing in.');
             setPassword('');
             setUsername('');
             setCode('');
@@ -303,7 +313,7 @@
       const titles = {
         login: 'Welcome Back',
         register: 'Create Account',
-        verify: 'Verify Your Phone',
+        verify: 'Verify Your Email',
         'reset-request': 'Reset Your Password',
         'reset-confirm': 'Choose a New Password'
       };
@@ -436,7 +446,7 @@
             fontSize: '14px',
             lineHeight: '20px'
           }
-        }, `Enter the 6-digit code we sent to your phone for ${verificationEmail || 'your account'}.`),
+        }, `Enter the 6-digit code we emailed to ${verificationEmail || 'your account'}.`),
         H('div', { style: { marginBottom: '16px' } },
           H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Verification code'),
           H('input', {

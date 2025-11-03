@@ -13,28 +13,20 @@ This document captures the server-side API surface that both the web client and 
 ### Register `POST /api/register`
 
 * **Body** – `{ username, email, password }` (username 3–32 chars, password ≥6 chars). Older clients may still post `name`; the validator normalises it to `username`.
-* **Response** – Authenticated user payload identical to login (`{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta, phone_verified, phone_number }`).
-* **Notes** – Accounts start active with `phone_verified: false`. Phone verification is now optional and initiated from the profile via the endpoints below.
+* **Response** – `{ status: 'verification_required', email }` after staging the new user record and issuing a six-digit verification code via email.
+* **Notes** – Users must confirm the emailed code via the endpoint below before receiving an auth cookie.
 
-### Request Phone Verification `POST /api/me/phone/request`
+### Confirm Registration `POST /api/register/verify`
 
-* **Body** – `{ phone }` where `phone` contains 10–15 digits with an optional leading `+`.
-* **Response** – `{ status: 'code_sent', phone_number }` after storing the normalised phone number and sending a six-digit SMS code.
-* **Errors** – `400 invalid_request` for malformed numbers, `500 verification_failed` for downstream transport issues.
-
-### Confirm Phone Verification `POST /api/me/phone/verify`
-
-* **Body** – `{ code }` where `code` is the six-digit SMS token.
-* **Response** – `{ phone_verified: true, phone_number, account_status }` and a refreshed auth cookie that reflects the latest account status.
+* **Body** – `{ email, code }` where `code` is the six-digit token from the email.
+* **Response** – Authenticated user payload identical to login (`{ id, email, username, is_admin, account_status, created_at, status_note, status_updated_at, last_login_at, token, push_meta }`).
 * **Errors** – `400 invalid_code`, `400 verification_expired`, `400 verification_not_requested`, `403 account_banned`.
-
-> **Legacy clients** – `/api/register/verify` remains available for backwards compatibility. New clients should prefer the `/api/me/phone/*` endpoints.
 
 ### Login `POST /api/login`
 
 * **Body** – `{ email, password }` (same formatting rules as register).
-* **Response** – Same payload shape as registration with `last_login_at` reflecting the latest login timestamp.
-* **Errors** – `401` for invalid credentials, `403` for banned accounts, and `403 phone_unverified` when verification is still pending. Validation errors land as `400 invalid_request` with per-field issues.
+* **Response** – Same payload shape as verification with `last_login_at` reflecting the latest login timestamp.
+* **Errors** – `401` for invalid credentials, `403` for banned accounts, and `403 email_unverified` when verification is still pending (a fresh code is emailed on each attempt). Validation errors land as `400 invalid_request` with per-field issues.
 
 ### Password Reset `POST /api/password/reset/request`
 
