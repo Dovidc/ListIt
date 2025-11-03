@@ -737,6 +737,16 @@
       useEffect(() => { fetchConvos(); }, []);
       useEffect(() => { fetchMsgs(); }, [activeId]);
 
+      useEffect(() => {
+        if (msgs.length > 0 && isAtBottom) {
+          setTimeout(() => {
+            if (msgsContainerRef.current) {
+              msgsContainerRef.current.scrollTop = msgsContainerRef.current.scrollHeight;
+            }
+          }, 50);
+        }
+      }, [msgs, isAtBottom]);
+
       async function send() {
         const bodyTrim = (input || '').trim();
         if (!bodyTrim && imgFiles.length === 0) return;

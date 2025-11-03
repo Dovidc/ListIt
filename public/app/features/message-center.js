@@ -163,10 +163,12 @@
               if (data?.type === 'new_message') {
                 if (data.sender_id !== user.id) {
                   recomputeUnread();
-                  const shouldNotify =
-                    tabRef.current !== 'messages' ||
-                    activeConvoIdRef.current !== data.conversation_id ||
-                    !windowFocusedRef.current;
+                  const isViewingThisConversation =
+                    tabRef.current === 'messages' &&
+                    activeConvoIdRef.current === data.conversation_id &&
+                    windowFocusedRef.current;
+
+                  const shouldNotify = !isViewingThisConversation;
 
                   if (shouldNotify) {
                     const bodyText = typeof data?.message?.body === 'string' ? data.message.body : '';
