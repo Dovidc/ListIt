@@ -325,6 +325,20 @@ class LRUCache {
     this.cache = new Map(); // Map maintains insertion order
   }
 
+  has(key) {
+    if (!this.cache.has(key)) return false;
+
+    const item = this.cache.get(key);
+
+    // Check TTL if enabled
+    if (this.ttlMs && Date.now() - item.timestamp > this.ttlMs) {
+      this.cache.delete(key);
+      return false;
+    }
+
+    return true;
+  }
+
   get(key) {
     if (!this.cache.has(key)) return undefined;
 
@@ -360,6 +374,10 @@ class LRUCache {
       value,
       timestamp: Date.now()
     });
+  }
+
+  delete(key) {
+    return this.cache.delete(key);
   }
 
   clear() {
