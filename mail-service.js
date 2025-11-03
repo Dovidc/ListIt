@@ -82,11 +82,11 @@ async function sendVerificationEmail(email, code) {
   const message = {
     to: email,
     from: FROM_ADDRESS,
-    subject: 'Verify your ListIt account',
-    text: `Enter this 6-digit code to verify your ListIt account: ${code}`,
+    subject: 'Verify your Trovelr account',
+    text: `Enter this 6-digit code to verify your Trovelr account: ${code}`,
     html: `
-      <p>Hello,</p>
-      <p>Use the following 6-digit code to verify your ListIt account:</p>
+      <p>Greetings,</p>
+      <p>Use the following 6-digit code to verify your Trovelr account:</p>
       <p><strong>${code}</strong></p>
       <p>If you did not request this, you can ignore this email.</p>
     `
