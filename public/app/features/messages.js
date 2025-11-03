@@ -130,10 +130,11 @@
     }
 
     function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation }) {
-      return H('aside', { className: 'card sidebar', style: { padding: 12 } },
-        H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Conversations'),
-        ...(conversations.length
-          ? conversations.map((conversation) => H('div', {
+      return H('aside', { className: 'card sidebar messages-sidebar' },
+        H('div', { className: 'messages-sidebar__header' }, 'Conversations'),
+        H('div', { className: 'messages-sidebar__list' },
+          ...(conversations.length
+            ? conversations.map((conversation) => H('div', {
                 key: conversation.id,
                 className: 'row',
                 style: {
@@ -181,7 +182,8 @@
                 }
               }, 'x')
             ))
-          : [H('div', { key: 'empty', className: 'muted' }, 'No conversations yet')])
+            : [H('div', { key: 'empty', className: 'muted messages-sidebar__empty' }, 'No conversations yet')])
+        )
       );
     }
 
@@ -196,7 +198,7 @@
     }) {
       return H('div', {
         ref: msgsContainerRef,
-        style: { flex: 1, overflow: 'auto', padding: 4 },
+        style: { flex: 1, overflow: 'auto', padding: 4, minHeight: 0 },
         onScroll
       },
       messages.map((message) => {
@@ -1033,14 +1035,17 @@
         setConfirmPaypalOpen(false);
       }, [revealPaypal]);
 
-      return H('div', { className: 'split' },
+      return H('div', { className: 'messages-panel' },
         H(ConversationsSidebar, {
           conversations: convosDecorated,
           activeId,
           onSelectConversation: setActiveId,
           onDeleteConversation: deleteConvo
         }),
-        H('section', { className: 'card col', style: { padding: 12, display: 'flex', flexDirection: 'column' } },
+        H('section', {
+          className: 'card col messages-thread-shell',
+          style: { padding: 12, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
+        },
           !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
           activeId && H(MessagesThread, {
             messages: msgs,
