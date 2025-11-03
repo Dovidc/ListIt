@@ -336,9 +336,10 @@ describe('auth feature integration', () => {
     expect(onSuccess).toHaveBeenCalledWith({ id: 'auth-user' });
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    expect(states[4].setter).toHaveBeenCalledWith('');
-    expect(states[5].setter).toHaveBeenNthCalledWith(1, true);
-    expect(states[5].setter).toHaveBeenLastCalledWith(false);
+    expect(states[8].setter).toHaveBeenCalledWith('');
+    const loadingCalls = states[10].setter.mock.calls.map((call) => call[0]);
+    expect(loadingCalls.includes(true)).toBe(true);
+    expect(loadingCalls[loadingCalls.length - 1]).toBe(false);
 
     removeListener();
     expect(global.window.removeEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
@@ -409,10 +410,11 @@ describe('auth feature integration', () => {
       email: 'jane@example.com',
       password: 'pw123'
     });
-    expect(states[5].setter).toHaveBeenNthCalledWith(1, true);
-    expect(states[5].setter).toHaveBeenLastCalledWith(false);
+    const loadingCalls = states[10].setter.mock.calls.map((call) => call[0]);
+    expect(loadingCalls.includes(true)).toBe(true);
+    expect(loadingCalls[loadingCalls.length - 1]).toBe(false);
 
-    const errorCalls = states[4].setter.mock.calls;
+    const errorCalls = states[8].setter.mock.calls;
     expect(errorCalls[errorCalls.length - 1][0]).toBe('Email taken');
 
     expect(onClose).not.toHaveBeenCalled();

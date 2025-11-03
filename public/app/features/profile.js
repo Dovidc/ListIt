@@ -50,9 +50,11 @@
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
     const {
       useState,
-      useCallback
+      useCallback,
+      useRef: reactUseRef
     } = React;
     const useEffect = typeof React.useEffect === 'function' ? React.useEffect : null;
+    const useRef = typeof reactUseRef === 'function' ? reactUseRef : ((initial) => ({ current: initial }));
     const { createPortal } = resolvedReactDOM;
 
     const navBridge = appNav || { setUser: () => {} };
@@ -101,6 +103,22 @@
       H('path', { d: 'M14 5h5a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5' }),
       H('polyline', { points: '9 8 4 12 9 16' }),
       H('line', { x1: 4, y1: 12, x2: 16, y2: 12 }));
+    }
+
+    function VerifiedBadgeIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 16 16',
+        width: 14,
+        height: 14,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+      H('polyline', { points: '3.5 8.5 6.5 11.5 12.5 4.5' }));
     }
 
     function PresetIcon(props = {}) {
@@ -500,6 +518,146 @@
       );
     });
 
+    const PhoneVerificationModal = React.memo(function PhoneVerificationModal({
+      open,
+      onClose,
+      step,
+      phone,
+      code,
+      onChangePhone,
+      onChangeCode,
+      onSubmitPhone,
+      onVerifyCode,
+      onResend,
+      onEditPhone,
+      loading,
+      error,
+      info,
+      resending
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const submitting = !!loading;
+      const trimmedCode = typeof code === 'string' ? code.trim() : '';
+      const disableSubmit = submitting || (step === 'code' && trimmedCode.length !== 6);
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '420px',
+              width: 'min(420px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close verification'
+            }, 'x'),
+            H('div', { style: { display: 'grid', gap: 12 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0
+                }
+              }, 'Verify your account'),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0, lineHeight: '20px' }
+              }, step === 'phone'
+                ? 'Enter your mobile number so we can text you a verification code.'
+                : `Enter the 6-digit code we texted to ${phone || 'your phone number'}.`),
+              info && H('div', {
+                role: 'status',
+                'aria-live': 'polite',
+                style: { fontSize: 13, color: '#047857', fontWeight: 600 }
+              }, info),
+              error && H('div', {
+                role: 'alert',
+                style: { fontSize: 13, color: '#b91c1c', fontWeight: 600 }
+              }, error)
+            ),
+            H('form', {
+              onSubmit: step === 'phone' ? onSubmitPhone : onVerifyCode,
+              style: { display: 'grid', gap: 12 }
+            },
+              step === 'phone'
+                ? H('div', { style: { display: 'grid', gap: 6 } },
+                    H('label', { style: { fontWeight: 600 } }, 'Mobile phone'),
+                    H('input', {
+                      type: 'tel',
+                      value: phone,
+                      onChange: onChangePhone,
+                      placeholder: '+15551234567',
+                      disabled: submitting,
+                      autoComplete: 'tel',
+                      inputMode: 'tel',
+                      required: true
+                    })
+                  )
+                : H('div', { style: { display: 'grid', gap: 6 } },
+                    H('label', { style: { fontWeight: 600 } }, 'Verification code'),
+                    H('input', {
+                      type: 'text',
+                      value: code,
+                      onChange: onChangeCode,
+                      placeholder: '123456',
+                      inputMode: 'numeric',
+                      autoComplete: 'one-time-code',
+                      disabled: submitting,
+                      required: true
+                    })
+                  ),
+              H('button', {
+                type: 'submit',
+                className: 'btn primary',
+                disabled: disableSubmit
+              }, submitting ? (step === 'phone' ? 'Sending…' : 'Verifying…') : (step === 'phone' ? 'Send code' : 'Verify'))
+            ),
+            step === 'code' && H('div', {
+              style: { display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }
+            },
+              H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: onEditPhone,
+                disabled: submitting,
+                style: { flex: '1', minWidth: '140px' }
+              }, 'Use a different number'),
+              H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: onResend,
+                disabled: submitting || resending,
+                style: { flex: '1', minWidth: '140px' }
+              }, resending ? 'Sending…' : 'Resend code')
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     const ProfilePanel = React.memo(function ProfilePanel({
       isMobile,
       user,
@@ -563,8 +721,30 @@
       }, []);
 
       const [profileTab, setProfileTab] = useState('active');
-      const [paypalEmail, setPaypalEmail] = useState(user?.paypal_email || '');
-      const [locationPreset, setLocationPreset] = useState(user?.location_preset || '');
+      const [paypalEmailState, setPaypalEmailState] = useState(user?.paypal_email || '');
+      const paypalEmailRef = useRef(paypalEmailState);
+      const setPaypalEmail = useCallback((value) => {
+        const resolved = typeof value === 'function' ? value(paypalEmailRef.current) : value;
+        paypalEmailRef.current = resolved;
+        setPaypalEmailState(resolved);
+      }, [paypalEmailRef, setPaypalEmailState]);
+      const paypalEmail = paypalEmailState;
+      const [locationPresetState, setLocationPresetState] = useState(user?.location_preset || '');
+      const locationPresetRef = useRef(locationPresetState);
+      const setLocationPreset = useCallback((value) => {
+        const resolved = typeof value === 'function' ? value(locationPresetRef.current) : value;
+        locationPresetRef.current = resolved;
+        setLocationPresetState(resolved);
+      }, [locationPresetRef, setLocationPresetState]);
+      const locationPreset = locationPresetState;
+      const [verificationModalOpen, setVerificationModalOpen] = useState(false);
+      const [verificationStep, setVerificationStep] = useState('phone');
+      const [verificationPhone, setVerificationPhone] = useState(user?.phone_number || '');
+      const [verificationCode, setVerificationCode] = useState('');
+      const [verificationError, setVerificationError] = useState('');
+      const [verificationInfo, setVerificationInfo] = useState('');
+      const [verificationLoading, setVerificationLoading] = useState(false);
+      const [verificationResending, setVerificationResending] = useState(false);
 
       const handleChangePaypalEmail = useCallback((value) => {
         setPaypalEmail(value);
@@ -582,13 +762,20 @@
 
       if (useEffect) {
         useEffect(() => {
-          setPaypalEmail((user?.paypal_email || '').trim());
+          const nextPaypal = (user?.paypal_email || '').trim();
+          paypalEmailRef.current = nextPaypal;
+          setPaypalEmailState(nextPaypal);
           setPaypalStatusMessage('');
         }, [user?.paypal_email]);
         useEffect(() => {
-          setLocationPreset((user?.location_preset || '').trim());
+          const nextLocation = (user?.location_preset || '').trim();
+          locationPresetRef.current = nextLocation;
+          setLocationPresetState(nextLocation);
           setLocationStatusMessage('');
         }, [user?.location_preset]);
+        useEffect(() => {
+          setVerificationPhone((user?.phone_number || '').trim());
+        }, [user?.phone_number]);
       }
 
       const visuallyHidden = {
@@ -604,7 +791,7 @@
       };
 
       async function savePaypal() {
-        const trimmed = (paypalEmail || '').trim();
+        const trimmed = (paypalEmailRef.current || '').trim();
         let response;
         try {
           response = await api.updatePaypalEmail(trimmed);
@@ -630,7 +817,7 @@
       }
 
       async function saveLocationPreset() {
-        const trimmed = (locationPreset || '').trim();
+        const trimmed = (locationPresetRef.current || '').trim();
         let response;
         try {
           if (typeof api.updateLocationPreset !== 'function') {
@@ -658,6 +845,179 @@
         setLocationStatusMessage('Saved');
       }
 
+      function formatVerificationError(message) {
+        switch (message) {
+          case 'invalid_request':
+            return 'Please enter a valid phone number with 10-15 digits.';
+          case 'invalid_code':
+            return 'That code did not match. Try again.';
+          case 'verification_expired':
+            return 'That code expired. We sent you a new one.';
+          case 'verification_not_requested':
+            return 'We sent you a new code. Enter the latest one.';
+          case 'verification_failed':
+            return 'We could not complete verification. Try again.';
+          default:
+            return message || 'Something went wrong. Try again.';
+        }
+      }
+
+      const handleOpenVerification = useCallback(() => {
+        setVerificationModalOpen(true);
+        setVerificationStep('phone');
+        setVerificationPhone((user?.phone_number || '').trim());
+        setVerificationCode('');
+        setVerificationError('');
+        setVerificationInfo('');
+        setVerificationLoading(false);
+        setVerificationResending(false);
+      }, [user?.phone_number]);
+
+      const handleCloseVerification = useCallback(() => {
+        setVerificationModalOpen(false);
+        setVerificationStep('phone');
+        setVerificationCode('');
+        setVerificationError('');
+        setVerificationInfo('');
+        setVerificationLoading(false);
+        setVerificationResending(false);
+      }, []);
+
+      const handleVerificationPhoneChange = useCallback((event) => {
+        setVerificationPhone(event?.target?.value || '');
+        if (verificationError) {
+          setVerificationError('');
+        }
+        setVerificationInfo('');
+      }, [verificationError]);
+
+      const handleVerificationCodeChange = useCallback((event) => {
+        const nextValue = (event?.target?.value || '').replace(/[^0-9]/g, '').slice(0, 6);
+        setVerificationCode(nextValue);
+        if (verificationError) {
+          setVerificationError('');
+        }
+      }, [verificationError]);
+
+      const handleEditVerificationPhone = useCallback(() => {
+        setVerificationStep('phone');
+        setVerificationCode('');
+        setVerificationError('');
+        setVerificationInfo('');
+      }, []);
+
+      async function submitVerificationPhone(event) {
+        if (event && typeof event.preventDefault === 'function') {
+          event.preventDefault();
+        }
+        const trimmed = (verificationPhone || '').trim();
+        if (!trimmed) {
+          setVerificationError('Enter a phone number to continue.');
+          return;
+        }
+
+        setVerificationLoading(true);
+        setVerificationError('');
+        setVerificationInfo('');
+
+        try {
+          const response = await api.requestPhoneVerification(trimmed);
+          const nextPhone = typeof response?.phone_number === 'string' ? response.phone_number : trimmed;
+          setVerificationPhone(nextPhone);
+          setVerificationStep('code');
+          setVerificationCode('');
+          setVerificationInfo('We sent a 6-digit code to your phone. It may take a moment to arrive.');
+          if (user) {
+            navBridge.setUser?.({ ...user, phone_number: nextPhone, phone_verified: !!user.phone_verified });
+          }
+        } catch (err) {
+          setVerificationError(formatVerificationError(err?.message));
+        } finally {
+          setVerificationLoading(false);
+        }
+      }
+
+      async function submitVerificationCode(event) {
+        if (event && typeof event.preventDefault === 'function') {
+          event.preventDefault();
+        }
+        const trimmed = (verificationCode || '').trim();
+        if (trimmed.length !== 6) {
+          setVerificationError('Enter the 6-digit code from the text message.');
+          return;
+        }
+
+        setVerificationLoading(true);
+        setVerificationError('');
+        setVerificationInfo('');
+
+        try {
+          const response = await api.confirmPhoneVerification(trimmed);
+          if (user) {
+            const nextUser = {
+              ...user,
+              phone_verified: true,
+              phone_number: typeof response?.phone_number === 'string'
+                ? response.phone_number
+                : (verificationPhone || user.phone_number || '')
+            };
+            navBridge.setUser?.(nextUser);
+          }
+          try {
+            const me = await api.me({ silent: true });
+            if (me) {
+              navBridge.setUser?.(me);
+            }
+          } catch (refreshErr) {
+            console.error('Refresh user failed:', refreshErr);
+          }
+          setVerificationModalOpen(false);
+          setVerificationStep('phone');
+          setVerificationCode('');
+          setVerificationError('');
+          setVerificationInfo('');
+        } catch (err) {
+          const message = err?.message;
+          if (message === 'verification_expired' || message === 'verification_not_requested') {
+            setVerificationInfo('We sent you a new code. Enter the latest one to continue.');
+            setVerificationError('The previous code is no longer valid.');
+            return;
+          }
+          setVerificationError(formatVerificationError(message));
+        } finally {
+          setVerificationLoading(false);
+        }
+      }
+
+      async function handleResendVerification() {
+        const trimmed = (verificationPhone || '').trim();
+        if (!trimmed) {
+          setVerificationStep('phone');
+          setVerificationError('Enter a phone number to resend the code.');
+          return;
+        }
+
+        setVerificationResending(true);
+        setVerificationError('');
+        setVerificationInfo('');
+
+        try {
+          const response = await api.requestPhoneVerification(trimmed);
+          const nextPhone = typeof response?.phone_number === 'string' ? response.phone_number : trimmed;
+          setVerificationPhone(nextPhone);
+          setVerificationInfo('We sent you a new code. It may take a moment to arrive.');
+        } catch (err) {
+          const message = err?.message;
+          setVerificationError(formatVerificationError(message));
+          if (message === 'invalid_request') {
+            setVerificationStep('phone');
+          }
+        } finally {
+          setVerificationResending(false);
+        }
+      }
+
+
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -669,11 +1029,45 @@
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
       return H(React.Fragment, null,
+        H(PhoneVerificationModal, {
+          open: verificationModalOpen,
+          onClose: handleCloseVerification,
+          step: verificationStep,
+          phone: verificationPhone,
+          code: verificationCode,
+          onChangePhone: handleVerificationPhoneChange,
+          onChangeCode: handleVerificationCodeChange,
+          onSubmitPhone: submitVerificationPhone,
+          onVerifyCode: submitVerificationCode,
+          onResend: handleResendVerification,
+          onEditPhone: handleEditVerificationPhone,
+          loading: verificationLoading,
+          error: verificationError,
+          info: verificationInfo,
+          resending: verificationResending
+        }),
         H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
             H('div', null,
-              H('div', { style: { fontWeight: 800, fontSize: 18 } }, user.username ? `@${user.username}` : user.email),
-              H('div', { className: 'muted' }, 'Your account')
+              H('div', { style: { fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 } },
+                user.username ? `@${user.username}` : user.email,
+                user.phone_verified && H('span', {
+                  className: 'verified-badge',
+                  title: 'This user verified their phone number'
+                },
+                  H(VerifiedBadgeIcon, null),
+                  H('span', { style: { fontSize: 12, fontWeight: 600 } }, 'Verified')
+                )
+              ),
+              H('div', { className: 'muted', style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 } },
+                'Your account',
+                !user.phone_verified && H('button', {
+                  type: 'button',
+                  className: 'btn primary',
+                  onClick: handleOpenVerification,
+                  style: { padding: '4px 12px', fontSize: 13 }
+                }, 'Verify account')
+              )
             ),
             H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
               H('button', {

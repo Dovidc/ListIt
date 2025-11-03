@@ -111,6 +111,18 @@ export function createApiClient(options = {}) {
     body: JSON.stringify({ email, code })
   }, meta);
 
+  const requestPhoneVerification = (phone, meta) => request('/api/me/phone/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone })
+  }, meta);
+
+  const confirmPhoneVerification = (code, meta) => request('/api/me/phone/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  }, meta);
+
   const requestPasswordReset = (email, meta) => request('/api/password/reset/request', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -399,6 +411,8 @@ export function createApiClient(options = {}) {
     pushSubscribe,
     pushUnsubscribe,
     updatePaypalEmail,
+    requestPhoneVerification,
+    confirmPhoneVerification,
 
     updateLocationPreset,
     listAll,

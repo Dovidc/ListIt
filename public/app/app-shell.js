@@ -161,6 +161,7 @@
         isMobile
       } = appView;
       const [showForm, setShowForm] = useState(false);
+      const [loadingCount, setLoadingCount] = useState(0);
       const [mobileCreateMode, setMobileCreateMode] = useState('list');
       const [initialListingFiles, setInitialListingFiles] = useState([]);
       const [initialMassListFiles, setInitialMassListFiles] = useState([]);
@@ -221,8 +222,6 @@
         onTabChange: setTab,
         onClearSeller: () => setViewingSeller(null)
       });
-      const [loadingCount, setLoadingCount] = useState(0);
-
       const {
         backgroundQueueEnabled,
         enqueueListingJob

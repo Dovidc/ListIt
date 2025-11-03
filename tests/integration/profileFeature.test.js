@@ -58,7 +58,8 @@ function createReactMocks(stateOverrides = []) {
       states.push(record);
       return [record.value, setter];
     }),
-    useCallback: jest.fn((fn) => fn)
+    useCallback: jest.fn((fn) => fn),
+    useRef: jest.fn((initial) => ({ current: initial }))
   };
 
   return { React, states };
