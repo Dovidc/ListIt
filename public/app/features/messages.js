@@ -535,6 +535,7 @@
       const [convos, setConvos] = useState([]);
       const [activeId, setActiveId] = useState(initialActiveId || null);
       const [msgs, setMsgs] = useState([]);
+      const [loadingMsgs, setLoadingMsgs] = useState(false);
       const [input, setInput] = useState('');
       const [imgFiles, setImgFiles] = useState([]);
       const imgPreviews = useFilePreviews(imgFiles);
@@ -707,12 +708,18 @@
       }
 
       async function fetchMsgs() {
-        if (!activeId) return;
+        if (!activeId) {
+          setMsgs([]);
+          setLoadingMsgs(false);
+          return;
+        }
+        setLoadingMsgs(true);
         try {
           const arr = await api.getMessages(activeId, { silent: true });
           setMsgs(arr);
           if (arr.length) onSeenChange?.(activeId, arr[arr.length - 1].id);
         } catch {}
+        setLoadingMsgs(false);
       }
 
       async function deleteConvo(id) {
@@ -853,6 +860,7 @@
         activeId,
         setActiveId,
         msgs,
+        loadingMsgs,
         input,
         setInput,
         imgPreviews,
@@ -968,6 +976,7 @@
         activeId,
         setActiveId,
         msgs,
+        loadingMsgs,
         imgPreviews,
         removeImg,
         msgsContainerRef,
@@ -999,6 +1008,12 @@
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
       const [confirmPaypalOpen, setConfirmPaypalOpen] = useState(false);
       const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
+
+      useEffect(() => {
+        if (activeId) {
+          setShowConversationOnMobile(true);
+        }
+      }, [activeId]);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -1077,7 +1092,11 @@
             }, '← Back to conversations')
           ),
           !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
-          activeId && H(MessagesThread, {
+          (activeId && loadingMsgs) && H('div', {
+            className: 'muted',
+            style: { padding: '20px', textAlign: 'center' }
+          }, 'Loading messages...'),
+          (activeId && !loadingMsgs) && H(MessagesThread, {
             messages: msgs,
             user: currentUser,
             ImageWithSkeleton,
