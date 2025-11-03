@@ -129,8 +129,8 @@
       }, icon);
     }
 
-    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation }) {
-      return H('aside', { className: 'card sidebar messages-sidebar' },
+    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, className }) {
+      return H('aside', { className: `card sidebar messages-sidebar ${className || ''}` },
         H('div', { className: 'messages-sidebar__header' }, 'Conversations'),
         H('div', { className: 'messages-sidebar__list' },
           ...(conversations.length
@@ -998,6 +998,7 @@
 
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
       const [confirmPaypalOpen, setConfirmPaypalOpen] = useState(false);
+      const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -1035,17 +1036,46 @@
         setConfirmPaypalOpen(false);
       }, [revealPaypal]);
 
+      const handleSelectConversation = useCallback((id) => {
+        setActiveId(id);
+        setShowConversationOnMobile(true);
+      }, [setActiveId]);
+
+      const handleBackToList = useCallback(() => {
+        setShowConversationOnMobile(false);
+      }, []);
+
       return H('div', { className: 'messages-panel' },
         H(ConversationsSidebar, {
           conversations: convosDecorated,
           activeId,
-          onSelectConversation: setActiveId,
-          onDeleteConversation: deleteConvo
+          onSelectConversation: handleSelectConversation,
+          onDeleteConversation: deleteConvo,
+          className: showConversationOnMobile ? 'hide-on-mobile' : ''
         }),
         H('section', {
-          className: 'card col messages-thread-shell',
+          className: `card col messages-thread-shell ${showConversationOnMobile ? 'show-on-mobile' : 'hide-on-mobile'}`,
           style: { padding: 12, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
         },
+          activeId && H('div', {
+            className: 'messages-thread-header',
+            style: { display: 'none', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
+          },
+            H('button', {
+              onClick: handleBackToList,
+              style: {
+                background: 'transparent',
+                border: 'none',
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontWeight: 600
+              }
+            }, '← Back to conversations')
+          ),
           !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
           activeId && H(MessagesThread, {
             messages: msgs,

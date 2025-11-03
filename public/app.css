@@ -864,11 +864,28 @@
     grid-template-columns: 1fr;
     height: auto;
     max-height: none;
-    gap: 12px;
+    gap: 0;
   }
 
   .messages-sidebar {
-    max-height: 260px;
+    max-height: none;
+    height: 100%;
+  }
+
+  .messages-sidebar.hide-on-mobile {
+    display: none;
+  }
+
+  .messages-thread-shell.hide-on-mobile {
+    display: none !important;
+  }
+
+  .messages-thread-shell.show-on-mobile {
+    display: flex !important;
+  }
+
+  .messages-thread-header {
+    display: flex !important;
   }
 }
 
