@@ -8,11 +8,20 @@ if (process.env.DATABASE_URL) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    // ADD THESE LINES:
-    max: 10,                      // Maximum 10 connections (not unlimited)
-    idleTimeoutMillis: 30000,     // Close idle connections after 30 seconds
-    connectionTimeoutMillis: 2000, // Fail fast if can't connect in 2 seconds
-    allowExitOnIdle: true          // Let Node.js exit when all connections idle
+    max: 75,                       // Maximum 75 connections (scales to ~1000 concurrent users)
+    min: 5,                        // Keep 5 connections alive for fast response
+    idleTimeoutMillis: 30000,      // Close idle connections after 30 seconds
+    connectionTimeoutMillis: 10000, // 10 second timeout (more forgiving under load)
+    allowExitOnIdle: false         // Keep pool alive to avoid reconnection overhead
+  });
+
+  // Add pool monitoring for debugging
+  pool.on('error', (err) => {
+    console.error('Unexpected database pool error:', err);
+  });
+
+  pool.on('connect', () => {
+    console.log('New database connection established');
   });
 
   const normalizeQuery = (sql, params) => {

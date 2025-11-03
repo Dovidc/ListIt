@@ -315,7 +315,61 @@ const NEARBY_CACHE_TTL_MS = Number(process.env.NEARBY_CACHE_TTL_MS || 20000);
 
 const NEARBY_CACHE_MAX = Number(process.env.NEARBY_CACHE_MAX || 200);
 
-const nearbyCache = new Map();
+// Simple LRU Cache implementation to prevent memory leaks
+class LRUCache {
+  constructor(maxSize, ttlMs = null) {
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+    this.cache = new Map(); // Map maintains insertion order
+  }
+
+  get(key) {
+    if (!this.cache.has(key)) return undefined;
+
+    const item = this.cache.get(key);
+
+    // Check TTL if enabled
+    if (this.ttlMs && Date.now() - item.timestamp > this.ttlMs) {
+      this.cache.delete(key);
+      return undefined;
+    }
+
+    // Move to end (most recently used)
+    this.cache.delete(key);
+    this.cache.set(key, item);
+
+    return item.value;
+  }
+
+  set(key, value) {
+    // Delete if exists (to update position)
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+
+    // Evict oldest if at capacity
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+
+    // Add new item
+    this.cache.set(key, {
+      value,
+      timestamp: Date.now()
+    });
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+
+  get size() {
+    return this.cache.size;
+  }
+}
+
+const nearbyCache = new LRUCache(NEARBY_CACHE_MAX, NEARBY_CACHE_TTL_MS);
 
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || '').trim();
 const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || '').trim();
@@ -481,41 +535,17 @@ function makeNearbyCacheKey(lat, lon, radius) {
 }
 
 function getNearbyCache(key) {
-
-  const entry = nearbyCache.get(key);
-
-  if (!entry) return null;
-
-  if (Date.now() > entry.expires) {
-
-    nearbyCache.delete(key);
-
-    return null;
-
-  }
-
-  return entry.value;
-
+  // LRU cache handles TTL automatically
+  return nearbyCache.get(key) || null;
 }
 
 function setNearbyCache(key, value) {
-
-  nearbyCache.set(key, { value, expires: Date.now() + NEARBY_CACHE_TTL_MS });
-
-  if (nearbyCache.size > NEARBY_CACHE_MAX) {
-
-    const oldestKey = nearbyCache.keys().next().value;
-
-    if (oldestKey) nearbyCache.delete(oldestKey);
-
-  }
-
+  // LRU cache handles eviction automatically
+  nearbyCache.set(key, value);
 }
 
 function invalidateNearbyCache() {
-
-  if (nearbyCache.size) nearbyCache.clear();
-
+  nearbyCache.clear();
 }
 
 
@@ -6093,19 +6123,35 @@ app.get('/api/conversations/:id/messages', auth, async (req, res) => {
 
     `).all(id);
 
+    // Fetch all images in one query to avoid N+1 problem
+    const messageIds = msgs.map(m => m.id);
+    let allImages = [];
 
-
-    const getImgs = db.prepare('SELECT COALESCE(url, image_data) AS image_data FROM message_images WHERE message_id = ? ORDER BY position ASC');
-
-    const out = [];
-
-    for (const m of msgs) {
-
-      const imgs = await getImgs.all(m.id);
-
-      out.push({ ...m, images: imgs.map(r => canonicalAssetUrl(r.image_data)) });
-
+    if (messageIds.length > 0) {
+      // Build IN clause with proper parameter binding
+      const placeholders = messageIds.map(() => '?').join(',');
+      allImages = await db.prepare(`
+        SELECT message_id, COALESCE(url, image_data) AS image_data
+        FROM message_images
+        WHERE message_id IN (${placeholders})
+        ORDER BY message_id ASC, position ASC
+      `).all(...messageIds);
     }
+
+    // Group images by message_id
+    const imagesByMessageId = {};
+    for (const img of allImages) {
+      if (!imagesByMessageId[img.message_id]) {
+        imagesByMessageId[img.message_id] = [];
+      }
+      imagesByMessageId[img.message_id].push(canonicalAssetUrl(img.image_data));
+    }
+
+    // Attach images to messages
+    const out = msgs.map(m => ({
+      ...m,
+      images: imagesByMessageId[m.id] || []
+    }));
 
 
 
@@ -6891,7 +6937,10 @@ app.delete('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
-const geoCache = new Map();
+// LRU cache with 1000 entries max and 24 hour TTL to prevent unbounded growth
+const GEO_CACHE_MAX = 1000;
+const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const geoCache = new LRUCache(GEO_CACHE_MAX, GEO_CACHE_TTL_MS);
 
 app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
