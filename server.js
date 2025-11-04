@@ -3431,39 +3431,60 @@ app.delete('/api/me', auth, async (req, res) => {
     const userId = req.user.id;
     console.log('Deleting account for user:', userId);
 
+    // Delete in proper order to handle foreign key constraints
+    // PostgreSQL (and SQLite with FK enabled) require child records deleted first
+
     // Get all listing IDs for this user first
     const userListings = await db.prepare('SELECT id FROM listings WHERE user_id = ?').all(userId);
     const listingIds = userListings.map(l => l.id);
+    console.log('Found listings:', listingIds);
 
     // Delete listing images (child of listings)
     if (listingIds.length > 0) {
       const placeholders = listingIds.map(() => '?').join(',');
       await db.prepare(`DELETE FROM listing_images WHERE listing_id IN (${placeholders})`).run(...listingIds);
+      console.log('Deleted listing images');
     }
 
+    // Get all message IDs for this user
+    const userMessages = await db.prepare('SELECT id FROM messages WHERE sender_id = ? OR receiver_id = ?').all(userId, userId);
+    const messageIds = userMessages.map(m => m.id);
+    console.log('Found messages:', messageIds.length);
+
     // Delete message images (child of messages)
-    await db.prepare('DELETE FROM message_images WHERE message_id IN (SELECT id FROM messages WHERE sender_id = ? OR receiver_id = ?)').run(userId, userId);
+    if (messageIds.length > 0) {
+      const placeholders = messageIds.map(() => '?').join(',');
+      await db.prepare(`DELETE FROM message_images WHERE message_id IN (${placeholders})`).run(...messageIds);
+      console.log('Deleted message images');
+    }
 
     // Delete all user's messages
     await db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(userId, userId);
+    console.log('Deleted messages');
 
     // Delete all user's conversations
     await db.prepare('DELETE FROM conversations WHERE user_a_id = ? OR user_b_id = ?').run(userId, userId);
+    console.log('Deleted conversations');
 
     // Delete listing upload drafts
     await db.prepare('DELETE FROM listing_upload_drafts WHERE user_id = ?').run(userId);
+    console.log('Deleted upload drafts');
 
     // Delete all user's listings
     await db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+    console.log('Deleted listings');
 
-    // Delete all user's reports (both made and received) - use correct table name
+    // Delete all user's reports (both made and received)
     await db.prepare('DELETE FROM seller_reports WHERE reporter_id = ? OR reported_user_id = ?').run(userId, userId);
+    console.log('Deleted reports');
 
     // Delete user's push subscriptions
     await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+    console.log('Deleted push subscriptions');
 
     // Delete the user account
     await db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    console.log('Deleted user account');
 
     // Clear auth cookie
     clearAuthCookie(res);
