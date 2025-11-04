@@ -531,6 +531,10 @@
       const [profilePictureModalOpen, setProfilePictureModalOpen] = useState(false);
       const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profile_picture_url || '');
 
+      useEffect(() => {
+        setProfilePictureUrl(user?.profile_picture_url || '');
+      }, [user?.profile_picture_url]);
+
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
         onEdit?.(it);
