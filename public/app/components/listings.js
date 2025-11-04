@@ -1303,8 +1303,9 @@
         )
       );
 
-      const handleOverlayClick = React.useCallback((evt) => {
-        if (evt.target.classList.contains('lightbox-overlay')) {
+      const handleBackdropClick = React.useCallback((evt) => {
+        if (evt.target.classList.contains('lightbox-backdrop') ||
+            evt.target.classList.contains('lightbox-overlay')) {
           onClose?.();
         }
       }, [onClose]);
@@ -1313,8 +1314,11 @@
         H('div', {
           className: 'lightbox-overlay open',
           role: 'presentation',
-          onClick: handleOverlayClick
-        }, overlayContent),
+          onClick: handleBackdropClick
+        },
+          H('div', { className: 'lightbox-backdrop' }),
+          overlayContent
+        ),
         document.body
       );
     }
