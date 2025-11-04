@@ -138,6 +138,32 @@
         setCropData({ x, y, size });
       }, []);
 
+      const handleMouseDown = useCallback((evt) => {
+        if (!imageRef.current) return;
+        evt.preventDefault();
+        const img = imageRef.current;
+        const rect = img.getBoundingClientRect();
+        const startX = evt.clientX;
+        const startY = evt.clientY;
+        const initialCrop = { ...cropData };
+
+        const handleMouseMove = (e) => {
+          const deltaX = e.clientX - startX;
+          const deltaY = e.clientY - startY;
+          const newX = Math.max(0, Math.min(img.width - cropData.size, initialCrop.x + deltaX));
+          const newY = Math.max(0, Math.min(img.height - cropData.size, initialCrop.y + deltaY));
+          setCropData({ ...cropData, x: newX, y: newY });
+        };
+
+        const handleMouseUp = () => {
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+      }, [cropData]);
+
       if (!open) return null;
 
       const modalContent = H('div', {
@@ -224,18 +250,36 @@
                   }
                 }),
                 H('div', {
+                  onMouseDown: handleMouseDown,
                   style: {
                     position: 'absolute',
                     left: cropData.x,
                     top: cropData.y,
                     width: cropData.size,
                     height: cropData.size,
-                    border: '2px solid white',
+                    border: '3px solid white',
                     boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
                     borderRadius: '50%',
-                    pointerEvents: 'none'
+                    cursor: 'move',
+                    pointerEvents: 'auto'
                   }
-                })
+                },
+                  H('div', {
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                      pointerEvents: 'none',
+                      userSelect: 'none'
+                    }
+                  }, 'Drag to adjust')
+                )
               ),
               H('canvas', {
                 ref: canvasRef,

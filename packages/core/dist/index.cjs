@@ -164,6 +164,12 @@ function createApiClient(options = {}) {
     body: JSON.stringify({ location_preset: locationPreset })
   }, meta);
 
+  const updateProfilePicture = (profilePictureUrl, meta) => request('/api/me/profile-picture', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_picture_url: profilePictureUrl })
+  }, meta);
+
   const listAll = (a, b, meta) => {
     let q = '';
     let loc = '';
@@ -401,6 +407,7 @@ function createApiClient(options = {}) {
     updatePaypalEmail,
 
     updateLocationPreset,
+    updateProfilePicture,
     listAll,
     listListings,
     getUser,
