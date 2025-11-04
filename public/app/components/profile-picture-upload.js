@@ -272,6 +272,8 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { createProfilePictureUploadComponents };
   } else if (typeof window !== 'undefined') {
-    window.createProfilePictureUploadComponents = createProfilePictureUploadComponents;
+    window.ListItApp = window.ListItApp || {};
+    window.ListItApp.components = window.ListItApp.components || {};
+    window.ListItApp.components.profilePictureUpload = { createProfilePictureUploadComponents };
   }
 })();
