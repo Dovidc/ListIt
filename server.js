@@ -3420,16 +3420,29 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
 
 app.delete('/api/me', auth, async (req, res) => {
   try {
+    console.log('Delete account request body:', req.body);
     const { confirmation } = req.body;
 
     if (confirmation !== 'confirm') {
+      console.log('Invalid confirmation:', confirmation);
       return res.status(400).json({ error: 'Invalid confirmation' });
     }
 
     const userId = req.user.id;
+    console.log('Deleting account for user:', userId);
 
-    // Delete all user's listings
-    await db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+    // Get all listing IDs for this user first
+    const userListings = await db.prepare('SELECT id FROM listings WHERE user_id = ?').all(userId);
+    const listingIds = userListings.map(l => l.id);
+
+    // Delete listing images (child of listings)
+    if (listingIds.length > 0) {
+      const placeholders = listingIds.map(() => '?').join(',');
+      await db.prepare(`DELETE FROM listing_images WHERE listing_id IN (${placeholders})`).run(...listingIds);
+    }
+
+    // Delete message images (child of messages)
+    await db.prepare('DELETE FROM message_images WHERE message_id IN (SELECT id FROM messages WHERE sender_id = ? OR receiver_id = ?)').run(userId, userId);
 
     // Delete all user's messages
     await db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(userId, userId);
@@ -3437,8 +3450,14 @@ app.delete('/api/me', auth, async (req, res) => {
     // Delete all user's conversations
     await db.prepare('DELETE FROM conversations WHERE user_a_id = ? OR user_b_id = ?').run(userId, userId);
 
-    // Delete all user's reports (both made and received)
-    await db.prepare('DELETE FROM reports WHERE reporter_id = ? OR reported_user_id = ?').run(userId, userId);
+    // Delete listing upload drafts
+    await db.prepare('DELETE FROM listing_upload_drafts WHERE user_id = ?').run(userId);
+
+    // Delete all user's listings
+    await db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+
+    // Delete all user's reports (both made and received) - use correct table name
+    await db.prepare('DELETE FROM seller_reports WHERE reporter_id = ? OR reported_user_id = ?').run(userId, userId);
 
     // Delete user's push subscriptions
     await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
@@ -3453,7 +3472,8 @@ app.delete('/api/me', auth, async (req, res) => {
 
   } catch (e) {
     console.error('Delete account failed:', e);
-    return res.status(500).json({ error: 'delete_failed' });
+    console.error('Error stack:', e.stack);
+    return res.status(500).json({ error: 'delete_failed', message: e.message });
   }
 });
 
