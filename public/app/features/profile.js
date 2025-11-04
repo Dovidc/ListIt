@@ -532,10 +532,16 @@
       const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profile_picture_url || '');
 
       useEffect(() => {
-        const url = user?.profile_picture_url || '';
+        if (!user) return;
+        const url = user.profile_picture_url || '';
         console.log('Profile picture URL from user:', url);
         console.log('Full user object:', user);
-        setProfilePictureUrl(url);
+
+        // Only update state if user object has the profile_picture_url property
+        // This prevents overwriting with empty string when user object is being updated
+        if ('profile_picture_url' in user) {
+          setProfilePictureUrl(url);
+        }
       }, [user]);
 
       const handleEdit = useCallback((it) => {
