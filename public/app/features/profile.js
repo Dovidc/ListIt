@@ -536,7 +536,7 @@
         console.log('Profile picture URL from user:', url);
         console.log('Full user object:', user);
         setProfilePictureUrl(url);
-      }, [user?.profile_picture_url]);
+      }, [user]);
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
