@@ -3446,24 +3446,33 @@ app.delete('/api/me', auth, async (req, res) => {
       console.log('Deleted listing images');
     }
 
-    // Get all message IDs for this user
-    const userMessages = await db.prepare('SELECT id FROM messages WHERE sender_id = ? OR receiver_id = ?').all(userId, userId);
-    const messageIds = userMessages.map(m => m.id);
-    console.log('Found messages:', messageIds.length);
+    // Get all conversations for this user
+    const userConversations = await db.prepare('SELECT id FROM conversations WHERE a_user_id = ? OR b_user_id = ?').all(userId, userId);
+    const conversationIds = userConversations.map(c => c.id);
+    console.log('Found conversations:', conversationIds.length);
 
-    // Delete message images (child of messages)
-    if (messageIds.length > 0) {
-      const placeholders = messageIds.map(() => '?').join(',');
-      await db.prepare(`DELETE FROM message_images WHERE message_id IN (${placeholders})`).run(...messageIds);
-      console.log('Deleted message images');
+    // Get all message IDs from user's conversations
+    let messageIds = [];
+    if (conversationIds.length > 0) {
+      const placeholders = conversationIds.map(() => '?').join(',');
+      const userMessages = await db.prepare(`SELECT id FROM messages WHERE conversation_id IN (${placeholders})`).all(...conversationIds);
+      messageIds = userMessages.map(m => m.id);
+      console.log('Found messages:', messageIds.length);
+
+      // Delete message images (child of messages)
+      if (messageIds.length > 0) {
+        const msgPlaceholders = messageIds.map(() => '?').join(',');
+        await db.prepare(`DELETE FROM message_images WHERE message_id IN (${msgPlaceholders})`).run(...messageIds);
+        console.log('Deleted message images');
+      }
+
+      // Delete all messages in user's conversations
+      await db.prepare(`DELETE FROM messages WHERE conversation_id IN (${placeholders})`).run(...conversationIds);
+      console.log('Deleted messages');
     }
 
-    // Delete all user's messages
-    await db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(userId, userId);
-    console.log('Deleted messages');
-
     // Delete all user's conversations
-    await db.prepare('DELETE FROM conversations WHERE user_a_id = ? OR user_b_id = ?').run(userId, userId);
+    await db.prepare('DELETE FROM conversations WHERE a_user_id = ? OR b_user_id = ?').run(userId, userId);
     console.log('Deleted conversations');
 
     // Delete listing upload drafts
