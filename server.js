@@ -2987,6 +2987,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
         email: row.email,
         username: row.username,
         is_admin: !!row.is_admin,
+        profile_picture_url: row.profile_picture_url,
         account_status: row.account_status || 'active',
         created_at: row.created_at,
         status_note: row.status_note,
@@ -3037,6 +3038,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       email: row.email,
       username: row.username,
       is_admin: !!row.is_admin,
+      profile_picture_url: row.profile_picture_url,
       account_status: accountStatus,
       created_at: row.created_at,
       status_note: row.status_note,
@@ -3124,6 +3126,8 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
       username: row.username,
 
       is_admin: !!row.is_admin,
+
+      profile_picture_url: row.profile_picture_url,
 
       account_status: accountStatus,
 
@@ -3259,6 +3263,8 @@ app.get('/api/me', async (req, res) => {
              COALESCE(paypal_email, '') AS paypal_email,
 
              COALESCE(location_preset, '') AS location_preset,
+
+             profile_picture_url,
 
              created_at,
 
