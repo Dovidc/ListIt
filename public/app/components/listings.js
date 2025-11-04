@@ -1303,8 +1303,18 @@
         )
       );
 
+      const handleOverlayClick = React.useCallback((evt) => {
+        if (evt.target.classList.contains('lightbox-overlay')) {
+          onClose?.();
+        }
+      }, [onClose]);
+
       return ReactDOM.createPortal(
-        H('div', { className: 'lightbox-overlay open', role: 'presentation' }, overlayContent),
+        H('div', {
+          className: 'lightbox-overlay open',
+          role: 'presentation',
+          onClick: handleOverlayClick
+        }, overlayContent),
         document.body
       );
     }
