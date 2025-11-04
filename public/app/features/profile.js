@@ -532,7 +532,10 @@
       const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profile_picture_url || '');
 
       useEffect(() => {
-        setProfilePictureUrl(user?.profile_picture_url || '');
+        const url = user?.profile_picture_url || '';
+        console.log('Profile picture URL from user:', url);
+        console.log('Full user object:', user);
+        setProfilePictureUrl(url);
       }, [user?.profile_picture_url]);
 
       const handleEdit = useCallback((it) => {
@@ -705,10 +708,21 @@
               H('div', {
                 className: 'profile-avatar',
                 onClick: handleOpenProfilePictureModal,
-                style: { cursor: 'pointer' }
+                style: { cursor: 'pointer' },
+                title: 'Click to change profile picture'
               },
-                profilePictureUrl
-                  ? H('img', { src: profilePictureUrl, alt: 'Profile picture' })
+                (profilePictureUrl && profilePictureUrl.trim())
+                  ? H('img', {
+                      src: profilePictureUrl,
+                      alt: 'Profile picture',
+                      onError: (e) => {
+                        console.error('Failed to load profile picture:', profilePictureUrl);
+                        e.target.style.display = 'none';
+                      },
+                      onLoad: () => {
+                        console.log('Profile picture loaded successfully:', profilePictureUrl);
+                      }
+                    })
                   : (user.username ? user.username.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase())
               ),
               H('div', null,
