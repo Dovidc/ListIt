@@ -3484,7 +3484,7 @@ app.delete('/api/me', auth, async (req, res) => {
     console.log('Deleted listings');
 
     // Delete all user's reports (both made and received)
-    await db.prepare('DELETE FROM seller_reports WHERE reporter_id = ? OR reported_user_id = ?').run(userId, userId);
+    await db.prepare('DELETE FROM seller_reports WHERE reporter_user_id = ? OR reported_user_id = ?').run(userId, userId);
     console.log('Deleted reports');
 
     // Delete user's push subscriptions
