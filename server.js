@@ -819,6 +819,8 @@ async function initializeSchema() {
 
     try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_expires_at TEXT"); } catch {}
 
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_picture_url TEXT"); } catch {}
+
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
 
@@ -3294,6 +3296,8 @@ app.get('/api/me', async (req, res) => {
 
       location_preset: row.location_preset,
 
+      profile_picture_url: row.profile_picture_url,
+
       account_status: row.account_status,
 
       status_note: row.status_note,
@@ -3367,6 +3371,40 @@ app.put('/api/me/location-preset', auth, writeLimiter, async (req, res) => {
   } catch (e) {
 
     console.error('Update location preset failed:', e);
+
+    return res.status(500).json({ error: 'update_failed' });
+
+  }
+
+});
+
+app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
+
+  try {
+
+    const url = String(req.body?.profile_picture_url || '').trim();
+
+    if (url && url.length > 500) {
+
+      return res.status(400).json({ error: 'URL too long' });
+
+    }
+
+    // Validate URL is from allowed S3 bucket if provided
+    if (url) {
+      const allowedBase = process.env.S3_BASE_URL || '';
+      if (allowedBase && !url.startsWith(allowedBase)) {
+        return res.status(400).json({ error: 'Invalid image URL' });
+      }
+    }
+
+    await db.prepare('UPDATE users SET profile_picture_url = ? WHERE id = ?').run(url || null, req.user.id);
+
+    return res.json({ ok: true, profile_picture_url: url });
+
+  } catch (e) {
+
+    console.error('Update profile picture failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
 
@@ -5995,6 +6033,8 @@ app.get('/api/conversations', auth, async (req, res) => {
 
         u.username AS other_user_username,
 
+        u.profile_picture_url AS other_user_profile_picture,
+
         COALESCE(l.title, '') AS listing_title,
 
         l.user_id AS listing_owner_id,
@@ -7728,6 +7768,8 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
       paypal_email: row.paypal_email || '',
 
       location_preset: row.location_preset || '',
+
+      profile_picture_url: row.profile_picture_url || '',
 
       is_admin: !!row.is_admin,
 

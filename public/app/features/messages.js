@@ -148,8 +148,16 @@
                 },
                 onClick: () => onSelectConversation?.(conversation.id)
               },
-              H('div', { style: { fontWeight: 600 } }, conversation.other_user_username ? `@${conversation.other_user_username}` : 'Unknown'),
-              conversation.listing_title ? H('div', { className: 'muted' }, ` - ${conversation.listing_title?.slice?.(0, 24)}`) : null,
+              H('div', {
+                className: 'profile-avatar profile-avatar-tiny',
+                style: { flexShrink: 0 }
+              },
+                conversation.other_user_profile_picture
+                  ? H('img', { src: conversation.other_user_profile_picture, alt: '' })
+                  : (conversation.other_user_username ? conversation.other_user_username.charAt(0).toUpperCase() : '?')
+              ),
+              H('div', { style: { fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversation.other_user_username ? `@${conversation.other_user_username}` : 'Unknown'),
+              conversation.listing_title ? H('div', { className: 'muted', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, ` - ${conversation.listing_title?.slice?.(0, 20)}`) : null,
               conversation._unread && H('span', {
                 style: {
                   marginLeft: 'auto',

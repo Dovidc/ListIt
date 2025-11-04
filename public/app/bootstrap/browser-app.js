@@ -362,6 +362,19 @@
     bundles.legacy = bundles.legacy || {};
     bundles.legacy.SmartImage = SmartImage;
 
+    const profilePictureUploadFactory = bundles?.components?.profilePictureUpload?.createProfilePictureUploadComponents;
+    if (typeof profilePictureUploadFactory !== 'function') {
+      throw new Error('Profile picture upload components bundle failed to load.');
+    }
+    const { ProfilePictureUploadModal } = profilePictureUploadFactory({
+      React: runtimeReact,
+      ReactDOM: runtimeReactDOM,
+      api,
+      uploads: {
+        uploadOneMessageImage
+      }
+    });
+
     const profileFeatureFactory = bundles?.features?.profile?.createProfileFeature;
     if (typeof profileFeatureFactory !== 'function') {
       throw new Error('Profile feature bundle failed to load.');
@@ -376,7 +389,8 @@
         InfoHelpModal,
         AutoListHelpModal,
         AiDescriptionHelpModal,
-        ListingModal
+        ListingModal,
+        ProfilePictureUploadModal
       },
       appNav: AppNav
     });

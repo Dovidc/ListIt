@@ -28,7 +28,8 @@
       InfoHelpModal,
       AutoListHelpModal,
       AiDescriptionHelpModal,
-      ListingModal
+      ListingModal,
+      ProfilePictureUploadModal
     } = components;
 
     if (typeof ImageWithSkeleton !== 'function') {
@@ -527,6 +528,8 @@
       const [paypalModalOpen, setPaypalModalOpen] = useState(false);
       const [paypalStatusMessage, setPaypalStatusMessage] = useState('');
       const [locationStatusMessage, setLocationStatusMessage] = useState('');
+      const [profilePictureModalOpen, setProfilePictureModalOpen] = useState(false);
+      const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profile_picture_url || '');
 
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
@@ -660,6 +663,27 @@
         setLocationStatusMessage('Saved');
       }
 
+      const handleOpenProfilePictureModal = useCallback(() => {
+        setProfilePictureModalOpen(true);
+      }, []);
+
+      const handleCloseProfilePictureModal = useCallback(() => {
+        setProfilePictureModalOpen(false);
+      }, []);
+
+      const handleProfilePictureUploadComplete = useCallback(async (url) => {
+        setProfilePictureUrl(url);
+        // Refresh user data
+        try {
+          const me = await api.me({ silent: true });
+          if (me) {
+            navBridge.setUser?.(me);
+          }
+        } catch (err) {
+          console.error('Refresh user failed:', err);
+        }
+      }, []);
+
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -673,11 +697,22 @@
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
-            H('div', null,
-              H('div', { style: { fontWeight: 800, fontSize: 18 } },
-                user.username ? `@${user.username}` : user.email
+            H('div', { className: 'row', style: { gap: 12, alignItems: 'center' } },
+              H('div', {
+                className: 'profile-avatar',
+                onClick: handleOpenProfilePictureModal,
+                style: { cursor: 'pointer' }
+              },
+                profilePictureUrl
+                  ? H('img', { src: profilePictureUrl, alt: 'Profile picture' })
+                  : (user.username ? user.username.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase())
               ),
-              H('div', { className: 'muted', style: { marginTop: 4 } }, 'Your account')
+              H('div', null,
+                H('div', { style: { fontWeight: 800, fontSize: 18 } },
+                  user.username ? `@${user.username}` : user.email
+                ),
+                H('div', { className: 'muted', style: { marginTop: 4 } }, 'Your account')
+              )
             ),
             H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
               H('button', {
@@ -852,6 +887,13 @@
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
           isMobile
+        }),
+
+        H(ProfilePictureUploadModal, {
+          open: profilePictureModalOpen,
+          onClose: handleCloseProfilePictureModal,
+          onUploadComplete: handleProfilePictureUploadComplete,
+          currentPictureUrl: profilePictureUrl
         }),
 
         H(ListingModal, {
