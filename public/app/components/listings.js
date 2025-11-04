@@ -1246,6 +1246,13 @@
         return () => window.removeEventListener('keydown', handler);
       }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
 
+      const handleBackdropClick = React.useCallback((evt) => {
+        if (evt.target.classList.contains('lightbox-backdrop') ||
+            evt.target.classList.contains('lightbox-overlay')) {
+          onClose?.();
+        }
+      }, [onClose]);
+
       if (!open) return null;
 
       const stageOverlay = (!stageLoaded && currentSrc) || (loading && !len)
@@ -1302,13 +1309,6 @@
           H('button', { className: 'nav next', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next' }, '›')
         )
       );
-
-      const handleBackdropClick = React.useCallback((evt) => {
-        if (evt.target.classList.contains('lightbox-backdrop') ||
-            evt.target.classList.contains('lightbox-overlay')) {
-          onClose?.();
-        }
-      }, [onClose]);
 
       return ReactDOM.createPortal(
         H('div', {
