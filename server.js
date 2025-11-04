@@ -3418,6 +3418,45 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
 
 });
 
+app.delete('/api/me', auth, async (req, res) => {
+  try {
+    const { confirmation } = req.body;
+
+    if (confirmation !== 'confirm') {
+      return res.status(400).json({ error: 'Invalid confirmation' });
+    }
+
+    const userId = req.user.id;
+
+    // Delete all user's listings
+    await db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+
+    // Delete all user's messages
+    await db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(userId, userId);
+
+    // Delete all user's conversations
+    await db.prepare('DELETE FROM conversations WHERE user_a_id = ? OR user_b_id = ?').run(userId, userId);
+
+    // Delete all user's reports (both made and received)
+    await db.prepare('DELETE FROM reports WHERE reporter_id = ? OR reported_user_id = ?').run(userId, userId);
+
+    // Delete user's push subscriptions
+    await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+
+    // Delete the user account
+    await db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+    // Clear auth cookie
+    clearAuthCookie(res);
+
+    return res.json({ ok: true });
+
+  } catch (e) {
+    console.error('Delete account failed:', e);
+    return res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
 app.post('/api/push/subscribe', auth, async (req, res) => {
   try {
     if (!PUSH_AVAILABLE) {

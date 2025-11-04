@@ -170,6 +170,12 @@ export function createApiClient(options = {}) {
     body: JSON.stringify({ profile_picture_url: profilePictureUrl })
   }, meta);
 
+  const deleteAccount = (confirmation, meta) => request('/api/me', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmation })
+  }, meta);
+
   const listAll = (a, b, meta) => {
     let q = '';
     let loc = '';
@@ -408,6 +414,7 @@ export function createApiClient(options = {}) {
 
     updateLocationPreset,
     updateProfilePicture,
+    deleteAccount,
     listAll,
     listListings,
     getUser,

@@ -354,6 +354,7 @@
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
+      onRequestDeleteAccount,
       isMobile
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
@@ -495,6 +496,25 @@
                     borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
                   }
                 }, '?')
+              ),
+              H('div', {
+                style: {
+                  marginTop: 24,
+                  paddingTop: 24,
+                  borderTop: '1px solid #e5e7eb'
+                }
+              },
+                H('div', { style: { fontWeight: 700, marginBottom: 8, color: '#dc2626' } }, 'Danger Zone'),
+                H('button', {
+                  className: 'btn',
+                  onClick: onRequestDeleteAccount,
+                  style: {
+                    width: '100%',
+                    background: '#dc2626',
+                    color: 'white',
+                    border: 'none'
+                  }
+                }, 'Delete Account')
               )
             )
           )
@@ -530,6 +550,9 @@
       const [locationStatusMessage, setLocationStatusMessage] = useState('');
       const [profilePictureModalOpen, setProfilePictureModalOpen] = useState(false);
       const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profile_picture_url || '');
+      const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
+      const [deleteConfirmText, setDeleteConfirmText] = useState('');
+      const [deleteAccountError, setDeleteAccountError] = useState('');
 
       useEffect(() => {
         if (!user) return;
@@ -696,6 +719,35 @@
           console.error('Refresh user failed:', err);
         }
       }, []);
+
+      const handleRequestDeleteAccount = useCallback(() => {
+        setSettingsOpen(false);
+        setDeleteAccountModalOpen(true);
+        setDeleteConfirmText('');
+        setDeleteAccountError('');
+      }, []);
+
+      const handleCloseDeleteAccountModal = useCallback(() => {
+        setDeleteAccountModalOpen(false);
+        setDeleteConfirmText('');
+        setDeleteAccountError('');
+      }, []);
+
+      const handleDeleteAccount = useCallback(async () => {
+        if (deleteConfirmText !== 'confirm') {
+          setDeleteAccountError('Please type "confirm" to delete your account');
+          return;
+        }
+
+        try {
+          await api.deleteAccount('confirm');
+          // Account deleted, user is logged out
+          onLogout?.();
+        } catch (err) {
+          console.error('Delete account failed:', err);
+          setDeleteAccountError(err.message || 'Failed to delete account');
+        }
+      }, [deleteConfirmText, onLogout]);
 
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
@@ -910,6 +962,7 @@
           setAiDescriptionEnabled,
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
+          onRequestDeleteAccount: handleRequestDeleteAccount,
           isMobile
         }),
 
@@ -919,6 +972,79 @@
           onUploadComplete: handleProfilePictureUploadComplete,
           currentPictureUrl: profilePictureUrl
         }),
+
+        deleteAccountModalOpen && createPortal(
+          H('div', {
+            className: 'modal-overlay',
+            onClick: (e) => {
+              if (e.target.classList.contains('modal-overlay')) {
+                handleCloseDeleteAccountModal();
+              }
+            }
+          },
+            H('div', { className: 'modal-content', style: { maxWidth: 400 } },
+              H('div', { className: 'modal-header' },
+                H('h2', { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, 'Delete Account'),
+                H('button', {
+                  className: 'modal-close',
+                  onClick: handleCloseDeleteAccountModal,
+                  'aria-label': 'Close'
+                }, '×')
+              ),
+              H('div', { className: 'modal-body' },
+                H('p', { style: { marginBottom: 16 } },
+                  'This action cannot be undone. All your listings, messages, and account data will be permanently deleted.'
+                ),
+                H('p', { style: { marginBottom: 16, fontWeight: 600 } },
+                  'Type "confirm" to delete your account:'
+                ),
+                H('input', {
+                  type: 'text',
+                  value: deleteConfirmText,
+                  onChange: (e) => setDeleteConfirmText(e.target.value),
+                  placeholder: 'Type confirm',
+                  style: {
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    marginBottom: 12
+                  }
+                }),
+                deleteAccountError && H('div', {
+                  style: {
+                    padding: 12,
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    borderRadius: 8,
+                    marginBottom: 12
+                  }
+                }, deleteAccountError),
+                H('div', { style: { display: 'flex', gap: 8 } },
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleCloseDeleteAccountModal,
+                    style: { flex: 1 }
+                  }, 'Cancel'),
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleDeleteAccount,
+                    disabled: deleteConfirmText !== 'confirm',
+                    style: {
+                      flex: 1,
+                      background: '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      opacity: deleteConfirmText !== 'confirm' ? 0.5 : 1
+                    }
+                  }, 'Delete Account')
+                )
+              )
+            )
+          ),
+          document.body
+        ),
 
         H(ListingModal, {
           open: !!profileSelected,
