@@ -1,5 +1,10 @@
 const FROM_ADDRESS = process.env.SENDGRID_FROM_EMAIL || 'no-reply@listit.example';
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+const MAX_CACHE_SIZE = 1024;
+const IS_TEST = process.env.NODE_ENV === 'test';
+
 let sgMailClient = null;
 let configuredApiKey = null;
 
@@ -16,13 +21,87 @@ function getSendgridClient(apiKey) {
   return sgMailClient;
 }
 
-const resetTokens = new Map();
-const verificationCodes = new Map();
+function createEphemeralStore(ttlMs, { maxEntries = MAX_CACHE_SIZE } = {}) {
+  const entries = new Map();
+  const timers = new Map();
+
+  function clearTimer(key) {
+    const timer = timers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      timers.delete(key);
+    }
+  }
+
+  function prune(key) {
+    const now = Date.now();
+    if (typeof key === 'string') {
+      const entry = entries.get(key);
+      if (entry && entry.expiresAt <= now) {
+        entries.delete(key);
+        clearTimer(key);
+      }
+      return;
+    }
+
+    for (const [candidateKey, entry] of entries) {
+      if (entry.expiresAt <= now) {
+        entries.delete(candidateKey);
+        clearTimer(candidateKey);
+      }
+    }
+  }
+
+  function scheduleExpiry(key) {
+    clearTimer(key);
+    const timeout = setTimeout(() => prune(key), ttlMs);
+    if (typeof timeout.unref === 'function') timeout.unref();
+    timers.set(key, timeout);
+  }
+
+  function remember(key, rawValue) {
+    if (!key || rawValue === undefined || rawValue === null) return;
+
+    prune();
+
+    if (maxEntries && entries.size >= maxEntries) {
+      const oldestKey = entries.keys().next().value;
+      if (oldestKey !== undefined) {
+        entries.delete(oldestKey);
+        clearTimer(oldestKey);
+      }
+    }
+
+    const entry = { expiresAt: Date.now() + ttlMs };
+    if (IS_TEST) entry.raw = rawValue;
+    entries.set(key, entry);
+    scheduleExpiry(key);
+  }
+
+  function read(key) {
+    prune(key);
+    const entry = entries.get(key);
+    if (!entry) return null;
+    return entry.raw ?? null;
+  }
+
+  function clear() {
+    for (const key of entries.keys()) {
+      clearTimer(key);
+    }
+    entries.clear();
+  }
+
+  return { remember, read, clear };
+}
+
+const resetTokens = createEphemeralStore(ONE_HOUR_MS);
+const verificationCodes = createEphemeralStore(THIRTY_MINUTES_MS);
 
 async function sendPasswordResetEmail(email, token) {
   if (!email || !token) return;
 
-  resetTokens.set(email, { token, sentAt: new Date() });
+  resetTokens.remember(email, token);
 
   if (process.env.NODE_ENV === 'test') return;
 
@@ -56,8 +135,7 @@ async function sendPasswordResetEmail(email, token) {
 }
 
 function getLastToken(email) {
-  const entry = resetTokens.get(email);
-  return entry ? entry.token : null;
+  return resetTokens.read(email);
 }
 
 function resetLog() {
@@ -68,7 +146,7 @@ function resetLog() {
 async function sendVerificationEmail(email, code) {
   if (!email || !code) return;
 
-  verificationCodes.set(email, { code, sentAt: new Date() });
+  verificationCodes.remember(email, code);
 
   if (process.env.NODE_ENV === 'test') return;
 
@@ -102,8 +180,7 @@ async function sendVerificationEmail(email, code) {
 }
 
 function getLastVerificationCode(email) {
-  const entry = verificationCodes.get(email);
-  return entry ? entry.code : null;
+  return verificationCodes.read(email);
 }
 
 module.exports = {

@@ -722,21 +722,35 @@ app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+function parseOriginHost(value) {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+}
+
 function originGuard(req, res, next) {
 
   if (SAFE_METHODS.has(req.method)) return next();
 
   if (!FRONTEND_ORIGIN) return next();
 
-  const origin = req.headers.origin || '';
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
 
-  const referer = req.headers.referer || '';
+  if (!origin && !referer) return next();
 
-  const ok = (origin && origin === FRONTEND_ORIGIN) || 
+  const normalizedOrigin = origin ? parseOriginHost(origin) : null;
+  const normalizedReferer = referer ? parseOriginHost(referer) : null;
 
-             (referer && referer.startsWith(FRONTEND_ORIGIN + '/'));
+  const matchesOrigin = normalizedOrigin === FRONTEND_ORIGIN;
+  const matchesReferer = normalizedReferer === FRONTEND_ORIGIN;
 
-  if (!ok) return res.status(403).json({ error: 'bad_origin' });
+  if (!matchesOrigin && !matchesReferer) {
+    return res.status(403).json({ error: 'bad_origin' });
+  }
 
   next();
 
