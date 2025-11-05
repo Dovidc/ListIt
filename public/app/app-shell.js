@@ -383,6 +383,8 @@
         }
       }
 
+      const cameraInputNode = cameraInputRef.current;
+
       useEffect(() => {
         if (!quickCaptureEnabled) {
           autoLaunchCameraRef.current = false;
@@ -392,7 +394,7 @@
         if (!isMobile) return;
         if (autoLaunchCameraRef.current) return;
         if (!user) return;
-        const ref = cameraInputRef.current;
+        const ref = cameraInputNode;
         if (!ref) return;
         if (!ensureCanCreate()) {
           autoLaunchCameraRef.current = true;
@@ -401,7 +403,7 @@
         autoLaunchCameraRef.current = true;
         setQuickCaptureSession(true);
         ref.click();
-      }, [quickCaptureEnabled, isMobile, user]);
+      }, [quickCaptureEnabled, isMobile, user, tab, cameraInputNode]);
 
       const quickCaptureAutoCreate = quickCaptureSession && !editing && quickCaptureEnabled && !quickCaptureConfirmEnabled;
 
