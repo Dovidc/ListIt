@@ -125,6 +125,12 @@
           case 'auth':
           case 'Invalid credentials':
             return 'Invalid email or password.';
+          case 'Email already registered':
+            return 'An account with this email already exists. Try logging in instead.';
+          case 'Username already taken':
+            return 'This username is already taken. Please choose a different one.';
+          case 'Registration failed':
+            return 'We could not create your account. Please try again.';
           case 'account_banned':
             return 'Your account is currently banned.';
           case 'account_locked':
