@@ -184,7 +184,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], forceAutoList = false, showConfirmButton = true }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -254,7 +254,7 @@
               draft,
               onCancel: onClose,
               onSaved: () => { onSaved?.(); onClose(); },
-              autoListEnabled,
+              autoListEnabled: autoListEnabled || forceAutoList,
               aiDescriptionEnabled,
               autoPostNearbyEnabled,
               autoInquiryEnabled,
@@ -262,18 +262,20 @@
               enqueueListingJob,
               showTags,
               setShowTags,
-              initialFiles
+              initialFiles,
+              showConfirmButton
             }) : H(ListingForm, {
               draft,
               onCancel: onClose,
               onSaved: () => { onSaved?.(); onClose(); },
-              autoListEnabled,
+              autoListEnabled: autoListEnabled || forceAutoList,
               aiDescriptionEnabled,
               autoPostNearbyEnabled,
               autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob,
-              initialFiles
+              initialFiles,
+              showConfirmButton
             })
           )
         )
@@ -282,7 +284,7 @@
       return ReactDOM.createPortal(modal, document.body);
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags, initialFiles = [] }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags, initialFiles = [], showConfirmButton = true }) {
       const fileRef = useRef();
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [existingUrls, setExistingUrls] = useState([]);
@@ -872,7 +874,7 @@
         }),
 
         H('div', { className: 'row', style: { gap: 6, marginTop: 6 } },
-          H('button', {
+          showConfirmButton && H('button', {
             className: 'btn primary',
             type: 'submit',
             disabled: autoBusy,
@@ -885,7 +887,12 @@
             type: 'button',
             onClick: onCancel,
             disabled: autoBusy,
-            style: { flex: 1, padding: '9px', fontSize: '13px' }
+            style: {
+              flex: showConfirmButton ? 1 : '1 0 100%',
+              padding: '9px',
+              fontSize: '13px',
+              width: showConfirmButton ? undefined : '100%'
+            }
           },
             'Cancel'
           )

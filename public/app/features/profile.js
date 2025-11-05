@@ -361,6 +361,10 @@
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
+      quickCaptureEnabled,
+      setQuickCaptureEnabled,
+      quickCaptureConfirmEnabled,
+      setQuickCaptureConfirmEnabled,
       onRequestDeleteAccount,
       isMobile
     }) {
@@ -403,6 +407,32 @@
               title: 'Close settings'
             }, 'x'),
             H('div', { style: { display: 'grid', gap: 12 } },
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!quickCaptureEnabled,
+                  onChange: (e) => setQuickCaptureEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Quick camera launch'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Open the camera as soon as the app loads')
+                )
+              ),
+              quickCaptureEnabled && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!quickCaptureConfirmEnabled,
+                  onChange: (e) => setQuickCaptureConfirmEnabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Require confirmation checkmark'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Keep the checkmark step before creating a listing')
+                )
+              ),
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
                   type: 'checkbox',
@@ -547,6 +577,10 @@
       setAutoPostNearbyEnabled,
       autoInquiryEnabled,
       setAutoInquiryEnabled,
+      quickCaptureEnabled,
+      setQuickCaptureEnabled,
+      quickCaptureConfirmEnabled,
+      setQuickCaptureConfirmEnabled,
       onViewSeller,
       onToggleSold
     }) {
@@ -905,6 +939,10 @@
           setAiDescriptionEnabled,
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
+          quickCaptureEnabled,
+          setQuickCaptureEnabled,
+          quickCaptureConfirmEnabled,
+          setQuickCaptureConfirmEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,
           isMobile
         }),

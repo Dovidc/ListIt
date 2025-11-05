@@ -45,12 +45,16 @@
     const useAiDescriptionToggle = createStoredToggle('listit_ai_descriptions');
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
     const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
+    const useQuickCaptureToggle = createStoredToggle('listit_quick_capture');
+    const useQuickCaptureConfirmToggle = createStoredToggle('listit_quick_capture_confirm', true);
 
     function useAppPreferences() {
       const autoList = useAutoListToggle();
       const aiDescription = useAiDescriptionToggle();
       const autoNearby = useAutoPostNearbyToggle();
       const inquiryText = useInquiryTextToggle();
+      const quickCapture = useQuickCaptureToggle();
+      const quickCaptureConfirm = useQuickCaptureConfirmToggle();
 
       return {
         autoListEnabled: autoList.enabled,
@@ -60,7 +64,11 @@
         autoPostNearbyEnabled: autoNearby.enabled,
         setAutoPostNearbyEnabled: autoNearby.setEnabled,
         autoInquiryEnabled: inquiryText.enabled,
-        setAutoInquiryEnabled: inquiryText.setEnabled
+        setAutoInquiryEnabled: inquiryText.setEnabled,
+        quickCaptureEnabled: quickCapture.enabled,
+        setQuickCaptureEnabled: quickCapture.setEnabled,
+        quickCaptureConfirmEnabled: quickCaptureConfirm.enabled,
+        setQuickCaptureConfirmEnabled: quickCaptureConfirm.setEnabled
       };
     }
 

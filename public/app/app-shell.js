@@ -165,8 +165,10 @@
       const [mobileCreateMode, setMobileCreateMode] = useState('list');
       const [initialListingFiles, setInitialListingFiles] = useState([]);
       const [initialMassListFiles, setInitialMassListFiles] = useState([]);
+      const [quickCaptureSession, setQuickCaptureSession] = useState(false);
       const galleryInputRef = useRef(null);
       const cameraInputRef = useRef(null);
+      const autoLaunchCameraRef = useRef(false);
       const {
         autoListEnabled,
         setAutoListEnabled,
@@ -175,7 +177,11 @@
         autoPostNearbyEnabled,
         setAutoPostNearbyEnabled,
         autoInquiryEnabled,
-        setAutoInquiryEnabled
+        setAutoInquiryEnabled,
+        quickCaptureEnabled,
+        setQuickCaptureEnabled,
+        quickCaptureConfirmEnabled,
+        setQuickCaptureConfirmEnabled
       } = useAppPreferences();
 
       const { ads, refreshAds } = useAds();
@@ -316,6 +322,7 @@
       function handleMobileCaptureClick(kind) {
         if (!isMobile) return;
         if (!ensureCanCreate()) return;
+        setQuickCaptureSession(kind === 'camera' && quickCaptureEnabled);
         const ref = kind === 'camera' ? cameraInputRef.current : galleryInputRef.current;
         if (ref) {
           ref.click();
@@ -348,6 +355,7 @@
           return;
         }
         if (mobileCreateMode === 'masslist') {
+          setQuickCaptureSession(false);
           setInitialMassListFiles(files);
           setShowMassList(true);
           return;
@@ -358,6 +366,7 @@
       }
 
       function handleGalleryChange(evt) {
+        setQuickCaptureSession(false);
         handleMobileFilesSelected(evt?.target?.files);
         if (evt?.target) {
           evt.target.value = '';
@@ -365,11 +374,36 @@
       }
 
       function handleCameraChange(evt) {
+        if (!quickCaptureEnabled) {
+          setQuickCaptureSession(false);
+        }
         handleMobileFilesSelected(evt?.target?.files);
         if (evt?.target) {
           evt.target.value = '';
         }
       }
+
+      useEffect(() => {
+        if (!quickCaptureEnabled) {
+          autoLaunchCameraRef.current = false;
+          setQuickCaptureSession(false);
+          return;
+        }
+        if (!isMobile) return;
+        if (autoLaunchCameraRef.current) return;
+        if (!user) return;
+        const ref = cameraInputRef.current;
+        if (!ref) return;
+        if (!ensureCanCreate()) {
+          autoLaunchCameraRef.current = true;
+          return;
+        }
+        autoLaunchCameraRef.current = true;
+        setQuickCaptureSession(true);
+        ref.click();
+      }, [quickCaptureEnabled, isMobile, user]);
+
+      const quickCaptureAutoCreate = quickCaptureSession && !editing && quickCaptureEnabled && !quickCaptureConfirmEnabled;
 
       function handleMobileNav(target) {
         if (target === 'messages' && !user) {
@@ -527,11 +561,13 @@
                   if(!user){ alert('Log in to create a listing.'); return; }
                   if(user.account_status === 'locked'){ showLockedBanner(); return; }
                   setEditing(null);
+                  setQuickCaptureSession(false);
                   setShowForm(true);
                 } }, 'New listing'),
                 H('button', { className:'btn', onClick:()=>{
                   if(!user){ alert('Log in to create listings.'); return; }
                   if(user.account_status === 'locked'){ showLockedBanner(); return; }
+                  setQuickCaptureSession(false);
                   setShowMassList(true);
                 } }, 'MassList')
               )
@@ -641,6 +677,7 @@
                   if (user?.account_status === 'locked') { showLockedBanner(); return; }
                   const rich = mineById[it.id] || it;
                   setEditing(rich);
+                  setQuickCaptureSession(false);
                   setShowForm(true);
                   setSelectedListing(null);
                 },
@@ -669,6 +706,7 @@
                 if(user?.account_status === 'locked'){ showLockedBanner(); return; }
                 const rich = mineById[it.id] || it;
                 setEditing(rich);
+                setQuickCaptureSession(false);
                 setShowForm(true);
               },
               onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await refreshListings(); } },
@@ -699,6 +737,7 @@
                 if(!user){ alert('Log in to create a listing.'); return; }
                 if(user.account_status === 'locked'){ showLockedBanner(); return; }
                 setEditing(null);
+                setQuickCaptureSession(false);
                 setShowForm(true);
                 setTab('browse');
               },
@@ -706,6 +745,7 @@
                 if(user?.account_status === 'locked'){ showLockedBanner(); return; }
                 const rich = mineById[it.id] || it;
                 setEditing(rich);
+                setQuickCaptureSession(false);
                 setShowForm(true);
                 setTab('browse');
               },
@@ -720,6 +760,10 @@
               setAutoPostNearbyEnabled,
               autoInquiryEnabled,
               setAutoInquiryEnabled,
+              quickCaptureEnabled,
+              setQuickCaptureEnabled,
+              quickCaptureConfirmEnabled,
+              setQuickCaptureConfirmEnabled,
               onViewSeller: handleViewSeller,
               onToggleSold: toggleSold
             }),
@@ -748,7 +792,7 @@
         showForm && H(ListingFormModal, {
           isOpen: showForm,
           draft: editing,
-          onClose: () => { setShowForm(false); setEditing(null); setInitialListingFiles([]); },
+          onClose: () => { setShowForm(false); setEditing(null); setInitialListingFiles([]); setQuickCaptureSession(false); },
           onSaved: async () => { await refreshListings({ preserveExisting: true }); setInitialListingFiles([]); },
           autoListEnabled,
           aiDescriptionEnabled,
@@ -756,7 +800,9 @@
           autoInquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob,
-          initialFiles: initialListingFiles
+          initialFiles: initialListingFiles,
+          forceAutoList: quickCaptureAutoCreate,
+          showConfirmButton: !quickCaptureAutoCreate
         }),
 
         H(AuthModal, {
