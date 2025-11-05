@@ -315,7 +315,8 @@
         getUserCoordsOnce,
         useBodyScrollLock,
         haversineMeters,
-        asArray
+        asArray,
+        selectPrimaryListingImage
       },
       components: {
         ImageWithSkeleton,

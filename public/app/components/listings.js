@@ -66,7 +66,8 @@
       getUserCoordsOnce,
       useBodyScrollLock,
       haversineMeters,
-      asArray
+      asArray,
+      selectPrimaryListingImage
     } = helpers;
 
     if (typeof isMobileDevice !== 'function') {
@@ -86,6 +87,9 @@
     }
     if (typeof asArray !== 'function') {
       throw new Error('Listing components require asArray helper.');
+    }
+    if (typeof selectPrimaryListingImage !== 'function') {
+      throw new Error('Listing components require selectPrimaryListingImage helper.');
     }
 
     const { ImageWithSkeleton, ResponsiveImage, ListingsGrid } = components;
@@ -1721,6 +1725,7 @@
       const [error, setError] = useState(null);
       const [tab, setTab] = useState('active');
       const [sellerInfo, setSellerInfo] = useState(null);
+      const [coverById, setCoverById] = useState(() => (Object.create(null)));
 
       useEffect(() => {
         if (!Number.isFinite(Number(sellerId))) {
@@ -1767,8 +1772,32 @@
             setLoading(true);
             const items = await api.listByUser(sellerId);
             if (!mounted) return;
-            setListings(asArray(items));
+            const itemsArray = asArray(items);
+            setListings(itemsArray);
             setError(null);
+
+            // Batch fetch cover images for first 24 listings
+            if (itemsArray.length) {
+              try {
+                const ids = itemsArray.slice(0, 24).map(r => r.id);
+                if (ids.length) {
+                  const covers = await api.getCoversBatch(ids, { silent: true });
+                  if (!mounted) return;
+                  if (Array.isArray(covers) && covers.length) {
+                    const patch = {};
+                    covers.forEach(r => {
+                      if (!r || r.id == null) return;
+                      if (r.image_data) patch[r.id] = { url: r.image_data };
+                    });
+                    if (Object.keys(patch).length) {
+                      setCoverById(prev => ({ ...prev, ...patch }));
+                    }
+                  }
+                }
+              } catch (coverErr) {
+                console.warn('Failed to fetch cover images:', coverErr);
+              }
+            }
           } catch (err) {
             if (!mounted) return;
             console.error('Failed to fetch seller listings:', err);
@@ -1805,6 +1834,23 @@
         setTab('active');
       }, [sellerId]);
 
+      const ensureCover = useCallback(async (id) => {
+        if (id == null) return;
+        if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
+        try {
+          const arr = await api.getListingImages(id, { silent: true });
+          let obj = null;
+          if (Array.isArray(arr) && arr.length) {
+            obj = typeof arr[0] === 'string'
+              ? { url: arr[0], w: null, h: null }
+              : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+          }
+          setCoverById((prev) => ({ ...prev, [id]: obj }));
+        } catch {
+          setCoverById((prev) => ({ ...prev, [id]: null }));
+        }
+      }, [coverById, api]);
+
       const activeListings = useMemo(
         () => listings.filter((item) => !item?.sold),
         [listings]
@@ -1813,7 +1859,17 @@
         () => listings.filter((item) => !!item?.sold),
         [listings]
       );
-      const shownListings = tab === 'sold' ? soldListings : activeListings;
+      const rawShownListings = tab === 'sold' ? soldListings : activeListings;
+
+      const shownListings = useMemo(() => {
+        return (rawShownListings || []).map(it => {
+          const cached = coverById[it.id];
+          const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
+          const url = inline || '';
+          const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
+          return { ...it, __cover: url, __ar: ar };
+        });
+      }, [rawShownListings, coverById]);
 
       const handleListingSelected = useCallback((item) => {
         if (!item) return;
@@ -1928,6 +1984,7 @@
           : (ListingsGrid
               ? H(ListingsGrid, {
                   items: shownListings,
+                  onEnsureCover: ensureCover,
                   onSelect: (evt, item) => handleListingSelected(item),
                   columns: gridColumns
                 })
