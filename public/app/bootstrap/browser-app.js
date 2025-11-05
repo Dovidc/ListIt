@@ -390,7 +390,8 @@
         AutoListHelpModal,
         AiDescriptionHelpModal,
         ListingModal,
-        ProfilePictureUploadModal
+        ProfilePictureUploadModal,
+        ListingsGrid
       },
       appNav: AppNav
     });
