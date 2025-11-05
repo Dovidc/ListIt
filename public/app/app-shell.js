@@ -179,6 +179,7 @@
       } = useAppPreferences();
 
       const { ads, refreshAds } = useAds();
+      console.log('App shell ads:', ads);
 
       const listings = useListingsFeature({ user, currentTab: tab });
       const {
@@ -599,13 +600,16 @@
               })
             ),
 
-            H(ListingsGrid, {
-              items,
-              ads,
-              isMobile,
-              onEnsureCover: ensureCover,
-              onSelect: handleListingTileEvent
-            }),
+            (() => {
+              console.log('Passing to ListingsGrid - items:', items?.length, 'ads:', ads?.length);
+              return H(ListingsGrid, {
+                items,
+                ads,
+                isMobile,
+                onEnsureCover: ensureCover,
+                onSelect: handleListingTileEvent
+              });
+            })(),
 
             H('div', {
               style: {

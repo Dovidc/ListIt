@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:core:*)"
+      "Bash(npm run build:core:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(sqlite3:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

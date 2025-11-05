@@ -170,12 +170,19 @@
       className,
       style
     }) {
+      console.log('ListingsGrid received - items:', items?.length, 'ads:', ads, 'ads length:', ads?.length);
+
       const normalizedAds = useMemo(() => {
-        if (!Array.isArray(ads) || !ads.length) return [];
-        return ads.map((ad) => ({
+        if (!Array.isArray(ads) || !ads.length) {
+          console.log('No ads to normalize');
+          return [];
+        }
+        const normalized = ads.map((ad) => ({
           ...ad,
           position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
         }));
+        console.log('Normalized ads:', normalized);
+        return normalized;
       }, [ads]);
 
       const entries = useMemo(() => {
