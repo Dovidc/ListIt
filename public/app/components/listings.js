@@ -303,7 +303,7 @@
     }
 
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], showConfirmButton = true }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -798,8 +798,14 @@
         ),
 
         H('div', { className:'row' },
-          H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
-          H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
+          showConfirmButton && H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
+          H('button', {
+            className:'btn',
+            type:'button',
+            onClick:onCancel,
+            disabled:autoBusy,
+            style: showConfirmButton ? undefined : { flex: '1 0 100%' }
+          }, 'Cancel')
         ),
         showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) })
       );
