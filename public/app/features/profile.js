@@ -534,6 +534,7 @@
       isMobile,
       user,
       items,
+      onEnsureCover,
       onEdit,
       onDelete,
       onLogout,
@@ -860,6 +861,7 @@
             ? (ListingsGrid
                 ? H(ListingsGrid, {
                     items: shownItems,
+                    onEnsureCover: onEnsureCover,
                     onSelect: (evt, item) => setProfileSelected(item),
                     columns: isMobile ? 3 : 4
                   })

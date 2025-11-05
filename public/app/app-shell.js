@@ -690,6 +690,7 @@
             H(ProfilePanel, { isMobile,
               user,
               items: mine,
+              onEnsureCover: ensureCover,
               onNewListing: () => {
                 if(!user){ alert('Log in to create a listing.'); return; }
                 if(user.account_status === 'locked'){ showLockedBanner(); return; }

@@ -298,6 +298,16 @@
         });
       }, [all, coverById, selectPrimaryListingImage]);
 
+      const mineWithCovers = useMemo(() => {
+        return (mine || []).map(it => {
+          const cached = coverById[it.id];
+          const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
+          const url = inline || '';
+          const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
+          return { ...it, __cover: url, __ar: ar };
+        });
+      }, [mine, coverById, selectPrimaryListingImage]);
+
       const toggleSold = useCallback(async (listing, makeSold) => {
         try {
           await api.markListingSold(listing.id, makeSold);
@@ -324,7 +334,7 @@
       return {
         listings: all,
         setListings: setAll,
-        mine,
+        mine: mineWithCovers,
         setMine,
         query,
         setQuery,
