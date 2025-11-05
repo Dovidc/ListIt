@@ -187,7 +187,10 @@
 
       const entries = useMemo(() => {
         const base = (items || []).map((it) => ({ type: 'listing', data: it }));
-        if (!normalizedAds.length) return base;
+        if (!normalizedAds.length) {
+          console.log('Entries: no ads, returning', base.length, 'listings');
+          return base;
+        }
         const result = [...base];
         const sortedAds = [...normalizedAds].sort((a, b) => {
           const posDiff = (Number(b.position) || 0) - (Number(a.position) || 0);
@@ -197,11 +200,15 @@
           if (timeA !== timeB) return timeB.localeCompare(timeA);
           return Number(b.id || 0) - Number(a.id || 0);
         });
+        console.log('Sorted ads:', sortedAds);
         sortedAds.forEach((ad) => {
           const pos = Number.isFinite(ad.position) ? ad.position : 0;
           const idx = Math.min(Math.max(pos, 0), result.length);
+          console.log('Inserting ad at position:', pos, 'index:', idx, 'ad:', ad);
           result.splice(idx, 0, { type: 'ad', data: ad });
         });
+        console.log('Final entries:', result.length, 'total (listings + ads)');
+        console.log('Entries breakdown:', result.filter(e => e.type === 'listing').length, 'listings,', result.filter(e => e.type === 'ad').length, 'ads');
         return result;
       }, [items, normalizedAds]);
 
