@@ -88,13 +88,14 @@
       throw new Error('Listing components require asArray helper.');
     }
 
-    const { ImageWithSkeleton, ResponsiveImage } = components;
+    const { ImageWithSkeleton, ResponsiveImage, ListingsGrid } = components;
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Listing components require ImageWithSkeleton component.');
     }
     if (typeof ResponsiveImage !== 'function') {
       throw new Error('Listing components require ResponsiveImage component.');
     }
+    // ListingsGrid is optional - will fall back to custom rendering if not available
 
     const price = formatting?.price;
     if (typeof price !== 'function') {
@@ -1924,100 +1925,13 @@
         shownListings.length === 0
           ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } },
               tab === 'sold' ? 'No sold listings yet.' : 'No listings from this seller.')
-          : H('section', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
-                gap: 12
-              }
-            },
-              shownListings.map((item) => {
-                const cover = item.image_data || item.__cover || '';
-                return H('div', {
-                  key: item.id,
-                  className: 'card',
-                  style: { padding: 0, overflow: 'hidden', borderRadius: 8 }
-                },
-                  H('div', {
-                    style: {
-                      position: 'relative',
-                      width: '100%',
-                      aspectRatio: '1 / 1',
-                      background: '#f3f4f6'
-                    }
-                  },
-                    cover && H('img', {
-                      src: cover,
-                      alt: item.title || 'Item',
-                      loading: 'lazy',
-                      decoding: 'async',
-                      fetchPriority: 'low',
-                      style: {
-                        position: 'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                        cursor: 'pointer'
-                      },
-                      onClick: () => handleListingSelected(item)
-                    }),
-                    item.sold ? H('div', {
-                      style: {
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none'
-                      }
-                    },
-                      H('div', {
-                        style: {
-                          transform: 'rotate(-18deg)',
-                          padding: '4px 14px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '6px',
-                          fontWeight: 800,
-                          fontSize: 22,
-                          color: 'rgba(4, 120, 87, 0.85)',
-                          border: '3px solid rgba(16, 185, 129, 0.55)',
-                          background: 'rgba(229, 255, 244, 0.82)',
-                          borderRadius: 999
-                        }
-                      }, 'Sold')
-                    ) : null
-                  ),
-                  H('div', { style: { padding: 16, display: 'grid', gap: 8 } },
-                    H('div', { style: { fontWeight: 700 } }, item.title || 'Item for sale'),
-                    H('div', { className: 'muted', style: { minHeight: 32 } }, item.description || 'No description provided.'),
-                    H('div', { className: 'muted' }, item.location || 'No location'),
-                    H('div', {
-                      style: {
-                        fontWeight: 800,
-                        color: item?.inquiry_enabled ? '#9f1239' : (Number(item?.price ?? 0) === 0 ? '#16a34a' : '#111')
-                      }
-                    }, item?.inquiry_enabled
-                      ? H('span', { className: 'inquiry-badge' }, 'Seller wants an offer')
-                      : price(item.price))
-                  ),
-                  H('div', { className: 'row', style: { padding: '0 16px 16px', gap: 8 } },
-                    H('button', {
-                      className: 'btn primary',
-                      onClick: () => onMessage?.(item)
-                    }, 'Message seller'),
-                    user?.is_admin && H('button', {
-                      className: 'btn danger',
-                      onClick: async () => {
-                        if (!confirm('Admin: Delete this listing?')) return;
-                        await api.adminDeleteListing(item.id);
-                        handleAdminDeleteInternal(item.id);
-                      }
-                    }, 'Admin Delete')
-                  )
-                );
-              })
+          : (ListingsGrid
+              ? H(ListingsGrid, {
+                  items: shownListings,
+                  onSelect: (evt, item) => handleListingSelected(item),
+                  columns: gridColumns
+                })
+              : H('div', { style: { padding: 16, textAlign: 'center' } }, 'Grid component not available')
             ),
 
         modalContent

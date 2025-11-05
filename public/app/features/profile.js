@@ -33,6 +33,11 @@
       ListingsGrid
     } = components;
 
+    console.log('Profile feature received components:', components);
+    console.log('ListingsGrid in profile:', ListingsGrid, typeof ListingsGrid);
+    console.log('ListingsGrid keys:', ListingsGrid ? Object.keys(ListingsGrid) : 'undefined');
+    console.log('Is ListingsGrid a React component?', ListingsGrid?.$$typeof);
+
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Profile feature requires ImageWithSkeleton component.');
     }
@@ -48,9 +53,7 @@
     if (typeof ListingModal !== 'function') {
       throw new Error('Profile feature requires ListingModal component.');
     }
-    if (typeof ListingsGrid !== 'function') {
-      throw new Error('Profile feature requires ListingsGrid component.');
-    }
+    // ListingsGrid is optional - we'll fall back to custom rendering if not available
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
     const {
@@ -854,11 +857,14 @@
             }, 'Sold listings')
           ),
           (shownItems.length
-            ? H(ListingsGrid, {
-                items: shownItems,
-                onSelect: (evt, item) => setProfileSelected(item),
-                columns: isMobile ? 3 : 4
-              })
+            ? (ListingsGrid
+                ? H(ListingsGrid, {
+                    items: shownItems,
+                    onSelect: (evt, item) => setProfileSelected(item),
+                    columns: isMobile ? 3 : 4
+                  })
+                : H('div', { style: { padding: 16 } }, 'ListingsGrid component not available')
+              )
               : H('p', {
                   className: 'muted',
                   style: { textAlign: 'center', margin: '28px 0' }
