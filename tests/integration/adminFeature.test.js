@@ -207,6 +207,15 @@ describe('admin feature integration', () => {
       cols: 3,
       preview: true
     }));
+
+    const previewButtonCall = React.createElement.mock.calls.find(([type, props, ...children]) =>
+      type === 'button' && children.includes('Open ad preview')
+    );
+    expect(previewButtonCall).toBeDefined();
+    expect(previewButtonCall[1]).toEqual(expect.objectContaining({
+      disabled: false,
+      onClick: expect.any(Function)
+    }));
   });
 
   test('useAdminListingActions coordinates listing updates with the API client', async () => {

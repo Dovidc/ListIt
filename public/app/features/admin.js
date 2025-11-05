@@ -126,6 +126,26 @@
       const lockToggleTarget = selectedUser?.account_status === 'locked' ? 'active' : 'locked';
       const showRestore = selectedUser?.account_status === 'banned';
 
+      const previewUrl = typeof adForm?.target_url === 'string' ? adForm.target_url.trim() : '';
+      const canOpenAdPreview = /^https?:\/\//i.test(previewUrl);
+
+      const handleOpenAdPreview = useCallback(() => {
+        const url = typeof adForm?.target_url === 'string' ? adForm.target_url.trim() : '';
+        if (!/^https?:\/\//i.test(url)) {
+          alert('Enter a valid http(s) target URL to preview.');
+          return;
+        }
+        const opener = typeof window !== 'undefined' && typeof window.open === 'function' ? window.open : null;
+        if (!opener) {
+          alert('Preview not available in this environment.');
+          return;
+        }
+        const popup = opener(url, '_blank', 'noopener');
+        if (!popup) {
+          alert('Allow pop-ups to open the ad preview.');
+        }
+      }, [adForm?.target_url]);
+
       const userSummary = selectedUser ? H('div', { style: { display: 'grid', gap: 8 } },
         H('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
           H('div', { style: { fontSize: 20, fontWeight: 700 } }, selectedUser.username || '(no username)'),
@@ -554,7 +574,18 @@
 
             H('div', { style: { display: 'grid', gap: 8 } },
 
-              H('div', { className: 'muted', style: { fontSize: 12 } }, 'Preview'),
+              H('div', {
+                className: 'row',
+                style: { justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+              },
+                H('div', { className: 'muted', style: { fontSize: 12 } }, 'Preview'),
+                H('button', {
+                  className: 'btn',
+                  type: 'button',
+                  onClick: handleOpenAdPreview,
+                  disabled: !canOpenAdPreview
+                }, 'Open ad preview')
+              ),
 
               H('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 } },
 
