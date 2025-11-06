@@ -354,7 +354,6 @@
       onClose,
       onRequestHelp,
       autoListEnabled,
-      setAutoListEnabled,
       autoInquiryEnabled,
       setAutoInquiryEnabled,
       aiDescriptionEnabled,
@@ -407,22 +406,14 @@
                 H('input', {
                   type: 'checkbox',
                   className: 'toggle-input',
-                  checked: !!autoListEnabled,
-                  onChange: (e) => {
-                    const checked = e.target.checked;
-                    setAutoListEnabled?.(checked);
-                    if (checked && typeof setAutoInquiryEnabled === 'function') {
-                      setAutoInquiryEnabled(true);
-                    }
-                    if (!checked && typeof setAutoInquiryEnabled === 'function') {
-                      setAutoInquiryEnabled(false);
-                    }
-                  }
+                  checked: true,
+                  disabled: true,
+                  'aria-disabled': true
                 }),
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
                   H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'new uploads')
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'always on for new uploads')
                 ),
                 H('button', {
                   type: 'button',
@@ -434,7 +425,7 @@
                   }
                 }, '?')
               ),
-              autoListEnabled && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
                   type: 'checkbox',
                   className: 'toggle-input',
@@ -540,7 +531,6 @@
       onLogout,
       onAdminDelete,
       autoListEnabled,
-      setAutoListEnabled,
       aiDescriptionEnabled,
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
@@ -898,7 +888,6 @@
           onClose: handleCloseSettings,
           onRequestHelp: setHelpModal,
           autoListEnabled,
-          setAutoListEnabled,
           autoInquiryEnabled,
           setAutoInquiryEnabled,
           aiDescriptionEnabled,

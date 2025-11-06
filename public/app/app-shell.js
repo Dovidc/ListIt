@@ -169,7 +169,6 @@
       const cameraInputRef = useRef(null);
       const {
         autoListEnabled,
-        setAutoListEnabled,
         aiDescriptionEnabled,
         setAiDescriptionEnabled,
         autoPostNearbyEnabled,
@@ -713,7 +712,6 @@
               onLogout: logoutFromProfile,
               onAdminDelete: handleAdminDelete,
               autoListEnabled,
-              setAutoListEnabled,
               aiDescriptionEnabled,
               setAiDescriptionEnabled,
               autoPostNearbyEnabled,

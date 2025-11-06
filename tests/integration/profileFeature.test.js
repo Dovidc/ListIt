@@ -42,6 +42,7 @@ function createReactMocks(stateOverrides = []) {
     }),
     memo: jest.fn((component) => component),
     Fragment: Symbol('Fragment'),
+    useEffect: jest.fn(),
     useState: jest.fn((initial) => {
       const initialValue = typeof initial === 'function' ? initial() : initial;
       const override = stateOverrides.length ? stateOverrides.shift() : undefined;
@@ -151,8 +152,9 @@ describe('profile feature integration', () => {
       onDelete: jest.fn().mockResolvedValue(undefined),
       onLogout: jest.fn(),
       onAdminDelete: jest.fn().mockResolvedValue(undefined),
-      autoListEnabled: false,
-      setAutoListEnabled: jest.fn(),
+      autoListEnabled: true,
+      autoInquiryEnabled: false,
+      setAutoInquiryEnabled: jest.fn(),
       aiDescriptionEnabled: false,
       setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: false,
@@ -174,15 +176,17 @@ describe('profile feature integration', () => {
     expect(helpers.asArray).toHaveBeenNthCalledWith(2, props.items);
 
     const checkboxes = nodes.filter((node) => node?.props?.type === 'checkbox');
-    expect(checkboxes).toHaveLength(3);
-
-    checkboxes[0].props.onChange({ target: { checked: true } });
-    expect(props.setAutoListEnabled).toHaveBeenCalledWith(true);
+    expect(checkboxes).toHaveLength(4);
+    expect(checkboxes[0].props.disabled).toBe(true);
+    expect(checkboxes[0].props.checked).toBe(true);
 
     checkboxes[1].props.onChange({ target: { checked: true } });
-    expect(props.setAiDescriptionEnabled).toHaveBeenCalledWith(true);
+    expect(props.setAutoInquiryEnabled).toHaveBeenCalledWith(true);
 
     checkboxes[2].props.onChange({ target: { checked: true } });
+    expect(props.setAiDescriptionEnabled).toHaveBeenCalledWith(true);
+
+    checkboxes[3].props.onChange({ target: { checked: true } });
     expect(props.setAutoPostNearbyEnabled).toHaveBeenCalledWith(true);
 
     const logoutButton = nodes.find((node) => node?.props?.children === 'Log out');
@@ -194,9 +198,11 @@ describe('profile feature integration', () => {
 
     const paymentInput = nodes.find((node) => node?.props?.placeholder === 'name@example.com');
     expect(paymentInput).toBeDefined();
-    states[7].setter.mockClear();
+    const paypalEmailStateRecord = states.find((record) => record.value === 'initial@example.com');
+    expect(paypalEmailStateRecord).toBeDefined();
+    paypalEmailStateRecord.setter.mockClear();
     paymentInput.props.onChange({ target: { value: 'updated@example.com' } });
-    expect(states[7].setter).toHaveBeenCalledWith('updated@example.com');
+    expect(paypalEmailStateRecord.setter).toHaveBeenCalledWith('updated@example.com');
 
     await saveButtons[0].props.onClick();
     expect(api.updatePaypalEmail).toHaveBeenCalledWith('updated@example.com');
@@ -205,9 +211,11 @@ describe('profile feature integration', () => {
 
     const addressTextarea = nodes.find((node) => node?.props?.placeholder === '123 Main St, City, State');
     expect(addressTextarea).toBeDefined();
-    states[8].setter.mockClear();
+    const locationPresetStateRecord = states.find((record) => record.value === 'Old spot');
+    expect(locationPresetStateRecord).toBeDefined();
+    locationPresetStateRecord.setter.mockClear();
     addressTextarea.props.onChange({ target: { value: 'Saved spot' } });
-    expect(states[8].setter).toHaveBeenCalledWith('Saved spot');
+    expect(locationPresetStateRecord.setter).toHaveBeenCalledWith('Saved spot');
 
     await saveButtons[1].props.onClick();
     expect(api.updateLocationPreset).toHaveBeenCalledWith('Saved spot');
@@ -276,8 +284,9 @@ describe('profile feature integration', () => {
       onDelete: jest.fn(),
       onLogout: jest.fn(),
       onAdminDelete: jest.fn(),
-      autoListEnabled: false,
-      setAutoListEnabled: jest.fn(),
+      autoListEnabled: true,
+      autoInquiryEnabled: false,
+      setAutoInquiryEnabled: jest.fn(),
       aiDescriptionEnabled: false,
       setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: false,
@@ -290,7 +299,8 @@ describe('profile feature integration', () => {
     const nodes = collectNodes(tree);
 
     const checkboxes = nodes.filter((node) => node?.props?.type === 'checkbox');
-    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes[0].props.disabled).toBe(true);
     expect(nodes.some((node) => typeof node?.props?.children === 'string' && node.props.children === 'Auto Nearby')).toBe(false);
   });
 });

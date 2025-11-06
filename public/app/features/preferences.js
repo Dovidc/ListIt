@@ -4,7 +4,7 @@
       throw new Error('Preferences feature requires React.');
     }
 
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useCallback } = React;
 
     function createStoredToggle(key, defaultValue = false) {
       const readInitial = () => {
@@ -41,13 +41,28 @@
       return useStoredToggle;
     }
 
-    const useAutoListToggle = createStoredToggle('listit_auto_list');
+    function useAlwaysOnAutoList() {
+      useEffect(() => {
+        try {
+          localStorage.setItem('listit_auto_list', '1');
+        } catch {
+          // ignore storage errors
+        }
+      }, []);
+
+      const noop = useCallback(() => {}, []);
+
+      return useMemo(() => ({
+        enabled: true,
+        setEnabled: noop
+      }), [noop]);
+    }
     const useAiDescriptionToggle = createStoredToggle('listit_ai_descriptions');
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
     const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
 
     function useAppPreferences() {
-      const autoList = useAutoListToggle();
+      const autoList = useAlwaysOnAutoList();
       const aiDescription = useAiDescriptionToggle();
       const autoNearby = useAutoPostNearbyToggle();
       const inquiryText = useInquiryTextToggle();
