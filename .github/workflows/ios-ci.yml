@@ -1,0 +1,47 @@
+name: iOS CI
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+
+jobs:
+  build-and-test:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: ios/FastlaneSupport
+      - name: Install Homebrew dependencies
+        run: |
+          TAP_DIR=/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core
+          if git -C "$TAP_DIR" rev-parse --is-shallow-repository | grep -q "true"; then
+            git -C "$TAP_DIR" fetch --unshallow
+          else
+            git -C "$TAP_DIR" fetch
+          fi
+          brew install xcodegen
+      - name: Generate workspace
+        run: |
+          cd ios
+          xcodegen generate
+      - name: Run tests
+        run: |
+          cd ios/FastlaneSupport
+          bundle exec fastlane ci_tests
+      - name: Archive build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cd ios/FastlaneSupport
+          bundle exec fastlane beta
