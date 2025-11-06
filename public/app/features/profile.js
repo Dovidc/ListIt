@@ -353,7 +353,6 @@
       open,
       onClose,
       onRequestHelp,
-      autoListEnabled,
       autoInquiryEnabled,
       setAutoInquiryEnabled,
       aiDescriptionEnabled,
@@ -402,33 +401,6 @@
               title: 'Close settings'
             }, 'x'),
             H('div', { style: { display: 'grid', gap: 12 } },
-              (() => {
-                const autoListLockedOn = autoListEnabled !== false;
-                return H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                  H('input', {
-                    type: 'checkbox',
-                    className: 'toggle-input',
-                    checked: autoListLockedOn,
-                    disabled: true,
-                    'aria-disabled': true,
-                    'aria-checked': autoListLockedOn
-                  }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Auto-list'),
-                    H('div', { className: 'muted', style: { fontSize: 12 } }, autoListLockedOn ? 'always on for new uploads' : 'turn on to auto-post your items')
-                  ),
-                H('button', {
-                  type: 'button',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('auto'); },
-                  title: 'About Auto-list',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
-                  }
-                }, '?')
-                );
-              })(),
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
                   type: 'checkbox',
@@ -534,7 +506,6 @@
       onDelete,
       onLogout,
       onAdminDelete,
-      autoListEnabled,
       aiDescriptionEnabled,
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
@@ -891,7 +862,6 @@
           open: settingsOpen,
           onClose: handleCloseSettings,
           onRequestHelp: setHelpModal,
-          autoListEnabled,
           autoInquiryEnabled,
           setAutoInquiryEnabled,
           aiDescriptionEnabled,
