@@ -224,7 +224,38 @@ const PORT = process.env.PORT || 3000;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_change_me';
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
+function normalizeOrigin(value) {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.host) {
+      return `${parsed.protocol}//${parsed.host}`.replace(/\/$/, '');
+    }
+  } catch (err) {
+    // Fallback to manual normalization below.
+  }
+
+  return trimmed.replace(/\/$/, '');
+}
+
+const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0 ? FRONTEND_ORIGINS[0] : null;
+const HAS_FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0;
+const FRONTEND_ORIGIN_SET = new Set(FRONTEND_ORIGINS);
+
+function isAllowedFrontendOrigin(origin) {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return false;
+  return FRONTEND_ORIGIN_SET.has(normalized);
+}
 
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 
@@ -601,11 +632,23 @@ app.use(versionMiddleware);
 
 /* ------------------------------------------------------------------ */
 
-if (FRONTEND_ORIGIN && cors) {
+if (HAS_FRONTEND_ORIGIN && cors) {
 
   const corsCfg = {
 
-    origin: FRONTEND_ORIGIN,
+    origin(origin, callback) {
+      if (!origin) {
+        // Requests originating from curl or server-side scripts might not
+        // include the Origin header. Permit them to pass through.
+        return callback(null, true);
+      }
+
+      if (isAllowedFrontendOrigin(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'), false);
+    },
 
     credentials: true,
 
@@ -722,31 +765,19 @@ app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-function parseOriginHost(value) {
-  try {
-    const url = new URL(value);
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return null;
-  }
-}
-
 function originGuard(req, res, next) {
 
   if (SAFE_METHODS.has(req.method)) return next();
 
-  if (!FRONTEND_ORIGIN) return next();
+  if (!HAS_FRONTEND_ORIGIN) return next();
 
   const origin = req.headers.origin;
   const referer = req.headers.referer;
 
   if (!origin && !referer) return next();
 
-  const normalizedOrigin = origin ? parseOriginHost(origin) : null;
-  const normalizedReferer = referer ? parseOriginHost(referer) : null;
-
-  const matchesOrigin = normalizedOrigin === FRONTEND_ORIGIN;
-  const matchesReferer = normalizedReferer === FRONTEND_ORIGIN;
+  const matchesOrigin = isAllowedFrontendOrigin(origin);
+  const matchesReferer = isAllowedFrontendOrigin(referer);
 
   if (!matchesOrigin && !matchesReferer) {
     return res.status(403).json({ error: 'bad_origin' });
@@ -2633,7 +2664,7 @@ function setAuthCookie(res, payload) {
 
     httpOnly: true,
 
-    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
+    sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
 
     secure: IS_PROD,
 
@@ -2657,7 +2688,7 @@ function clearAuthCookie(res) {
 
     httpOnly: true,
 
-    sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
+    sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
 
     secure: IS_PROD,
 
