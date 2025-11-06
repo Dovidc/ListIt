@@ -176,17 +176,15 @@ describe('profile feature integration', () => {
     expect(helpers.asArray).toHaveBeenNthCalledWith(2, props.items);
 
     const checkboxes = nodes.filter((node) => node?.props?.type === 'checkbox');
-    expect(checkboxes).toHaveLength(4);
-    expect(checkboxes[0].props.disabled).toBe(true);
-    expect(checkboxes[0].props.checked).toBe(true);
+    expect(checkboxes).toHaveLength(3);
 
-    checkboxes[1].props.onChange({ target: { checked: true } });
+    checkboxes[0].props.onChange({ target: { checked: true } });
     expect(props.setAutoInquiryEnabled).toHaveBeenCalledWith(true);
 
-    checkboxes[2].props.onChange({ target: { checked: true } });
+    checkboxes[1].props.onChange({ target: { checked: true } });
     expect(props.setAiDescriptionEnabled).toHaveBeenCalledWith(true);
 
-    checkboxes[3].props.onChange({ target: { checked: true } });
+    checkboxes[2].props.onChange({ target: { checked: true } });
     expect(props.setAutoPostNearbyEnabled).toHaveBeenCalledWith(true);
 
     const logoutButton = nodes.find((node) => node?.props?.children === 'Log out');
@@ -299,8 +297,7 @@ describe('profile feature integration', () => {
     const nodes = collectNodes(tree);
 
     const checkboxes = nodes.filter((node) => node?.props?.type === 'checkbox');
-    expect(checkboxes).toHaveLength(3);
-    expect(checkboxes[0].props.disabled).toBe(true);
+    expect(checkboxes).toHaveLength(2);
     expect(nodes.some((node) => typeof node?.props?.children === 'string' && node.props.children === 'Auto Nearby')).toBe(false);
   });
 });
