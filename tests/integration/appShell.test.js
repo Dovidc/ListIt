@@ -91,7 +91,6 @@ describe('app shell integration', () => {
 
     const preferences = {
       autoListEnabled: true,
-      setAutoListEnabled: jest.fn(),
       aiDescriptionEnabled: true,
       setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: true,
