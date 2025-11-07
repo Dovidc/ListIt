@@ -62,7 +62,43 @@
       useVirtualMasonry
     } = helpersFactory({ React: runtimeReact });
 
+    const resolveApiBaseUrl = () => {
+      if (typeof window === 'undefined') return '';
+
+      const possibleGlobals = [
+        window.ListItNativeApiBaseUrl,
+        window.LISTIT_NATIVE_API_BASE_URL,
+        window.LISTIT_API_BASE_URL
+      ];
+      for (const value of possibleGlobals) {
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim();
+        }
+      }
+
+      const platform = window.Capacitor?.getPlatform?.();
+      if (!platform || platform === 'web') return '';
+
+      const meta = typeof document !== 'undefined'
+        ? document.querySelector('meta[name="listit-api-base"]')
+        : null;
+      const metaContent = meta?.getAttribute('content')?.trim();
+      if (metaContent) return metaContent;
+
+      try {
+        const stored = window.localStorage?.getItem?.('listit.nativeApiBaseUrl');
+        if (typeof stored === 'string' && stored.trim()) {
+          return stored.trim();
+        }
+      } catch (_) {
+        // Access to localStorage can fail in some environments (Safari private mode, etc.)
+      }
+
+      return '';
+    };
+
     const api = createApiClient({
+      baseUrl: resolveApiBaseUrl(),
       onRequestStart: () => AppNav.incLoad(),
       onRequestEnd: () => AppNav.decLoad(),
       onUnauthorized: () => {
