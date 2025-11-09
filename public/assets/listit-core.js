@@ -537,131 +537,12 @@
     formatDistance,
     haversineMeters
   };
-    
-    const adminDeleteSeedListings = (meta) => request('/api/admin/listings/seed', { method: 'DELETE' }, meta);  
-    
-    const listAds = (meta) => request('/api/ads', { method: 'GET' }, meta);  
-    
-    const adminListFlagged = (meta) => request('/api/admin/flagged', { method: 'GET' }, meta);  
-    
-    const adminDeleteFlagged = (id, meta) => request(`/api/admin/flagged/${id}`, { method: 'DELETE' }, meta);  
-    
-    const adminListAds = (meta) => request('/api/admin/ads', { method: 'GET' }, meta);  
-    
-    const adminCreateAd = (payload, meta) => request('/api/admin/ads', {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify(payload || {})  
-    }, meta);  
-    
-    const adminUpdateAd = (id, payload, meta) => request(`/api/admin/ads/${id}`, {  
-      method: 'PUT',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify(payload || {})  
-    }, meta);  
-    
-    const adminDeleteAd = (id, meta) => request(`/api/admin/ads/${id}`, { method: 'DELETE' }, meta);  
-    
-    const searchCities = (q, meta) => {  
-      const params = new URLSearchParams();  
-      if (q) params.set('q', q);  
-      const query = params.toString();  
-      const url = '/api/cities' + (query ? `?${query}` : '');  
-      const effectiveMeta = { ...(meta || {}), silent: true };  
-      return request(url, { method: 'GET' }, effectiveMeta);  
-    };  
-    
-    const ensureConversation = (payload, meta) => request('/api/conversations', {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify(payload || {})  
-    }, meta);  
-    
-    const listConversations = (meta) => request('/api/conversations', { method: 'GET' }, meta);  
-    
-    const getMessages = (id, meta) => request(`/api/conversations/${id}/messages`, { method: 'GET' }, meta);  
-    
-    const sendMessage = (id, body, images, meta) => request(`/api/conversations/${id}/messages`, {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify({ body, images })  
-    }, meta);  
-    
-    const deleteConversation = (id, meta) => request(`/api/conversations/${id}`, { method: 'DELETE' }, meta);  
-    
-    const getListingImages = (id, meta) => request(`/api/listings/${id}/images`, { method: 'GET' }, meta);  
-    
-    const getCoversBatch = (ids = [], meta) => {  
-      const normalized = Array.from(new Set((ids || []).map((value) => Number(value)).filter((value) => Number.isFinite(value)))).slice(0, 200);  
-      if (!normalized.length) return Promise.resolve([]);  
-      const url = `/api/listings/covers?ids=${encodeURIComponent(normalized.join(','))}`;  
-      return request(url, { method: 'GET' }, meta);  
-    };  
-    
-    const aiAnalyze = ({ images, hint }, meta) => request('/api/ai/analyze', {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify({ images, hint })  
-    }, meta);  
-    
-    const reverseGeocode = (lat, lon, meta) => request(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);  
-    
-    const listNearby = (lat, lon, radiusMeters = 150, meta) => {  
-      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radiusMeters)}`;  
-      return request(url, { method: 'GET' }, meta);  
-    };  
-    
-    const reportSeller = (payload, meta) => request('/api/reports', {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify(payload || {})  
-    }, meta);  
-    
-    const adminSearchUsers = (params = {}, meta) => {  
-      const searchParams = new URLSearchParams();  
-      const q = params.q ?? params.query ?? '';  
-      const limit = params.limit;  
-      if (q) searchParams.set('q', String(q));  
-      if (limit) searchParams.set('limit', String(limit));  
-      const query = searchParams.toString();  
-      const url = '/api/admin/users/search' + (query ? `?${query}` : '');  
-      return request(url, { method: 'GET' }, meta);  
-    };  
-    
-    const adminGetUser = (id, meta) => {  
-      if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
-      return request(`/api/admin/users/${id}`, { method: 'GET' }, meta);  
-    };  
-    
-    const adminGetUserReports = (id, params = {}, meta) => {  
-      if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
-      const searchParams = new URLSearchParams();  
-      if (params.limit) searchParams.set('limit', String(params.limit));  
-      const query = searchParams.toString();  
-      const url = `/api/admin/users/${id}/reports` + (query ? `?${query}` : '');  
-      return request(url, { method: 'GET' }, meta);  
-    };  
-    
-    const adminUpdateUserStatus = (id, payload = {}, meta) => {  
-      if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
-      return request(`/api/admin/users/${id}/status`, {  
-        method: 'POST',  
-        headers: { 'Content-Type': 'application/json' },  
-        body: JSON.stringify(payload || {})  
-      }, meta);  
-    };  
-    
-    const adminTopReports = (params = {}, meta) => {  
-      const searchParams = new URLSearchParams();  
-      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));  
-      if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));  
-      if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));  
-      const query = searchParams.toString();  
-      const url = '/api/admin/reports/top' + (query ? `?${query}` : '');  
-      return request(url, { method: 'GET' }, meta);  
-    };  
-    
-    const adminClearUserReports = (id, payload = {}, meta) => {  
+  
+  const target = ((typeof globalThis !== 'undefined') ? globalThis : (typeof self !== 'undefined') ? self : (typeof window !== 'undefined') ? window : (typeof global !== 'undefined') ? global : {});
+  if (target) {
+    target.ListItCore = exports;
+  }
+  
       if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
       return request(`/api/admin/users/${id}/reports/clear`, {  
         method: 'POST',  
