@@ -542,69 +542,6 @@
   if (target) {
     target.ListItCore = exports;
   }
-  
-      if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
-      return request(`/api/admin/users/${id}/reports/clear`, {  
-        method: 'POST',  
-        headers: { 'Content-Type': 'application/json' },  
-        body: JSON.stringify(payload || {})  
-      }, meta);  
-    };  
-    
-    const signUpload = ({ filename, contentType, bytes }, meta) => request('/api/uploads/sign', {  
-      method: 'POST',  
-      headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify({ filename, contentType, bytes })  
-    }, meta);  
-    
-    const finalizeUpload = ({ listingId, key, url, width, height, bytes }, meta) => {  
-      const payload = {};  
-      if (listingId != null) payload.listingId = listingId;  
-      if (key != null) payload.key = key;  
-      if (url != null) payload.url = url;  
-      if (width != null) payload.width = width;  
-      if (height != null) payload.height = height;  
-      if (bytes != null) payload.bytes = bytes;  
-      return request('/api/uploads/finalize', {  
-        method: 'POST',  
-        headers: { 'Content-Type': 'application/json' },  
-        body: JSON.stringify(payload)  
-      }, meta);  
-    };  
-    
-    return {  
-      request,  
-      me,  
-      login,  
-      register,  
-      verifyRegistration,  
-      requestPasswordReset,  
-      confirmPasswordReset,  
-      logout,  
-      pushSubscribe,  
-      pushUnsubscribe,  
-      updatePaypalEmail,  
-    
-      updateLocationPreset,  
-      updateProfilePicture,  
-      deleteAccount,  
-      listAll,  
-      listListings,  
-      getUser,  
-      listByUser,  
-      listMine,  
-      createListing,  
-      updateListing,  
-      markListingSold,  
-      deleteListing,  
-      adminDeleteListing,  
-      adminDeleteAll,  
-      adminSeedListings,  
-      adminDeleteSeedListings,  
-      listAds,  
-      adminListFlagged,  
-      adminDeleteFlagged,  
-      adminListAds,  
       adminCreateAd,  
       adminUpdateAd,  
       adminDeleteAd,  
