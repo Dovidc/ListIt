@@ -39,7 +39,8 @@ const globalAssignments = [
 ]
   .map((line) => `  ${line}`)
   .join('\n');
-const globalContent = `(() => {\n  const exports = {};\n${indentedBody}\n\n${globalAssignments}\n  globalThis.ListItCore = exports;\n})();\n`;
+const globalTarget = `((typeof globalThis !== 'undefined') ? globalThis : (typeof self !== 'undefined') ? self : (typeof window !== 'undefined') ? window : (typeof global !== 'undefined') ? global : {})`;
+const globalContent = `(() => {\n  const exports = {};\n${indentedBody}\n\n${globalAssignments}\n  const target = ${globalTarget};\n  if (target) {\n    target.ListItCore = exports;\n  }\n})();\n`;
 fs.writeFileSync(path.join(distDir, 'index.global.js'), globalContent);
 
 fs.mkdirSync(browserDir, { recursive: true });
