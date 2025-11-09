@@ -67,4 +67,24 @@ describe('createApiClient', () => {
     expect(start).not.toHaveBeenCalled();
     expect(end).not.toHaveBeenCalled();
   });
+
+  test('stores and reuses bearer tokens from login responses', async () => {
+    const loginResponse = makeResponse({ body: '{"token":"abc123","id":2}' });
+    const meResponse = makeResponse({ body: '{"ok":true}' });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(loginResponse)
+      .mockResolvedValueOnce(meResponse);
+
+    const api = createApiClient({ fetchImpl: fetchMock });
+
+    const loginResult = await api.login('user@test.com', 'secret');
+    expect(loginResult).toEqual({ token: 'abc123', id: 2 });
+
+    await api.me();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/me', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer abc123' }),
+      credentials: 'include'
+    }));
+  });
 });
