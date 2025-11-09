@@ -25,11 +25,37 @@ function createApiClient(options = {}) {
   } = options;
 
   const fetchLike = resolveFetch(fetchImpl);
+  let bearerToken = null;
 
   const resolveUrl = (path) => {
     if (/^https?:/i.test(path)) return path;
     if (baseUrl) return `${baseUrl}${path}`;
     return path;
+  };
+
+  const normalizeHeaders = (headersInit) => {
+    if (!headersInit) return {};
+
+    if (typeof Headers !== 'undefined' && headersInit instanceof Headers) {
+      const result = {};
+      headersInit.forEach((value, key) => {
+        result[key] = value;
+      });
+      return result;
+    }
+
+    if (Array.isArray(headersInit)) {
+      return headersInit.reduce((acc, entry) => {
+        if (!entry || entry.length < 2) return acc;
+        const [key, value] = entry;
+        if (typeof key === 'string') {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+    }
+
+    return { ...headersInit };
   };
 
   const request = async (path, init = {}, meta = {}) => {
@@ -38,6 +64,17 @@ function createApiClient(options = {}) {
 
     try {
       const requestInit = { credentials: 'include', ...init };
+      const headers = normalizeHeaders(init.headers);
+
+      const hasAuthHeader = Object.keys(headers).some((key) => key.toLowerCase() === 'authorization');
+      if (bearerToken && !hasAuthHeader) {
+        headers.Authorization = `Bearer ${bearerToken}`;
+      }
+
+      if (Object.keys(headers).length > 0) {
+        requestInit.headers = headers;
+      }
+
       if (meta.priority) {
         requestInit.priority = meta.priority;
       }
@@ -45,6 +82,7 @@ function createApiClient(options = {}) {
       const response = await fetchLike(resolveUrl(path), requestInit);
 
       if (response.status === 401) {
+        bearerToken = null;
         onUnauthorized?.();
         throw new ApiError('auth');
       }
@@ -79,7 +117,11 @@ function createApiClient(options = {}) {
       if (!text) return null;
 
       try {
-        return JSON.parse(text);
+        const payload = JSON.parse(text);
+        if (payload && typeof payload === 'object' && typeof payload.token === 'string' && payload.token) {
+          bearerToken = payload.token;
+        }
+        return payload;
       } catch (err) {
         const parseError = new ApiError('invalid_json');
         parseError.cause = err instanceof Error ? err : undefined;
@@ -126,6 +168,7 @@ function createApiClient(options = {}) {
   const logout = async (meta) => {
     try {
       await request('/api/logout', { method: 'POST' }, meta);
+      bearerToken = null;
     } catch (error) {
       if (error instanceof ApiError && error.message === 'auth') {
         return;
