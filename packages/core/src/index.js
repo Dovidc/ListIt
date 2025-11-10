@@ -14,6 +14,12 @@ function resolveFetch(fetchImpl) {
   return impl;
 }
 
+const normalizeToken = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
 export function createApiClient(options = {}) {
   const {
     baseUrl = '',
@@ -21,10 +27,33 @@ export function createApiClient(options = {}) {
     onRequestEnd,
     onRequestStart,
     onUnauthorized,
-    onAccountLocked
+    onAccountLocked,
+    prepareFetchInit,
+    onTokenChange,
+    initialAuthToken = null
   } = options;
 
   const fetchLike = resolveFetch(fetchImpl);
+
+  let authToken = null;
+
+  const notifyTokenChange = (token) => {
+    if (typeof onTokenChange === 'function') {
+      onTokenChange(token);
+    }
+  };
+
+  const getAuthToken = () => authToken;
+
+  const setAuthToken = (value) => {
+    const normalized = normalizeToken(value);
+    if (normalized === authToken) return authToken;
+    authToken = normalized;
+    notifyTokenChange(authToken);
+    return authToken;
+  };
+
+  setAuthToken(initialAuthToken);
 
   const resolveUrl = (path) => {
     if (/^https?:/i.test(path)) return path;
@@ -37,7 +66,17 @@ export function createApiClient(options = {}) {
     if (!silent) onRequestStart?.();
 
     try {
-      const requestInit = { credentials: 'include', ...init };
+      let requestInit = { credentials: 'include', ...init };
+
+      if (typeof prepareFetchInit === 'function') {
+        const prepared = prepareFetchInit(requestInit, meta, { getAuthToken, setAuthToken });
+        if (prepared && typeof prepared === 'object') {
+          requestInit = prepared === requestInit ? requestInit : { ...requestInit, ...prepared };
+        } else if (prepared != null) {
+          requestInit = prepared;
+        }
+      }
+
       if (meta.priority) {
         requestInit.priority = meta.priority;
       }
@@ -45,6 +84,7 @@ export function createApiClient(options = {}) {
       const response = await fetchLike(resolveUrl(path), requestInit);
 
       if (response.status === 401) {
+        setAuthToken(null);
         onUnauthorized?.();
         throw new ApiError('auth');
       }
@@ -79,7 +119,11 @@ export function createApiClient(options = {}) {
       if (!text) return null;
 
       try {
-        return JSON.parse(text);
+        const payload = JSON.parse(text);
+        if (payload && typeof payload === 'object' && 'token' in payload) {
+          setAuthToken(payload.token);
+        }
+        return payload;
       } catch (err) {
         const parseError = new ApiError('invalid_json');
         parseError.cause = err instanceof Error ? err : undefined;
@@ -126,6 +170,7 @@ export function createApiClient(options = {}) {
   const logout = async (meta) => {
     try {
       await request('/api/logout', { method: 'POST' }, meta);
+      setAuthToken(null);
     } catch (error) {
       if (error instanceof ApiError && error.message === 'auth') {
         return;
@@ -197,6 +242,7 @@ export function createApiClient(options = {}) {
     } else {
       q = typeof a === 'string' ? a : '';
       loc = typeof b === 'string' ? b : '';
+      metaArg = meta;
     }
 
     const params = new URLSearchParams();
@@ -454,7 +500,9 @@ export function createApiClient(options = {}) {
     adminTopReports,
     adminClearUserReports,
     signUpload,
-    finalizeUpload
+    finalizeUpload,
+    setAuthToken,
+    getAuthToken
   };
 }
 

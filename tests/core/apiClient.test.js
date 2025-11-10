@@ -67,4 +67,71 @@ describe('createApiClient', () => {
     expect(start).not.toHaveBeenCalled();
     expect(end).not.toHaveBeenCalled();
   });
+
+  test('prepareFetchInit customizes outgoing requests', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(makeResponse({ body: 'null' }));
+    const prepare = jest.fn((init) => {
+      const headers = { ...(init.headers || {}) };
+      headers.Authorization = 'Bearer prepared-token';
+      return { ...init, headers };
+    });
+    const api = createApiClient({ fetchImpl: fetchMock, prepareFetchInit: prepare });
+    await api.me();
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: 'include' }),
+      {},
+      expect.objectContaining({ getAuthToken: expect.any(Function), setAuthToken: expect.any(Function) })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me',
+      expect.objectContaining({
+        credentials: 'include',
+        headers: { Authorization: 'Bearer prepared-token' }
+      })
+    );
+  });
+
+  test('tracks auth token lifecycle', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(makeResponse({ body: '{"token":"abc123","ok":true}' }))
+      .mockResolvedValueOnce(makeResponse({ status: 401, ok: false, body: '' }));
+    const onTokenChange = jest.fn();
+    const onUnauthorized = jest.fn();
+    const api = createApiClient({
+      fetchImpl: fetchMock,
+      onTokenChange,
+      onUnauthorized,
+      initialAuthToken: ' initial '
+    });
+
+    expect(api.getAuthToken()).toBe('initial');
+    expect(onTokenChange).toHaveBeenLastCalledWith('initial');
+
+    await api.login('user@example.com', 'secret');
+    expect(api.getAuthToken()).toBe('abc123');
+    expect(onTokenChange).toHaveBeenLastCalledWith('abc123');
+
+    await expect(api.me()).rejects.toBeInstanceOf(ApiError);
+    expect(api.getAuthToken()).toBeNull();
+    expect(onTokenChange).toHaveBeenLastCalledWith(null);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  test('exposes manual token controls', () => {
+    const onTokenChange = jest.fn();
+    const api = createApiClient({
+      fetchImpl: jest.fn().mockResolvedValue(makeResponse({ body: 'null' })),
+      onTokenChange
+    });
+
+    expect(api.getAuthToken()).toBeNull();
+    api.setAuthToken('manual-token');
+    expect(api.getAuthToken()).toBe('manual-token');
+    expect(onTokenChange).toHaveBeenLastCalledWith('manual-token');
+
+    api.setAuthToken(null);
+    expect(api.getAuthToken()).toBeNull();
+    expect(onTokenChange).toHaveBeenLastCalledWith(null);
+  });
 });

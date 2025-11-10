@@ -5,6 +5,11 @@ export interface RequestMeta {
   priority?: RequestPriority;
 }
 
+export interface AuthTokenHelpers {
+  getAuthToken(): string | null;
+  setAuthToken(token: string | null | undefined): string | null;
+}
+
 export interface ApiClientOptions {
   baseUrl?: string;
   fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -12,6 +17,9 @@ export interface ApiClientOptions {
   onRequestEnd?: () => void;
   onUnauthorized?: () => void;
   onAccountLocked?: () => void;
+  prepareFetchInit?: (init: RequestInit, meta: RequestMeta, helpers: AuthTokenHelpers) => RequestInit | void;
+  onTokenChange?: (token: string | null) => void;
+  initialAuthToken?: string | null;
 }
 
 export interface ApiClient {
@@ -63,6 +71,8 @@ export interface ApiClient {
   adminClearUserReports(id: number | string, payload?: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
   signUpload(args: { filename: string; contentType: string; bytes: number }, meta?: RequestMeta): Promise<unknown>;
   finalizeUpload(args: { listingId?: number; key?: string; url?: string; width?: number | null; height?: number | null; bytes?: number | null }, meta?: RequestMeta): Promise<unknown>;
+  setAuthToken(token: string | null | undefined): string | null;
+  getAuthToken(): string | null;
 }
 
 export declare class ApiError extends Error {
