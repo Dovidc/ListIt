@@ -6,7 +6,12 @@ describe('browser app integration', () => {
 
   beforeEach(() => {
     jest.resetModules();
-    global.window = { ListItApp: { app: {} } };
+    const storage = {
+      getItem: jest.fn(() => ' storedToken '),
+      setItem: jest.fn(),
+      removeItem: jest.fn()
+    };
+    global.window = { ListItApp: { app: {} }, localStorage: storage };
     // eslint-disable-next-line global-require, import/no-dynamic-require
     require(browserAppPath);
     createBrowserApp = global.window.ListItApp.bootstrap.createBrowserApp;
@@ -18,7 +23,11 @@ describe('browser app integration', () => {
   });
 
   function createCore() {
-    const api = { marker: 'api-client' };
+    const api = {
+      marker: 'api-client',
+      setAuthToken: jest.fn(),
+      getAuthToken: jest.fn(() => 'storedToken')
+    };
     return {
       api,
       createApiClient: jest.fn(() => api),
@@ -237,14 +246,19 @@ describe('browser app integration', () => {
         createGridComponents: jest.fn(() => ({ ListingsGrid: jest.fn() }))
       },
       layout: {
-      createLayoutComponents: jest.fn(() => ({
-        Header: jest.fn(),
-        GlobalLoader: jest.fn()
-      }))
-    },
-    listings: {
-      createListingComponents: jest.fn(() => listingComponents)
-    }
+        createLayoutComponents: jest.fn(() => ({
+          Header: jest.fn(),
+          GlobalLoader: jest.fn()
+        }))
+      },
+      listings: {
+        createListingComponents: jest.fn(() => listingComponents)
+      },
+      profilePictureUpload: {
+        createProfilePictureUploadComponents: jest.fn(() => ({
+          ProfilePictureUploadModal: jest.fn()
+        }))
+      }
     };
 
     const locationHelpers = { fetchCoordsAndReverse: jest.fn(() => 'coords') };
@@ -388,10 +402,29 @@ describe('browser app integration', () => {
     apiOptions.onRequestEnd();
     expect(appNav.decLoad).toHaveBeenCalledTimes(1);
     apiOptions.onUnauthorized();
+    expect(core.api.setAuthToken).toHaveBeenCalledWith(null);
     expect(appNav.setUser).toHaveBeenCalledWith(null);
     expect(appNav.setTab).toHaveBeenCalledWith('browse');
     apiOptions.onAccountLocked();
     expect(appNav.notifyLocked).toHaveBeenCalledTimes(1);
+
+    expect(global.window.localStorage.getItem).toHaveBeenCalledWith('listit.authToken');
+    expect(apiOptions.initialAuthToken).toBe('storedToken');
+
+    const preparedInit = apiOptions.prepareFetchInit({ headers: { 'X-Test': '1' } });
+    expect(preparedInit.headers).toMatchObject({
+      'X-Test': '1',
+      Authorization: 'Bearer storedToken'
+    });
+
+    global.window.localStorage.setItem.mockClear();
+    global.window.localStorage.removeItem.mockClear();
+    apiOptions.onTokenChange(' nextToken ');
+    expect(global.window.localStorage.setItem).toHaveBeenCalledWith('listit.authToken', 'nextToken');
+    const preparedWithNewToken = apiOptions.prepareFetchInit({});
+    expect(preparedWithNewToken.headers.Authorization).toBe('Bearer nextToken');
+    apiOptions.onTokenChange(null);
+    expect(global.window.localStorage.removeItem).toHaveBeenCalledWith('listit.authToken');
 
     const fetchMock = jest.fn().mockReturnValue('fetch-result');
     global.fetch = fetchMock;

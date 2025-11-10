@@ -24,6 +24,97 @@
       throw new Error('ListIt core bundle failed to load.');
     }
 
+    const AUTH_STORAGE_KEY = 'listit.authToken';
+
+    const readStoredAuthToken = () => {
+      if (typeof window === 'undefined') return null;
+      try {
+        const stored = window.localStorage?.getItem?.(AUTH_STORAGE_KEY);
+        if (typeof stored === 'string') {
+          const trimmed = stored.trim();
+          return trimmed ? trimmed : null;
+        }
+      } catch (_) {
+        // ignore storage access issues (Safari private mode, etc.)
+      }
+      return null;
+    };
+
+    const cloneHeaders = (source) => {
+      if (!source) return {};
+      if (typeof Headers === 'function' && source instanceof Headers) {
+        const result = {};
+        source.forEach((value, key) => {
+          result[key] = value;
+        });
+        return result;
+      }
+      if (Array.isArray(source)) {
+        const result = {};
+        source.forEach((entry) => {
+          if (!entry) return;
+          const [key, value] = entry;
+          if (typeof key === 'string') {
+            result[key] = value;
+          }
+        });
+        return result;
+      }
+      if (typeof source === 'object') {
+        return { ...source };
+      }
+      return {};
+    };
+
+    let authToken = readStoredAuthToken();
+
+    const persistAuthToken = (token) => {
+      const normalized = typeof token === 'string' ? token.trim() : '';
+      const next = normalized ? normalized : null;
+      if (next === authToken) return authToken;
+      authToken = next;
+      if (typeof window !== 'undefined') {
+        try {
+          if (authToken) {
+            window.localStorage?.setItem?.(AUTH_STORAGE_KEY, authToken);
+          } else {
+            window.localStorage?.removeItem?.(AUTH_STORAGE_KEY);
+          }
+        } catch (_) {
+          // ignore storage failures
+        }
+      }
+      return authToken;
+    };
+
+    const applyAuthHeader = (headers) => {
+      const result = { ...headers };
+      let authHeaderKey = null;
+      Object.keys(result).forEach((key) => {
+        if (key.toLowerCase() === 'authorization') {
+          authHeaderKey = key;
+        }
+      });
+      if (authToken) {
+        const targetKey = authHeaderKey || 'Authorization';
+        result[targetKey] = `Bearer ${authToken}`;
+      } else if (authHeaderKey) {
+        delete result[authHeaderKey];
+      }
+      return result;
+    };
+
+    const prepareAuthFetchInit = (init = {}) => {
+      const base = init && typeof init === 'object' ? { ...init } : {};
+      const headers = applyAuthHeader(cloneHeaders(base.headers));
+      if (Object.keys(headers).length > 0) {
+        base.headers = headers;
+      } else if (base.headers) {
+        delete base.headers;
+      }
+      return base;
+    };
+
     const price = (n) => formatCurrency(n ?? 0);
     const fmtDistance = (m) => formatDistance(m);
     const haversineMeters = (...args) => coreHaversineMeters(...args);
@@ -97,17 +188,26 @@
       return '';
     };
 
+    let apiRef = null;
+
     const api = createApiClient({
       baseUrl: resolveApiBaseUrl(),
       onRequestStart: () => AppNav.incLoad(),
       onRequestEnd: () => AppNav.decLoad(),
       onUnauthorized: () => {
+        apiRef?.setAuthToken(null);
         AppNav.setUser(null);
         AppNav.setTab('browse');
       },
       onAccountLocked: () => AppNav.notifyLocked(),
-      fetchImpl: (input, init) => fetch(input, init)
+      fetchImpl: (input, init) => fetch(input, init),
+      prepareFetchInit: (init) => prepareAuthFetchInit(init),
+      onTokenChange: (token) => persistAuthToken(token),
+      initialAuthToken: authToken
     });
+
+    apiRef = api;
+    authToken = api.getAuthToken();
 
     const locationHelpersFactory = bundles?.bootstrap?.createLocationHelpers;
     if (typeof locationHelpersFactory !== 'function') {
