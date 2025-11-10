@@ -17,29 +17,33 @@ if (!defaultExportMatch) {
 }
 const defaultBlock = defaultExportMatch[1];
 
-const coreBody = source
-  .replace(/export class ApiError/g, 'class ApiError')
-  .replace(/export function createApiClient/g, 'function createApiClient')
-  .replace(/export const formatCurrency/g, 'const formatCurrency')
-  .replace(/export const formatDistance/g, 'const formatDistance')
-  .replace(/export const haversineMeters/g, 'const haversineMeters')
-  .replace(/export default\s+\{[\s\S]*?\};?/, `const defaultExport = ${defaultBlock};`);
+const namedExportMatch = source.match(/export\s*\{([\s\S]*?)\};?/);
+if (!namedExportMatch) {
+  throw new Error('Unable to locate named exports in core source.');
+}
 
-const cjsContent = `${coreBody}\n\nmodule.exports = {\n  ApiError,\n  createApiClient,\n  formatCurrency,\n  formatDistance,\n  haversineMeters,\n  default: defaultExport\n};\n`;
+const namedExports = namedExportMatch[1]
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const coreBody = source
+  .replace(namedExportMatch[0], '')
+  .replace(/export default\s+\{[\s\S]*?\};?/, `var defaultExport = ${defaultBlock};`)
+  .trim();
+
+const cjsContent = `${coreBody}\n\nmodule.exports = {\n${namedExports
+  .map((name) => `  ${name}: ${name},`)
+  .join('\n')}\n  default: defaultExport\n};\n`;
 fs.writeFileSync(path.join(distDir, 'index.cjs'), cjsContent);
 
 const indentedBody = coreBody.replace(/^/gm, '  ');
-const globalAssignments = [
-  'exports.ApiError = ApiError;',
-  'exports.createApiClient = createApiClient;',
-  'exports.formatCurrency = formatCurrency;',
-  'exports.formatDistance = formatDistance;',
-  'exports.haversineMeters = haversineMeters;',
-  'exports.default = defaultExport;'
-]
-  .map((line) => `  ${line}`)
+const globalAssignments = namedExports
+  .map((name) => `  exports.${name} = ${name};`)
+  .concat(['  exports.default = defaultExport;'])
   .join('\n');
-const globalContent = `(() => {\n  const exports = {};\n${indentedBody}\n\n${globalAssignments}\n  globalThis.ListItCore = exports;\n})();\n`;
+
+const globalContent = `(function (global) {\n  var exports = {};\n${indentedBody}\n\n${globalAssignments}\n  if (global) {\n    global.ListItCore = exports;\n  }\n})(typeof resolveGlobal === 'function' ? resolveGlobal() : (typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : this))));\n`;
 fs.writeFileSync(path.join(distDir, 'index.global.js'), globalContent);
 
 fs.mkdirSync(browserDir, { recursive: true });

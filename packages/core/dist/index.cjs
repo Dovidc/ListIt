@@ -1,552 +1,850 @@
-class ApiError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'ApiError';
-    this.responseText = undefined;
-  }
+/* eslint-disable prefer-rest-params */
+function ApiError(message) {
+  Error.call(this, message);
+  this.name = 'ApiError';
+  this.message = message;
+  this.responseText = undefined;
 }
 
+ApiError.prototype = Object.create(Error.prototype);
+ApiError.prototype.constructor = ApiError;
+
 function resolveFetch(fetchImpl) {
-  const impl = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : undefined);
+  var impl = fetchImpl;
+  if (!impl) {
+    if (typeof fetch === 'function') {
+      impl = fetch.bind(typeof globalThis === 'object' ? globalThis : undefined);
+    }
+  }
+
   if (!impl) {
     throw new Error('A fetch implementation must be provided to createApiClient.');
   }
+
   return impl;
 }
 
-const normalizeToken = (value) => {
+function normalizeToken(value) {
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
+  var trimmed = value.trim();
   return trimmed ? trimmed : null;
-};
+}
 
-function createApiClient(options = {}) {
-  const {
-    baseUrl = '',
-    fetchImpl,
-    onRequestEnd,
-    onRequestStart,
-    onUnauthorized,
-    onAccountLocked,
-    prepareFetchInit,
-    onTokenChange,
-    initialAuthToken = null
-  } = options;
+function assign(target) {
+  if (target == null) {
+    throw new TypeError('Cannot convert undefined or null to object');
+  }
 
-  const fetchLike = resolveFetch(fetchImpl);
-
-  let authToken = null;
-
-  const notifyTokenChange = (token) => {
-    if (typeof onTokenChange === 'function') {
-      onTokenChange(token);
+  var result = Object(target);
+  for (var i = 1; i < arguments.length; i += 1) {
+    var source = arguments[i];
+    if (source == null) continue;
+    for (var key in source) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        result[key] = source[key];
+      }
     }
-  };
+  }
 
-  const getAuthToken = () => authToken;
+  return result;
+}
 
-  const setAuthToken = (value) => {
-    const normalized = normalizeToken(value);
+function isFiniteNumber(value) {
+  var num = Number(value);
+  return typeof num === 'number' && isFinite(num);
+}
+
+function coalesceString(value) {
+  return typeof value === 'string' ? value : '';
+}
+
+function resolveGlobal() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof self !== 'undefined') return self;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  return Function('return this')();
+}
+
+function createApiClient(options) {
+  options = options || {};
+  var baseUrl = coalesceString(options.baseUrl);
+  var fetchImpl = options.fetchImpl;
+  var onRequestEnd = options.onRequestEnd;
+  var onRequestStart = options.onRequestStart;
+  var onUnauthorized = options.onUnauthorized;
+  var onAccountLocked = options.onAccountLocked;
+  var prepareFetchInit = options.prepareFetchInit;
+  var onTokenChange = options.onTokenChange;
+  var initialAuthToken = options.initialAuthToken == null ? null : options.initialAuthToken;
+
+  var fetchLike = resolveFetch(fetchImpl);
+  var authToken = null;
+
+  function notifyTokenChange(token) {
+    if (typeof onTokenChange === 'function') {
+      try {
+        onTokenChange(token);
+      } catch (err) {
+        // ignore listener failures
+      }
+    }
+  }
+
+  function getAuthToken() {
+    return authToken;
+  }
+
+  function setAuthToken(value) {
+    var normalized = normalizeToken(value);
     if (normalized === authToken) return authToken;
     authToken = normalized;
     notifyTokenChange(authToken);
     return authToken;
-  };
+  }
 
   setAuthToken(initialAuthToken);
 
-  const resolveUrl = (path) => {
+  function resolveUrl(path) {
     if (/^https?:/i.test(path)) return path;
-    if (baseUrl) return `${baseUrl}${path}`;
-    return path;
-  };
+    return baseUrl ? baseUrl + path : path;
+  }
 
-  const request = async (path, init = {}, meta = {}) => {
-    const silent = !!meta.silent;
-    if (!silent) onRequestStart?.();
-
-    try {
-      let requestInit = { credentials: 'include', ...init };
-
-      if (typeof prepareFetchInit === 'function') {
-        const prepared = prepareFetchInit(requestInit, meta, { getAuthToken, setAuthToken });
-        if (prepared && typeof prepared === 'object') {
-          requestInit = prepared === requestInit ? requestInit : { ...requestInit, ...prepared };
-        } else if (prepared != null) {
-          requestInit = prepared;
-        }
-      }
-
-      if (meta.priority) {
-        requestInit.priority = meta.priority;
-      }
-
-      const response = await fetchLike(resolveUrl(path), requestInit);
-
-      if (response.status === 401) {
-        setAuthToken(null);
-        onUnauthorized?.();
-        throw new ApiError('auth');
-      }
-
-      if (response.status === 423) {
-        try {
-          await response.json();
-        } catch {
-          // ignore
-        }
-        onAccountLocked?.();
-        throw new ApiError('account_locked');
-      }
-
-      if (!response.ok) {
-        let payload = null;
-        try {
-          payload = await response.json();
-        } catch {
-          payload = null;
-        }
-
-        const message = payload && typeof payload === 'object' && payload.error ? payload.error : 'request_failed';
-        if (message === 'account_locked') {
-          onAccountLocked?.();
-        }
-
-        throw new ApiError(message);
-      }
-
-      const text = await response.text();
-      if (!text) return null;
-
+  function finishRequest(silent) {
+    if (!silent && typeof onRequestEnd === 'function') {
       try {
-        const payload = JSON.parse(text);
-        if (payload && typeof payload === 'object' && 'token' in payload) {
-          setAuthToken(payload.token);
-        }
-        return payload;
+        onRequestEnd();
       } catch (err) {
-        const parseError = new ApiError('invalid_json');
-        parseError.cause = err instanceof Error ? err : undefined;
-        parseError.responseText = text;
-        throw parseError;
+        // ignore listener failures
       }
-    } finally {
-      if (!silent) onRequestEnd?.();
     }
-  };
+  }
 
-  const me = (meta) => request('/api/me', { method: 'GET' }, meta);
+  function request(path, init, meta) {
+    init = init || {};
+    meta = meta || {};
 
-  const login = (email, password, meta) => request('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  }, meta);
-
-  const register = (payload, meta) => request('/api/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
-
-  const verifyRegistration = (email, code, meta) => request('/api/register/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code })
-  }, meta);
-
-  const requestPasswordReset = (email, meta) => request('/api/password/reset/request', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
-  }, meta);
-
-  const confirmPasswordReset = (email, token, password, meta) => request('/api/password/reset/confirm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, token, password })
-  }, meta);
-
-  const logout = async (meta) => {
-    try {
-      await request('/api/logout', { method: 'POST' }, meta);
-      setAuthToken(null);
-    } catch (error) {
-      if (error instanceof ApiError && error.message === 'auth') {
-        return;
+    var silent = !!meta.silent;
+    if (!silent && typeof onRequestStart === 'function') {
+      try {
+        onRequestStart();
+      } catch (err) {
+        // ignore listener failures
       }
-      throw error;
     }
-  };
 
-  const pushSubscribe = (subscription, meta) => {
+    var requestInit = assign({ credentials: 'include' }, init);
+
+    if (typeof prepareFetchInit === 'function') {
+      var prepared = prepareFetchInit(requestInit, meta, {
+        getAuthToken: getAuthToken,
+        setAuthToken: setAuthToken
+      });
+      if (prepared && typeof prepared === 'object') {
+        requestInit = prepared === requestInit ? requestInit : assign(assign({}, requestInit), prepared);
+      } else if (prepared != null) {
+        requestInit = prepared;
+      }
+    }
+
+    if (meta && Object.prototype.hasOwnProperty.call(meta, 'priority')) {
+      requestInit.priority = meta.priority;
+    }
+
+    return Promise.resolve(fetchLike(resolveUrl(path), requestInit))
+      .then(function (response) {
+        if (response.status === 401) {
+          setAuthToken(null);
+          if (typeof onUnauthorized === 'function') onUnauthorized();
+          throw new ApiError('auth');
+        }
+
+        if (response.status === 423) {
+          var lockPromise = typeof response.json === 'function' ? response.json() : Promise.resolve(null);
+          return Promise.resolve(lockPromise)
+            .catch(function () {
+              return null;
+            })
+            .then(function () {
+              if (typeof onAccountLocked === 'function') onAccountLocked();
+              throw new ApiError('account_locked');
+            });
+        }
+
+        if (!response.ok) {
+          var payloadPromise = typeof response.json === 'function' ? response.json() : Promise.resolve(null);
+          return Promise.resolve(payloadPromise)
+            .catch(function () {
+              return null;
+            })
+            .then(function (payload) {
+              var message = payload && typeof payload === 'object' && payload.error ? payload.error : 'request_failed';
+              if (message === 'account_locked' && typeof onAccountLocked === 'function') onAccountLocked();
+              throw new ApiError(message);
+            });
+        }
+
+        return response.text().then(function (text) {
+          if (!text) return null;
+
+          var payload;
+          try {
+            payload = JSON.parse(text);
+          } catch (err) {
+            var parseError = new ApiError('invalid_json');
+            if (err instanceof Error) {
+              parseError.cause = err;
+            }
+            parseError.responseText = text;
+            throw parseError;
+          }
+
+          if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'token')) {
+            setAuthToken(payload.token);
+          }
+
+          return payload;
+        });
+      })
+      .then(
+        function (result) {
+          finishRequest(silent);
+          return result;
+        },
+        function (error) {
+          finishRequest(silent);
+          throw error;
+        }
+      );
+  }
+
+  function me(meta) {
+    return request('/api/me', { method: 'GET' }, meta);
+  }
+
+  function login(email, password, meta) {
+    return request(
+      '/api/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password })
+      },
+      meta
+    );
+  }
+
+  function register(payload, meta) {
+    return request(
+      '/api/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
+
+  function verifyRegistration(email, code, meta) {
+    return request(
+      '/api/register/verify',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, code: code })
+      },
+      meta
+    );
+  }
+
+  function requestPasswordReset(email, meta) {
+    return request(
+      '/api/password/reset/request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      },
+      meta
+    );
+  }
+
+  function confirmPasswordReset(email, token, password, meta) {
+    return request(
+      '/api/password/reset/confirm',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, token: token, password: password })
+      },
+      meta
+    );
+  }
+
+  function logout(meta) {
+    return request('/api/logout', { method: 'POST' }, meta).then(
+      function (result) {
+        setAuthToken(null);
+        return result;
+      },
+      function (error) {
+        if (error instanceof ApiError && error.message === 'auth') {
+          return null;
+        }
+        throw error;
+      }
+    );
+  }
+
+  function pushSubscribe(subscription, meta) {
     if (!subscription) return Promise.resolve(null);
-    return request('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
-    }, meta);
-  };
+    return request(
+      '/api/push/subscribe',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: subscription })
+      },
+      meta
+    );
+  }
 
-  const pushUnsubscribe = (subscription, meta) => {
+  function pushUnsubscribe(subscription, meta) {
     if (!subscription) return Promise.resolve(null);
-    return request('/api/push/unsubscribe', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
-    }, meta);
-  };
+    return request(
+      '/api/push/unsubscribe',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: subscription })
+      },
+      meta
+    );
+  }
 
-  const updatePaypalEmail = (paypalEmail, meta) => request('/api/me/paypal', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paypal_email: paypalEmail })
-  }, meta);
+  function updatePaypalEmail(paypalEmail, meta) {
+    return request(
+      '/api/me/paypal',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paypal_email: paypalEmail })
+      },
+      meta
+    );
+  }
 
-  const updateLocationPreset = (locationPreset, meta) => request('/api/me/location-preset', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location_preset: locationPreset })
-  }, meta);
+  function updateLocationPreset(locationPreset, meta) {
+    return request(
+      '/api/me/location-preset',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location_preset: locationPreset })
+      },
+      meta
+    );
+  }
 
-  const updateProfilePicture = (profilePictureUrl, meta) => request('/api/me/profile-picture', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ profile_picture_url: profilePictureUrl })
-  }, meta);
+  function updateProfilePicture(profilePictureUrl, meta) {
+    return request(
+      '/api/me/profile-picture',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_picture_url: profilePictureUrl })
+      },
+      meta
+    );
+  }
 
-  const deleteAccount = (confirmation, meta) => request('/api/me', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ confirmation })
-  }, meta);
+  function deleteAccount(confirmation, meta) {
+    return request(
+      '/api/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: confirmation })
+      },
+      meta
+    );
+  }
 
-  const listAll = (a, b, meta) => {
-    let q = '';
-    let loc = '';
-    let page = 1;
-    let limit = 75;
-    let sort = 'new';
-    let cursor = null;
-    let metaArg = meta;
+  function listAll(a, b, meta) {
+    var q = '';
+    var loc = '';
+    var page = 1;
+    var limit = 75;
+    var sort = 'new';
+    var cursor = null;
+    var metaArg = meta;
 
     if (a && typeof a === 'object' && !Array.isArray(a)) {
-      const params = a;
-      q = typeof params.q === 'string' ? params.q : '';
-      loc = typeof params.loc === 'string' ? params.loc : '';
-      page = Number(params.page) || 1;
-      limit = Number(params.limit) || 75;
-      sort = typeof params.sort === 'string' ? params.sort : 'new';
+      var params = a;
+      q = coalesceString(params.q);
+      loc = coalesceString(params.loc);
+      page = isFiniteNumber(params.page) ? Number(params.page) : 1;
+      limit = isFiniteNumber(params.limit) ? Number(params.limit) : 75;
+      sort = coalesceString(params.sort) || 'new';
       cursor = params.cursor != null ? params.cursor : null;
       metaArg = b || meta;
     } else {
-      q = typeof a === 'string' ? a : '';
-      loc = typeof b === 'string' ? b : '';
+      q = coalesceString(a);
+      loc = coalesceString(b);
       metaArg = meta;
     }
 
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (loc) params.set('loc', loc);
-    params.set('noimg', '1');
-    if (cursor != null) params.set('cursor', String(cursor));
-    else params.set('page', String(page));
-    params.set('limit', String(limit));
-    params.set('sort', sort);
-    const query = params.toString();
-    const url = '/api/listings' + (query ? `?${query}` : '');
+    var paramsList = new URLSearchParams();
+    if (q) paramsList.set('q', q);
+    if (loc) paramsList.set('loc', loc);
+    paramsList.set('noimg', '1');
+    if (cursor != null) paramsList.set('cursor', String(cursor));
+    else paramsList.set('page', String(page));
+    paramsList.set('limit', String(limit));
+    paramsList.set('sort', sort);
+    var query = paramsList.toString();
+    var url = '/api/listings' + (query ? '?' + query : '');
     return request(url, { method: 'GET' }, metaArg);
-  };
+  }
 
-  const listListings = (params = {}, meta) => listAll(params, meta);
+  function listListings(params, meta) {
+    return listAll(params || {}, meta);
+  }
 
-  const getUser = (userId, meta) => request(`/api/users/${userId}`, { method: 'GET' }, meta);
+  function getUser(userId, meta) {
+    return request('/api/users/' + userId, { method: 'GET' }, meta);
+  }
 
-  const listByUser = (userId, meta) => request(`/api/users/${userId}/listings`, { method: 'GET' }, meta);
+  function listByUser(userId, meta) {
+    return request('/api/users/' + userId + '/listings', { method: 'GET' }, meta);
+  }
 
-  const listMine = (meta) => request('/api/listings?mine=1', { method: 'GET' }, meta);
+  function listMine(meta) {
+    return request('/api/listings?mine=1', { method: 'GET' }, meta);
+  }
 
-  const createListing = (payload, meta) => request('/api/listings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
+  function createListing(payload, meta) {
+    return request(
+      '/api/listings',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const updateListing = (id, payload, meta) => request(`/api/listings/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
+  function updateListing(id, payload, meta) {
+    return request(
+      '/api/listings/' + id,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const markListingSold = (id, sold, meta) => updateListing(id, { sold: !!sold }, meta);
+  function markListingSold(id, sold, meta) {
+    return updateListing(id, { sold: !!sold }, meta);
+  }
 
-  const deleteListing = (id, meta) => request(`/api/listings/${id}`, { method: 'DELETE' }, meta);
+  function deleteListing(id, meta) {
+    return request('/api/listings/' + id, { method: 'DELETE' }, meta);
+  }
 
-  const adminDeleteListing = (id, meta) => request(`/api/admin/listings/${id}`, { method: 'DELETE' }, meta);
+  function adminDeleteListing(id, meta) {
+    return request('/api/admin/listings/' + id, { method: 'DELETE' }, meta);
+  }
 
-  const adminDeleteAll = (meta) => request('/api/admin/listings', { method: 'DELETE' }, meta);
+  function adminDeleteAll(meta) {
+    return request('/api/admin/listings', { method: 'DELETE' }, meta);
+  }
 
-  const adminSeedListings = (payload = {}, meta) => request('/api/admin/listings/seed', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }, meta);
+  function adminSeedListings(payload, meta) {
+    var bodyPayload = payload || {};
+    return request(
+      '/api/admin/listings/seed',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload)
+      },
+      meta
+    );
+  }
 
-  const adminDeleteSeedListings = (meta) => request('/api/admin/listings/seed', { method: 'DELETE' }, meta);
+  function adminDeleteSeedListings(meta) {
+    return request('/api/admin/listings/seed', { method: 'DELETE' }, meta);
+  }
 
-  const listAds = (meta) => request('/api/ads', { method: 'GET' }, meta);
+  function listAds(meta) {
+    return request('/api/ads', { method: 'GET' }, meta);
+  }
 
-  const adminListFlagged = (meta) => request('/api/admin/flagged', { method: 'GET' }, meta);
+  function adminListFlagged(meta) {
+    return request('/api/admin/flagged', { method: 'GET' }, meta);
+  }
 
-  const adminDeleteFlagged = (id, meta) => request(`/api/admin/flagged/${id}`, { method: 'DELETE' }, meta);
+  function adminDeleteFlagged(id, meta) {
+    return request('/api/admin/flagged/' + id, { method: 'DELETE' }, meta);
+  }
 
-  const adminListAds = (meta) => request('/api/admin/ads', { method: 'GET' }, meta);
+  function adminListAds(meta) {
+    return request('/api/admin/ads', { method: 'GET' }, meta);
+  }
 
-  const adminCreateAd = (payload, meta) => request('/api/admin/ads', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
+  function adminCreateAd(payload, meta) {
+    return request(
+      '/api/admin/ads',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const adminUpdateAd = (id, payload, meta) => request(`/api/admin/ads/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
+  function adminUpdateAd(id, payload, meta) {
+    return request(
+      '/api/admin/ads/' + id,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const adminDeleteAd = (id, meta) => request(`/api/admin/ads/${id}`, { method: 'DELETE' }, meta);
+  function adminDeleteAd(id, meta) {
+    return request('/api/admin/ads/' + id, { method: 'DELETE' }, meta);
+  }
 
-  const searchCities = (q, meta) => {
-    const params = new URLSearchParams();
+  function searchCities(q, meta) {
+    var params = new URLSearchParams();
     if (q) params.set('q', q);
-    const query = params.toString();
-    const url = '/api/cities' + (query ? `?${query}` : '');
-    const effectiveMeta = { ...(meta || {}), silent: true };
+    var query = params.toString();
+    var url = '/api/cities' + (query ? '?' + query : '');
+    var effectiveMeta = assign({}, meta || {}, { silent: true });
     return request(url, { method: 'GET' }, effectiveMeta);
-  };
+  }
 
-  const ensureConversation = (payload, meta) => request('/api/conversations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
+  function ensureConversation(payload, meta) {
+    return request(
+      '/api/conversations',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const listConversations = (meta) => request('/api/conversations', { method: 'GET' }, meta);
+  function listConversations(meta) {
+    return request('/api/conversations', { method: 'GET' }, meta);
+  }
 
-  const getMessages = (id, meta) => request(`/api/conversations/${id}/messages`, { method: 'GET' }, meta);
+  function getMessages(id, meta) {
+    return request('/api/conversations/' + id + '/messages', { method: 'GET' }, meta);
+  }
 
-  const sendMessage = (id, body, images, meta) => request(`/api/conversations/${id}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body, images })
-  }, meta);
+  function sendMessage(id, body, images, meta) {
+    return request(
+      '/api/conversations/' + id + '/messages',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: body, images: images })
+      },
+      meta
+    );
+  }
 
-  const deleteConversation = (id, meta) => request(`/api/conversations/${id}`, { method: 'DELETE' }, meta);
+  function deleteConversation(id, meta) {
+    return request('/api/conversations/' + id, { method: 'DELETE' }, meta);
+  }
 
-  const getListingImages = (id, meta) => request(`/api/listings/${id}/images`, { method: 'GET' }, meta);
+  function getListingImages(id, meta) {
+    return request('/api/listings/' + id + '/images', { method: 'GET' }, meta);
+  }
 
-  const getCoversBatch = (ids = [], meta) => {
-    const normalized = Array.from(new Set((ids || []).map((value) => Number(value)).filter((value) => Number.isFinite(value)))).slice(0, 200);
+  function uniqueNumericList(values) {
+    var seen = Object.create(null);
+    var result = [];
+    if (!values || !values.length) return result;
+
+    for (var i = 0; i < values.length && result.length < 200; i += 1) {
+      var value = Number(values[i]);
+      if (!isFinite(value)) continue;
+      var key = String(value);
+      if (!Object.prototype.hasOwnProperty.call(seen, key)) {
+        seen[key] = true;
+        result.push(value);
+      }
+    }
+
+    return result;
+  }
+
+  function getCoversBatch(ids, meta) {
+    var normalized = uniqueNumericList((ids || []).slice());
     if (!normalized.length) return Promise.resolve([]);
-    const url = `/api/listings/covers?ids=${encodeURIComponent(normalized.join(','))}`;
+    var url = '/api/listings/covers?ids=' + encodeURIComponent(normalized.join(','));
     return request(url, { method: 'GET' }, meta);
-  };
+  }
 
-  const aiAnalyze = ({ images, hint }, meta) => request('/api/ai/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ images, hint })
-  }, meta);
+  function aiAnalyze(params, meta) {
+    params = params || {};
+    return request(
+      '/api/ai/analyze',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: params.images, hint: params.hint })
+      },
+      meta
+    );
+  }
 
-  const reverseGeocode = (lat, lon, meta) => request(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
-
-  const listNearby = (lat, lon, radiusMeters = 150, meta) => {
-    const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radiusMeters)}`;
+  function reverseGeocode(lat, lon, meta) {
+    var url = '/api/geo/reverse?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon);
     return request(url, { method: 'GET' }, meta);
-  };
+  }
 
-  const reportSeller = (payload, meta) => request('/api/reports', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  }, meta);
-
-  const adminSearchUsers = (params = {}, meta) => {
-    const searchParams = new URLSearchParams();
-    const q = params.q ?? params.query ?? '';
-    const limit = params.limit;
-    if (q) searchParams.set('q', String(q));
-    if (limit) searchParams.set('limit', String(limit));
-    const query = searchParams.toString();
-    const url = '/api/admin/users/search' + (query ? `?${query}` : '');
+  function listNearby(lat, lon, radiusMeters, meta) {
+    var radius = radiusMeters == null ? 150 : radiusMeters;
+    var url =
+      '/api/listings/nearby?lat=' +
+      encodeURIComponent(lat) +
+      '&lon=' +
+      encodeURIComponent(lon) +
+      '&radius_m=' +
+      encodeURIComponent(radius);
     return request(url, { method: 'GET' }, meta);
-  };
+  }
 
-  const adminGetUser = (id, meta) => {
-    if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));
-    return request(`/api/admin/users/${id}`, { method: 'GET' }, meta);
-  };
+  function reportSeller(payload, meta) {
+    return request(
+      '/api/reports',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
 
-  const adminGetUserReports = (id, params = {}, meta) => {
-    if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));
-    const searchParams = new URLSearchParams();
-    if (params.limit) searchParams.set('limit', String(params.limit));
-    const query = searchParams.toString();
-    const url = `/api/admin/users/${id}/reports` + (query ? `?${query}` : '');
+  function adminSearchUsers(params, meta) {
+    params = params || {};
+    var searchParams = new URLSearchParams();
+    var qValue = params.q != null ? params.q : params.query;
+    if (qValue) searchParams.set('q', String(qValue));
+    if (params.limit != null) searchParams.set('limit', String(params.limit));
+    var query = searchParams.toString();
+    var url = '/api/admin/users/search' + (query ? '?' + query : '');
     return request(url, { method: 'GET' }, meta);
-  };
+  }
 
-  const adminUpdateUserStatus = (id, payload = {}, meta) => {
-    if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));
-    return request(`/api/admin/users/${id}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {})
-    }, meta);
-  };
+  function adminGetUser(id, meta) {
+    if (!isFiniteNumber(id)) return Promise.reject(new ApiError('invalid_user'));
+    return request('/api/admin/users/' + id, { method: 'GET' }, meta);
+  }
 
-  const adminTopReports = (params = {}, meta) => {
-    const searchParams = new URLSearchParams();
-    if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));
-    if (Number.isFinite(Number(params.days))) searchParams.set('days', String(params.days));
-    if (Number.isFinite(Number(params.min))) searchParams.set('min', String(params.min));
-    const query = searchParams.toString();
-    const url = '/api/admin/reports/top' + (query ? `?${query}` : '');
+  function adminGetUserReports(id, params, meta) {
+    if (!isFiniteNumber(id)) return Promise.reject(new ApiError('invalid_user'));
+    params = params || {};
+    var searchParams = new URLSearchParams();
+    if (params.limit != null) searchParams.set('limit', String(params.limit));
+    var query = searchParams.toString();
+    var url = '/api/admin/users/' + id + '/reports' + (query ? '?' + query : '');
     return request(url, { method: 'GET' }, meta);
-  };
+  }
 
-  const adminClearUserReports = (id, payload = {}, meta) => {
-    if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));
-    return request(`/api/admin/users/${id}/reports/clear`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {})
-    }, meta);
-  };
+  function adminUpdateUserStatus(id, payload, meta) {
+    if (!isFiniteNumber(id)) return Promise.reject(new ApiError('invalid_user'));
+    return request(
+      '/api/admin/users/' + id + '/status',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify((payload || {}))
+      },
+      meta
+    );
+  }
 
-  const signUpload = ({ filename, contentType, bytes }, meta) => request('/api/uploads/sign', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, contentType, bytes })
-  }, meta);
+  function adminTopReports(params, meta) {
+    params = params || {};
+    var searchParams = new URLSearchParams();
+    if (params.limit != null && isFiniteNumber(params.limit)) searchParams.set('limit', String(params.limit));
+    if (params.days != null && isFiniteNumber(params.days)) searchParams.set('days', String(params.days));
+    if (params.min != null && isFiniteNumber(params.min)) searchParams.set('min', String(params.min));
+    var query = searchParams.toString();
+    var url = '/api/admin/reports/top' + (query ? '?' + query : '');
+    return request(url, { method: 'GET' }, meta);
+  }
 
-  const finalizeUpload = ({ listingId, key, url, width, height, bytes }, meta) => {
-    const payload = {};
-    if (listingId != null) payload.listingId = listingId;
-    if (key != null) payload.key = key;
-    if (url != null) payload.url = url;
-    if (width != null) payload.width = width;
-    if (height != null) payload.height = height;
-    if (bytes != null) payload.bytes = bytes;
-    return request('/api/uploads/finalize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }, meta);
-  };
+  function adminClearUserReports(id, payload, meta) {
+    if (!isFiniteNumber(id)) return Promise.reject(new ApiError('invalid_user'));
+    return request(
+      '/api/admin/users/' + id + '/reports/clear',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      },
+      meta
+    );
+  }
+
+  function signUpload(params, meta) {
+    params = params || {};
+    return request(
+      '/api/uploads/sign',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: params.filename,
+          contentType: params.contentType,
+          bytes: params.bytes
+        })
+      },
+      meta
+    );
+  }
+
+  function finalizeUpload(params, meta) {
+    params = params || {};
+    var payload = {};
+    if (params.listingId != null) payload.listingId = params.listingId;
+    if (params.key != null) payload.key = params.key;
+    if (params.url != null) payload.url = params.url;
+    if (params.width != null) payload.width = params.width;
+    if (params.height != null) payload.height = params.height;
+    if (params.bytes != null) payload.bytes = params.bytes;
+
+    return request(
+      '/api/uploads/finalize',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      },
+      meta
+    );
+  }
 
   return {
-    request,
-    me,
-    login,
-    register,
-    verifyRegistration,
-    requestPasswordReset,
-    confirmPasswordReset,
-    logout,
-    pushSubscribe,
-    pushUnsubscribe,
-    updatePaypalEmail,
-
-    updateLocationPreset,
-    updateProfilePicture,
-    deleteAccount,
-    listAll,
-    listListings,
-    getUser,
-    listByUser,
-    listMine,
-    createListing,
-    updateListing,
-    markListingSold,
-    deleteListing,
-    adminDeleteListing,
-    adminDeleteAll,
-    adminSeedListings,
-    adminDeleteSeedListings,
-    listAds,
-    adminListFlagged,
-    adminDeleteFlagged,
-    adminListAds,
-    adminCreateAd,
-    adminUpdateAd,
-    adminDeleteAd,
-    searchCities,
-    ensureConversation,
-    listConversations,
-    getMessages,
-    sendMessage,
-    deleteConversation,
-    getListingImages,
-    getCoversBatch,
-    aiAnalyze,
-    reverseGeocode,
-    listNearby,
-    reportSeller,
-    adminSearchUsers,
-    adminGetUser,
-    adminGetUserReports,
-    adminUpdateUserStatus,
-    adminTopReports,
-    adminClearUserReports,
-    signUpload,
-    finalizeUpload,
-    setAuthToken,
-    getAuthToken
+    request: request,
+    me: me,
+    login: login,
+    register: register,
+    verifyRegistration: verifyRegistration,
+    requestPasswordReset: requestPasswordReset,
+    confirmPasswordReset: confirmPasswordReset,
+    logout: logout,
+    pushSubscribe: pushSubscribe,
+    pushUnsubscribe: pushUnsubscribe,
+    updatePaypalEmail: updatePaypalEmail,
+    updateLocationPreset: updateLocationPreset,
+    updateProfilePicture: updateProfilePicture,
+    deleteAccount: deleteAccount,
+    listAll: listAll,
+    listListings: listListings,
+    getUser: getUser,
+    listByUser: listByUser,
+    listMine: listMine,
+    createListing: createListing,
+    updateListing: updateListing,
+    markListingSold: markListingSold,
+    deleteListing: deleteListing,
+    adminDeleteListing: adminDeleteListing,
+    adminDeleteAll: adminDeleteAll,
+    adminSeedListings: adminSeedListings,
+    adminDeleteSeedListings: adminDeleteSeedListings,
+    listAds: listAds,
+    adminListFlagged: adminListFlagged,
+    adminDeleteFlagged: adminDeleteFlagged,
+    adminListAds: adminListAds,
+    adminCreateAd: adminCreateAd,
+    adminUpdateAd: adminUpdateAd,
+    adminDeleteAd: adminDeleteAd,
+    searchCities: searchCities,
+    ensureConversation: ensureConversation,
+    listConversations: listConversations,
+    getMessages: getMessages,
+    sendMessage: sendMessage,
+    deleteConversation: deleteConversation,
+    getListingImages: getListingImages,
+    getCoversBatch: getCoversBatch,
+    aiAnalyze: aiAnalyze,
+    reverseGeocode: reverseGeocode,
+    listNearby: listNearby,
+    reportSeller: reportSeller,
+    adminSearchUsers: adminSearchUsers,
+    adminGetUser: adminGetUser,
+    adminGetUserReports: adminGetUserReports,
+    adminUpdateUserStatus: adminUpdateUserStatus,
+    adminTopReports: adminTopReports,
+    adminClearUserReports: adminClearUserReports,
+    signUpload: signUpload,
+    finalizeUpload: finalizeUpload,
+    setAuthToken: setAuthToken,
+    getAuthToken: getAuthToken
   };
 }
 
-const formatCurrency = (value, currency = 'USD') => {
-  const amount = Number(value ?? 0);
-  return amount.toLocaleString(undefined, { style: 'currency', currency });
-};
+function formatCurrency(value, currency) {
+  var amount = Number(value == null ? 0 : value);
+  return amount.toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' });
+}
 
-const formatDistance = (meters) => {
-  if (!Number.isFinite(Number(meters))) return '';
-  const distance = Number(meters);
+function formatDistance(meters) {
+  if (!isFiniteNumber(meters)) return '';
+  var distance = Number(meters);
   if (distance < 1609.344 * 0.3) {
-    const feet = distance * 3.28084;
-    if (feet < 1000) return `${Math.round(feet)} ft`;
-    return `${Math.round(feet / 100) / 10}k ft`;
+    var feet = distance * 3.28084;
+    if (feet < 1000) return Math.round(feet) + ' ft';
+    return Math.round(feet / 100) / 10 + 'k ft';
   }
-  const miles = distance / 1609.344;
-  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
-};
+  var miles = distance / 1609.344;
+  return (miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' mi';
+}
 
-const TO_RAD = Math.PI / 180;
+var TO_RAD = Math.PI / 180;
 
-const haversineMeters = (aLat, aLon, bLat, bLon) => {
-  const R = 6371000;
-  const dLat = (bLat - aLat) * TO_RAD;
-  const dLon = (bLon - aLon) * TO_RAD;
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLon / 2);
+function haversineMeters(aLat, aLon, bLat, bLon) {
+  var R = 6371000;
+  var dLat = (bLat - aLat) * TO_RAD;
+  var dLon = (bLon - aLon) * TO_RAD;
+  var s1 = Math.sin(dLat / 2);
+  var s2 = Math.sin(dLon / 2);
   return 2 * R * Math.asin(Math.sqrt(s1 * s1 + Math.cos(aLat * TO_RAD) * Math.cos(bLat * TO_RAD) * s2 * s2));
-};
+}
 
-const defaultExport = {
-  createApiClient,
-  formatCurrency,
-  formatDistance,
-  haversineMeters
-};
 
+
+var defaultExport = {
+  createApiClient: createApiClient,
+  formatCurrency: formatCurrency,
+  formatDistance: formatDistance,
+  haversineMeters: haversineMeters
+};
 
 module.exports = {
-  ApiError,
-  createApiClient,
-  formatCurrency,
-  formatDistance,
-  haversineMeters,
+  ApiError: ApiError,
+  createApiClient: createApiClient,
+  formatCurrency: formatCurrency,
+  formatDistance: formatDistance,
+  haversineMeters: haversineMeters,
+  resolveGlobal: resolveGlobal,
   default: defaultExport
 };
