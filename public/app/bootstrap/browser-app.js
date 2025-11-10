@@ -97,6 +97,70 @@
       return '';
     };
 
+    const TOKEN_STORAGE_KEY = 'listit.nativeAuthToken';
+    let authToken = null;
+
+    const readStoredToken = () => {
+      if (typeof window === 'undefined') return null;
+      try {
+        const stored = window.localStorage?.getItem?.(TOKEN_STORAGE_KEY);
+        if (typeof stored === 'string' && stored.trim()) {
+          return stored.trim();
+        }
+      } catch (_) {
+        // Access to localStorage can fail in some environments (Safari private mode, etc.)
+      }
+      return null;
+    };
+
+    const persistToken = (token) => {
+      if (typeof window === 'undefined') return;
+      try {
+        if (token) {
+          window.localStorage?.setItem?.(TOKEN_STORAGE_KEY, token);
+        } else {
+          window.localStorage?.removeItem?.(TOKEN_STORAGE_KEY);
+        }
+      } catch (_) {
+        // Ignore storage write failures (Safari private mode, etc.)
+      }
+    };
+
+    const setAuthToken = (token) => {
+      const normalized = typeof token === 'string' && token.trim() ? token.trim() : null;
+      authToken = normalized;
+      persistToken(authToken);
+    };
+
+    setAuthToken(readStoredToken());
+
+    const prepareFetchInit = (init) => {
+      const nextInit = init ? { ...init } : {};
+
+      if (!authToken) {
+        return nextInit;
+      }
+
+      const { headers } = nextInit;
+
+      if (typeof Headers === 'function' && headers instanceof Headers) {
+        const merged = new Headers(headers);
+        if (!merged.has('Authorization')) {
+          merged.set('Authorization', `Bearer ${authToken}`);
+        }
+        nextInit.headers = merged;
+        return nextInit;
+      }
+
+      const headerObject = headers && typeof headers === 'object' ? { ...headers } : {};
+      const hasAuthorization = Object.keys(headerObject).some((key) => key.toLowerCase() === 'authorization');
+      if (!hasAuthorization) {
+        headerObject.Authorization = `Bearer ${authToken}`;
+      }
+      nextInit.headers = headerObject;
+      return nextInit;
+    };
+
     const api = createApiClient({
       baseUrl: resolveApiBaseUrl(),
       onRequestStart: () => AppNav.incLoad(),
@@ -106,7 +170,7 @@
         AppNav.setTab('browse');
       },
       onAccountLocked: () => AppNav.notifyLocked(),
-      fetchImpl: (input, init) => fetch(input, init)
+      fetchImpl: (input, init) => fetch(input, prepareFetchInit(init))
     });
 
     const locationHelpersFactory = bundles?.bootstrap?.createLocationHelpers;
@@ -119,7 +183,11 @@
     if (typeof authFeatureFactory !== 'function') {
       throw new Error('Auth feature bundle failed to load.');
     }
-    const { AuthProvider, useAuth, AuthModal } = authFeatureFactory({ api, ReactDOM: runtimeReactDOM });
+    const { AuthProvider, useAuth, AuthModal } = authFeatureFactory({
+      api,
+      ReactDOM: runtimeReactDOM,
+      onTokenChange: setAuthToken
+    });
 
     const uploadsFeatureFactory = bundles?.features?.uploads?.createUploadsFeature;
     if (typeof uploadsFeatureFactory !== 'function') {

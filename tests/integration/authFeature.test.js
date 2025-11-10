@@ -234,6 +234,31 @@ describe('auth feature integration', () => {
     cleanup();
   });
 
+  test('AuthProvider notifies token handler when token-bearing users are set', () => {
+    const react = createReactMocks();
+    global.React = react.React;
+    const createAuthFeature = loadFactory();
+
+    const onTokenChange = jest.fn();
+    const deps = createDependencies({ react });
+
+    const feature = createAuthFeature({ ...deps, onTokenChange });
+    const { AuthProvider } = feature;
+
+    react.prepareForRender();
+    const providerElement = AuthProvider({ children: null });
+
+    const { setUser } = providerElement.props.value;
+    setUser({ id: 'user-1', token: '  abc123  ' });
+    expect(onTokenChange).toHaveBeenCalledWith('abc123');
+
+    setUser({ id: 'user-2' });
+    expect(onTokenChange).toHaveBeenCalledTimes(1);
+
+    setUser(null);
+    expect(onTokenChange).toHaveBeenCalledWith(null);
+  });
+
   test('AuthProvider ignores late responses after unmount', async () => {
     const react = createReactMocks();
     global.React = react.React;
