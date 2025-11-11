@@ -8,6 +8,12 @@
 
 Environment variables explicitly set in your shell always take precedence over the values in the file. To avoid accidentally committing secrets, `.env`, `.env.local`, and other environment-specific files are ignored by Git, while `.env.example` remains tracked as the canonical reference.
 
+## Database configuration
+
+The API expects a PostgreSQL database by default. Set `DATABASE_URL` in your `.env.local` or `.env` file to point at the connection string you want to use locally (for example, `postgres://user:pass@localhost:5432/listit`).
+
+If you prefer to use the legacy SQLite fallback, ensure the optional `better-sqlite3` dependency can be built on your machine (`npm install better-sqlite3`). Without that module installed the server will now instruct you to provide `DATABASE_URL` instead of crashing while loading native bindings.
+
 ## Capacitor + iOS wrapper
 
 The repository is preconfigured to bundle the static assets under `public/` into a Capacitor shell for native distribution.

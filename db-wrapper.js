@@ -1,5 +1,4 @@
 // db-wrapper.js
-const Database = require('better-sqlite3');
 const { Pool } = require('pg');
 
 // Use PostgreSQL if DATABASE_URL exists, otherwise SQLite
@@ -145,6 +144,18 @@ if (process.env.DATABASE_URL) {
     }
   };
 } else {
+  let Database;
+  try {
+    Database = require('better-sqlite3');
+  } catch (err) {
+    const message =
+      'SQLite support requires the optional "better-sqlite3" dependency. ' +
+      'Provide DATABASE_URL to use PostgreSQL instead, or run "npm install better-sqlite3" to keep the SQLite fallback.';
+    const enhancedError = new Error(message);
+    enhancedError.cause = err;
+    throw enhancedError;
+  }
+
   console.log('Using SQLite');
   const db = new Database(process.env.DB_PATH || 'listit.db');
   module.exports = db;
