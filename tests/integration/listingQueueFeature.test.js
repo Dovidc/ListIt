@@ -15,9 +15,6 @@ const listingQueuePath = path.join(
 function loadFactory() {
   jest.resetModules();
   const source = fs.readFileSync(listingQueuePath, 'utf8');
-  const transformed = source
-    .replace(/export\s+default\s+createListingQueueFeature;?/g, '')
-    .replace(/export\s+function\s+createListingQueueFeature/, 'function createListingQueueFeature');
 
   const context = {
     module: { exports: {} },
@@ -29,13 +26,10 @@ function loadFactory() {
   };
   context.globalThis = context;
 
-  vm.runInNewContext(
-    `${transformed}\nmodule.exports.createListingQueueFeature = createListingQueueFeature;`,
-    context,
-    { filename: listingQueuePath }
-  );
+  vm.runInNewContext(source, context, { filename: listingQueuePath });
 
-  const factory = context.window?.ListItApp?.features?.listingQueue?.createListingQueueFeature;
+  const factory = context.window?.ListItApp?.features?.listingQueue?.createListingQueueFeature
+    || context.module?.exports?.createListingQueueFeature;
   if (typeof factory !== 'function') {
     throw new Error('Failed to register listing queue feature factory.');
   }
