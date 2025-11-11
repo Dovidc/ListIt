@@ -10,7 +10,6 @@
   "scripts": {
     "start": "node server.js",
     "test": "npm run build:core && NODE_ENV=test node node_modules/jest/bin/jest.js --runInBand",
-    "postinstall": "npm rebuild better-sqlite3 --build-from-source || echo \"better-sqlite3 rebuild skipped\"",
     "build:core": "node scripts/build-core.js",
     "sync:ios": "npx cap sync ios",
     "open:ios": "npx cap open ios"
@@ -21,7 +20,6 @@
     "@aws-sdk/s3-request-presigner": "^3.882.0",
     "@sendgrid/mail": "^8.1.2",
     "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^12.2.0",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
