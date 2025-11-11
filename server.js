@@ -466,9 +466,9 @@ function publicPushMeta() {
 
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
-const IS_POSTGRES = Boolean(process.env.DATABASE_URL);
+const IS_POSTGRES = true;
 
-const PRIMARY_KEY = IS_POSTGRES ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+const PRIMARY_KEY = 'SERIAL PRIMARY KEY';
 
 const GEO_FEATURES = {
   postgisNearby: false,

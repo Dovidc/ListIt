@@ -10,9 +10,7 @@ Environment variables explicitly set in your shell always take precedence over t
 
 ## Database configuration
 
-The API expects a PostgreSQL database by default. Set `DATABASE_URL` in your `.env.local` or `.env` file to point at the connection string you want to use locally (for example, `postgres://user:pass@localhost:5432/listit`).
-
-If you prefer to use the legacy SQLite fallback, ensure the optional `better-sqlite3` dependency can be built on your machine (`npm install better-sqlite3`). Without that module installed the server will now instruct you to provide `DATABASE_URL` instead of crashing while loading native bindings.
+The API requires a PostgreSQL database. Set `DATABASE_URL` in your `.env.local` or `.env` file to point at the connection string you want to use locally (for example, `postgres://user:pass@localhost:5432/listit`). SQLite is no longer supported.
 
 ## Capacitor + iOS wrapper
 
