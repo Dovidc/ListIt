@@ -76,9 +76,6 @@
         }
       }
 
-      const platform = window.Capacitor?.getPlatform?.();
-      if (!platform || platform === 'web') return '';
-
       const meta = typeof document !== 'undefined'
         ? document.querySelector('meta[name="listit-api-base"]')
         : null;
