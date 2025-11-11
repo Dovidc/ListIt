@@ -91,6 +91,10 @@ describe('browser app integration', () => {
       ResponsiveImage: jest.fn()
     };
 
+    const profilePictureUploadComponents = {
+      ProfilePictureUploadModal: jest.fn()
+    };
+
     const listingComponents = {
       MultiFilePicker: jest.fn(),
       InfoHelpModal: jest.fn(),
@@ -237,14 +241,17 @@ describe('browser app integration', () => {
         createGridComponents: jest.fn(() => ({ ListingsGrid: jest.fn() }))
       },
       layout: {
-      createLayoutComponents: jest.fn(() => ({
-        Header: jest.fn(),
-        GlobalLoader: jest.fn()
-      }))
-    },
-    listings: {
-      createListingComponents: jest.fn(() => listingComponents)
-    }
+        createLayoutComponents: jest.fn(() => ({
+          Header: jest.fn(),
+          GlobalLoader: jest.fn()
+        }))
+      },
+      listings: {
+        createListingComponents: jest.fn(() => listingComponents)
+      },
+      profilePictureUpload: {
+        createProfilePictureUploadComponents: jest.fn(() => profilePictureUploadComponents)
+      }
     };
 
     const locationHelpers = { fetchCoordsAndReverse: jest.fn(() => 'coords') };
@@ -274,7 +281,8 @@ describe('browser app integration', () => {
       listingFormsFeature,
       locationHelpers,
       listingComponents,
-      mediaComponents
+      mediaComponents,
+      profilePictureUploadComponents
     };
 
     return bundles;
@@ -353,6 +361,13 @@ describe('browser app integration', () => {
 
     const profileFeature = appBundles.features.profile.createProfileFeature.mock.results[0].value;
     expect(appShellArgs.features.profile.ProfilePanel).toBe(profileFeature.ProfilePanel);
+
+    const profilePictureUpload = appBundles.components.profilePictureUpload.createProfilePictureUploadComponents.mock.results[0].value;
+    expect(appBundles.features.profile.createProfileFeature).toHaveBeenCalledWith(expect.objectContaining({
+      components: expect.objectContaining({
+        ProfilePictureUploadModal: profilePictureUpload.ProfilePictureUploadModal
+      })
+    }));
 
     const nearbyFeature = appBundles.features.nearby.createNearbyFeature.mock.results[0].value;
     expect(appShellArgs.features.nearby.NearbyPanel).toBe(nearbyFeature.NearbyPanel);
@@ -766,6 +781,13 @@ describe('browser app integration', () => {
           deps.appBundles.features.listingForms.createListingFormsFeature = null;
         },
         message: 'Listing forms feature bundle failed to load.'
+      },
+      {
+        name: 'profile picture upload components bundle',
+        mutate: (deps) => {
+          deps.appBundles.components.profilePictureUpload.createProfilePictureUploadComponents = null;
+        },
+        message: 'Profile picture upload components bundle failed to load.'
       },
       {
         name: 'profile feature bundle',

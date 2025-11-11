@@ -414,7 +414,6 @@
     if (typeof profileFeatureFactory !== 'function') {
       throw new Error('Profile feature bundle failed to load.');
     }
-    console.log('ListingsGrid before passing to profile:', ListingsGrid, typeof ListingsGrid);
     const { ProfilePanel } = profileFeatureFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM,
