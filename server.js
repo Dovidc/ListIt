@@ -2656,25 +2656,107 @@ function formatAdRow(row) {
 
 /* ------------------------------------------------------------------ */
 
-function setAuthCookie(res, payload) {
+function isSecureRequest(req) {
 
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  if (!req) return false;
 
-  res.cookie('token', token, {
+  if (req.secure) return true;
+
+  const forwardedProto = req.headers?.['x-forwarded-proto'];
+
+  if (typeof forwardedProto === 'string') {
+
+    return forwardedProto.split(',')[0].trim().toLowerCase() === 'https';
+
+  }
+
+  return false;
+
+}
+
+
+
+function isNativeAppOrigin(origin) {
+
+  if (!origin || typeof origin !== 'string') return false;
+
+  const trimmed = origin.trim();
+
+  if (!trimmed) return false;
+
+  try {
+
+    const parsed = new URL(trimmed);
+
+    const protocol = (parsed.protocol || '').toLowerCase();
+
+    return protocol === 'capacitor:' || protocol === 'ionic:' || protocol === 'app:';
+
+  } catch {
+
+    const idx = trimmed.indexOf(':');
+
+    if (idx === -1) return false;
+
+    const proto = trimmed.slice(0, idx).toLowerCase();
+
+    return proto === 'capacitor' || proto === 'ionic' || proto === 'app';
+
+  }
+
+}
+
+
+
+function shouldUseSameSiteNone(req) {
+
+  if (HAS_FRONTEND_ORIGIN) return true;
+
+  const origin = req?.headers?.origin || req?.headers?.referer;
+
+  if (!origin) return false;
+
+  if (!isNativeAppOrigin(origin)) return false;
+
+  return isSecureRequest(req) || IS_PROD;
+
+}
+
+
+
+function resolveCookieOptions(req) {
+
+  const sameSite = shouldUseSameSiteNone(req) ? 'none' : 'lax';
+
+  const secure = IS_PROD || (sameSite === 'none' && isSecureRequest(req));
+
+  return {
 
     httpOnly: true,
 
-    sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
+    sameSite,
 
-    secure: IS_PROD,
+    secure,
 
     domain: COOKIE_DOMAIN,
 
-    maxAge: 7*24*60*60*1000,
-
     path: '/'
 
-  });
+  };
+
+}
+
+
+
+function setAuthCookie(req, res, payload) {
+
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+
+  const options = resolveCookieOptions(req);
+
+  options.maxAge = 7 * 24 * 60 * 60 * 1000;
+
+  res.cookie('token', token, options);
 
   return token;
 
@@ -2682,21 +2764,9 @@ function setAuthCookie(res, payload) {
 
 
 
-function clearAuthCookie(res) {
+function clearAuthCookie(req, res) {
 
-  res.clearCookie('token', {
-
-    httpOnly: true,
-
-    sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
-
-    secure: IS_PROD,
-
-    domain: COOKIE_DOMAIN,
-
-    path: '/'
-
-  });
+  res.clearCookie('token', resolveCookieOptions(req));
 
 }
 
@@ -2806,7 +2876,7 @@ async function auth(req, res, next) {
 
     if (!row) {
 
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
 
       return res.status(401).json({ error: 'Not authenticated' });
 
@@ -2816,7 +2886,7 @@ async function auth(req, res, next) {
 
     if (row.account_status === 'banned') {
 
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
 
       return res.status(403).json({ error: 'account_banned' });
 
@@ -3019,7 +3089,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
     }
 
     if (row.account_status === 'banned') {
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
       return res.status(403).json({ error: 'account_banned' });
     }
 
@@ -3039,7 +3109,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
         status_updated_at: row.status_updated_at,
         last_login_at: now
       };
-      const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: user.account_status });
+      const token = setAuthCookie(req, res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: user.account_status });
       return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
     }
 
@@ -3074,7 +3144,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
     `).run(accountStatus, now, row.id);
 
     if (accountStatus === 'banned') {
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
       return res.status(403).json({ error: 'account_banned' });
     }
 
@@ -3091,7 +3161,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       last_login_at: now
     };
 
-    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
+    const token = setAuthCookie(req, res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
     return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
 
@@ -3136,7 +3206,7 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
     if (accountStatus === 'banned') {
 
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
 
       return res.status(403).json({ error: 'account_banned' });
 
@@ -3186,7 +3256,7 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
     };
 
-    const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
+    const token = setAuthCookie(req, res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
     return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
 
@@ -3281,9 +3351,9 @@ app.post('/api/password/reset/confirm', writeLimiter, validateBody(validatePassw
 
 });
 
-app.post('/api/logout', (_req, res) => {
+app.post('/api/logout', (req, res) => {
 
-  clearAuthCookie(res);
+  clearAuthCookie(req, res);
 
   return res.json({ ok: true });
 
@@ -3541,7 +3611,7 @@ app.delete('/api/me', auth, async (req, res) => {
     console.log('Deleted user account');
 
     // Clear auth cookie
-    clearAuthCookie(res);
+    clearAuthCookie(req, res);
 
     return res.json({ ok: true });
 
@@ -3966,7 +4036,7 @@ app.get('/api/listings', async (req, res) => {
 
     if (!userRow) {
 
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
 
       return res.status(401).json({ error: 'Not authenticated' });
 
@@ -3974,7 +4044,7 @@ app.get('/api/listings', async (req, res) => {
 
     if (userRow.account_status === 'banned') {
 
-      clearAuthCookie(res);
+      clearAuthCookie(req, res);
 
       return res.status(403).json({ error: 'account_banned' });
 
