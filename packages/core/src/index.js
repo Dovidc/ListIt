@@ -21,10 +21,110 @@ export function createApiClient(options = {}) {
     onRequestEnd,
     onRequestStart,
     onUnauthorized,
-    onAccountLocked
+    onAccountLocked,
+    initialAuthToken
   } = options;
 
   const fetchLike = resolveFetch(fetchImpl);
+
+  const TOKEN_STORAGE_KEY = 'listit.nativeAuthToken';
+  const win = typeof window !== 'undefined' ? window : undefined;
+  const capacitorPlatform = (() => {
+    if (!win) return null;
+    try {
+      const getter = win.Capacitor?.getPlatform;
+      if (typeof getter === 'function') {
+        return getter.call(win.Capacitor);
+      }
+    } catch (_) {
+      // Ignore platform detection failures; treat as web.
+    }
+    return null;
+  })();
+  const isNativePlatform = !!capacitorPlatform && capacitorPlatform !== 'web';
+
+  let authToken = typeof initialAuthToken === 'string' && initialAuthToken.trim()
+    ? initialAuthToken.trim()
+    : null;
+
+  const persistAuthToken = (nextToken) => {
+    const normalized = typeof nextToken === 'string' ? nextToken.trim() : '';
+    authToken = normalized || null;
+    if (!isNativePlatform || !win?.localStorage?.setItem) return;
+    try {
+      if (authToken) {
+        win.localStorage.setItem(TOKEN_STORAGE_KEY, authToken);
+      } else {
+        win.localStorage.removeItem(TOKEN_STORAGE_KEY);
+      }
+    } catch (_) {
+      // localStorage access can fail (Safari private mode, etc.).
+    }
+  };
+
+  if (!authToken && isNativePlatform && win?.localStorage?.getItem) {
+    try {
+      const storedToken = win.localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (typeof storedToken === 'string' && storedToken.trim()) {
+        authToken = storedToken.trim();
+      }
+    } catch (_) {
+      // localStorage access can fail (Safari private mode, etc.).
+    }
+  }
+
+  const hasAuthHeader = (headersObj) => {
+    if (!headersObj) return false;
+    return Object.keys(headersObj).some((key) => key.toLowerCase() === 'authorization');
+  };
+
+  const normalizeHeaders = (headers) => {
+    if (!headers) return {};
+    if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+      const result = {};
+      headers.forEach((value, key) => {
+        result[key] = value;
+      });
+      return result;
+    }
+    if (Array.isArray(headers)) {
+      return headers.reduce((acc, entry) => {
+        if (!entry || typeof entry[0] !== 'string') return acc;
+        acc[entry[0]] = entry[1];
+        return acc;
+      }, {});
+    }
+    return { ...headers };
+  };
+
+  const applyAuthHeader = (init) => {
+    if (!authToken) return init;
+    const headers = normalizeHeaders(init.headers);
+    if (hasAuthHeader(headers)) {
+      return { ...init, headers };
+    }
+    return {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${authToken}` }
+    };
+  };
+
+  const clearAuthState = () => {
+    persistAuthToken(null);
+  };
+
+  const handleUnauthorized = () => {
+    clearAuthState();
+    onUnauthorized?.();
+  };
+
+  const maybeCaptureAuthToken = (payload) => {
+    const token = payload?.token;
+    if (typeof token === 'string' && token.trim()) {
+      persistAuthToken(token);
+    }
+    return payload;
+  };
 
   const resolveUrl = (path) => {
     if (/^https?:/i.test(path)) return path;
@@ -37,7 +137,7 @@ export function createApiClient(options = {}) {
     if (!silent) onRequestStart?.();
 
     try {
-      const requestInit = { credentials: 'include', ...init };
+      const requestInit = applyAuthHeader({ credentials: 'include', ...init });
       if (meta.priority) {
         requestInit.priority = meta.priority;
       }
@@ -45,7 +145,7 @@ export function createApiClient(options = {}) {
       const response = await fetchLike(resolveUrl(path), requestInit);
 
       if (response.status === 401) {
-        onUnauthorized?.();
+        handleUnauthorized();
         throw new ApiError('auth');
       }
 
@@ -93,11 +193,14 @@ export function createApiClient(options = {}) {
 
   const me = (meta) => request('/api/me', { method: 'GET' }, meta);
 
-  const login = (email, password, meta) => request('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  }, meta);
+  const login = async (email, password, meta) => {
+    const payload = await request('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    }, meta);
+    return maybeCaptureAuthToken(payload);
+  };
 
   const register = (payload, meta) => request('/api/register', {
     method: 'POST',
@@ -105,11 +208,14 @@ export function createApiClient(options = {}) {
     body: JSON.stringify(payload || {})
   }, meta);
 
-  const verifyRegistration = (email, code, meta) => request('/api/register/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code })
-  }, meta);
+  const verifyRegistration = async (email, code, meta) => {
+    const payload = await request('/api/register/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    }, meta);
+    return maybeCaptureAuthToken(payload);
+  };
 
   const requestPasswordReset = (email, meta) => request('/api/password/reset/request', {
     method: 'POST',
@@ -117,21 +223,26 @@ export function createApiClient(options = {}) {
     body: JSON.stringify({ email })
   }, meta);
 
-  const confirmPasswordReset = (email, token, password, meta) => request('/api/password/reset/confirm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, token, password })
-  }, meta);
+  const confirmPasswordReset = async (email, token, password, meta) => {
+    const payload = await request('/api/password/reset/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, token, password })
+    }, meta);
+    return maybeCaptureAuthToken(payload);
+  };
 
   const logout = async (meta) => {
     try {
       await request('/api/logout', { method: 'POST' }, meta);
     } catch (error) {
       if (error instanceof ApiError && error.message === 'auth') {
+        clearAuthState();
         return;
       }
       throw error;
     }
+    clearAuthState();
   };
 
   const pushSubscribe = (subscription, meta) => {

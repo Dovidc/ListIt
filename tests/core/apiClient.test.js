@@ -58,6 +58,42 @@ describe('createApiClient', () => {
     expect(onLocked).toHaveBeenCalledTimes(1);
   });
 
+  test('attaches bearer authorization when an auth token is present', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(makeResponse({ body: 'null' }));
+    const api = createApiClient({ fetchImpl: fetchMock, initialAuthToken: 'seed-token' });
+    await api.me();
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.Authorization).toBe('Bearer seed-token');
+  });
+
+  test('captures auth tokens from login responses for subsequent requests', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ body: '{"token":"fresh"}' }))
+      .mockResolvedValueOnce(makeResponse({ body: 'null' }));
+    const api = createApiClient({ fetchImpl: fetchMock });
+    await api.login('user@example.com', 'password123');
+    await api.me();
+    const [, init] = fetchMock.mock.calls[1];
+    expect(init.headers.Authorization).toBe('Bearer fresh');
+  });
+
+  test('clears auth token after unauthorized responses and logout', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(makeResponse({ status: 401, ok: false, body: '' }))
+      .mockResolvedValueOnce(makeResponse({ body: '{"ok":true}' }))
+      .mockResolvedValueOnce(makeResponse({ body: 'null' }));
+    const onUnauthorized = jest.fn();
+    const api = createApiClient({ fetchImpl: fetchMock, onUnauthorized, initialAuthToken: 'seed-token' });
+    await expect(api.me()).rejects.toBeInstanceOf(ApiError);
+    const [, firstInit] = fetchMock.mock.calls[0];
+    expect(firstInit.headers.Authorization).toBe('Bearer seed-token');
+    await api.logout();
+    await api.me();
+    const [, thirdInit] = fetchMock.mock.calls[2];
+    expect(Object.keys(thirdInit.headers || {}).some((key) => key.toLowerCase() === 'authorization')).toBe(false);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
   test('silent meta skips lifecycle hooks', async () => {
     const fetchMock = jest.fn().mockResolvedValue(makeResponse({ body: 'null' }));
     const start = jest.fn();
