@@ -2660,13 +2660,16 @@ function setAuthCookie(res, payload) {
 
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 
+  const sameSitePolicy = HAS_FRONTEND_ORIGIN ? 'none' : 'lax';
+  const securePolicy = HAS_FRONTEND_ORIGIN ? true : IS_PROD;
+
   res.cookie('token', token, {
 
     httpOnly: true,
 
-    sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
+    sameSite: sameSitePolicy,
 
-    secure: IS_PROD,
+    secure: securePolicy,
 
     domain: COOKIE_DOMAIN,
 
@@ -2690,7 +2693,7 @@ function clearAuthCookie(res) {
 
     sameSite: HAS_FRONTEND_ORIGIN ? 'none' : 'lax',
 
-    secure: IS_PROD,
+    secure: HAS_FRONTEND_ORIGIN ? true : IS_PROD,
 
     domain: COOKIE_DOMAIN,
 
