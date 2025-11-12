@@ -588,13 +588,19 @@
             return;
           }
 
+          const trimmedLocation = String(location || '').trim();
+          if (!trimmedLocation) {
+            alert('Location is required.');
+            return;
+          }
+
           const parsedPrice = Number(priceVal);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
           const basePayload = {
             title: String(title || '').trim(),
             description: String(description || 'No description').trim(),
-            location: String(location || '').trim(),
+            location: trimmedLocation,
             price: safePrice,
             tags: String(tags || '').trim(),
             enable_nearby: enableNearby ? 1 : 0
@@ -768,7 +774,7 @@
           value: location,
           maxLength: 80,
           onChange: e => setLocation(e.target.value),
-          placeholder: 'Location (optional)',
+          placeholder: 'Location (required)',
           style: { fontSize: '13px', padding: '7px' }
         }),
 
