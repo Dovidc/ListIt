@@ -592,13 +592,19 @@
             return;
           }
 
+          const trimmedLocation = String(location || '').trim();
+          if (!trimmedLocation) {
+            alert('Location is required.');
+            return;
+          }
+
           const parsedPrice = Number(priceVal);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
 
           const basePayload = {
             title: String(title || '').trim(),
             description: String(description || 'No description').trim(),
-            location: String(location || '').trim(),
+            location: trimmedLocation,
             price: safePrice,
             tags: String(tags || '').trim(),
             enable_nearby: enableNearby ? 1 : 0
@@ -720,9 +726,9 @@
         H('label', null, 'Description (optional)'),
         H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value), placeholder:'Optional' }),
 
-        H('label', null, 'Location (optional)'),
+        H('label', null, 'Location (required)'),
         H('div', { className:'row', style:{ gap:8 } },
-          H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Optional (City, State)' }),
+          H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Required (City, State)' }),
           H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
           geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
         ),
