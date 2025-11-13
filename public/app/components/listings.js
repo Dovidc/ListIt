@@ -871,6 +871,18 @@
           }
         }
 
+        const nearbyLocation = sharedNearby.display ? String(sharedNearby.display).trim() : '';
+        const presetLocation = typeof user?.location_preset === 'string'
+          ? user.location_preset.trim()
+          : '';
+        // MassList runs without a manual location field, so when auto-nearby is
+        // disabled we still need to send a non-empty location string. The API
+        // rejects blank locations, which is what caused the failure. Prefer the
+        // fresh nearby label when available, fall back to the saved profile
+        // preset, and finally use the generic placeholder that matches the
+        // single-listing flow.
+        const normalizedLocation = nearbyLocation || presetLocation || 'Unknown location';
+
         const limiter = createConcurrencyLimiter(3);
 
         const jobs = filesSnapshot.map((file) => limiter(async () => {
@@ -894,7 +906,7 @@
             const payload = {
               title: (ai.title || 'Item for sale').toString().slice(0, 80),
               description: aiDescription || 'No description',
-              location: sharedNearby.ok ? sharedNearby.display : '',
+              location: normalizedLocation,
               price: safePrice,
               tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
               enable_nearby: sharedNearby.ok ? 1 : 0,
