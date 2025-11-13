@@ -60,7 +60,8 @@ function createReactMocks() {
       effects[effectCursor] = effect;
       effectCursor += 1;
     }),
-    useMemo: jest.fn((factory) => factory())
+    useMemo: jest.fn((factory) => factory()),
+    useCallback: jest.fn((fn) => fn)
   };
 
   return { React, states, effects, prepareForRender };
@@ -133,7 +134,7 @@ describe('preferences feature integration', () => {
 
     runEffects(react.effects);
 
-    expect(global.localStorage.getItem).toHaveBeenCalledWith('listit_auto_list');
+    expect(global.localStorage.getItem).not.toHaveBeenCalledWith('listit_auto_list');
     expect(global.localStorage.getItem).toHaveBeenCalledWith('listit_ai_descriptions');
     expect(global.localStorage.getItem).toHaveBeenCalledWith('listit_auto_post_nearby');
 

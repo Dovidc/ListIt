@@ -196,14 +196,12 @@ describe('listing forms feature integration', () => {
       enqueueListingJob: jest.fn()
     });
 
-    expect(result).toBe('portal');
     expect(deps.helpers.isMobileDevice).toHaveBeenCalledTimes(1);
-    expect(deps.ReactDOM.createPortal).toHaveBeenCalledTimes(1);
-    const [modalTree, target] = deps.ReactDOM.createPortal.mock.calls[0];
-    expect(target).toBe(global.document.body);
-    expect(modalTree.type).toBe('div');
+    expect(deps.ReactDOM.createPortal).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
+    expect(result.type).toBe('section');
 
-    const listingFormNode = findNode(modalTree, (node) => node?.type === deps.components.ListingForm);
+    const listingFormNode = findNode(result, (node) => node?.type === deps.components.ListingForm);
     expect(listingFormNode).toBeTruthy();
     expect(listingFormNode.props).toEqual(
       expect.objectContaining({
@@ -228,7 +226,7 @@ describe('listing forms feature integration', () => {
     const feature = createListingFormsFeature(deps);
     const { ListingFormModal, CompactListingForm } = feature;
 
-    ListingFormModal({
+    const result = ListingFormModal({
       isOpen: true,
       draft: null,
       onClose: jest.fn(),
@@ -240,8 +238,10 @@ describe('listing forms feature integration', () => {
       enqueueListingJob: jest.fn()
     });
 
-    const [modalTree] = deps.ReactDOM.createPortal.mock.calls[0];
-    const compactNode = findNode(modalTree, (node) => node?.type === CompactListingForm);
+    expect(deps.helpers.isMobileDevice).toHaveBeenCalledTimes(1);
+    expect(deps.ReactDOM.createPortal).not.toHaveBeenCalled();
+
+    const compactNode = findNode(result, (node) => node?.type === CompactListingForm);
 
     expect(compactNode).toBeTruthy();
     expect(typeof compactNode.props.setShowTags).toBe('function');
