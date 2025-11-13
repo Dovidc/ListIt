@@ -13,6 +13,17 @@
     return fn;
   }
 
+  const EDITOR_DEFAULT_STATE = {
+    isOpen: false,
+    originTab: 'browse',
+    reopenListingId: null,
+    draftSnapshot: null
+  };
+
+  function createEditorState(overrides = {}) {
+    return { ...EDITOR_DEFAULT_STATE, ...overrides };
+  }
+
   function createAppShell({
     React,
     ReactDOM,
@@ -33,6 +44,7 @@
       useState,
       useEffect,
       useMemo,
+      useCallback,
       useRef: providedUseRef
     } = React;
 
@@ -160,7 +172,7 @@
         openAuthModal,
         isMobile
       } = appView;
-      const [showForm, setShowForm] = useState(false);
+      const [editorState, setEditorState] = useState(() => createEditorState());
       const [loadingCount, setLoadingCount] = useState(0);
       const [mobileCreateMode, setMobileCreateMode] = useState('list');
       const [initialListingFiles, setInitialListingFiles] = useState([]);
@@ -272,6 +284,63 @@
         return map;
       }, [mine]);
 
+      const isEditingScreen = tab === 'listing-edit' && editorState.isOpen;
+
+      const resetEditorState = useCallback(() => {
+        setEditorState(createEditorState());
+        setEditing(null);
+        setInitialListingFiles([]);
+      }, [setEditorState, setEditing, setInitialListingFiles]);
+
+      const closeEditor = useCallback(() => {
+        if (!editorState.isOpen) {
+          resetEditorState();
+          if (tab === 'listing-edit') {
+            handleTabChange('browse');
+          }
+          return;
+        }
+
+        const origin = editorState.originTab || 'browse';
+        const reopenId = editorState.reopenListingId;
+        const fallbackListing = editorState.draftSnapshot;
+
+        resetEditorState();
+
+        handleTabChange(origin);
+
+        if (origin === 'browse' && reopenId) {
+          const listingArray = Array.isArray(items) ? items : [];
+          const listing = mineById[reopenId] || listingArray.find((it) => it?.id === reopenId) || fallbackListing;
+          if (listing) {
+            setSelectedListing(listing);
+          }
+        }
+      }, [editorState, handleTabChange, items, mineById, resetEditorState, setSelectedListing, tab]);
+
+      const openListingEditor = useCallback(({ draft = null, files = [], originTab: origin, reopenListingId } = {}) => {
+        const normalizedFiles = Array.isArray(files) ? files.slice() : [];
+        const originValue = origin || tab || 'browse';
+
+        setViewingSeller(null);
+        setEditing(draft);
+        setInitialListingFiles(normalizedFiles);
+        setEditorState(createEditorState({
+          isOpen: true,
+          originTab: originValue,
+          reopenListingId: reopenListingId ?? (draft?.id ?? null),
+          draftSnapshot: draft || null
+        }));
+        setTab('listing-edit');
+      }, [setEditing, setEditorState, setInitialListingFiles, setTab, setViewingSeller, tab]);
+
+      const handleNavigate = useCallback((target) => {
+        if (isEditingScreen) {
+          resetEditorState();
+        }
+        handleTabChange(target);
+      }, [handleTabChange, isEditingScreen, resetEditorState]);
+
       function handleViewSeller(userId, username) {
         setViewingSeller({ id: userId, username });
         setSelectedListing(null);
@@ -351,9 +420,7 @@
           setShowMassList(true);
           return;
         }
-        setEditing(null);
-        setInitialListingFiles(files);
-        setShowForm(true);
+        openListingEditor({ draft: null, files, originTab: tab });
       }
 
       function handleGalleryChange(evt) {
@@ -380,7 +447,7 @@
           handleAuthClick('login');
           return;
         }
-        handleTabChange(target);
+        handleNavigate(target);
       }
 
       const mobileNavIcons = {
@@ -467,7 +534,7 @@
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
           H(React.Fragment, null,
-        H(Header, { user, setUser, onNav:handleTabChange, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
+        H(Header, { user, setUser, onNav:handleNavigate, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
         banner && H('div', { className:'global-banner', role:'status' },
           H('span', { className:'banner-text' }, banner.message),
           H('button', {
@@ -479,253 +546,267 @@
         ),
         H(GlobalLoader, { active: loadingCount > 0 }),
 
-        H('main', { className:'container' },
-          viewingSeller && H(SellerProfile, {
-            sellerId: viewingSeller.id,
-            sellerUsername: viewingSeller.username,
-            onBack: handleBackFromSeller,
-            user,
-            onMessage: startMessage,
-            onAdminDelete: handleAdminDelete
-          }),
-
-          !viewingSeller && tab==='browse' && H(React.Fragment, null,
-            H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
-              H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
-                H('input', {
-                  placeholder:'Search title, description, tags...',
-                  value:query,
-                  onChange:e=>setQuery(e.target.value),
-                  style:{ maxWidth:360 }
-                }),
-                H(CityAutocomplete, {
-                  value: locationQuery,
-                  onChange: setLocationQuery,
-                  options: cityOptions,
-                  onUseMyLocation: async () => {
-                    try {
-                      if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                      const { coords } = await new Promise((res, rej)=>
-                        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
-                      );
-                      const r = await api.reverseGeocode(coords.latitude, coords.longitude);
-                      const city = r?.city || (r?.display || '').split(',')[0];
-                      if (city) setLocationQuery(city);
-                    } catch { alert('Could not determine your location'); }
-                  }
-                }),
-                H('select', { value:sort, onChange:e=>setSort(e.target.value) },
-                  H('option', { value:'new' }, 'Newest'),
-                  H('option', { value:'price_asc' }, 'Price: Low -> High'),
-                  H('option', { value:'price_desc' }, 'Price: High -> Low'),
-                  H('option', { value:'city' }, 'City (A -> Z)')
-                )
-              ),
-              !isMobile && H('div', { className:'row', style:{ gap:8 } },
-                H('button', { className:'btn primary', onClick:()=>{
-                  if(!user){ alert('Log in to create a listing.'); return; }
-                  if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                  setEditing(null);
-                  setShowForm(true);
-                } }, 'New listing'),
-                H('button', { className:'btn', onClick:()=>{
-                  if(!user){ alert('Log in to create listings.'); return; }
-                  if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                  setShowMassList(true);
-                } }, 'MassList')
-              )
-            ),
-
-            isMobile && H('section', {
-              className: 'mobile-create-card',
-              role: 'region',
-              'aria-label': 'Create listings'
-            },
-              H('div', { className: 'mobile-create-toggle' },
-                H('div', { className: 'mobile-create-toggle-track' }),
-                H('div', {
-                  className: 'mobile-create-toggle-thumb',
-                  style: { transform: mobileCreateMode === 'masslist' ? 'translateX(100%)' : 'translateX(0%)' }
-                }),
-                H('button', {
-                  type: 'button',
-                  className: ['mobile-create-toggle-btn', mobileCreateMode === 'list' ? 'is-active' : ''].filter(Boolean).join(' '),
-                  onClick: () => setMobileCreateMode('list'),
-                  'aria-pressed': mobileCreateMode === 'list'
-                }, 'List'),
-                H('button', {
-                  type: 'button',
-                  className: ['mobile-create-toggle-btn', mobileCreateMode === 'masslist' ? 'is-active' : ''].filter(Boolean).join(' '),
-                  onClick: () => setMobileCreateMode('masslist'),
-                  'aria-pressed': mobileCreateMode === 'masslist'
-                }, 'Masslist')
-              ),
-              H('div', { className: 'mobile-create-actions' },
-                H('button', {
-                  type: 'button',
-                  className: 'mobile-create-icon',
-                  onClick: () => handleMobileCaptureClick('gallery'),
-                  'aria-label': mobileCreateMode === 'masslist' ? 'Select gallery photos for Masslist' : 'Select gallery photos for a listing'
+        H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
+          isEditingScreen
+            ? H(ListingFormModal, {
+                isOpen: editorState.isOpen,
+                draft: editing,
+                onClose: closeEditor,
+                onSaved: async () => {
+                  await refreshListings({ preserveExisting: true });
+                  await reloadMineOnly();
                 },
-                  H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.gallery())
-                ),
-                H('button', {
-                  type: 'button',
-                  className: 'mobile-create-icon',
-                  onClick: () => handleMobileCaptureClick('camera'),
-                  'aria-label': mobileCreateMode === 'masslist' ? 'Use camera for Masslist' : 'Use camera for a listing'
-                },
-                  H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.camera())
-                )
-              ),
-              H('input', {
-                key: `gallery-${mobileCreateMode}`,
-                ref: galleryInputRef,
-                type: 'file',
-                accept: 'image/*',
-                multiple: mobileCreateMode === 'masslist',
-                style: { display: 'none' },
-                onChange: handleGalleryChange
-              }),
-              H('input', {
-                key: `camera-${mobileCreateMode}`,
-                ref: cameraInputRef,
-                type: 'file',
-                accept: 'image/*',
-                multiple: mobileCreateMode === 'masslist',
-                capture: 'environment',
-                style: { display: 'none' },
-                onChange: handleCameraChange
+                autoListEnabled,
+                aiDescriptionEnabled,
+                autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+                autoInquiryEnabled,
+                backgroundQueueEnabled,
+                enqueueListingJob,
+                initialFiles: initialListingFiles
               })
-            ),
+            : (
+                viewingSeller
+                  ? H(SellerProfile, {
+                      sellerId: viewingSeller.id,
+                      sellerUsername: viewingSeller.username,
+                      onBack: handleBackFromSeller,
+                      user,
+                      onMessage: startMessage,
+                      onAdminDelete: handleAdminDelete
+                    })
+                  : H(React.Fragment, null,
+                      tab==='browse' && H(React.Fragment, null,
+                        H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
+                          H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
+                            H('input', {
+                              placeholder:'Search title, description, tags...',
+                              value:query,
+                              onChange:e=>setQuery(e.target.value),
+                              style:{ maxWidth:360 }
+                            }),
+                            H(CityAutocomplete, {
+                              value: locationQuery,
+                              onChange: setLocationQuery,
+                              options: cityOptions,
+                              onUseMyLocation: async () => {
+                                try {
+                                  if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+                                  const { coords } = await new Promise((res, rej)=>
+                                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                                  );
+                                  const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+                                  const city = r?.city || (r?.display || '').split(',')[0];
+                                  if (city) setLocationQuery(city);
+                                } catch { alert('Could not determine your location'); }
+                              }
+                            }),
+                            H('select', { value:sort, onChange:e=>setSort(e.target.value) },
+                              H('option', { value:'new' }, 'Newest'),
+                              H('option', { value:'price_asc' }, 'Price: Low -> High'),
+                              H('option', { value:'price_desc' }, 'Price: High -> Low'),
+                              H('option', { value:'city' }, 'City (A -> Z)')
+                            )
+                          ),
+                          !isMobile && H('div', { className:'row', style:{ gap:8 } },
+                            H('button', { className:'btn primary', onClick:()=>{
+                              if(!user){ alert('Log in to create a listing.'); return; }
+                              if(user.account_status === 'locked'){ showLockedBanner(); return; }
+                              openListingEditor({ draft: null, originTab: 'browse' });
+                            } }, 'New listing'),
+                            H('button', { className:'btn', onClick:()=>{
+                              if(!user){ alert('Log in to create listings.'); return; }
+                              if(user.account_status === 'locked'){ showLockedBanner(); return; }
+                              setShowMassList(true);
+                            } }, 'MassList')
+                          )
+                        ),
 
-            (() => {
-              console.log('Passing to ListingsGrid - items:', items?.length, 'ads:', ads?.length);
-              return H(ListingsGrid, {
-                items,
-                ads,
-                isMobile,
-                onEnsureCover: ensureCover,
-                onSelect: handleListingTileEvent
-              });
-            })(),
+                        isMobile && H('section', {
+                          className: 'mobile-create-card',
+                          role: 'region',
+                          'aria-label': 'Create listings'
+                        },
+                          H('div', { className: 'mobile-create-toggle' },
+                            H('div', { className: 'mobile-create-toggle-track' }),
+                            H('div', {
+                              className: 'mobile-create-toggle-thumb',
+                              style: { transform: mobileCreateMode === 'masslist' ? 'translateX(100%)' : 'translateX(0%)' }
+                            }),
+                            H('button', {
+                              type: 'button',
+                              className: ['mobile-create-toggle-btn', mobileCreateMode === 'list' ? 'is-active' : ''].filter(Boolean).join(' '),
+                              onClick: () => setMobileCreateMode('list'),
+                              'aria-pressed': mobileCreateMode === 'list'
+                            }, 'List'),
+                            H('button', {
+                              type: 'button',
+                              className: ['mobile-create-toggle-btn', mobileCreateMode === 'masslist' ? 'is-active' : ''].filter(Boolean).join(' '),
+                              onClick: () => setMobileCreateMode('masslist'),
+                              'aria-pressed': mobileCreateMode === 'masslist'
+                            }, 'Masslist')
+                          ),
+                          H('div', { className: 'mobile-create-actions' },
+                            H('button', {
+                              type: 'button',
+                              className: 'mobile-create-icon',
+                              onClick: () => handleMobileCaptureClick('gallery'),
+                              'aria-label': mobileCreateMode === 'masslist' ? 'Select gallery photos for Masslist' : 'Select gallery photos for a listing'
+                            },
+                              H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.gallery())
+                            ),
+                            H('button', {
+                              type: 'button',
+                              className: 'mobile-create-icon',
+                              onClick: () => handleMobileCaptureClick('camera'),
+                              'aria-label': mobileCreateMode === 'masslist' ? 'Use camera for Masslist' : 'Use camera for a listing'
+                            },
+                              H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.camera())
+                            )
+                          ),
+                          H('input', {
+                            key: `gallery-${mobileCreateMode}`,
+                            ref: galleryInputRef,
+                            type: 'file',
+                            accept: 'image/*',
+                            multiple: mobileCreateMode === 'masslist',
+                            style: { display: 'none' },
+                            onChange: handleGalleryChange
+                          }),
+                          H('input', {
+                            key: `camera-${mobileCreateMode}`,
+                            ref: cameraInputRef,
+                            type: 'file',
+                            accept: 'image/*',
+                            multiple: mobileCreateMode === 'masslist',
+                            capture: 'environment',
+                            style: { display: 'none' },
+                            onChange: handleCameraChange
+                          })
+                        ),
 
-            H('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'center',
-                padding: '16px 0',
-                minHeight: 40
-              }
-            },
-              isFetchingListings
-                ? H('span', { className: 'muted' }, 'Loading listings...')
-                : (!hasNext && items.length
-                    ? H('span', { className: 'muted' }, 'No more results')
-                    : null)
-            ),
+                        (() => {
+                          console.log('Passing to ListingsGrid - items:', items?.length, 'ads:', ads?.length);
+                          return H(ListingsGrid, {
+                            items,
+                            ads,
+                            isMobile,
+                            onEnsureCover: ensureCover,
+                            onSelect: handleListingTileEvent
+                          });
+                        })(),
 
-            H('div', { ref: sentinelRef, style: { width: '100%', height: 1 } }),
+                        H('div', {
+                          style: {
+                            display: 'flex',
+                            justifyContent: 'center',
+                            padding: '16px 0',
+                            minHeight: 40
+                          }
+                        },
+                          isFetchingListings
+                            ? H('span', { className: 'muted' }, 'Loading listings...')
+                            : (!hasNext && items.length
+                                ? H('span', { className: 'muted' }, 'No more results')
+                                : null)
+                        ),
 
-            !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+                        H('div', { ref: sentinelRef, style: { width: '100%', height: 1 } }),
 
-            H(ListingModal, {
-              open: !!selectedListing,
-              item: selectedListing,
-              onClose: () => setSelectedListing(null),
-              cardProps: {
-                user,
-                canEdit: !!mineById[selectedListing?.id],
-                onEdit: (it) => {
-                  if (user?.account_status === 'locked') { showLockedBanner(); return; }
-                  const rich = mineById[it.id] || it;
-                  setEditing(rich);
-                  setShowForm(true);
-                  setSelectedListing(null);
-                },
-                onDelete: async (it) => {
-                  if (confirm('Remove this listing? (Your past messages will remain)')) {
-                    await api.deleteListing(it.id);
-                    setSelectedListing(null);
-                    await refreshListings();
-                  }
-                },
-                onMessage: startMessage,
-                onAdminDelete: handleAdminDelete,
-                showDistance: false,
-                onViewSeller: handleViewSeller,
-                onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined
-              }
-            })
-          ),
+                        !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
 
-          !viewingSeller && (tab==='nearby') &&
-            H(NearbyPanel, {
-              user,
-              mineById,
-              isMobile,
-              onEdit:(it)=>{
-                if(user?.account_status === 'locked'){ showLockedBanner(); return; }
-                const rich = mineById[it.id] || it;
-                setEditing(rich);
-                setShowForm(true);
-              },
-              onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await refreshListings(); } },
-              onMessage: startMessage,
-              onAdminDelete: handleAdminDelete,
-              onViewSeller: handleViewSeller,
-              onToggleSold: toggleSold,
-              setTab
-            }),
+                        H(ListingModal, {
+                          open: !!selectedListing,
+                          item: selectedListing,
+                          onClose: () => setSelectedListing(null),
+                          cardProps: {
+                            user,
+                            canEdit: !!mineById[selectedListing?.id],
+                            onEdit: (it) => {
+                              if (user?.account_status === 'locked') { showLockedBanner(); return; }
+                              const rich = mineById[it.id] || it;
+                              setSelectedListing(null);
+                              openListingEditor({ draft: rich, originTab: 'browse', reopenListingId: rich?.id });
+                            },
+                            onDelete: async (it) => {
+                              if (confirm('Remove this listing? (Your past messages will remain)')) {
+                                await api.deleteListing(it.id);
+                                setSelectedListing(null);
+                                await refreshListings();
+                              }
+                            },
+                            onMessage: startMessage,
+                            onAdminDelete: handleAdminDelete,
+                            showDistance: false,
+                            onViewSeller: handleViewSeller,
+                            onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined
+                          }
+                        })
+                      ),
 
-          !viewingSeller && (tab==='messages') &&
-            (user
-              ? H(MessagesPanel, {
-                  user,
-                  initialActiveId: activeConvoId,
-                  onSeenChange: handleSeen,
-                  onConversationsUpdate: handleConversationsUpdate
-                })
-              : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
-            ),
+                      (tab==='nearby') &&
+                        H(NearbyPanel, {
+                          user,
+                          mineById,
+                          isMobile,
+                          onEdit:(it)=>{
+                            if(user?.account_status === 'locked'){ showLockedBanner(); return; }
+                            const rich = mineById[it.id] || it;
+                            openListingEditor({ draft: rich, originTab: 'nearby', reopenListingId: rich?.id });
+                          },
+                          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await refreshListings(); } },
+                          onMessage: startMessage,
+                          onAdminDelete: handleAdminDelete,
+                          onViewSeller: handleViewSeller,
+                          onToggleSold: toggleSold,
+                          setTab
+                        }),
 
-          !viewingSeller && (tab==='profile') &&
-            H(ProfilePanel, { isMobile,
-              user,
-              items: mine,
-              onEnsureCover: ensureCover,
-              onNewListing: () => {
-                if(!user){ alert('Log in to create a listing.'); return; }
-                if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                setEditing(null);
-                setShowForm(true);
-                setTab('browse');
-              },
-              onEdit:(it)=>{
-                if(user?.account_status === 'locked'){ showLockedBanner(); return; }
-                const rich = mineById[it.id] || it;
-                setEditing(rich);
-                setShowForm(true);
-                setTab('browse');
-              },
-              onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await refreshListings(); } },
-              onLogout: logoutFromProfile,
-              onAdminDelete: handleAdminDelete,
-              autoListEnabled,
-              aiDescriptionEnabled,
-              setAiDescriptionEnabled,
-              autoPostNearbyEnabled,
-              setAutoPostNearbyEnabled,
-              autoInquiryEnabled,
-              setAutoInquiryEnabled,
-              onViewSeller: handleViewSeller,
-              onToggleSold: toggleSold
-            }),
+                      (tab==='messages') &&
+                        (user
+                          ? H(MessagesPanel, {
+                              user,
+                              initialActiveId: activeConvoId,
+                              onSeenChange: handleSeen,
+                              onConversationsUpdate: handleConversationsUpdate
+                            })
+                          : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
+                        ),
 
-          !viewingSeller && (tab==='admin') &&
-            (user?.is_admin
-              ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage, onAdsUpdated: refreshAds })
-              : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
+                      (tab==='profile') &&
+                        H(ProfilePanel, { isMobile,
+                          user,
+                          items: mine,
+                          onEnsureCover: ensureCover,
+                          onNewListing: () => {
+                            if(!user){ alert('Log in to create a listing.'); return; }
+                            if(user.account_status === 'locked'){ showLockedBanner(); return; }
+                            openListingEditor({ draft: null, originTab: 'profile' });
+                          },
+                          onEdit:(it)=>{
+                            if(user?.account_status === 'locked'){ showLockedBanner(); return; }
+                            const rich = mineById[it.id] || it;
+                            openListingEditor({ draft: rich, originTab: 'profile', reopenListingId: rich?.id });
+                          },
+                          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await refreshListings(); } },
+                          onLogout: logoutFromProfile,
+                          onAdminDelete: handleAdminDelete,
+                          autoListEnabled,
+                          aiDescriptionEnabled,
+                          setAiDescriptionEnabled,
+                          autoPostNearbyEnabled,
+                          setAutoPostNearbyEnabled,
+                          autoInquiryEnabled,
+                          setAutoInquiryEnabled,
+                          onViewSeller: handleViewSeller,
+                          onToggleSold: toggleSold
+                        }),
+
+                      (tab==='admin') &&
+                        (user?.is_admin
+                          ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage, onAdsUpdated: refreshAds })
+                          : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
+                    )
+              )
         ),
 
         showMassList && H(MassListModal, {
@@ -741,20 +822,6 @@
           backgroundQueueEnabled,
           enqueueListingJob,
           initialFiles: initialMassListFiles
-        }),
-
-        showForm && H(ListingFormModal, {
-          isOpen: showForm,
-          draft: editing,
-          onClose: () => { setShowForm(false); setEditing(null); setInitialListingFiles([]); },
-          onSaved: async () => { await refreshListings({ preserveExisting: true }); setInitialListingFiles([]); },
-          autoListEnabled,
-          aiDescriptionEnabled,
-          autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-          autoInquiryEnabled,
-          backgroundQueueEnabled,
-          enqueueListingJob,
-          initialFiles: initialListingFiles
         }),
 
         H(AuthModal, {
@@ -788,7 +855,7 @@
           ))
         ),
 
-        isMobile && H('nav', {
+        isMobile && !isEditingScreen && H('nav', {
           className: 'mobile-dashboard',
           role: 'navigation',
           'aria-label': 'Primary'

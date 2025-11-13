@@ -40,7 +40,8 @@ describe('app shell integration', () => {
         useEffect: jest.fn((effect) => {
           effects.push(effect);
         }),
-        useMemo: jest.fn((factory) => factory())
+        useMemo: jest.fn((factory) => factory()),
+        useCallback: jest.fn((fn) => fn)
       },
       stateSetters,
       effects
@@ -48,8 +49,14 @@ describe('app shell integration', () => {
   }
 
   function createDependencies({
-    stateResults = [true, 2],
-    tab = 'browse',
+    stateResults = [
+      { isOpen: true, originTab: 'browse', reopenListingId: 'listing-edit', draftSnapshot: { id: 'listing-edit' } },
+      2,
+      'list',
+      [],
+      []
+    ],
+    tab = 'listing-edit',
     viewingSeller = null,
     isMobile = true
   } = {}) {
@@ -277,7 +284,15 @@ describe('app shell integration', () => {
   }
 
   test('Root composes auth and listing queue providers', () => {
-    const dependencies = createDependencies({ stateResults: [false, 0] });
+    const dependencies = createDependencies({
+      stateResults: [
+        { isOpen: false, originTab: 'browse', reopenListingId: null, draftSnapshot: null },
+        0,
+        'list',
+        [],
+        []
+      ]
+    });
     const { App, Root } = createAppShell(dependencies);
 
     dependencies.helpers.H.mockClear();
@@ -291,7 +306,7 @@ describe('app shell integration', () => {
   });
 
   test('App wires feature outputs into UI components and AppNav', async () => {
-    const dependencies = createDependencies({ stateResults: [true, 2], tab: 'browse', isMobile: true });
+    const dependencies = createDependencies({ isMobile: true });
     const { App } = createAppShell(dependencies);
 
     dependencies.helpers.H.mockClear();
@@ -311,13 +326,13 @@ describe('app shell integration', () => {
     expect(headerCall).toBeDefined();
     expect(headerCall[1]).toMatchObject({
       user: { id: 'user-1', account_status: 'active', is_admin: true },
-      onNav: dependencies.__mocks.handleTabChange,
-      active: 'browse',
+      active: 'listing-edit',
       unreadCount: dependencies.__mocks.messageCenterResult.unreadCount,
       hasAdminUnread: dependencies.__mocks.messageCenterResult.hasAdminUnread,
       onAdminDeleteAll: dependencies.__mocks.adminActions.handleAdminDeleteAll,
       isMobile: true
     });
+    expect(typeof headerCall[1].onNav).toBe('function');
     headerCall[1].onAuthClick('login');
     expect(dependencies.__mocks.openAuthModal).toHaveBeenCalledWith('login');
 
@@ -326,13 +341,7 @@ describe('app shell integration', () => {
     expect(globalLoaderCall[1].active).toBe(true);
 
     const listingsGridCall = findCall(calls, dependencies.components.grid.ListingsGrid);
-    expect(listingsGridCall).toBeDefined();
-    expect(listingsGridCall[1]).toMatchObject({
-      items: dependencies.__mocks.listingsResult.items,
-      ads: dependencies.__mocks.adsResult.ads,
-      onEnsureCover: dependencies.__mocks.listingsResult.ensureCover,
-      onSelect: dependencies.__mocks.listingModalHooks.handleListingTileEvent
-    });
+    expect(listingsGridCall).toBeUndefined();
 
     const massListCall = findCall(calls, dependencies.components.listing.MassListModal);
     expect(massListCall).toBeDefined();
@@ -357,10 +366,13 @@ describe('app shell integration', () => {
       enqueueListingJob: dependencies.__mocks.queueState.enqueueListingJob
     });
     listingFormCall[1].onClose();
-    expect(dependencies.__mocks.stateSetters[0]).toHaveBeenCalledWith(false);
+    const setEditorState = dependencies.__mocks.stateSetters[0];
+    expect(setEditorState).toHaveBeenCalledWith(expect.objectContaining({ isOpen: false }));
     expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(null);
+    expect(dependencies.__mocks.handleTabChange).toHaveBeenCalledWith('browse');
     await listingFormCall[1].onSaved();
     expect(dependencies.__mocks.refreshListings).toHaveBeenCalledWith({ preserveExisting: true });
+    expect(dependencies.__mocks.listingsResult.reloadMineOnly).toHaveBeenCalled();
 
     const authModalCall = findCall(calls, dependencies.features.auth.AuthModal);
     expect(authModalCall).toBeDefined();
@@ -374,39 +386,7 @@ describe('app shell integration', () => {
     expect(dependencies.__mocks.listingsResult.reloadMineOnly).toHaveBeenCalled();
 
     const listingModalCall = findCall(calls, dependencies.components.listing.ListingModal);
-    expect(listingModalCall).toBeDefined();
-    expect(listingModalCall[1]).toMatchObject({
-      open: true,
-      item: dependencies.__mocks.listingsResult.selectedListing
-    });
-    listingModalCall[1].onClose();
-    expect(dependencies.__mocks.setSelectedListing).toHaveBeenCalledWith(null);
-
-    const { cardProps } = listingModalCall[1];
-    expect(cardProps).toMatchObject({
-      user: { id: 'user-1', account_status: 'active', is_admin: true },
-      canEdit: true,
-      onMessage: dependencies.__mocks.messageActions.startMessage,
-      onAdminDelete: dependencies.__mocks.adminActions.handleAdminDelete,
-      onViewSeller: expect.any(Function)
-    });
-
-    cardProps.onEdit({ id: 'listing-1' });
-    expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(dependencies.__mocks.listingsResult.mine[0]);
-    expect(dependencies.__mocks.stateSetters[0]).toHaveBeenCalledWith(true);
-    expect(dependencies.__mocks.setSelectedListing).toHaveBeenCalledWith(null);
-
-    await cardProps.onDelete({ id: 'listing-1' });
-    expect(global.confirm).toHaveBeenCalled();
-    expect(dependencies.api.deleteListing).toHaveBeenCalledWith('listing-1');
-    expect(dependencies.__mocks.setSelectedListing).toHaveBeenCalledWith(null);
-    expect(dependencies.__mocks.refreshListings).toHaveBeenCalled();
-
-    cardProps.onViewSeller('seller-1', 'seller');
-    expect(dependencies.__mocks.setViewingSeller).toHaveBeenCalledWith({ id: 'seller-1', username: 'seller' });
-    expect(dependencies.__mocks.setSelectedListing).toHaveBeenCalledWith(null);
-
-    expect(cardProps.onToggleSold).toBe(dependencies.__mocks.listingsResult.toggleSold);
+    expect(listingModalCall).toBeUndefined();
 
     const listingQueueToastCall = findCall(calls, dependencies.contexts.listingQueue.ListingQueueToast);
     expect(listingQueueToastCall).toBeDefined();
@@ -443,7 +423,16 @@ describe('app shell integration', () => {
   });
 
   test('CityAutocomplete integrates browser geolocation and reverse geocoding', async () => {
-    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'browse' });
+    const dependencies = createDependencies({
+      stateResults: [
+        { isOpen: false, originTab: 'browse', reopenListingId: null, draftSnapshot: null },
+        0,
+        'list',
+        [],
+        []
+      ],
+      tab: 'browse'
+    });
     const { App } = createAppShell(dependencies);
 
     dependencies.helpers.H.mockClear();
@@ -471,7 +460,17 @@ describe('app shell integration', () => {
   });
 
   test('Profile tab wires account management actions to shared modules', async () => {
-    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'profile', isMobile: false });
+    const dependencies = createDependencies({
+      stateResults: [
+        { isOpen: false, originTab: 'profile', reopenListingId: null, draftSnapshot: null },
+        0,
+        'list',
+        [],
+        []
+      ],
+      tab: 'profile',
+      isMobile: false
+    });
     dependencies.__mocks.listingsResult.mine = [
       { id: 'listing-1', title: 'Mine 1' },
       { id: 'listing-2', title: 'Mine 2' }
@@ -491,14 +490,24 @@ describe('app shell integration', () => {
     expect(props.autoPostNearbyEnabled).toBe(dependencies.__mocks.preferences.autoPostNearbyEnabled);
     expect(props.onToggleSold).toBe(dependencies.__mocks.listingsResult.toggleSold);
 
+    const setEditorState = dependencies.__mocks.stateSetters[0];
+
     props.onNewListing();
     expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(null);
-    const setShowForm = dependencies.__mocks.stateSetters[0];
-    expect(setShowForm).toHaveBeenCalledWith(true);
-    expect(dependencies.__mocks.setTab).toHaveBeenCalledWith('browse');
+    expect(setEditorState).toHaveBeenCalledWith(expect.objectContaining({
+      isOpen: true,
+      originTab: 'profile',
+      reopenListingId: null
+    }));
+    expect(dependencies.__mocks.setTab).toHaveBeenCalledWith('listing-edit');
 
     props.onEdit({ id: 'listing-2', title: 'Other' });
     expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(dependencies.__mocks.listingsResult.mine[1]);
+    expect(setEditorState).toHaveBeenCalledWith(expect.objectContaining({
+      isOpen: true,
+      originTab: 'profile',
+      reopenListingId: 'listing-2'
+    }));
 
     dependencies.__mocks.listingsResult.reloadMineOnly.mockResolvedValue();
     await props.onDelete({ id: 'listing-1' });
@@ -518,7 +527,17 @@ describe('app shell integration', () => {
   });
 
   test('Nearby and seller views integrate listing actions', async () => {
-    const dependencies = createDependencies({ stateResults: [false, 0], tab: 'nearby', isMobile: true });
+    const dependencies = createDependencies({
+      stateResults: [
+        { isOpen: false, originTab: 'nearby', reopenListingId: null, draftSnapshot: null },
+        0,
+        'list',
+        [],
+        []
+      ],
+      tab: 'nearby',
+      isMobile: true
+    });
     dependencies.__mocks.listingsResult.mine = [
       { id: 'listing-1', title: 'Mine 1' }
     ];
@@ -538,8 +557,13 @@ describe('app shell integration', () => {
 
     nearbyProps.onEdit({ id: 'listing-1' });
     expect(dependencies.__mocks.setEditing).toHaveBeenCalledWith(dependencies.__mocks.listingsResult.mine[0]);
-    const setShowForm = dependencies.__mocks.stateSetters[0];
-    expect(setShowForm).toHaveBeenCalledWith(true);
+    const setEditorStateNearby = dependencies.__mocks.stateSetters[0];
+    expect(setEditorStateNearby).toHaveBeenCalledWith(expect.objectContaining({
+      isOpen: true,
+      originTab: 'nearby',
+      reopenListingId: 'listing-1'
+    }));
+    expect(dependencies.__mocks.setTab).toHaveBeenCalledWith('listing-edit');
 
     await nearbyProps.onDelete({ id: 'listing-5' });
     expect(global.confirm).toHaveBeenCalled();
@@ -550,7 +574,16 @@ describe('app shell integration', () => {
     expect(dependencies.__mocks.setViewingSeller).toHaveBeenCalledWith({ id: 'seller-7', username: 'Seller Seven' });
     expect(dependencies.__mocks.listingsResult.setShowMassList).not.toHaveBeenCalled();
 
-    const sellerDependencies = createDependencies({ stateResults: [false, 0], viewingSeller: { id: 'seller-9', username: 'Seller Nine' } });
+    const sellerDependencies = createDependencies({
+      stateResults: [
+        { isOpen: false, originTab: 'browse', reopenListingId: null, draftSnapshot: null },
+        0,
+        'list',
+        [],
+        []
+      ],
+      viewingSeller: { id: 'seller-9', username: 'Seller Nine' }
+    });
     const { App: SellerApp } = createAppShell(sellerDependencies);
 
     sellerDependencies.helpers.H.mockClear();

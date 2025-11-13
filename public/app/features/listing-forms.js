@@ -202,96 +202,61 @@
       const isMobile = isMobileDevice();
       const [showTags, setShowTags] = useState(false);
 
-      const modal = H('div', {
-        className: 'modal open',
-        onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); }
+      useEffect(() => {
+        if (!isOpen) return;
+        setShowTags(false);
+      }, [isOpen, draft?.id]);
+
+      const heading = draft ? 'Edit Listing' : 'New Listing';
+
+      const form = isMobile
+        ? H(CompactListingForm, {
+          draft,
+          onCancel: onClose,
+          onSaved: () => { onSaved?.(); onClose(); },
+          autoListEnabled,
+          aiDescriptionEnabled,
+          autoPostNearbyEnabled,
+          autoInquiryEnabled,
+          backgroundQueueEnabled,
+          enqueueListingJob,
+          showTags,
+          setShowTags,
+          initialFiles
+        })
+        : H(ListingForm, {
+          draft,
+          onCancel: onClose,
+          onSaved: () => { onSaved?.(); onClose(); },
+          autoListEnabled,
+          aiDescriptionEnabled,
+          autoPostNearbyEnabled,
+          autoInquiryEnabled,
+          backgroundQueueEnabled,
+          enqueueListingJob,
+          initialFiles
+        });
+
+      return H('section', {
+        className: 'listing-form-screen',
+        role: 'region',
+        'aria-label': heading
       },
-        H('div', {
-          className: 'modal-inner',
-          style: isMobile ? {
-            width: '90vw',
-            maxWidth: '380px',
-            maxHeight: '80vh',
-            background: '#fff',
-            borderRadius: 16,
-            overflow: 'auto',
-            margin: 'auto',
-            position: 'relative'
-          } : {
-            width: 'min(680px, 92vw)',
-            background: '#fff',
-            borderRadius: 24,
-            overflow: 'auto',
-            maxHeight: '90vh',
-            marginTop: '5vh',
-            marginBottom: '5vh'
-          }
+        H('header', {
+          className: 'listing-form-screen__header'
         },
           H('button', {
-            className: 'close',
-            onClick: onClose,
-            style: isMobile ? {
-              position: 'absolute',
-              top: '6px',
-              right: '6px',
-              zIndex: 10,
-              width: '26px',
-              height: '26px',
-              padding: '0',
-              fontSize: '16px',
-              lineHeight: '24px',
-              display: 'grid',
-              placeItems: 'center',
-              background: 'rgba(255,255,255,0.9)',
-              borderRadius: '13px'
-            } : {}
-          }, 'x'),
-
-          H('div', { style: { padding: isMobile ? '10px' : '16px' } },
-            H('div', {
-              style: {
-                fontWeight: 800,
-                fontSize: isMobile ? 15 : 18,
-                marginBottom: isMobile ? 6 : 12
-              }
-            },
-              draft ? 'Edit Listing' : 'New Listing'
-            ),
-
-            !isMobile && H('div', { className: 'muted', style: { marginBottom: 12 } },
-              'Add photos and details for your listing. Only images are required - AI can suggest the rest.'
-            ),
-
-            isMobile ? H(CompactListingForm, {
-              draft,
-              onCancel: onClose,
-              onSaved: () => { onSaved?.(); onClose(); },
-              autoListEnabled,
-              aiDescriptionEnabled,
-              autoPostNearbyEnabled,
-              autoInquiryEnabled,
-              backgroundQueueEnabled,
-              enqueueListingJob,
-              showTags,
-              setShowTags,
-              initialFiles
-            }) : H(ListingForm, {
-              draft,
-              onCancel: onClose,
-              onSaved: () => { onSaved?.(); onClose(); },
-              autoListEnabled,
-              aiDescriptionEnabled,
-              autoPostNearbyEnabled,
-              autoInquiryEnabled,
-              backgroundQueueEnabled,
-              enqueueListingJob,
-              initialFiles
-            })
-          )
+            type: 'button',
+            className: 'btn listing-form-screen__dismiss',
+            onClick: onClose
+          }, 'Cancel'),
+          H('h1', { className: 'listing-form-screen__title' }, heading),
+          H('div', { className: 'listing-form-screen__spacer', 'aria-hidden': 'true' })
+        ),
+        H('div', { className: 'listing-form-screen__body' },
+          H('div', { className: 'listing-form-screen__content' }, form)
         )
       );
-
-      return ReactDOM.createPortal(modal, document.body);
     }
 
     function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags, initialFiles = [] }) {
