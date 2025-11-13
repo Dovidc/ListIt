@@ -85,6 +85,18 @@
       useState
     } = React;
 
+    const TOUCH_CONTROL_FONT_SIZE = 16;
+    const TOUCH_CONTROL_LINE_HEIGHT = '24px';
+    const TOUCH_CONTROL_STYLE = Object.freeze({
+      fontSize: `${TOUCH_CONTROL_FONT_SIZE}px`,
+      lineHeight: TOUCH_CONTROL_LINE_HEIGHT,
+      padding: '10px'
+    });
+    const TOUCH_BUTTON_STYLE = Object.freeze({
+      fontSize: `${TOUCH_CONTROL_FONT_SIZE}px`,
+      padding: '10px'
+    });
+
     function SmartImage({
       src,
       alt = '',
@@ -692,13 +704,13 @@
             accept: 'image/*',
             multiple: true,
             onChange: pickFiles,
-            style: { flex: 1, fontSize: '13px' }
+            style: { ...TOUCH_CONTROL_STYLE, flex: 1 }
           }),
           H('button', {
             className: 'btn',
             type: 'button',
             onClick: () => fileRef.current?.click(),
-            style: { fontSize: '13px' }
+            style: TOUCH_BUTTON_STYLE
           }, 'Pick images')
         ),
 
@@ -748,7 +760,7 @@
           className: `btn ${aiBusy ? '' : 'primary'}`,
           disabled: aiBusy,
           onClick: runAI,
-          style: { width: '100%', padding: '8px', fontSize: '13px' }
+          style: { ...TOUCH_BUTTON_STYLE, width: '100%' }
         }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
 
         aiErr && H('span', { className: 'muted', style: { color: '#b91c1c', fontSize: 11 } }, aiErr),
@@ -758,7 +770,7 @@
           maxLength: 80,
           onChange: e => setTitle(e.target.value),
           placeholder: 'Title (optional)',
-          style: { fontSize: '13px', padding: '7px' }
+          style: TOUCH_CONTROL_STYLE
         }),
 
         H('textarea', {
@@ -767,7 +779,7 @@
           rows: 2,
           onChange: e => setDescription(e.target.value),
           placeholder: 'Description (optional)',
-          style: { fontSize: '13px', padding: '7px', resize: 'none' }
+          style: { ...TOUCH_CONTROL_STYLE, lineHeight: '1.5', resize: 'none' }
         }),
 
         H('input', {
@@ -775,7 +787,7 @@
           maxLength: 80,
           onChange: e => setLocation(e.target.value),
           placeholder: 'Location (required)',
-          style: { fontSize: '13px', padding: '7px' }
+          style: TOUCH_CONTROL_STYLE
         }),
 
         H('button', {
@@ -783,7 +795,7 @@
           className: 'btn',
           onClick: useMyLocation,
           disabled: geoBusy,
-          style: { width: '100%', padding: '7px', fontSize: '13px' }
+          style: { ...TOUCH_BUTTON_STYLE, width: '100%' }
         },
           geoBusy ? 'Locating...' : 'Use my location'
         ),
@@ -817,7 +829,7 @@
               inputMode: 'decimal',
               onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
               placeholder: 'Price (empty = $0.00)',
-              style: { fontSize: '13px', padding: '7px', flex: 1 }
+              style: { ...TOUCH_CONTROL_STYLE, flex: 1 }
             }),
             showInquiryText
               ? H('span', { className: 'inquiry-badge', style: { fontSize: 11, padding: '3px 8px' } }, 'Seller wants an offer')
@@ -874,7 +886,7 @@
           placeholder: 'e.g. car, suv, 4x4',
           value: tags,
           onChange: e => setTags(e.target.value),
-          style: { fontSize: '13px', padding: '7px' }
+          style: TOUCH_CONTROL_STYLE
         }),
 
         H('div', { className: 'row', style: { gap: 6, marginTop: 6 } },
@@ -882,7 +894,7 @@
             className: 'btn primary',
             type: 'submit',
             disabled: autoBusy,
-            style: { flex: 1, padding: '9px', fontSize: '13px', fontWeight: 600 }
+            style: { ...TOUCH_BUTTON_STYLE, flex: 1, fontWeight: 600 }
           },
             draft ? 'Save' : 'Create'
           ),
@@ -891,7 +903,7 @@
             type: 'button',
             onClick: onCancel,
             disabled: autoBusy,
-            style: { flex: 1, padding: '9px', fontSize: '13px' }
+            style: { ...TOUCH_BUTTON_STYLE, flex: 1 }
           },
             'Cancel'
           )
