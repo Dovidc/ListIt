@@ -159,6 +159,48 @@
          Put AFTER the base <style> so it can override where needed. -->
     <link rel="stylesheet" href="/app.css?v=profile-picture-feature-1" />
 
+    <script>
+      (function () {
+        const viewport = document.querySelector('meta[name="viewport"]');
+        if (!viewport) return;
+
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+
+        if (!isIOS && !isCoarsePointer) return;
+
+        const baseContent = 'width=device-width, initial-scale=1, viewport-fit=cover';
+        const lockedContent = `${baseContent}, maximum-scale=1`;
+
+        const applyLockedViewport = () => viewport.setAttribute('content', lockedContent);
+        const restoreViewport = () => viewport.setAttribute('content', baseContent);
+
+        const shouldLock = (element) =>
+          element instanceof HTMLElement && element.matches('input, textarea, select');
+
+        window.addEventListener(
+          'focusin',
+          (event) => {
+            if (!shouldLock(event.target)) return;
+            applyLockedViewport();
+          },
+          { passive: true }
+        );
+
+        window.addEventListener(
+          'focusout',
+          (event) => {
+            if (!shouldLock(event.target)) return;
+            restoreViewport();
+          },
+          { passive: true }
+        );
+
+        document.addEventListener('gesturestart', restoreViewport, { passive: true });
+      })();
+    </script>
+
     <!-- Mobile-only overrides (kept after app.css) -->
     <link rel="stylesheet" href="/mobile.css?v=nearby-dropdown-1" media="screen and (max-width: 720px)" />
   </head>
