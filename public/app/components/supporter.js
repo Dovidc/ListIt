@@ -240,12 +240,11 @@
       mode = 'prompt',
       amount,
       currency,
-      premiumAmount
+      premiumAmount,
+      selectedTier = 'basic',
+      onTierChange
     }) {
-      const [selectedTier, setSelectedTier] = useState('basic');
       useModalLifecycle(open, onClose);
-
-      if (!open) return null;
 
       const donationText = formatDonation(Number(amount), currency);
       const premiumText = formatDonation(Number(premiumAmount || 199), currency);
@@ -256,6 +255,14 @@
       };
 
       const isPrompt = mode !== 'success';
+
+      if (!open) return null;
+
+      const handleTierClick = (tier) => {
+        if (onTierChange) {
+          onTierChange(tier);
+        }
+      };
 
       return ReactDOM.createPortal(
         H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
@@ -296,14 +303,14 @@
                         cursor: 'pointer',
                         transition: 'all 0.2s'
                       },
-                      onClick: () => setSelectedTier('basic')
+                      onClick: () => handleTierClick('basic')
                     },
                       H('input', {
                         type: 'radio',
                         name: 'tier',
                         value: 'basic',
                         checked: selectedTier === 'basic',
-                        onChange: () => setSelectedTier('basic'),
+                        onChange: () => handleTierClick('basic'),
                         style: { width: 20, height: 20, cursor: 'pointer' }
                       }),
                       H('div', { style: { flex: 1 } },
@@ -324,14 +331,14 @@
                         cursor: 'pointer',
                         transition: 'all 0.2s'
                       },
-                      onClick: () => setSelectedTier('premium')
+                      onClick: () => handleTierClick('premium')
                     },
                       H('input', {
                         type: 'radio',
                         name: 'tier',
                         value: 'premium',
                         checked: selectedTier === 'premium',
-                        onChange: () => setSelectedTier('premium'),
+                        onChange: () => handleTierClick('premium'),
                         style: { width: 20, height: 20, cursor: 'pointer' }
                       }),
                       H('div', { style: { flex: 1 } },

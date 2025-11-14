@@ -172,10 +172,10 @@
       body: JSON.stringify({ profile_picture_url: profilePictureUrl })  
     }, meta);  
     
-    const startSupporterCheckout = (meta) => request('/api/supporters/checkout', {  
+    const startSupporterCheckout = (tier = 'basic', meta) => request('/api/supporters/checkout', {  
       method: 'POST',  
       headers: { 'Content-Type': 'application/json' },  
-      body: JSON.stringify({})  
+      body: JSON.stringify({ tier })  
     }, meta);  
     
     const confirmSupporterCheckout = (sessionId, meta) => request('/api/supporters/confirm', {  

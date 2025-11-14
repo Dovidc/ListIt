@@ -206,7 +206,8 @@
         busy: false,
         error: '',
         amount: SUPPORTER_DEFAULT_AMOUNT,
-        currency: SUPPORTER_DEFAULT_CURRENCY
+        currency: SUPPORTER_DEFAULT_CURRENCY,
+        selectedTier: 'basic'
       });
       const supporterQueryHandledRef = useRef(false);
 
@@ -228,7 +229,8 @@
           busy: false,
           error: '',
           amount: prev.amount ?? SUPPORTER_DEFAULT_AMOUNT,
-          currency: prev.currency || SUPPORTER_DEFAULT_CURRENCY
+          currency: prev.currency || SUPPORTER_DEFAULT_CURRENCY,
+          selectedTier: 'basic'
         }));
         setSupporterPromptSeen();
       }, [setSupporterPromptSeen]);
@@ -237,6 +239,10 @@
         setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false }));
         setSupporterPromptSeen();
       }, [setSupporterPromptSeen]);
+
+      const handleTierChange = useCallback((tier) => {
+        setSupporterUpsellState((prev) => ({ ...prev, selectedTier: tier }));
+      }, []);
 
       const handleSupporterBadgeClick = useCallback((payload = {}) => {
         const usernameRaw = typeof payload?.username === 'string' ? payload.username.trim() : '';
@@ -750,7 +756,9 @@
           error: supporterUpsellState.error,
           amount: supporterUpsellState.amount,
           currency: supporterUpsellState.currency,
-          premiumAmount: SUPPORTER_PREMIUM_AMOUNT
+          premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
+          selectedTier: supporterUpsellState.selectedTier,
+          onTierChange: handleTierChange
         }),
 
         H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
