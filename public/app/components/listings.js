@@ -296,12 +296,12 @@
     function InquiryHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
-        title: 'Inquiry mode',
-        intro: 'When inquiry is enabled it will:',
+        title: 'Offer Message',
+        intro: 'When Offer is enabled it will:',
         bullets: [
-          'Replace the price field with a message inviting buyers to make an offer.'
+          'Overlay the listing image with a message inviting buyers to make an offer.'
         ],
-        footer: 'Turn inquiry mode off to show the AI suggested price again.'
+        footer: 'Disable Offer Message to allow only the price.'
       });
     }
 
