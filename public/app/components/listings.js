@@ -1688,7 +1688,17 @@
                 borderRadius: 999
               }
             }, 'Sold')
-          ) : null
+          ) : null,
+          wantsOffer ? H('span', {
+            className: 'inquiry-badge',
+            style: {
+              position: 'absolute',
+              bottom: 8,
+              right: 8,
+              fontSize: 11,
+              pointerEvents: 'none'
+            }
+          }, 'Seller wants an offer') : null
         ),
         H('div', { style: { padding: 16 } },
           H('div', {
@@ -1703,12 +1713,10 @@
               style: {
                 fontWeight: 800,
                 textAlign: 'right',
-                color: wantsOffer ? '#9f1239' : (isFree ? '#16a34a' : '#111'),
+                color: isFree ? '#16a34a' : '#111',
                 flexShrink: 0
               }
-            }, wantsOffer
-              ? H('span', { className: 'inquiry-badge', style: { fontSize: 16 } }, 'Seller wants an offer')
-              : price(item.price))
+            }, price(item.price))
           ),
 
           H('div', { className: 'muted' }, item.location || 'No location'),
