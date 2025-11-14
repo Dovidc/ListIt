@@ -3783,7 +3783,7 @@ app.get('/api/listings/:id/potential-buyers', auth, async (req, res) => {
         SELECT created_at
         FROM messages
         WHERE conversation_id = ?
-          AND user_id = ?
+          AND sender_id = ?
         ORDER BY created_at DESC
         LIMIT 1
       `).get(conv.conversation_id, buyerId);
