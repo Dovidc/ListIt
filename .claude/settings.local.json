@@ -5,7 +5,8 @@
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
       "Bash(sqlite3:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

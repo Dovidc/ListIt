@@ -241,7 +241,11 @@
       }, [setSupporterPromptSeen]);
 
       const handleTierChange = useCallback((tier) => {
-        setSupporterUpsellState((prev) => ({ ...prev, selectedTier: tier }));
+        console.log('handleTierChange called with:', tier);
+        setSupporterUpsellState((prev) => {
+          console.log('Previous state:', prev.selectedTier, '→ New state:', tier);
+          return { ...prev, selectedTier: tier };
+        });
       }, []);
 
       const handleSupporterBadgeClick = useCallback((payload = {}) => {
