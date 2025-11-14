@@ -290,7 +290,10 @@
                   H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
                     'Choose your supporter tier:'
                   ),
-                  H('div', { className: 'tier-selection', style: { display: 'grid', gap: 12 } },
+                  H('div', {
+                    className: 'tier-selection',
+                    style: { display: 'grid', gap: 12, position: 'relative', zIndex: 1 }
+                  },
                     H('label', {
                       className: `tier-option ${selectedTier === 'basic' ? 'tier-option--selected' : ''}`,
                       style: {
