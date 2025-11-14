@@ -980,6 +980,7 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN subscription_status TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN subscription_current_period_end TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN karma INTEGER DEFAULT 0"); } catch {}
 
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
@@ -1340,7 +1341,22 @@ async function initializeSchema() {
     try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN updated_at TEXT'); } catch {}
     try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN created_at TEXT'); } catch {}
 
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS karma_transactions (
+        id ${PRIMARY_KEY},
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        seller_points INTEGER NOT NULL,
+        buyer_points INTEGER NOT NULL,
+        awarded BOOLEAN DEFAULT FALSE,
+        created_at TEXT NOT NULL
+      );
+    `);
 
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_listing ON karma_transactions(listing_id);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_seller ON karma_transactions(seller_id);');
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_buyer ON karma_transactions(buyer_id);');
 
     await db.exec(`
 
@@ -2930,6 +2946,8 @@ function mapUserRow(row, extra = {}) {
 
     stripe_customer_id: row.stripe_customer_id || null,
 
+    karma: row.karma || 0,
+
     ...extra
 
   };
@@ -3709,6 +3727,148 @@ async function handleInvoicePaymentFailed(invoice) {
   }
 }
 
+// Get potential buyers for a listing (users who messaged about it)
+app.get('/api/listings/:id/potential-buyers', auth, async (req, res) => {
+  try {
+    const listingId = Number(req.params.id);
+
+    // Verify user owns this listing
+    const listing = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(listingId);
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    if (listing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not your listing' });
+    }
+
+    // Get all conversations for this listing
+    const conversations = await db.prepare(`
+      SELECT DISTINCT c.id as conversation_id, c.a_user_id, c.b_user_id
+      FROM conversations c
+      WHERE c.listing_id = ?
+        AND (c.a_user_id = ? OR c.b_user_id = ?)
+    `).all(listingId, req.user.id, req.user.id);
+
+    if (!conversations || conversations.length === 0) {
+      return res.json({ buyers: [] });
+    }
+
+    // Get the other user (buyer) from each conversation and their last message time
+    const buyerPromises = conversations.map(async (conv) => {
+      const buyerId = conv.a_user_id === req.user.id ? conv.b_user_id : conv.a_user_id;
+
+      // Get buyer info
+      const buyer = await db.prepare(`
+        SELECT id, username, profile_picture_url, supporter_badge
+        FROM users
+        WHERE id = ?
+      `).get(buyerId);
+
+      if (!buyer) return null;
+
+      // Get last message from this buyer in this conversation
+      const lastMessage = await db.prepare(`
+        SELECT created_at
+        FROM messages
+        WHERE conversation_id = ?
+          AND user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(conv.conversation_id, buyerId);
+
+      return {
+        id: buyer.id,
+        username: buyer.username,
+        profile_picture_url: buyer.profile_picture_url,
+        supporter_badge: buyer.supporter_badge,
+        last_message_at: lastMessage?.created_at || null
+      };
+    });
+
+    let buyers = await Promise.all(buyerPromises);
+    buyers = buyers.filter(b => b !== null);
+
+    // Sort by most recent message first
+    buyers.sort((a, b) => {
+      if (!a.last_message_at) return 1;
+      if (!b.last_message_at) return -1;
+      return b.last_message_at.localeCompare(a.last_message_at);
+    });
+
+    res.json({ buyers });
+  } catch (err) {
+    console.error('Get potential buyers error:', err);
+    res.status(500).json({ error: 'Failed to get potential buyers' });
+  }
+});
+
+// Award karma for a transaction
+app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
+  try {
+    const listingId = Number(req.params.id);
+    const buyerId = Number(req.body.buyer_id);
+
+    if (!buyerId) {
+      return res.status(400).json({ error: 'buyer_id required' });
+    }
+
+    // Verify user owns this listing
+    const listing = await db.prepare('SELECT user_id, sold FROM listings WHERE id = ?').get(listingId);
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    if (listing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not your listing' });
+    }
+
+    // Check if karma already awarded for this listing
+    const existing = await db.prepare('SELECT id FROM karma_transactions WHERE listing_id = ?').get(listingId);
+    if (existing) {
+      return res.status(400).json({ error: 'Karma already awarded for this listing' });
+    }
+
+    // Get buyer info
+    const buyer = await db.prepare('SELECT id, supporter_tier FROM users WHERE id = ?').get(buyerId);
+    if (!buyer) {
+      return res.status(404).json({ error: 'Buyer not found' });
+    }
+
+    // Check if both users are premium subscribers
+    const sellerIsPremium = req.user.supporter_tier === 'premium';
+    const buyerIsPremium = buyer.supporter_tier === 'premium';
+    const shouldAward = sellerIsPremium && buyerIsPremium;
+
+    const sellerPoints = 1;
+    const buyerPoints = 2;
+
+    // Create karma transaction record
+    await db.prepare(`
+      INSERT INTO karma_transactions (listing_id, seller_id, buyer_id, seller_points, buyer_points, awarded, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(listingId, req.user.id, buyerId, sellerPoints, buyerPoints, shouldAward ? 1 : 0, nowIso());
+
+    // If both are premium, award karma
+    if (shouldAward) {
+      await db.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(sellerPoints, req.user.id);
+      await db.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(buyerPoints, buyerId);
+    }
+
+    // Get updated user
+    const refreshed = await getUserWithStatus(req.user.id);
+    const user = mapUserRow(refreshed);
+
+    res.json({
+      success: true,
+      awarded: shouldAward,
+      user,
+      message: shouldAward ? 'Karma awarded!' : 'Transaction recorded (one or both users not premium)'
+    });
+  } catch (err) {
+    console.error('Award karma error:', err);
+    res.status(500).json({ error: 'Failed to award karma' });
+  }
+});
+
 /* ------------------------------------------------------------------ */
 
 /* Supporter Routes                                                   */
@@ -3938,6 +4098,52 @@ app.post('/api/supporters/confirm', auth, async (req, res) => {
     console.error('Supporter confirm failed:', err);
 
     return res.status(500).json({ error: 'confirmation_failed' });
+
+  }
+
+});
+
+app.post('/api/supporters/cancel', auth, async (req, res) => {
+
+  if (!stripe) {
+
+    return res.status(503).json({ error: 'stripe_unavailable' });
+
+  }
+
+  try {
+
+    const subscriptionId = req.user.stripe_subscription_id;
+
+    if (!subscriptionId) {
+
+      return res.status(400).json({ error: 'no_active_subscription' });
+
+    }
+
+    // Cancel the subscription at period end (user keeps benefits until then)
+    await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true
+    });
+
+    // Update user record to reflect cancellation status
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'canceling'
+      WHERE id = ?
+    `).run(req.user.id);
+
+    const refreshed = await getUserWithStatus(req.user.id);
+
+    const user = mapUserRow(refreshed);
+
+    return res.json({ success: true, user });
+
+  } catch (err) {
+
+    console.error('Cancel subscription failed:', err);
+
+    return res.status(500).json({ error: 'cancellation_failed' });
 
   }
 

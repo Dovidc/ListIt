@@ -182,6 +182,11 @@ function createApiClient(options = {}) {
     body: JSON.stringify({ session_id: sessionId })
   }, meta);
 
+  const cancelSubscription = (meta) => request('/api/supporters/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }, meta);
+
   const deleteAccount = (confirmation, meta) => request('/api/me', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -428,6 +433,7 @@ function createApiClient(options = {}) {
     updateProfilePicture,
     startSupporterCheckout,
     confirmSupporterCheckout,
+    cancelSubscription,
     deleteAccount,
     listAll,
     listListings,

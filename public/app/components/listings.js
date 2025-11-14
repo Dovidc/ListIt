@@ -2041,7 +2041,24 @@
                   since: sellerSupporter.since,
                   badge: sellerSupporter.badge,
                   onClick: () => onSupporterClick?.(sellerSupporter)
-                })
+                }),
+                sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 10px',
+                    background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#374151',
+                    border: '1px solid #d1d5db'
+                  }
+                },
+                  H('span', { style: { fontSize: 14 } }, '⭐'),
+                  H('span', null, `${sellerInfo.karma} Karma`)
+                )
               ),
               H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`),
               sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`)

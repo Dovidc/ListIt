@@ -141,10 +141,13 @@
         } : undefined
       };
 
-      const icon = isPremium ? badgeIcons.platinum() : badgeIcons.sparkles();
-
       return H(Component, sharedProps,
-        icon,
+        H('span', { className: 'supporter-badge__glimmer-3' }),
+        H('span', { className: 'supporter-badge__glimmer-6' }),
+        H('span', { className: 'supporter-badge__glimmer-7' }),
+        H('span', { className: 'supporter-badge__glimmer-8' }),
+        isPremium && H('span', { className: 'supporter-badge__glimmer-4' }),
+        isPremium && H('span', { className: 'supporter-badge__glimmer-5' }),
         H('span', { className: 'supporter-badge__label' }, badgeLabel)
       );
     }
@@ -241,7 +244,7 @@
       amount,
       currency,
       premiumAmount,
-      selectedTier = 'basic',
+      selectedTier = 'premium',
       onTierChange
     }) {
       useModalLifecycle(open, onClose);
@@ -280,90 +283,56 @@
               disabled: busy
             }, '×'),
             H('div', { className: 'supporter-modal__badge' },
-              H(SupporterBadge, { size: 'lg', tier: selectedTier })
+              H(SupporterBadge, { size: 'lg', tier: 'premium' })
             ),
             H('h2', { className: 'supporter-modal__title' },
-              isPrompt ? 'Keep Trovelr independent' : 'You are a Trovelr Supporter!'
+              isPrompt ? 'Become a Premium Supporter' : 'You are a Premium Supporter!'
             ),
             isPrompt
               ? H('div', { style: { display: 'grid', gap: 16 } },
                   H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
-                    'Choose your supporter tier:'
+                    'Support Trovelr with a monthly subscription and get exclusive benefits:'
                   ),
                   H('div', {
                     className: 'tier-selection',
                     style: { display: 'grid', gap: 12, position: 'relative', zIndex: 1 }
                   },
-                    H('label', {
-                      className: `tier-option ${selectedTier === 'basic' ? 'tier-option--selected' : ''}`,
+                    H('div', {
+                      className: 'tier-option tier-option--selected',
                       style: {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 12,
-                        padding: 16,
+                        padding: 20,
                         border: '2px solid',
-                        borderColor: selectedTier === 'basic' ? '#f59e0b' : '#e5e7eb',
+                        borderColor: '#a0a0a0',
                         borderRadius: 12,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      },
-                      onClick: () => handleTierClick('basic')
+                        background: 'linear-gradient(135deg, #f5f5f5, #e8e8e8)',
+                        boxShadow: '0 4px 12px rgba(160, 160, 160, 0.2)'
+                      }
                     },
-                      H('input', {
-                        type: 'radio',
-                        name: 'tier',
-                        value: 'basic',
-                        checked: selectedTier === 'basic',
-                        onChange: () => handleTierClick('basic'),
-                        style: { width: 20, height: 20, cursor: 'pointer' }
-                      }),
                       H('div', { style: { flex: 1 } },
-                        H('div', { style: { fontWeight: 700, fontSize: 16 } }, `${donationText} once`),
-                        H('div', { className: 'muted', style: { fontSize: 14 } }, 'Golden supporter badge')
-                      )
-                    ),
-                    H('label', {
-                      className: `tier-option ${selectedTier === 'premium' ? 'tier-option--selected' : ''}`,
-                      style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 16,
-                        border: '2px solid',
-                        borderColor: selectedTier === 'premium' ? '#8b5cf6' : '#e5e7eb',
-                        borderRadius: 12,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      },
-                      onClick: () => handleTierClick('premium')
-                    },
-                      H('input', {
-                        type: 'radio',
-                        name: 'tier',
-                        value: 'premium',
-                        checked: selectedTier === 'premium',
-                        onChange: () => handleTierClick('premium'),
-                        style: { width: 20, height: 20, cursor: 'pointer' }
-                      }),
-                      H('div', { style: { flex: 1 } },
-                        H('div', { style: { fontWeight: 700, fontSize: 16 } }, `${premiumText}/month`),
-                        H('div', { className: 'muted', style: { fontSize: 14 } }, 'Premium platinum badge + perks')
+                        H('div', { style: { fontWeight: 800, fontSize: 20, marginBottom: 4 } }, `${premiumText}/month`),
+                        H('div', { style: { fontSize: 14, color: '#555', marginBottom: 8 } }, 'Premium platinum badge with mesmerizing shimmer'),
+                        H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Exclusive supporter features'),
+                        H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Cancel anytime from your profile')
                       ),
                       H('span', {
                         style: {
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: 'linear-gradient(135deg, #c0c0c0, #909090)',
                           color: 'white',
-                          padding: '4px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 700
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
                         }
-                      }, 'PREMIUM')
+                      }, 'PLATINUM')
                     )
                   )
                 )
               : H('p', { className: 'supporter-modal__body' },
-                  'Thanks for fueling the marketplace and showing off the shiniest badge on Trovelr!'
+                  'Thanks for supporting Trovelr and showing off the most exclusive badge on the platform!'
                 ),
             error && H('div', { className: 'supporter-modal__error' }, error),
             H('div', { className: 'supporter-modal__actions' },
@@ -377,11 +346,213 @@
                 type: 'button',
                 className: 'btn primary',
                 onClick: () => {
-                  onJoin(selectedTier);
+                  onJoin('premium');
                 },
                 disabled: busy
-              }, busy ? 'Redirecting…' : 'Continue')
+              }, busy ? 'Redirecting…' : 'Subscribe')
             )
+          )
+        ),
+        document.body
+      );
+    }
+
+    function SelectBuyerModal({
+      open,
+      onClose,
+      listingId,
+      onBuyerSelected,
+      busy = false,
+      error = ''
+    }) {
+      const [buyers, setBuyers] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [selecting, setSelecting] = useState(false);
+
+      useModalLifecycle(open, onClose);
+
+      useEffect(() => {
+        if (!open || !listingId) {
+          setBuyers([]);
+          return;
+        }
+
+        setLoading(true);
+        fetch(`/api/listings/${listingId}/potential-buyers`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            setBuyers(data.buyers || []);
+            setLoading(false);
+          })
+          .catch(err => {
+            console.error('Failed to load buyers:', err);
+            setLoading(false);
+          });
+      }, [open, listingId]);
+
+      const handleOverlay = (evt) => {
+        if (evt.target === evt.currentTarget && !busy && !selecting) {
+          onClose?.();
+        }
+      };
+
+      const handleSelectBuyer = async (buyerId) => {
+        if (selecting || busy) return;
+        setSelecting(true);
+
+        try {
+          const response = await fetch(`/api/listings/${listingId}/award-karma`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ buyer_id: buyerId })
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(result.error || 'Failed to award karma');
+          }
+
+          onBuyerSelected?.(result);
+        } catch (err) {
+          console.error('Award karma error:', err);
+          setSelecting(false);
+        }
+      };
+
+      const handleSkip = () => {
+        if (busy || selecting) return;
+        onClose?.();
+      };
+
+      if (!open) return null;
+
+      return ReactDOM.createPortal(
+        H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
+          H('div', {
+            className: 'supporter-modal__card',
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-label': 'Select buyer for karma'
+          },
+            H('button', {
+              type: 'button',
+              className: 'supporter-modal__close',
+              onClick: () => !busy && !selecting && onClose?.(),
+              disabled: busy || selecting
+            }, '×'),
+            H('h2', { className: 'supporter-modal__title' }, 'Who bought this item?'),
+            H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
+              'Select the buyer to award karma points. You\'ll get 1 point, they\'ll get 2 points.'
+            ),
+            loading
+              ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')
+              : buyers.length === 0
+                ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } },
+                    'No one messaged you about this item.'
+                  )
+                : H('div', {
+                    className: 'buyer-list',
+                    style: {
+                      display: 'grid',
+                      gap: 12,
+                      maxHeight: 400,
+                      overflowY: 'auto',
+                      marginBottom: 16
+                    }
+                  },
+                    ...buyers.map(buyer =>
+                      H('button', {
+                        key: buyer.id,
+                        type: 'button',
+                        className: 'buyer-item',
+                        onClick: () => handleSelectBuyer(buyer.id),
+                        disabled: selecting || busy,
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: 12,
+                          border: '1px solid #e5e7eb',
+                          borderRadius: 8,
+                          background: 'white',
+                          cursor: selecting || busy ? 'default' : 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s',
+                          opacity: selecting || busy ? 0.6 : 1
+                        }
+                      },
+                        H('img', {
+                          src: buyer.profile_picture_url || '/img/default-profile.png',
+                          alt: buyer.username,
+                          style: {
+                            width: 48,
+                            height: 48,
+                            borderRadius: '50%',
+                            objectFit: 'cover'
+                          }
+                        }),
+                        H('div', { style: { flex: 1 } },
+                          H('div', { style: { fontWeight: 600, marginBottom: 4 } }, buyer.username),
+                          buyer.last_message_at && H('div', {
+                            className: 'muted',
+                            style: { fontSize: 13 }
+                          }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
+                        ),
+                        buyer.supporter_badge === 'trovelr_platinum' && H('span', {
+                          style: {
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#999',
+                            background: 'linear-gradient(135deg, #e8e8e8, #c0c0c0)',
+                            padding: '4px 8px',
+                            borderRadius: 4
+                          }
+                        }, 'PREMIUM')
+                      )
+                    )
+                  ),
+            error && H('div', {
+              className: 'supporter-modal__error',
+              style: { marginBottom: 12 }
+            }, error),
+            H('div', {
+              className: 'supporter-modal__actions',
+              style: { justifyContent: 'center' }
+            },
+              H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: handleSkip,
+                disabled: busy || selecting,
+                style: {
+                  fontSize: 13,
+                  padding: '6px 12px',
+                  opacity: 0.7
+                }
+              }, 'Skip')
+            ),
+            selecting && H('div', {
+              style: {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(255,255,255,0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 16,
+                fontSize: 14,
+                color: '#666'
+              }
+            }, 'Awarding karma...')
           )
         ),
         document.body
@@ -391,7 +562,8 @@
     return {
       SupporterBadge,
       SupporterInfoModal,
-      SupporterUpsellModal
+      SupporterUpsellModal,
+      SelectBuyerModal
     };
   }
 

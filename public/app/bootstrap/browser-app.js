@@ -167,7 +167,7 @@
     if (typeof supporterComponentsFactory !== 'function') {
       throw new Error('Supporter components bundle failed to load.');
     }
-    const { SupporterBadge, SupporterInfoModal, SupporterUpsellModal } = supporterComponentsFactory({
+    const { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponentsFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM
     });
@@ -440,7 +440,8 @@
         ListingModal,
         ProfilePictureUploadModal,
         ListingsGrid,
-        SupporterBadge
+        SupporterBadge,
+        SelectBuyerModal
       },
       appNav: AppNav
     });
@@ -509,7 +510,7 @@
           ListingModal,
           SellerProfile
         },
-        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal }
+        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal }
       },
       uploads: {
         prepareListingForModal,

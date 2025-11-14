@@ -31,7 +31,8 @@
       ListingModal,
       ProfilePictureUploadModal,
       ListingsGrid,
-      SupporterBadge
+      SupporterBadge,
+      SelectBuyerModal
     } = components;
 
     if (typeof ImageWithSkeleton !== 'function') {
@@ -360,7 +361,9 @@
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
       onRequestDeleteAccount,
-      isMobile
+      onRequestCancelSubscription,
+      isMobile,
+      user
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -471,6 +474,29 @@
                   }
                 }, '?')
               ),
+              // Show cancel subscription button for premium monthly subscribers
+              user?.supporter_tier === 'premium' && user?.stripe_subscription_id && H('div', {
+                style: {
+                  marginTop: 24,
+                  paddingTop: 24,
+                  borderTop: '1px solid #e5e7eb'
+                }
+              },
+                H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Subscription'),
+                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } },
+                  'You have an active monthly subscription'
+                ),
+                H('button', {
+                  className: 'btn',
+                  onClick: onRequestCancelSubscription,
+                  style: {
+                    width: '100%',
+                    background: '#f59e0b',
+                    color: 'white',
+                    border: 'none'
+                  }
+                }, 'Cancel Subscription')
+              ),
               H('div', {
                 style: {
                   marginTop: 24,
@@ -528,6 +554,8 @@
       const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
       const [deleteConfirmText, setDeleteConfirmText] = useState('');
       const [deleteAccountError, setDeleteAccountError] = useState('');
+      const [karmaModalOpen, setKarmaModalOpen] = useState(false);
+      const [karmaListingId, setKarmaListingId] = useState(null);
 
       useEffect(() => {
         if (!user) return;
@@ -747,6 +775,54 @@
         }
       }, [deleteConfirmText, onLogout]);
 
+      const handleRequestCancelSubscription = useCallback(async () => {
+        if (!confirm('Are you sure you want to cancel your monthly subscription? You will keep your supporter badge until the end of your current billing period.')) {
+          return;
+        }
+
+        try {
+          await api.cancelSubscription();
+          setSettingsOpen(false);
+          // Refresh user data to update UI
+          window.location.reload();
+        } catch (err) {
+          console.error('Cancel subscription failed:', err);
+          alert(err.message || 'Failed to cancel subscription');
+        }
+      }, []);
+
+      const handleToggleSoldWithKarma = useCallback(async (listing, makeSold) => {
+        if (makeSold && user?.supporter_tier === 'premium') {
+          // Show karma modal for premium users when marking as sold
+          setKarmaListingId(listing.id);
+          setKarmaModalOpen(true);
+          // Don't mark as sold yet - wait for modal
+        } else {
+          // Non-premium users or unmarking sold - proceed normally
+          await onToggleSold?.(listing, makeSold);
+        }
+      }, [user, onToggleSold]);
+
+      const handleKarmaBuyerSelected = useCallback(async (result) => {
+        setKarmaModalOpen(false);
+        const listing = items.find(it => it.id === karmaListingId);
+        if (listing) {
+          // Now mark as sold after karma is awarded
+          await onToggleSold?.(listing, true);
+        }
+        setKarmaListingId(null);
+      }, [karmaListingId, items, onToggleSold]);
+
+      const handleKarmaModalClose = useCallback(async () => {
+        setKarmaModalOpen(false);
+        const listing = items.find(it => it.id === karmaListingId);
+        if (listing) {
+          // User skipped karma - mark as sold anyway
+          await onToggleSold?.(listing, true);
+        }
+        setKarmaListingId(null);
+      }, [karmaListingId, items, onToggleSold]);
+
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
           H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'Profile'),
@@ -796,6 +872,23 @@
                     since: profileSupporter.since,
                     onClick: handleSelfSupporterClick
                   })
+                ),
+                profileSupporter && typeof user.karma === 'number' && user.karma > 0 && H('div', {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 10px',
+                    background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#374151',
+                    border: '1px solid #d1d5db'
+                  }
+                },
+                  H('span', { style: { fontSize: 14 } }, '⭐'),
+                  H('span', null, `${user.karma} Karma`)
                 ),
                 showSupporterCta && H('button', {
                   className: 'btn primary',
@@ -920,7 +1013,9 @@
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,
-          isMobile
+          onRequestCancelSubscription: handleRequestCancelSubscription,
+          isMobile,
+          user
         }),
 
         H(ProfilePictureUploadModal, {
@@ -1014,10 +1109,17 @@
             onDelete: handleDelete,
             onAdminDelete: handleAdminDelete,
             onViewSeller,
-            onToggleSold,
+            onToggleSold: handleToggleSoldWithKarma,
             showDistance: false,
             onSupporterClick
           }
+        }),
+
+        H(SelectBuyerModal, {
+          open: karmaModalOpen,
+          onClose: handleKarmaModalClose,
+          listingId: karmaListingId,
+          onBuyerSelected: handleKarmaBuyerSelected
         })
       );
     });
