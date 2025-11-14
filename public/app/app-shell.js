@@ -23,7 +23,8 @@
   const SUPPORTER_PROMPT_KEY = 'listit_supporter_prompt_at';
   const SUPPORTER_PROMPT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
   const SUPPORTER_PROMPT_DELAY_MS = 2000;
-  const SUPPORTER_DEFAULT_AMOUNT = 1000;
+  const SUPPORTER_DEFAULT_AMOUNT = 300;
+  const SUPPORTER_PREMIUM_AMOUNT = 500;
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
 
   function createEditorState(overrides = {}) {
@@ -258,10 +259,10 @@
         showSupporterPrompt();
       }, [showSupporterPrompt, user?.supporter_badge]);
 
-      const handleJoinSupporterProgram = useCallback(async () => {
+      const handleJoinSupporterProgram = useCallback(async (tier = 'basic') => {
         setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '' }));
         try {
-          const response = await api.startSupporterCheckout();
+          const response = await api.startSupporterCheckout(tier);
           if (response && typeof response.amount !== 'undefined') {
             setSupporterUpsellState((prev) => ({
               ...prev,
@@ -748,7 +749,8 @@
           busy: supporterUpsellState.busy,
           error: supporterUpsellState.error,
           amount: supporterUpsellState.amount,
-          currency: supporterUpsellState.currency
+          currency: supporterUpsellState.currency,
+          premiumAmount: SUPPORTER_PREMIUM_AMOUNT
         }),
 
         H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },

@@ -1566,7 +1566,8 @@
 
       const supporterData = item?.owner_supporter_badge ? {
         username: item?.owner_username ? `@${item.owner_username}` : null,
-        since: item?.owner_supporter_since || null
+        since: item?.owner_supporter_since || null,
+        badge: item?.owner_supporter_badge || null
       } : null;
 
       const handleSupporterBadgeClick = () => {
@@ -1610,6 +1611,7 @@
           H(SupporterBadge, {
             size: 'sm',
             since: supporterData.since,
+            badge: supporterData.badge,
             onClick: handleSupporterBadgeClick
           })
         );
@@ -2014,7 +2016,8 @@
       const sellerSupporter = sellerInfo?.supporter_badge
         ? {
             username: sellerLabel,
-            since: sellerSupporterSince
+            since: sellerSupporterSince,
+            badge: sellerInfo.supporter_badge
           }
         : null;
 
@@ -2036,6 +2039,7 @@
                 sellerSupporter && H(SupporterBadge, {
                   size: 'sm',
                   since: sellerSupporter.since,
+                  badge: sellerSupporter.badge,
                   onClick: () => onSupporterClick?.(sellerSupporter)
                 })
               ),

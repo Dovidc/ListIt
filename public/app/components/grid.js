@@ -114,7 +114,8 @@
 
       const supporterData = item?.owner_supporter_badge ? {
         username: item?.owner_username ? `@${item.owner_username}` : null,
-        since: item?.owner_supporter_since || null
+        since: item?.owner_supporter_since || null,
+        badge: item?.owner_supporter_badge || null
       } : null;
 
       return H('div', {
@@ -173,6 +174,7 @@
             H(SupporterBadge, {
               size: 'sm',
               since: supporterData.since,
+              badge: supporterData.badge,
               onClick: onSupporterClick
                 ? (evt) => {
                     evt.stopPropagation?.();

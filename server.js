@@ -263,14 +263,21 @@ const HAS_FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0;
 const FRONTEND_ORIGIN_SET = new Set(FRONTEND_ORIGINS);
 
 const SUPPORTER_BADGE_CODE = process.env.SUPPORTER_BADGE_CODE || 'trovelr_gold';
+const SUPPORTER_BADGE_CODE_PREMIUM = process.env.SUPPORTER_BADGE_CODE_PREMIUM || 'trovelr_platinum';
 const SUPPORTER_DONATION_AMOUNT = (() => {
-  const raw = Number(process.env.SUPPORTER_DONATION_AMOUNT || 1000);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1000;
+  const raw = Number(process.env.SUPPORTER_DONATION_AMOUNT || 300);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 300;
+})();
+const SUPPORTER_PREMIUM_AMOUNT = (() => {
+  const raw = Number(process.env.SUPPORTER_PREMIUM_AMOUNT || 500);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 500;
 })();
 const SUPPORTER_DONATION_CURRENCY = (process.env.SUPPORTER_DONATION_CURRENCY || 'usd').toLowerCase();
 const SUPPORTER_SUCCESS_PATH = process.env.SUPPORTER_SUCCESS_PATH || '/?supporter=thanks&session_id={CHECKOUT_SESSION_ID}';
 const SUPPORTER_CANCEL_PATH = process.env.SUPPORTER_CANCEL_PATH || '/?supporter=remind-me-later';
 const PUBLIC_APP_BASE_URL = process.env.PUBLIC_APP_BASE_URL || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const STRIPE_PREMIUM_PRICE_ID = process.env.STRIPE_PREMIUM_PRICE_ID || '';
 
 function resolveAppBaseUrl(req) {
   if (HAS_FRONTEND_ORIGIN) return FRONTEND_ORIGIN;
@@ -645,6 +652,60 @@ function invalidateNearbyCache() {
 
 app.use(cookieParser());
 
+// Stripe webhook must come BEFORE express.json() to receive raw body
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ error: 'stripe_unavailable' });
+  }
+
+  if (!STRIPE_WEBHOOK_SECRET) {
+    console.error('STRIPE_WEBHOOK_SECRET not configured');
+    return res.status(500).json({ error: 'webhook_not_configured' });
+  }
+
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  console.log('Received Stripe webhook event:', event.type);
+
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(event.data.object);
+        break;
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(event.data.object);
+        break;
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(event.data.object);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object);
+        break;
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(event.data.object);
+        break;
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object);
+        break;
+      default:
+        console.log(`Unhandled webhook event type: ${event.type}`);
+    }
+  } catch (err) {
+    console.error('Error processing webhook:', err);
+    return res.status(500).json({ error: 'webhook_processing_failed' });
+  }
+
+  res.json({ received: true });
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -914,6 +975,11 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_badge TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_since TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_checkout_id TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_tier TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN subscription_status TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN subscription_current_period_end TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
 
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
@@ -2794,7 +2860,17 @@ async function getUserWithStatus(userId) {
 
              supporter_badge,
 
-             supporter_since
+             supporter_since,
+
+             supporter_tier,
+
+             stripe_subscription_id,
+
+             subscription_status,
+
+             subscription_current_period_end,
+
+             stripe_customer_id
 
         FROM users
 
@@ -2843,6 +2919,16 @@ function mapUserRow(row, extra = {}) {
     supporter_badge: row.supporter_badge || null,
 
     supporter_since: row.supporter_since || null,
+
+    supporter_tier: row.supporter_tier || null,
+
+    stripe_subscription_id: row.stripe_subscription_id || null,
+
+    subscription_status: row.subscription_status || null,
+
+    subscription_current_period_end: row.subscription_current_period_end || null,
+
+    stripe_customer_id: row.stripe_customer_id || null,
 
     ...extra
 
@@ -3486,6 +3572,149 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
 
 });
 
+/* ------------------------------------------------------------------ */
+
+/* Stripe Webhook Handlers                                            */
+
+/* ------------------------------------------------------------------ */
+
+async function handleCheckoutSessionCompleted(session) {
+  console.log('Processing checkout.session.completed:', session.id);
+
+  const userId = session.client_reference_id || session.metadata?.user_id;
+  if (!userId) {
+    console.error('No user_id found in checkout session');
+    return;
+  }
+
+  const tier = session.metadata?.tier || 'basic';
+
+  if (session.mode === 'subscription') {
+    // Premium subscription - will be handled by subscription.created event
+    console.log(`Subscription checkout completed for user ${userId}`);
+  } else {
+    // One-time payment for basic tier
+    const supporterSince = nowIso();
+    await db.prepare(`
+      UPDATE users
+      SET supporter_badge = ?,
+          supporter_tier = 'basic',
+          supporter_since = COALESCE(supporter_since, ?),
+          supporter_checkout_id = NULL
+      WHERE id = ?
+    `).run(SUPPORTER_BADGE_CODE, supporterSince, userId);
+    console.log(`Basic supporter badge granted to user ${userId}`);
+  }
+}
+
+async function handleSubscriptionCreated(subscription) {
+  console.log('Processing subscription.created:', subscription.id);
+
+  const userId = subscription.metadata?.user_id;
+  if (!userId) {
+    console.error('No user_id found in subscription metadata');
+    return;
+  }
+
+  const supporterSince = nowIso();
+  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  await db.prepare(`
+    UPDATE users
+    SET supporter_badge = ?,
+        supporter_tier = 'premium',
+        supporter_since = COALESCE(supporter_since, ?),
+        stripe_subscription_id = ?,
+        stripe_customer_id = ?,
+        subscription_status = ?,
+        subscription_current_period_end = ?,
+        supporter_checkout_id = NULL
+    WHERE id = ?
+  `).run(
+    SUPPORTER_BADGE_CODE_PREMIUM,
+    supporterSince,
+    subscription.id,
+    subscription.customer,
+    subscription.status,
+    periodEnd,
+    userId
+  );
+
+  console.log(`Premium supporter badge granted to user ${userId}`);
+}
+
+async function handleSubscriptionUpdated(subscription) {
+  console.log('Processing subscription.updated:', subscription.id);
+
+  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  await db.prepare(`
+    UPDATE users
+    SET subscription_status = ?,
+        subscription_current_period_end = ?
+    WHERE stripe_subscription_id = ?
+  `).run(subscription.status, periodEnd, subscription.id);
+
+  console.log(`Subscription ${subscription.id} updated to status: ${subscription.status}`);
+}
+
+async function handleSubscriptionDeleted(subscription) {
+  console.log('Processing subscription.deleted:', subscription.id);
+
+  // Remove premium badge but keep basic tier if they had it before
+  const user = await db.prepare(`
+    SELECT supporter_tier, supporter_since FROM users WHERE stripe_subscription_id = ?
+  `).get(subscription.id);
+
+  if (user) {
+    // Downgrade to basic tier if they want to keep some recognition
+    await db.prepare(`
+      UPDATE users
+      SET supporter_badge = NULL,
+          supporter_tier = NULL,
+          subscription_status = 'canceled',
+          stripe_subscription_id = NULL
+      WHERE stripe_subscription_id = ?
+    `).run(subscription.id);
+
+    console.log(`Subscription ${subscription.id} canceled, badge removed`);
+  }
+}
+
+async function handleInvoicePaymentSucceeded(invoice) {
+  console.log('Processing invoice.payment_succeeded:', invoice.id);
+
+  if (invoice.subscription) {
+    // Ensure subscription status is active
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'active'
+      WHERE stripe_subscription_id = ?
+    `).run(invoice.subscription);
+  }
+}
+
+async function handleInvoicePaymentFailed(invoice) {
+  console.log('Processing invoice.payment_failed:', invoice.id);
+
+  if (invoice.subscription) {
+    // Mark as past_due but don't immediately remove badge
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'past_due'
+      WHERE stripe_subscription_id = ?
+    `).run(invoice.subscription);
+
+    console.log(`Payment failed for subscription ${invoice.subscription}, marked as past_due`);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/* Supporter Routes                                                   */
+
+/* ------------------------------------------------------------------ */
+
 app.post('/api/supporters/checkout', auth, async (req, res) => {
 
   if (!stripe) {
@@ -3496,13 +3725,19 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
 
   try {
 
+    const tier = String(req.body?.tier || 'basic').toLowerCase();
+
+    if (!['basic', 'premium'].includes(tier)) {
+
+      return res.status(400).json({ error: 'invalid_tier' });
+
+    }
+
     const successUrl = resolveSupporterReturnUrl(req, SUPPORTER_SUCCESS_PATH);
 
     const cancelUrl = resolveSupporterReturnUrl(req, SUPPORTER_CANCEL_PATH);
 
-    const session = await stripe.checkout.sessions.create({
-
-      mode: 'payment',
+    const sessionConfig = {
 
       client_reference_id: String(req.user.id),
 
@@ -3514,7 +3749,59 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
 
       payment_method_types: ['card'],
 
-      line_items: [
+      metadata: {
+
+        user_id: String(req.user.id),
+
+        tier: tier
+
+      }
+
+    };
+
+    if (tier === 'premium') {
+
+      // Subscription mode for premium tier
+
+      if (!STRIPE_PREMIUM_PRICE_ID) {
+
+        return res.status(503).json({ error: 'premium_tier_not_configured' });
+
+      }
+
+      sessionConfig.mode = 'subscription';
+
+      sessionConfig.line_items = [
+
+        {
+
+          quantity: 1,
+
+          price: STRIPE_PREMIUM_PRICE_ID
+
+        }
+
+      ];
+
+      // Store user_id in subscription metadata too
+
+      sessionConfig.subscription_data = {
+
+        metadata: {
+
+          user_id: String(req.user.id)
+
+        }
+
+      };
+
+    } else {
+
+      // One-time payment mode for basic tier
+
+      sessionConfig.mode = 'payment';
+
+      sessionConfig.line_items = [
 
         {
 
@@ -3538,15 +3825,11 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
 
         }
 
-      ],
+      ];
 
-      metadata: {
+    }
 
-        user_id: String(req.user.id)
-
-      }
-
-    });
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     if (!session?.url) {
 
@@ -3564,13 +3847,17 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
 
     }
 
+    const amount = tier === 'premium' ? SUPPORTER_PREMIUM_AMOUNT : SUPPORTER_DONATION_AMOUNT;
+
     return res.json({
 
       url: session.url,
 
       session_id: session.id,
 
-      amount: SUPPORTER_DONATION_AMOUNT,
+      tier: tier,
+
+      amount: amount,
 
       currency: SUPPORTER_DONATION_CURRENCY
 
