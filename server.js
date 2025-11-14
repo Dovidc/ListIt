@@ -3468,7 +3468,19 @@ app.get('/api/me', async (req, res) => {
 
              supporter_badge,
 
-             supporter_since
+             supporter_since,
+
+             supporter_tier,
+
+             stripe_subscription_id,
+
+             subscription_status,
+
+             subscription_current_period_end,
+
+             stripe_customer_id,
+
+             karma
 
       FROM users
 
@@ -4075,15 +4087,77 @@ app.post('/api/supporters/confirm', auth, async (req, res) => {
 
     }
 
+    const rawTier = session.metadata?.tier || (session.mode === 'subscription' ? 'premium' : 'basic');
+    const tier = String(rawTier || 'basic').toLowerCase() === 'premium' ? 'premium' : 'basic';
     const supporterSince = nowIso();
+    const badgeCode = tier === 'premium' ? SUPPORTER_BADGE_CODE_PREMIUM : SUPPORTER_BADGE_CODE;
 
-    await db.prepare(`
+    let subscriptionId = null;
+    let subscriptionStatus = null;
+    let subscriptionPeriodEnd = null;
+    let stripeCustomerId = session.customer || null;
+
+    if (tier === 'premium' && session.subscription && stripe?.subscriptions?.retrieve) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(session.subscription);
+        if (subscription) {
+          subscriptionId = subscription.id || session.subscription;
+          subscriptionStatus = subscription.status || null;
+          if (subscription.current_period_end) {
+            subscriptionPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+          }
+          if (subscription.customer) {
+            stripeCustomerId = subscription.customer;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch subscription after supporter confirmation:', err?.message || err);
+        subscriptionId = session.subscription;
+        subscriptionStatus = session.status === 'complete' ? 'active' : (session.status || 'active');
+      }
+    }
+
+    const updateSql = tier === 'premium'
+      ? `
       UPDATE users
          SET supporter_badge = ?,
              supporter_since = COALESCE(supporter_since, ?),
+             supporter_tier = ?,
+             supporter_checkout_id = NULL,
+             stripe_subscription_id = COALESCE(?, stripe_subscription_id),
+             subscription_status = COALESCE(?, subscription_status),
+             subscription_current_period_end = COALESCE(?, subscription_current_period_end),
+             stripe_customer_id = COALESCE(?, stripe_customer_id)
+       WHERE id = ?
+    `
+      : `
+      UPDATE users
+         SET supporter_badge = ?,
+             supporter_since = COALESCE(supporter_since, ?),
+             supporter_tier = ?,
              supporter_checkout_id = NULL
        WHERE id = ?
-    `).run(SUPPORTER_BADGE_CODE, supporterSince, req.user.id);
+    `;
+
+    const params = tier === 'premium'
+      ? [
+          badgeCode,
+          supporterSince,
+          tier,
+          subscriptionId,
+          subscriptionStatus,
+          subscriptionPeriodEnd,
+          stripeCustomerId,
+          req.user.id
+        ]
+      : [
+          badgeCode,
+          supporterSince,
+          tier,
+          req.user.id
+        ];
+
+    await db.prepare(updateSql).run(...params);
 
     const refreshed = await getUserWithStatus(req.user.id);
 

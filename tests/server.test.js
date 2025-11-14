@@ -3,11 +3,37 @@ if (!process.env.DB_PATH) {
   process.env.DB_PATH = ':memory:';
 }
 
+jest.mock('stripe', () => {
+  const retrieveSession = jest.fn();
+  const retrieveSubscription = jest.fn();
+  const StripeMock = jest.fn().mockImplementation(() => ({
+    checkout: { sessions: { retrieve: retrieveSession } },
+    subscriptions: { retrieve: retrieveSubscription }
+  }));
+  StripeMock.__mock = { retrieveSession, retrieveSubscription };
+  return StripeMock;
+}, { virtual: true });
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+}
+if (!process.env.STRIPE_API_VERSION) {
+  process.env.STRIPE_API_VERSION = '2024-06-20';
+}
+
+const Stripe = require('stripe');
+const stripeMock = Stripe.__mock;
+
 const request = require('supertest');
 const app = require('../server');
 
 const db = app._db;
 const mailService = require('../mail-service');
+
+beforeEach(() => {
+  stripeMock.retrieveSession.mockReset();
+  stripeMock.retrieveSubscription.mockReset();
+});
 
 function bodyItems(body) {
   if (Array.isArray(body)) return body;
@@ -225,6 +251,101 @@ describe('ListIt API basic flows', () => {
     res = await loginAgent.post('/api/login').send({ email, password: 'newpass1' });
     expect(res.status).toBe(200);
     expect(res.body.email).toBe(email);
+  });
+});
+
+describe('Supporter metadata', () => {
+  it('returns supporter tier and karma details from /api/me', async () => {
+    await resetDb();
+
+    const agent = request.agent(app);
+    const user = await registerAndVerify(agent, {
+      email: 'premium@test.com',
+      password: 'secret1',
+      username: 'premiumUser'
+    });
+
+    await db.prepare(`
+      UPDATE users
+         SET supporter_tier = ?,
+             supporter_badge = ?,
+             stripe_subscription_id = ?,
+             subscription_status = ?,
+             subscription_current_period_end = ?,
+             stripe_customer_id = ?,
+             karma = ?
+       WHERE id = ?
+    `).run(
+      'premium',
+      'trovelr_premium',
+      'sub_123',
+      'active',
+      '2030-01-01T00:00:00.000Z',
+      'cus_123',
+      7,
+      user.id
+    );
+
+    const res = await agent.get('/api/me');
+    expect(res.status).toBe(200);
+    expect(res.body.supporter_tier).toBe('premium');
+    expect(res.body.supporter_badge).toBe('trovelr_premium');
+    expect(res.body.stripe_subscription_id).toBe('sub_123');
+    expect(res.body.subscription_status).toBe('active');
+    expect(res.body.subscription_current_period_end).toBe('2030-01-01T00:00:00.000Z');
+    expect(res.body.stripe_customer_id).toBe('cus_123');
+    expect(res.body.karma).toBe(7);
+  });
+
+  it('grants premium supporter tier when confirming a subscription checkout', async () => {
+    await resetDb();
+
+    const agent = request.agent(app);
+    const user = await registerAndVerify(agent, {
+      email: 'sub@test.com',
+      password: 'secret1',
+      username: 'subscriber'
+    });
+
+    const periodEnd = Math.floor(new Date('2030-01-01T00:00:00.000Z').getTime() / 1000);
+
+    stripeMock.retrieveSession.mockResolvedValue({
+      id: 'cs_test_123',
+      metadata: { tier: 'premium', user_id: String(user.id) },
+      client_reference_id: String(user.id),
+      mode: 'subscription',
+      subscription: 'sub_123',
+      status: 'complete',
+      customer: 'cus_123'
+    });
+
+    stripeMock.retrieveSubscription.mockResolvedValue({
+      id: 'sub_123',
+      status: 'active',
+      current_period_end: periodEnd,
+      customer: 'cus_123'
+    });
+
+    const res = await agent.post('/api/supporters/confirm').send({ session_id: 'cs_test_123' });
+    expect(res.status).toBe(200);
+    expect(res.body.supporter_tier).toBe('premium');
+    expect(res.body.supporter_badge).toBe('trovelr_platinum');
+    expect(res.body.subscription_status).toBe('active');
+    expect(res.body.stripe_subscription_id).toBe('sub_123');
+
+    expect(stripeMock.retrieveSession).toHaveBeenCalledWith('cs_test_123');
+    expect(stripeMock.retrieveSubscription).toHaveBeenCalledWith('sub_123');
+
+    const row = await db.prepare(`
+      SELECT supporter_tier, supporter_badge, stripe_subscription_id, subscription_status
+        FROM users
+       WHERE id = ?
+    `).get(user.id);
+
+    expect(row.supporter_tier).toBe('premium');
+    expect(row.supporter_badge).toBe('trovelr_platinum');
+    expect(row.stripe_subscription_id).toBe('sub_123');
+    expect(row.subscription_status).toBe('active');
   });
 });
 
