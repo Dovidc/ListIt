@@ -810,7 +810,7 @@
               }),
               H('span', { className: 'toggle-slider', 'aria-hidden': true }),
               H('div', { className: 'toggle-copy' },
-                H('div', { style: { fontWeight: 600, fontSize: 11 } }, 'Inquiry text'),
+                H('div', { style: { fontWeight: 600, fontSize: 11 } }, 'Offer Message'),
                 H('div', { className: 'muted', style: { fontSize: 10 } }, 'show offer msg')
               )
             ),

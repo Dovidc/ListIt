@@ -414,7 +414,7 @@
                 }),
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Inquiry text'),
+                  H('div', { style: { fontWeight: 700 } }, 'Offer Message'),
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
                 ),
                 H('button', {
