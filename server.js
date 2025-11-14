@@ -6759,45 +6759,9 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
     const { a, b } = normalizePair(req.user.id, with_user_id);
 
-
-
-    const shareInbox = !!req.user.is_admin || !!target.is_admin;
-
-    if (shareInbox) {
-
-      const existing = await db.prepare(`
-
-        SELECT *
-
-          FROM conversations
-
-         WHERE a_user_id = ? AND b_user_id = ?
-
-         ORDER BY (listing_id IS NULL) DESC, id ASC
-
-         LIMIT 1
-
-      `).get(a, b);
-
-      if (existing) {
-
-        if (existing.listing_id != null) {
-
-          await db.prepare('UPDATE conversations SET listing_id = NULL WHERE id = ?').run(existing.id);
-
-        }
-
-        const refreshed = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(existing.id);
-
-        const restored = await restoreConversationForUser(refreshed, req.user.id);
-
-        return res.json(restored);
-
-      }
-
-      listing_id = null;
-
-    }
+    // Always create separate conversations per listing
+    // This ensures that the potential-buyers query can find the correct buyers
+    // for each listing based on the listing_id in the conversation
 
     
 
