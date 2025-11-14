@@ -171,7 +171,7 @@
       }
       .supporter-modal__overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.72); display: flex; align-items: center; justify-content: center; padding: 32px 20px; z-index: 120; backdrop-filter: blur(2px); }
       .supporter-modal__card { position: relative; background: linear-gradient(160deg, #ffffff, #fdf4ff 65%, #fffbeb); color: #111827; border-radius: 24px; box-shadow: 0 30px 60px rgba(15, 23, 42, 0.35); width: 100%; max-width: 420px; padding: 32px 28px; text-align: center; overflow: hidden; }
-      .supporter-modal__card::before { content: ''; position: absolute; inset: -50%; background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.55), rgba(253, 230, 138, 0.05) 60%); z-index: 0; }
+      .supporter-modal__card::before { content: ''; position: absolute; inset: -50%; background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.55), rgba(253, 230, 138, 0.05) 60%); z-index: 0; pointer-events: none; }
       .supporter-modal__card--wide { max-width: 520px; }
       .supporter-modal__close { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.7); color: #4b5563; font-size: 20px; font-weight: 600; display: grid; place-items: center; cursor: pointer; transition: background 0.2s ease, transform 0.2s ease; z-index: 2; }
       .supporter-modal__close:hover { background: rgba(253, 230, 138, 0.95); color: #78350f; transform: scale(1.05); }
