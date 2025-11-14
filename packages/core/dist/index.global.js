@@ -172,6 +172,18 @@
       body: JSON.stringify({ profile_picture_url: profilePictureUrl })  
     }, meta);  
     
+    const startSupporterCheckout = (meta) => request('/api/supporters/checkout', {  
+      method: 'POST',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify({})  
+    }, meta);  
+    
+    const confirmSupporterCheckout = (sessionId, meta) => request('/api/supporters/confirm', {  
+      method: 'POST',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify({ session_id: sessionId })  
+    }, meta);  
+    
     const deleteAccount = (confirmation, meta) => request('/api/me', {  
       method: 'DELETE',  
       headers: { 'Content-Type': 'application/json' },  
@@ -416,6 +428,8 @@
     
       updateLocationPreset,  
       updateProfilePicture,  
+      startSupporterCheckout,  
+      confirmSupporterCheckout,  
       deleteAccount,  
       listAll,  
       listListings,  
