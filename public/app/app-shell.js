@@ -24,7 +24,7 @@
   const SUPPORTER_PROMPT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
   const SUPPORTER_PROMPT_DELAY_MS = 2000;
   const SUPPORTER_DEFAULT_AMOUNT = 300;
-  const SUPPORTER_PREMIUM_AMOUNT = 500;
+  const SUPPORTER_PREMIUM_AMOUNT = 199;
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
 
   function createEditorState(overrides = {}) {

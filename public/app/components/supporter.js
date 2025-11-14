@@ -242,12 +242,13 @@
       currency,
       premiumAmount
     }) {
-      useModalLifecycle(open, onClose);
       const [selectedTier, setSelectedTier] = useState('basic');
+      useModalLifecycle(open, onClose);
+
       if (!open) return null;
 
       const donationText = formatDonation(Number(amount), currency);
-      const premiumText = formatDonation(Number(premiumAmount || 500), currency);
+      const premiumText = formatDonation(Number(premiumAmount || 199), currency);
       const handleOverlay = (evt) => {
         if (evt.target === evt.currentTarget) {
           onClose?.();
