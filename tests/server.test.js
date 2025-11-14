@@ -228,6 +228,50 @@ describe('ListIt API basic flows', () => {
   });
 });
 
+describe('Supporter metadata', () => {
+  it('returns supporter tier and karma details from /api/me', async () => {
+    await resetDb();
+
+    const agent = request.agent(app);
+    const user = await registerAndVerify(agent, {
+      email: 'premium@test.com',
+      password: 'secret1',
+      username: 'premiumUser'
+    });
+
+    await db.prepare(`
+      UPDATE users
+         SET supporter_tier = ?,
+             supporter_badge = ?,
+             stripe_subscription_id = ?,
+             subscription_status = ?,
+             subscription_current_period_end = ?,
+             stripe_customer_id = ?,
+             karma = ?
+       WHERE id = ?
+    `).run(
+      'premium',
+      'trovelr_premium',
+      'sub_123',
+      'active',
+      '2030-01-01T00:00:00.000Z',
+      'cus_123',
+      7,
+      user.id
+    );
+
+    const res = await agent.get('/api/me');
+    expect(res.status).toBe(200);
+    expect(res.body.supporter_tier).toBe('premium');
+    expect(res.body.supporter_badge).toBe('trovelr_premium');
+    expect(res.body.stripe_subscription_id).toBe('sub_123');
+    expect(res.body.subscription_status).toBe('active');
+    expect(res.body.subscription_current_period_end).toBe('2030-01-01T00:00:00.000Z');
+    expect(res.body.stripe_customer_id).toBe('cus_123');
+    expect(res.body.karma).toBe(7);
+  });
+});
+
 describe('Admin reports dashboard', () => {
   it('aggregates reported accounts', async () => {
     await resetDb();

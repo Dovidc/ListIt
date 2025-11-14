@@ -3468,7 +3468,19 @@ app.get('/api/me', async (req, res) => {
 
              supporter_badge,
 
-             supporter_since
+             supporter_since,
+
+             supporter_tier,
+
+             stripe_subscription_id,
+
+             subscription_status,
+
+             subscription_current_period_end,
+
+             stripe_customer_id,
+
+             karma
 
       FROM users
 
