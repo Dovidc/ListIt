@@ -792,15 +792,34 @@
       }, []);
 
       const handleToggleSoldWithKarma = useCallback(async (listing, makeSold) => {
+        console.log('=== KARMA HANDLER START ===');
+        console.log('Listing:', listing);
+        console.log('Make sold?', makeSold);
+        console.log('User object:', user);
+        console.log('User tier:', user?.supporter_tier);
+        console.log('handleToggleSoldWithKarma called:', {
+          listingId: listing?.id,
+          makeSold,
+          userTier: user?.supporter_tier,
+          willShowModal: makeSold && user?.supporter_tier === 'premium'
+        });
+
         if (makeSold && user?.supporter_tier === 'premium') {
           // Show karma modal for premium users when marking as sold
+          console.log('Opening karma modal for listing:', listing.id);
+          console.log('Setting karmaListingId to:', listing.id);
+          console.log('Setting karmaModalOpen to true');
           setKarmaListingId(listing.id);
           setKarmaModalOpen(true);
+          console.log('Modal state updated');
           // Don't mark as sold yet - wait for modal
         } else {
           // Non-premium users or unmarking sold - proceed normally
+          console.log('Proceeding with normal toggle sold');
+          console.log('Reason: makeSold=', makeSold, 'tier=', user?.supporter_tier);
           await onToggleSold?.(listing, makeSold);
         }
+        console.log('=== KARMA HANDLER END ===');
       }, [user, onToggleSold]);
 
       const handleKarmaBuyerSelected = useCallback(async (result) => {

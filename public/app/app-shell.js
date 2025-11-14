@@ -150,7 +150,7 @@
       ListingModal,
       SellerProfile
     } = listingComponents;
-    const { SupporterInfoModal, SupporterUpsellModal } = supporterComponents;
+    const { SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponents;
 
     assertFunction(Header, 'components.layout.Header');
     assertFunction(GlobalLoader, 'components.layout.GlobalLoader');
@@ -323,6 +323,58 @@
         items,
         ensureCover
       } = listings;
+
+      // Karma modal state
+      const [karmaModalOpen, setKarmaModalOpen] = useState(false);
+      const [karmaListingId, setKarmaListingId] = useState(null);
+
+      // Wrap toggleSold with karma logic for premium users
+      const toggleSoldWithKarma = useCallback(async (listing, makeSold) => {
+        console.log('=== KARMA HANDLER (app-shell) START ===');
+        console.log('Listing:', listing);
+        console.log('Make sold?', makeSold);
+        console.log('User:', user);
+        console.log('User tier:', user?.supporter_tier);
+
+        if (makeSold && user?.supporter_tier === 'premium') {
+          // Show karma modal for premium users when marking as sold
+          console.log('Opening karma modal for listing:', listing.id);
+          setKarmaListingId(listing.id);
+          setKarmaModalOpen(true);
+          // Don't mark as sold yet - wait for modal
+        } else {
+          // Non-premium users or unmarking sold - proceed normally
+          console.log('Proceeding with normal toggle sold');
+          await toggleSold?.(listing, makeSold);
+        }
+        console.log('=== KARMA HANDLER (app-shell) END ===');
+      }, [user, toggleSold]);
+
+      const handleKarmaBuyerSelected = useCallback(async (result) => {
+        setKarmaModalOpen(false);
+        const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
+        if (listing) {
+          // Now mark as sold after karma is awarded
+          await toggleSold?.(listing, true);
+        }
+        setKarmaListingId(null);
+      }, [karmaListingId, mine, all, toggleSold]);
+
+      const handleKarmaModalClose = useCallback(() => {
+        // User clicked X or outside modal - just close without marking as sold
+        setKarmaModalOpen(false);
+        setKarmaListingId(null);
+      }, []);
+
+      const handleKarmaSkip = useCallback(async () => {
+        // User clicked Skip - mark as sold without awarding karma
+        setKarmaModalOpen(false);
+        const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
+        if (listing) {
+          await toggleSold?.(listing, true);
+        }
+        setKarmaListingId(null);
+      }, [karmaListingId, mine, all, toggleSold]);
 
       const {
         activeConvoId,
@@ -765,6 +817,14 @@
           onTierChange: handleTierChange
         }),
 
+        H(SelectBuyerModal, {
+          open: karmaModalOpen,
+          onClose: handleKarmaModalClose,
+          listingId: karmaListingId,
+          onBuyerSelected: handleKarmaBuyerSelected,
+          onSkip: handleKarmaSkip
+        }),
+
         H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
           isEditingScreen
             ? H(ListingFormModal, {
@@ -956,7 +1016,7 @@
                             onAdminDelete: handleAdminDelete,
                             showDistance: false,
                             onViewSeller: handleViewSeller,
-                            onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined,
+                            onToggleSold: mineById[selectedListing?.id] ? toggleSoldWithKarma : undefined,
                             onSupporterClick: handleSupporterBadgeClick
                           }
                         })
@@ -976,7 +1036,7 @@
                           onMessage: startMessage,
                           onAdminDelete: handleAdminDelete,
                           onViewSeller: handleViewSeller,
-                          onToggleSold: toggleSold,
+                          onToggleSold: toggleSoldWithKarma,
                           onSupporterClick: handleSupporterBadgeClick,
                           setTab
                         }),
@@ -1018,7 +1078,7 @@
                           autoInquiryEnabled,
                           setAutoInquiryEnabled,
                           onViewSeller: handleViewSeller,
-                          onToggleSold: toggleSold,
+                          onToggleSold: toggleSoldWithKarma,
                           onSupporterClick: handleSupporterBadgeClick,
                           onJoinSupporterProgram: handleSupporterPromptCta
                         }),

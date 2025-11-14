@@ -362,6 +362,7 @@
       onClose,
       listingId,
       onBuyerSelected,
+      onSkip,
       busy = false,
       error = ''
     }) {
@@ -427,7 +428,12 @@
 
       const handleSkip = () => {
         if (busy || selecting) return;
-        onClose?.();
+        // Call onSkip if provided, otherwise fall back to onClose
+        if (onSkip) {
+          onSkip();
+        } else {
+          onClose?.();
+        }
       };
 
       if (!open) return null;
