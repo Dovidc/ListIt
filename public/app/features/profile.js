@@ -30,13 +30,9 @@
       AiDescriptionHelpModal,
       ListingModal,
       ProfilePictureUploadModal,
-      ListingsGrid
+      ListingsGrid,
+      SupporterBadge
     } = components;
-
-    console.log('Profile feature received components:', components);
-    console.log('ListingsGrid in profile:', ListingsGrid, typeof ListingsGrid);
-    console.log('ListingsGrid keys:', ListingsGrid ? Object.keys(ListingsGrid) : 'undefined');
-    console.log('Is ListingsGrid a React component?', ListingsGrid?.$$typeof);
 
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Profile feature requires ImageWithSkeleton component.');
@@ -53,13 +49,17 @@
     if (typeof ListingModal !== 'function') {
       throw new Error('Profile feature requires ListingModal component.');
     }
+    if (typeof SupporterBadge !== 'function') {
+      throw new Error('Profile feature requires SupporterBadge component.');
+    }
     // ListingsGrid is optional - we'll fall back to custom rendering if not available
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
     const {
       useState,
       useCallback,
-      useRef: reactUseRef
+      useRef: reactUseRef,
+      useMemo
     } = React;
     const useEffect = typeof React.useEffect === 'function' ? React.useEffect : null;
     const useRef = typeof reactUseRef === 'function' ? reactUseRef : ((initial) => ({ current: initial }));
@@ -513,7 +513,9 @@
       autoInquiryEnabled,
       setAutoInquiryEnabled,
       onViewSeller,
-      onToggleSold
+      onToggleSold,
+      onSupporterClick,
+      onJoinSupporterProgram
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
@@ -530,8 +532,6 @@
       useEffect(() => {
         if (!user) return;
         const url = user.profile_picture_url || '';
-        console.log('Profile picture URL from user:', url);
-        console.log('Full user object:', user);
 
         // Only update state if user object has the profile_picture_url property
         // This prevents overwriting with empty string when user object is being updated
@@ -593,6 +593,31 @@
         setLocationPresetState(resolved);
       }, [locationPresetRef, setLocationPresetState]);
       const locationPreset = locationPresetState;
+      const profileSupporter = useMemo(() => {
+        if (!user || !user.supporter_badge) {
+          return null;
+        }
+        const usernameLabel = user.username
+          ? `@${user.username}`
+          : (user.email || 'This user');
+        return {
+          username: usernameLabel,
+          since: user.supporter_since || null
+        };
+      }, [user]);
+      const handleSelfSupporterClick = useCallback(() => {
+        if (!profileSupporter) return;
+        onSupporterClick?.({
+          username: profileSupporter.username,
+          since: profileSupporter.since || null
+        });
+      }, [onSupporterClick, profileSupporter]);
+      const handleJoinSupporterClick = useCallback(() => {
+        if (typeof onJoinSupporterProgram === 'function') {
+          onJoinSupporterProgram();
+        }
+      }, [onJoinSupporterProgram]);
+      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function';
       const visuallyHidden = {
         position: 'absolute',
         width: 1,
@@ -749,18 +774,43 @@
                       onError: (e) => {
                         console.error('Failed to load profile picture:', profilePictureUrl);
                         e.target.style.display = 'none';
-                      },
-                      onLoad: () => {
-                        console.log('Profile picture loaded successfully:', profilePictureUrl);
                       }
                     })
                   : (user.username ? user.username.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase())
               ),
-              H('div', null,
+              H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
                 H('div', { style: { fontWeight: 800, fontSize: 18 } },
                   user.username ? `@${user.username}` : user.email
                 ),
-                H('div', { className: 'muted', style: { marginTop: 4 } }, 'Your account')
+                H('div', { className: 'muted' }, 'Your account'),
+                profileSupporter && H('div', {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 8
+                  }
+                },
+                  H(SupporterBadge, {
+                    size: 'sm',
+                    since: profileSupporter.since,
+                    onClick: handleSelfSupporterClick
+                  })
+                ),
+                showSupporterCta && H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: handleJoinSupporterClick,
+                  style: { alignSelf: 'flex-start' }
+                }, 'Get the Trovelr supporter badge'),
+                showSupporterCta && H('span', {
+                  className: 'muted',
+                  style: {
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    maxWidth: 280
+                  }
+                }, 'Donate once to unlock a dazzling golden badge on every listing you share.')
               )
             ),
             H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
@@ -828,7 +878,8 @@
                     items: shownItems,
                     onEnsureCover: onEnsureCover,
                     onSelect: (evt, item) => setProfileSelected(item),
-                    columns: isMobile ? 3 : 4
+                    columns: isMobile ? 3 : 4,
+                    onSupporterClick
                   })
                 : H('div', { style: { padding: 16 } }, 'ListingsGrid component not available')
               )
@@ -964,7 +1015,8 @@
             onAdminDelete: handleAdminDelete,
             onViewSeller,
             onToggleSold,
-            showDistance: false
+            showDistance: false,
+            onSupporterClick
           }
         })
       );

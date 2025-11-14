@@ -92,12 +92,15 @@
       throw new Error('Listing components require selectPrimaryListingImage helper.');
     }
 
-    const { ImageWithSkeleton, ResponsiveImage, ListingsGrid } = components;
+    const { ImageWithSkeleton, ResponsiveImage, ListingsGrid, SupporterBadge } = components;
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Listing components require ImageWithSkeleton component.');
     }
     if (typeof ResponsiveImage !== 'function') {
       throw new Error('Listing components require ResponsiveImage component.');
+    }
+    if (typeof SupporterBadge !== 'function') {
+      throw new Error('Listing components require SupporterBadge component.');
     }
     // ListingsGrid is optional - will fall back to custom rendering if not available
 
@@ -1356,6 +1359,7 @@
       onAdminDelete,
       onViewSeller,
       onToggleSold,
+      onSupporterClick,
       showDistance = false,
       viewContext = 'grid'
     }) {
@@ -1560,28 +1564,55 @@
         }, 'Admin Delete'));
       }
 
+      const supporterData = item?.owner_supporter_badge ? {
+        username: item?.owner_username ? `@${item.owner_username}` : null,
+        since: item?.owner_supporter_since || null
+      } : null;
+
+      const handleSupporterBadgeClick = () => {
+        if (!supporterData) return;
+        const payload = {
+          username: supporterData.username || (item?.owner_username ? `@${item.owner_username}` : 'This seller'),
+          since: supporterData.since || null
+        };
+        onSupporterClick?.(payload);
+      };
+
       const renderSellerInfo = () => {
         if (!item.owner_username) {
           return '--';
         }
 
-        if (onViewSeller) {
-          return H('button', {
-            onClick: () => onViewSeller(item.user_id, item.owner_username),
-            style: {
-              background: 'none',
-              border: 'none',
-              color: '#111',
-              fontWeight: 600,
-              textDecoration: 'underline',
-              cursor: 'pointer',
-              padding: 0,
-              font: 'inherit'
-            }
-          }, `@${item.owner_username}`);
+        const sellerNode = onViewSeller
+          ? H('button', {
+              onClick: () => onViewSeller(item.user_id, item.owner_username),
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#111',
+                fontWeight: 600,
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                padding: 0,
+                font: 'inherit'
+              }
+            }, `@${item.owner_username}`)
+          : H('span', { style: { fontWeight: 600, color: '#111' } }, `@${item.owner_username}`);
+
+        if (!supporterData) {
+          return sellerNode;
         }
 
-        return H('span', null, `@${item.owner_username}`);
+        return H('span', {
+          style: { display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+        },
+          sellerNode,
+          H(SupporterBadge, {
+            size: 'sm',
+            since: supporterData.since,
+            onClick: handleSupporterBadgeClick
+          })
+        );
       };
 
       const openGalleryFromEvent = useCallback((evt) => {
@@ -1736,7 +1767,7 @@
       return 'just now';
     };
 
-    function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete }) {
+    function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete, onSupporterClick }) {
       const [listings, setListings] = useState([]);
       const [loading, setLoading] = useState(true);
       const [selectedListing, setSelectedListing] = useState(null);
@@ -1942,6 +1973,7 @@
                 },
                 showDistance: false,
                 onViewSeller: null,
+                onSupporterClick,
                 viewContext: 'modal'
               })
             )
@@ -1970,12 +2002,35 @@
         ? (sellerDisplayName.startsWith('@') ? sellerDisplayName : `@${sellerDisplayName}`)
         : 'Seller';
       const sellerJoinedText = sellerInfo && sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
+      const sellerSupporterSince = sellerInfo?.supporter_since || null;
+      const sellerSupporter = sellerInfo?.supporter_badge
+        ? {
+            username: sellerLabel,
+            since: sellerSupporterSince
+          }
+        : null;
 
       return H(React.Fragment, null,
         H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
           H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
-            H('div', null,
-              H('div', { style: { fontWeight: 800, fontSize: 20 } }, sellerLabel),
+            H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+              H('div', {
+                style: {
+                  fontWeight: 800,
+                  fontSize: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap'
+                }
+              },
+                sellerLabel,
+                sellerSupporter && H(SupporterBadge, {
+                  size: 'sm',
+                  since: sellerSupporter.since,
+                  onClick: () => onSupporterClick?.(sellerSupporter)
+                })
+              ),
               H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`),
               sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`)
             ),
@@ -2004,6 +2059,7 @@
                   items: shownListings,
                   onEnsureCover: ensureCover,
                   onSelect: (evt, item) => handleListingSelected(item),
+                  onSupporterClick,
                   columns: gridColumns
                 })
               : H('div', { style: { padding: 16, textAlign: 'center' } }, 'Grid component not available')

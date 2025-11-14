@@ -20,6 +20,12 @@
     draftSnapshot: null
   };
 
+  const SUPPORTER_PROMPT_KEY = 'listit_supporter_prompt_at';
+  const SUPPORTER_PROMPT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+  const SUPPORTER_PROMPT_DELAY_MS = 2000;
+  const SUPPORTER_DEFAULT_AMOUNT = 1000;
+  const SUPPORTER_DEFAULT_CURRENCY = 'usd';
+
   function createEditorState(overrides = {}) {
     return { ...EDITOR_DEFAULT_STATE, ...overrides };
   }
@@ -134,6 +140,7 @@
     const layoutComponents = components?.layout || {};
     const gridComponents = components?.grid || {};
     const listingComponents = components?.listing || {};
+    const supporterComponents = components?.supporter || {};
 
     const { Header, GlobalLoader } = layoutComponents;
     const { ListingsGrid } = gridComponents;
@@ -142,6 +149,7 @@
       ListingModal,
       SellerProfile
     } = listingComponents;
+    const { SupporterInfoModal, SupporterUpsellModal } = supporterComponents;
 
     assertFunction(Header, 'components.layout.Header');
     assertFunction(GlobalLoader, 'components.layout.GlobalLoader');
@@ -149,6 +157,8 @@
     assertFunction(MassListModal, 'components.listing.MassListModal');
     assertFunction(ListingModal, 'components.listing.ListingModal');
     assertFunction(SellerProfile, 'components.listing.SellerProfile');
+    assertFunction(SupporterInfoModal, 'components.supporter.SupporterInfoModal');
+    assertFunction(SupporterUpsellModal, 'components.supporter.SupporterUpsellModal');
 
 
     if (!api) {
@@ -188,9 +198,91 @@
         autoInquiryEnabled,
         setAutoInquiryEnabled
       } = useAppPreferences();
+      const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null });
+      const [supporterUpsellState, setSupporterUpsellState] = useState({
+        open: false,
+        mode: 'prompt',
+        busy: false,
+        error: '',
+        amount: SUPPORTER_DEFAULT_AMOUNT,
+        currency: SUPPORTER_DEFAULT_CURRENCY
+      });
+      const supporterQueryHandledRef = useRef(false);
+
+      const setSupporterPromptSeen = useCallback(() => {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(SUPPORTER_PROMPT_KEY, String(Date.now()));
+          }
+        } catch {
+          // Ignore storage failures
+        }
+      }, []);
+
+      const showSupporterPrompt = useCallback(() => {
+        setSupporterUpsellState((prev) => ({
+          ...prev,
+          open: true,
+          mode: 'prompt',
+          busy: false,
+          error: '',
+          amount: prev.amount ?? SUPPORTER_DEFAULT_AMOUNT,
+          currency: prev.currency || SUPPORTER_DEFAULT_CURRENCY
+        }));
+        setSupporterPromptSeen();
+      }, [setSupporterPromptSeen]);
+
+      const closeSupporterUpsell = useCallback(() => {
+        setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false }));
+        setSupporterPromptSeen();
+      }, [setSupporterPromptSeen]);
+
+      const handleSupporterBadgeClick = useCallback((payload = {}) => {
+        const usernameRaw = typeof payload?.username === 'string' ? payload.username.trim() : '';
+        const username = usernameRaw || 'This user';
+        const since = payload?.since || null;
+        setSupporterInfoState({ open: true, username, since });
+      }, []);
+
+      const handleSupporterInfoClose = useCallback(() => {
+        setSupporterInfoState((prev) => ({ ...prev, open: false }));
+      }, []);
+
+      const handleSupporterInfoJoin = useCallback(() => {
+        setSupporterInfoState((prev) => ({ ...prev, open: false }));
+        showSupporterPrompt();
+      }, [showSupporterPrompt]);
+
+      const handleSupporterPromptCta = useCallback(() => {
+        if (user?.supporter_badge) return;
+        showSupporterPrompt();
+      }, [showSupporterPrompt, user?.supporter_badge]);
+
+      const handleJoinSupporterProgram = useCallback(async () => {
+        setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '' }));
+        try {
+          const response = await api.startSupporterCheckout();
+          if (response && typeof response.amount !== 'undefined') {
+            setSupporterUpsellState((prev) => ({
+              ...prev,
+              amount: Number.isFinite(Number(response.amount)) ? Number(response.amount) : prev.amount,
+              currency: response.currency || prev.currency
+            }));
+          }
+          if (response?.url) {
+            if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
+              window.location.assign(response.url);
+            }
+            return;
+          }
+          throw new Error(response?.error || 'Checkout unavailable');
+        } catch (err) {
+          const message = err?.message || 'Could not start checkout.';
+          setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: message }));
+        }
+      }, [api]);
 
       const { ads, refreshAds } = useAds();
-      console.log('App shell ads:', ads);
 
       const listings = useListingsFeature({ user, currentTab: tab });
       const {
@@ -277,6 +369,102 @@
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
       }, []);
+
+      useEffect(() => {
+        if (supporterQueryHandledRef.current) return;
+        if (typeof window === 'undefined') return;
+
+        const url = new URL(window.location.href);
+        const supporterParam = url.searchParams.get('supporter');
+        if (!supporterParam) {
+          supporterQueryHandledRef.current = true;
+          return;
+        }
+
+        supporterQueryHandledRef.current = true;
+
+        const cleanParams = () => {
+          url.searchParams.delete('supporter');
+          url.searchParams.delete('session_id');
+          const nextSearch = url.searchParams.toString();
+          const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ''}${url.hash}`;
+          window.history.replaceState({}, document.title, nextUrl);
+        };
+
+        if (supporterParam === 'thanks') {
+          const sessionId = url.searchParams.get('session_id') || '';
+          cleanParams();
+          setSupporterUpsellState((prev) => ({
+            ...prev,
+            open: true,
+            mode: 'success',
+            busy: true,
+            error: ''
+          }));
+          setSupporterPromptSeen();
+          if (!sessionId) {
+            setSupporterUpsellState((prev) => ({
+              ...prev,
+              busy: false,
+              mode: 'success',
+              error: 'We could not verify your supporter badge. Please contact support.'
+            }));
+            return;
+          }
+          (async () => {
+            try {
+              const updated = await api.confirmSupporterCheckout(sessionId);
+              if (updated && typeof setUser === 'function') {
+                setUser(updated);
+              }
+              setSupporterUpsellState((prev) => ({
+                ...prev,
+                busy: false,
+                mode: 'success',
+                error: ''
+              }));
+            } catch (err) {
+              const message = err?.message || 'We could not confirm your supporter badge. Please try again.';
+              setSupporterUpsellState((prev) => ({
+                ...prev,
+                busy: false,
+                mode: 'success',
+                error: message
+              }));
+            }
+          })();
+        } else if (supporterParam === 'remind-me-later') {
+          cleanParams();
+          setSupporterPromptSeen();
+        } else {
+          cleanParams();
+        }
+      }, [api, setSupporterPromptSeen, setUser]);
+
+      useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        if (!user || user.supporter_badge) return undefined;
+        if (supporterUpsellState.open || supporterInfoState.open) return undefined;
+        if (tab !== 'browse') return undefined;
+
+        try {
+          const raw = window.localStorage?.getItem(SUPPORTER_PROMPT_KEY);
+          const last = Number(raw || 0);
+          if (Number.isFinite(last) && Date.now() - last < SUPPORTER_PROMPT_INTERVAL_MS) {
+            return undefined;
+          }
+        } catch {
+          // Ignore storage failures
+        }
+
+        const timer = window.setTimeout(() => {
+          showSupporterPrompt();
+        }, SUPPORTER_PROMPT_DELAY_MS);
+
+        return () => {
+          window.clearTimeout(timer);
+        };
+      }, [user, tab, supporterUpsellState.open, supporterInfoState.open, showSupporterPrompt]);
 
       const mineById = useMemo(() => {
         const map = Object.create(null);
@@ -545,6 +733,23 @@
           }, 'Dismiss')
         ),
         H(GlobalLoader, { active: loadingCount > 0 }),
+        H(SupporterInfoModal, {
+          open: supporterInfoState.open,
+          onClose: handleSupporterInfoClose,
+          username: supporterInfoState.username,
+          since: supporterInfoState.since,
+          onJoin: handleSupporterInfoJoin
+        }),
+        H(SupporterUpsellModal, {
+          open: supporterUpsellState.open,
+          mode: supporterUpsellState.mode,
+          onClose: closeSupporterUpsell,
+          onJoin: handleJoinSupporterProgram,
+          busy: supporterUpsellState.busy,
+          error: supporterUpsellState.error,
+          amount: supporterUpsellState.amount,
+          currency: supporterUpsellState.currency
+        }),
 
         H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
           isEditingScreen
@@ -572,7 +777,8 @@
                       onBack: handleBackFromSeller,
                       user,
                       onMessage: startMessage,
-                      onAdminDelete: handleAdminDelete
+                      onAdminDelete: handleAdminDelete,
+                      onSupporterClick: handleSupporterBadgeClick
                     })
                   : H(React.Fragment, null,
                       tab==='browse' && H(React.Fragment, null,
@@ -684,16 +890,14 @@
                           })
                         ),
 
-                        (() => {
-                          console.log('Passing to ListingsGrid - items:', items?.length, 'ads:', ads?.length);
-                          return H(ListingsGrid, {
-                            items,
-                            ads,
-                            isMobile,
-                            onEnsureCover: ensureCover,
-                            onSelect: handleListingTileEvent
-                          });
-                        })(),
+                        H(ListingsGrid, {
+                          items,
+                          ads,
+                          isMobile,
+                          onEnsureCover: ensureCover,
+                          onSelect: handleListingTileEvent,
+                          onSupporterClick: handleSupporterBadgeClick
+                        }),
 
                         H('div', {
                           style: {
@@ -738,7 +942,8 @@
                             onAdminDelete: handleAdminDelete,
                             showDistance: false,
                             onViewSeller: handleViewSeller,
-                            onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined
+                            onToggleSold: mineById[selectedListing?.id] ? toggleSold : undefined,
+                            onSupporterClick: handleSupporterBadgeClick
                           }
                         })
                       ),
@@ -758,6 +963,7 @@
                           onAdminDelete: handleAdminDelete,
                           onViewSeller: handleViewSeller,
                           onToggleSold: toggleSold,
+                          onSupporterClick: handleSupporterBadgeClick,
                           setTab
                         }),
 
@@ -798,7 +1004,9 @@
                           autoInquiryEnabled,
                           setAutoInquiryEnabled,
                           onViewSeller: handleViewSeller,
-                          onToggleSold: toggleSold
+                          onToggleSold: toggleSold,
+                          onSupporterClick: handleSupporterBadgeClick,
+                          onJoinSupporterProgram: handleSupporterPromptCta
                         }),
 
                       (tab==='admin') &&

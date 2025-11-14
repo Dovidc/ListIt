@@ -380,7 +380,8 @@
       onViewSeller,
       onToggleSold,
       setTab,
-      isMobile
+      isMobile,
+      onSupporterClick
     }) {
       const COORD_STORAGE_KEY = 'listit_nearby_coords';
       const COORD_TTL_MS = 2 * 60 * 1000;
@@ -663,7 +664,8 @@
           className: 'nearby-grid',
           items: filteredItems,
           isMobile: !!isMobile,
-          onSelect: handleSelectListing
+          onSelect: handleSelectListing,
+          onSupporterClick
         }),
 
         (!hasItems && hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
@@ -689,6 +691,7 @@
               onViewSeller,
               onToggleSold,
               showDistance: true,
+              onSupporterClick,
               viewContext: 'nearby'
             })
           )

@@ -89,6 +89,17 @@ let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
 let OpenAI; try { OpenAI = require('openai'); } catch {}
 let cachedOpenAIClient = null;
 
+let Stripe;
+try {
+  Stripe = require('stripe');
+} catch {}
+
+const stripe = (Stripe && process.env.STRIPE_SECRET_KEY)
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20'
+    })
+  : null;
+
 function getOpenAIClient() {
 
   if (!process.env.OPENAI_API_KEY || !OpenAI) return null;
@@ -250,6 +261,34 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
 const FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0 ? FRONTEND_ORIGINS[0] : null;
 const HAS_FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0;
 const FRONTEND_ORIGIN_SET = new Set(FRONTEND_ORIGINS);
+
+const SUPPORTER_BADGE_CODE = process.env.SUPPORTER_BADGE_CODE || 'trovelr_gold';
+const SUPPORTER_DONATION_AMOUNT = (() => {
+  const raw = Number(process.env.SUPPORTER_DONATION_AMOUNT || 1000);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1000;
+})();
+const SUPPORTER_DONATION_CURRENCY = (process.env.SUPPORTER_DONATION_CURRENCY || 'usd').toLowerCase();
+const SUPPORTER_SUCCESS_PATH = process.env.SUPPORTER_SUCCESS_PATH || '/?supporter=thanks&session_id={CHECKOUT_SESSION_ID}';
+const SUPPORTER_CANCEL_PATH = process.env.SUPPORTER_CANCEL_PATH || '/?supporter=remind-me-later';
+const PUBLIC_APP_BASE_URL = process.env.PUBLIC_APP_BASE_URL || '';
+
+function resolveAppBaseUrl(req) {
+  if (HAS_FRONTEND_ORIGIN) return FRONTEND_ORIGIN;
+  if (PUBLIC_APP_BASE_URL) return PUBLIC_APP_BASE_URL;
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (host) return `${proto}://${host}`;
+  return '';
+}
+
+function resolveSupporterReturnUrl(req, template) {
+  if (!template) return resolveAppBaseUrl(req);
+  if (/^https?:/i.test(template)) return template;
+  const base = resolveAppBaseUrl(req) || '';
+  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+  const normalizedPath = template.startsWith('/') ? template : `/${template}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
 
 function isAllowedFrontendOrigin(origin) {
   const normalized = normalizeOrigin(origin);
@@ -837,7 +876,13 @@ async function initializeSchema() {
 
         email_verification_code_hash TEXT,
 
-        email_verification_expires_at TEXT
+        email_verification_expires_at TEXT,
+
+        supporter_badge TEXT,
+
+        supporter_since TEXT,
+
+        supporter_checkout_id TEXT
 
       );
 
@@ -865,6 +910,10 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_expires_at TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN profile_picture_url TEXT"); } catch {}
+
+    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_badge TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_since TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_checkout_id TEXT"); } catch {}
 
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
@@ -2739,7 +2788,13 @@ async function getUserWithStatus(userId) {
 
              created_at,
 
-             last_login_at
+             last_login_at,
+
+             profile_picture_url,
+
+             supporter_badge,
+
+             supporter_since
 
         FROM users
 
@@ -2754,6 +2809,44 @@ async function getUserWithStatus(userId) {
     return null;
 
   }
+
+}
+
+
+
+function mapUserRow(row, extra = {}) {
+
+  if (!row) return null;
+
+  return {
+
+    id: row.id,
+
+    email: row.email,
+
+    username: row.username,
+
+    is_admin: !!row.is_admin,
+
+    profile_picture_url: row.profile_picture_url,
+
+    account_status: row.account_status || 'active',
+
+    status_note: row.status_note,
+
+    status_updated_at: row.status_updated_at,
+
+    created_at: row.created_at,
+
+    last_login_at: row.last_login_at,
+
+    supporter_badge: row.supporter_badge || null,
+
+    supporter_since: row.supporter_since || null,
+
+    ...extra
+
+  };
 
 }
 
@@ -2827,27 +2920,7 @@ async function auth(req, res, next) {
 
 
 
-    req.user = {
-
-      id: row.id,
-
-      email: row.email,
-
-      username: row.username,
-
-      is_admin: !!row.is_admin,
-
-      account_status: row.account_status,
-
-      status_note: row.status_note,
-
-      status_updated_at: row.status_updated_at,
-
-      created_at: row.created_at,
-
-      last_login_at: row.last_login_at
-
-    };
+    req.user = mapUserRow(row);
 
     next();
 
@@ -3030,18 +3103,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       const now = nowIso();
       await db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, row.id);
 
-      const user = {
-        id: row.id,
-        email: row.email,
-        username: row.username,
-        is_admin: !!row.is_admin,
-        profile_picture_url: row.profile_picture_url,
-        account_status: row.account_status || 'active',
-        created_at: row.created_at,
-        status_note: row.status_note,
-        status_updated_at: row.status_updated_at,
-        last_login_at: now
-      };
+      const user = mapUserRow(row, { last_login_at: now });
       const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: user.account_status });
       return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
     }
@@ -3081,18 +3143,10 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       return res.status(403).json({ error: 'account_banned' });
     }
 
-    const user = {
-      id: row.id,
-      email: row.email,
-      username: row.username,
-      is_admin: !!row.is_admin,
-      profile_picture_url: row.profile_picture_url,
+    const user = mapUserRow(row, {
       account_status: accountStatus,
-      created_at: row.created_at,
-      status_note: row.status_note,
-      status_updated_at: row.status_updated_at,
       last_login_at: now
-    };
+    });
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
@@ -3165,29 +3219,13 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
 
 
-    const user = {
-
-      id: row.id,
-
-      email: row.email,
-
-      username: row.username,
-
-      is_admin: !!row.is_admin,
-
-      profile_picture_url: row.profile_picture_url,
+    const user = mapUserRow(row, {
 
       account_status: accountStatus,
 
-      created_at: row.created_at,
-
-      status_note: row.status_note,
-
-      status_updated_at: row.status_updated_at,
-
       last_login_at: now
 
-    };
+    });
 
     const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: accountStatus });
 
@@ -3322,7 +3360,11 @@ app.get('/api/me', async (req, res) => {
 
              status_updated_at,
 
-             last_login_at
+             last_login_at,
+
+             supporter_badge,
+
+             supporter_since
 
       FROM users
 
@@ -3336,35 +3378,13 @@ app.get('/api/me', async (req, res) => {
 
     
 
-    return res.json({
-
-      id: row.id,
-
-      email: row.email,
-
-      username: row.username,
-
-      is_admin: !!row.is_admin,
-
+    const user = mapUserRow(row, {
       paypal_email: row.paypal_email,
-
       location_preset: row.location_preset,
-
-      profile_picture_url: row.profile_picture_url,
-
-      account_status: row.account_status,
-
-      status_note: row.status_note,
-
-      status_updated_at: row.status_updated_at,
-
-      created_at: row.created_at,
-
-      last_login_at: row.last_login_at,
-
       push_meta: publicPushMeta()
-
     });
+
+    return res.json(user);
 
   } catch (e) {
 
@@ -3461,6 +3481,176 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
     console.error('Update profile picture failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
+
+  }
+
+});
+
+app.post('/api/supporters/checkout', auth, async (req, res) => {
+
+  if (!stripe) {
+
+    return res.status(503).json({ error: 'stripe_unavailable' });
+
+  }
+
+  try {
+
+    const successUrl = resolveSupporterReturnUrl(req, SUPPORTER_SUCCESS_PATH);
+
+    const cancelUrl = resolveSupporterReturnUrl(req, SUPPORTER_CANCEL_PATH);
+
+    const session = await stripe.checkout.sessions.create({
+
+      mode: 'payment',
+
+      client_reference_id: String(req.user.id),
+
+      customer_email: req.user.email,
+
+      success_url: successUrl,
+
+      cancel_url: cancelUrl,
+
+      payment_method_types: ['card'],
+
+      line_items: [
+
+        {
+
+          quantity: 1,
+
+          price_data: {
+
+            currency: SUPPORTER_DONATION_CURRENCY,
+
+            unit_amount: SUPPORTER_DONATION_AMOUNT,
+
+            product_data: {
+
+              name: 'Trovelr Supporter Badge',
+
+              description: 'One-time donation to support Trovelr'
+
+            }
+
+          }
+
+        }
+
+      ],
+
+      metadata: {
+
+        user_id: String(req.user.id)
+
+      }
+
+    });
+
+    if (!session?.url) {
+
+      return res.status(500).json({ error: 'checkout_unavailable' });
+
+    }
+
+    try {
+
+      await db.prepare('UPDATE users SET supporter_checkout_id = ? WHERE id = ?').run(session.id, req.user.id);
+
+    } catch (err) {
+
+      console.warn('Failed to persist supporter checkout id:', err);
+
+    }
+
+    return res.json({
+
+      url: session.url,
+
+      session_id: session.id,
+
+      amount: SUPPORTER_DONATION_AMOUNT,
+
+      currency: SUPPORTER_DONATION_CURRENCY
+
+    });
+
+  } catch (err) {
+
+    console.error('Supporter checkout failed:', err);
+
+    return res.status(500).json({ error: 'checkout_failed' });
+
+  }
+
+});
+
+app.post('/api/supporters/confirm', auth, async (req, res) => {
+
+  if (!stripe) {
+
+    return res.status(503).json({ error: 'stripe_unavailable' });
+
+  }
+
+  const sessionId = String(req.body?.session_id || '').trim();
+
+  if (!sessionId) {
+
+    return res.status(400).json({ error: 'session_required' });
+
+  }
+
+  try {
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (!session) {
+
+      return res.status(404).json({ error: 'session_not_found' });
+
+    }
+
+    const clientRef = session.client_reference_id || session.metadata?.user_id;
+
+    if (clientRef && Number(clientRef) !== Number(req.user.id)) {
+
+      return res.status(403).json({ error: 'not_authorized' });
+
+    }
+
+    const isPaid = session.payment_status === 'paid' || session.status === 'complete';
+
+    if (!isPaid) {
+
+      return res.status(400).json({ error: 'payment_incomplete' });
+
+    }
+
+    const supporterSince = nowIso();
+
+    await db.prepare(`
+      UPDATE users
+         SET supporter_badge = ?,
+             supporter_since = COALESCE(supporter_since, ?),
+             supporter_checkout_id = NULL
+       WHERE id = ?
+    `).run(SUPPORTER_BADGE_CODE, supporterSince, req.user.id);
+
+    const refreshed = await getUserWithStatus(req.user.id);
+
+    const user = mapUserRow(refreshed);
+
+    req.user = user;
+
+    return res.json(user);
+
+  } catch (err) {
+
+    console.error('Supporter confirm failed:', err);
+
+    return res.status(500).json({ error: 'confirmation_failed' });
 
   }
 
@@ -3677,7 +3867,11 @@ app.get('/api/listings', async (req, res) => {
 
       l.inquiry_enabled, l.sold,
 
-      u.username as owner_username
+      u.username AS owner_username,
+
+      u.supporter_badge AS owner_supporter_badge,
+
+      u.supporter_since AS owner_supporter_since
 
     `;
 
@@ -3687,7 +3881,13 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, u.username as owner_username
+      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold,
+
+      u.username AS owner_username,
+
+      u.supporter_badge AS owner_supporter_badge,
+
+      u.supporter_since AS owner_supporter_since
 
     `;
 
@@ -4626,7 +4826,11 @@ app.get('/api/users/:userId', async (req, res) => {
 
 
 
-    const user = await db.prepare('SELECT id, username, created_at FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare(`
+      SELECT id, username, created_at, supporter_badge, supporter_since
+        FROM users
+       WHERE id = ?
+    `).get(userId);
 
     if (!user) {
 
@@ -4642,7 +4846,11 @@ app.get('/api/users/:userId', async (req, res) => {
 
       username: user.username || null,
 
-      created_at: user.created_at
+      created_at: user.created_at,
+
+      supporter_badge: user.supporter_badge || null,
+
+      supporter_since: user.supporter_since || null
 
     });
 
@@ -4688,7 +4896,7 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
     const rows = await db.prepare(`
 
-      SELECT 
+      SELECT
 
         l.id, l.user_id, l.image_data,
 
@@ -4696,7 +4904,11 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
         l.sold,
 
-        u.username as owner_username
+        u.username AS owner_username,
+
+        u.supporter_badge AS owner_supporter_badge,
+
+        u.supporter_since AS owner_supporter_since
 
       FROM listings l
 
@@ -5164,15 +5376,17 @@ app.get('/api/listings/nearby', async (req, res) => {
                        FROM listing_images
                       WHERE listing_id = l.id
                         AND (url IS NOT NULL OR image_data IS NOT NULL)
-                      ORDER BY position ASC, id ASC
-                      LIMIT 1
+                    ORDER BY position ASC, id ASC
+                    LIMIT 1
                    ),
                    l.image_data
                  ) AS image_data,
                  l.title, l.description, l.location,
                  l.price, l.created_at, l.tags, l.lat, l.lon,
                  l.inquiry_enabled,
-                 u.username as owner_username,
+                 u.username AS owner_username,
+                 u.supporter_badge AS owner_supporter_badge,
+                 u.supporter_since AS owner_supporter_since,
                  ST_Distance(
                    COALESCE(
                      l.geog,
@@ -5248,7 +5462,9 @@ app.get('/api/listings/nearby', async (req, res) => {
                l.title, l.description, l.location,
                l.price, l.created_at, l.tags, l.lat, l.lon,
                l.inquiry_enabled,
-               u.username as owner_username,
+               u.username AS owner_username,
+               u.supporter_badge AS owner_supporter_badge,
+               u.supporter_since AS owner_supporter_since,
                ${distanceExpr} AS distance_m
           FROM listings l
           JOIN users u ON u.id = l.user_id
