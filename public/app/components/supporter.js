@@ -295,7 +295,8 @@
                         borderRadius: 12,
                         cursor: 'pointer',
                         transition: 'all 0.2s'
-                      }
+                      },
+                      onClick: () => setSelectedTier('basic')
                     },
                       H('input', {
                         type: 'radio',
@@ -322,7 +323,8 @@
                         borderRadius: 12,
                         cursor: 'pointer',
                         transition: 'all 0.2s'
-                      }
+                      },
+                      onClick: () => setSelectedTier('premium')
                     },
                       H('input', {
                         type: 'radio',
