@@ -30,7 +30,8 @@
     "openai": "^5.16.0",
     "pg": "^8.16.3",
     "web-push": "^3.6.7",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "stripe": "^16.6.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",

@@ -163,9 +163,18 @@
     if (typeof gridComponentsFactory !== 'function') {
       throw new Error('Grid components bundle failed to load.');
     }
+    const supporterComponentsFactory = bundles?.components?.supporter?.createSupporterComponents;
+    if (typeof supporterComponentsFactory !== 'function') {
+      throw new Error('Supporter components bundle failed to load.');
+    }
+    const { SupporterBadge, SupporterInfoModal, SupporterUpsellModal } = supporterComponentsFactory({
+      React: runtimeReact,
+      ReactDOM: runtimeReactDOM
+    });
+
     const { ListingsGrid } = gridComponentsFactory({
       React: runtimeReact,
-      components: { ImageWithSkeleton, AdTile },
+      components: { ImageWithSkeleton, AdTile, SupporterBadge },
       helpers: {
         useVirtualMasonry
       }
@@ -357,7 +366,8 @@
       components: {
         ImageWithSkeleton,
         ResponsiveImage,
-        ListingsGrid
+        ListingsGrid,
+        SupporterBadge
       },
       formatting: {
         price,
@@ -417,7 +427,6 @@
     if (typeof profileFeatureFactory !== 'function') {
       throw new Error('Profile feature bundle failed to load.');
     }
-    console.log('ListingsGrid before passing to profile:', ListingsGrid, typeof ListingsGrid);
     const { ProfilePanel } = profileFeatureFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM,
@@ -430,7 +439,8 @@
         AiDescriptionHelpModal,
         ListingModal,
         ProfilePictureUploadModal,
-        ListingsGrid
+        ListingsGrid,
+        SupporterBadge
       },
       appNav: AppNav
     });
@@ -498,7 +508,8 @@
           MassListModal,
           ListingModal,
           SellerProfile
-        }
+        },
+        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal }
       },
       uploads: {
         prepareListingForModal,

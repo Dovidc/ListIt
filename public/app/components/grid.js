@@ -4,9 +4,12 @@
       throw new Error('Grid components require React.');
     }
 
-    const { ImageWithSkeleton } = components;
+    const { ImageWithSkeleton, SupporterBadge } = components;
     if (typeof ImageWithSkeleton !== 'function') {
       throw new Error('Grid components require ImageWithSkeleton component.');
+    }
+    if (typeof SupporterBadge !== 'function') {
+      throw new Error('Grid components require SupporterBadge component.');
     }
 
     const AdTile = typeof components.AdTile === 'function' ? components.AdTile : null;
@@ -69,7 +72,7 @@
       }, children);
     });
 
-    const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect }) {
+    const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect, onSupporterClick }) {
       const ref = useRef(null);
 
       useEffect(() => {
@@ -108,6 +111,11 @@
             }
           }
         : undefined;
+
+      const supporterData = item?.owner_supporter_badge ? {
+        username: item?.owner_username ? `@${item.owner_username}` : null,
+        since: item?.owner_supporter_since || null
+      } : null;
 
       return H('div', {
         ref,
@@ -153,7 +161,29 @@
                   fontWeight: 600,
                   fontSize: 12
                 }
-              }, 'No image')
+              }, 'No image'),
+          supporterData && H('div', {
+            style: {
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              zIndex: 2
+            }
+          },
+            H(SupporterBadge, {
+              size: 'sm',
+              since: supporterData.since,
+              onClick: onSupporterClick
+                ? (evt) => {
+                    evt.stopPropagation?.();
+                    onSupporterClick({
+                      username: supporterData.username,
+                      since: supporterData.since
+                    });
+                  }
+                : undefined
+            })
+          )
         )
       );
     });
@@ -164,6 +194,7 @@
       isMobile = false,
       onEnsureCover,
       onSelect,
+      onSupporterClick,
       columns,
       gap = 12,
       enableVirtualization = false,
@@ -308,7 +339,8 @@
               H(GridTile, {
                 item: entry.data,
                 onEnsureCover,
-                onSelect
+                onSelect,
+                onSupporterClick
               })
             );
           })
@@ -330,7 +362,8 @@
             key,
             item: data,
             onEnsureCover,
-            onSelect
+            onSelect,
+            onSupporterClick
           });
         })
       );
