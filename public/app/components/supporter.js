@@ -375,8 +375,12 @@
       useEffect(() => {
         if (!open || !listingId) {
           setBuyers([]);
+          setSelecting(false);
           return;
         }
+
+        // Reset selection state every time the modal is opened for a listing
+        setSelecting(false);
 
         setLoading(true);
         fetch(`/api/listings/${listingId}/potential-buyers`, {
