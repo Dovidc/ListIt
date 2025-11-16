@@ -38,15 +38,26 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
   const region = process.env.AWS_REGION || process.env.S3_REGION;
   const PUBLIC_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim(); // optional
 
-  const max = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
-  if (bytes > max) throw new Error('Image too large');
-  if (!/^image\/(png|jpe?g|webp|avif|heic|heif|gif)$/i.test(contentType)) throw new Error('Unsupported type');
+  const imageRegex = /^image\/(png|jpe?g|webp|avif|heic|heif|gif)$/i;
+  const videoRegex = /^video\/mp4$/i;
+  const maxImageBytes = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
+  const maxVideoBytes = (+process.env.MAX_VIDEO_MB || 10) * 1024 * 1024;
+
+  let cacheControl = 'public, max-age=31536000, immutable';
+
+  if (imageRegex.test(contentType)) {
+    if (bytes > maxImageBytes) throw new Error('Image too large');
+  } else if (videoRegex.test(contentType)) {
+    if (bytes > maxVideoBytes) throw new Error('Video too large');
+  } else {
+    throw new Error('Unsupported type');
+  }
   const Key = newKey(filename);
   const cmd = new PutObjectCommand({
     Bucket,
     Key,
     ContentType: contentType,
-    CacheControl: 'public, max-age=31536000, immutable',
+    CacheControl: cacheControl,
   });
 
   const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 });
