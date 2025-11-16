@@ -1263,9 +1263,9 @@
       const activeItems = asArray(items).filter(it => !it?.sold);
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
-      return H(React.Fragment, null,
-        H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
-          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+      const trimmedBgVideoUrl = (profileBgVideoUrl || '').trim();
+      const hasBgVideo = !!trimmedBgVideoUrl;
+      const profileHeaderContent = H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
             H('div', { className: 'row', style: { gap: 12, alignItems: 'center' } },
               H('div', {
                 className: 'profile-avatar',
@@ -1378,7 +1378,57 @@
                 H('span', { style: visuallyHidden, onClick: onLogout }, 'Log out')
               )
             )
-          ),
+          );
+      const profileHeader = hasBgVideo
+        ? H('div', {
+            style: {
+              position: 'relative',
+              minHeight: 180,
+              overflow: 'hidden'
+            }
+          },
+            H('video', {
+              key: trimmedBgVideoUrl,
+              src: trimmedBgVideoUrl,
+              autoPlay: true,
+              muted: true,
+              loop: true,
+              playsInline: true,
+              style: {
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }
+            }),
+            H('div', {
+              style: {
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+              }
+            }),
+            H('div', {
+              style: {
+                position: 'relative',
+                padding: 16,
+                color: '#f8fafc'
+              }
+            }, profileHeaderContent)
+          )
+        : profileHeaderContent;
+      return H(React.Fragment, null,
+        H('section', {
+          className: 'card',
+          style: {
+            padding: hasBgVideo ? 0 : 16,
+            margin: '12px 0 16px',
+            overflow: hasBgVideo ? 'hidden' : undefined,
+            background: hasBgVideo ? '#020617' : undefined,
+            color: hasBgVideo ? '#f8fafc' : undefined
+          }
+        }, profileHeader),
 
         H('section', null,
           H('div', {
