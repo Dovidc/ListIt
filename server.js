@@ -944,7 +944,9 @@ async function initializeSchema() {
 
         supporter_since TEXT,
 
-        supporter_checkout_id TEXT
+        supporter_checkout_id TEXT,
+
+        profile_bg_image_url TEXT
 
       );
 
@@ -972,6 +974,7 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_expires_at TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN profile_picture_url TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_bg_image_url TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_badge TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_since TEXT"); } catch {}
