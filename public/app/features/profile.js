@@ -363,12 +363,15 @@
       onRequestDeleteAccount,
       onRequestCancelSubscription,
       isMobile,
-      user
+      user,
+      subscriptionStatus: modalSubscriptionStatus
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
       }
+
+      const subscriptionStatus = modalSubscriptionStatus ?? user?.subscription_status ?? null;
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -1050,7 +1053,8 @@
           onRequestDeleteAccount: handleRequestDeleteAccount,
           onRequestCancelSubscription: handleRequestCancelSubscription,
           isMobile,
-          user
+          user,
+          subscriptionStatus
         }),
 
         H(ProfilePictureUploadModal, {
