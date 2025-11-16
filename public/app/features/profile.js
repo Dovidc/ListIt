@@ -77,6 +77,22 @@
       padding: 0
     };
 
+    function formatSubscriptionEndDate(value) {
+      if (!value) return null;
+      try {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toLocaleDateString(undefined, {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        });
+      } catch (err) {
+        console.warn('Failed to format subscription period end date:', err);
+        return null;
+      }
+    }
+
     function SettingsIcon(props = {}) {
       return H('svg', Object.assign({
         viewBox: '0 0 24 24',
@@ -372,6 +388,12 @@
       }
 
       const subscriptionStatus = modalSubscriptionStatus ?? user?.subscription_status ?? null;
+      const cancellationDateText = formatSubscriptionEndDate(user?.subscription_current_period_end);
+      const subscriptionMessage = subscriptionStatus === 'canceling'
+        ? (cancellationDateText
+          ? `Your cancellation is scheduled. Your subscription will end on ${cancellationDateText}. You will keep your supporter perks until then and can renew your subscription once it ends.`
+          : 'Your cancellation is scheduled. You will keep your supporter perks until the end of your current billing period and can renew your subscription once it ends.')
+        : 'You have an active monthly subscription';
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -486,11 +508,7 @@
                 }
               },
                 H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Subscription'),
-                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } },
-                  subscriptionStatus === 'canceling'
-                    ? 'Your cancellation is scheduled. You will keep your supporter perks until the end of your current billing period and can renew your subscription once it ends.'
-                    : 'You have an active monthly subscription'
-                ),
+                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } }, subscriptionMessage),
                 H('button', {
                   className: 'btn',
                   onClick: subscriptionStatus === 'canceling' ? undefined : onRequestCancelSubscription,
