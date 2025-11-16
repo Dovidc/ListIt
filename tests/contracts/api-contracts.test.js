@@ -3,6 +3,12 @@ if (!process.env.DB_PATH) {
   process.env.DB_PATH = ':memory:';
 }
 
+jest.mock('debug', () => {
+  const mock = () => () => {};
+  mock.log = () => {};
+  return mock;
+}, { virtual: true });
+
 const request = require('supertest');
 const app = require('../../server');
 const { API_VERSIONS } = require('../../contracts/versioning');

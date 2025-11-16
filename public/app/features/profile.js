@@ -362,6 +362,9 @@
       setAutoPostNearbyEnabled,
       onRequestDeleteAccount,
       onRequestCancelSubscription,
+      cancelSubscriptionLoading,
+      subscriptionStatus,
+      subscriptionPeriodEnd,
       isMobile,
       user
     }) {
@@ -381,6 +384,36 @@
           onRequestHelp(topic);
         }
       };
+
+      const formatPeriodDate = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return null;
+        }
+        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      };
+
+      const isPremiumSubscriber = user?.supporter_tier === 'premium' && user?.stripe_subscription_id;
+      const currentSubscriptionStatus = subscriptionStatus || user?.subscription_status || null;
+      const normalizedPeriodEnd = subscriptionPeriodEnd || user?.subscription_current_period_end || null;
+      const formattedPeriodEnd = formatPeriodDate(normalizedPeriodEnd);
+      const isCancelingSubscription = currentSubscriptionStatus === 'canceling';
+
+      const subscriptionDescription = isCancelingSubscription
+        ? 'Your subscription will end at the close of the current billing period.'
+        : 'You have an active monthly subscription.';
+
+      const subscriptionPeriodDescription = formattedPeriodEnd
+        ? (isCancelingSubscription
+          ? `Access ends on ${formattedPeriodEnd}.`
+          : `Next renewal on ${formattedPeriodEnd}.`)
+        : null;
+
+      const cancelButtonDisabled = !!cancelSubscriptionLoading || isCancelingSubscription;
+      const cancelButtonLabel = isCancelingSubscription
+        ? 'Cancellation scheduled'
+        : (cancelSubscriptionLoading ? 'Canceling…' : 'Cancel Subscription');
 
       return createPortal(
         H('div', {
@@ -475,7 +508,7 @@
                 }, '?')
               ),
               // Show cancel subscription button for premium monthly subscribers
-              user?.supporter_tier === 'premium' && user?.stripe_subscription_id && H('div', {
+              isPremiumSubscriber && H('div', {
                 style: {
                   marginTop: 24,
                   paddingTop: 24,
@@ -483,19 +516,27 @@
                 }
               },
                 H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Subscription'),
-                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } },
-                  'You have an active monthly subscription'
+                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 8 } },
+                  subscriptionDescription
                 ),
+                subscriptionPeriodDescription && H('div', {
+                  className: 'muted',
+                  style: { fontSize: 13, marginBottom: 12, color: '#374151' }
+                }, subscriptionPeriodDescription),
                 H('button', {
                   className: 'btn',
+                  type: 'button',
+                  disabled: cancelButtonDisabled,
                   onClick: onRequestCancelSubscription,
                   style: {
                     width: '100%',
                     background: '#f59e0b',
                     color: 'white',
-                    border: 'none'
+                    border: 'none',
+                    opacity: cancelButtonDisabled ? 0.75 : 1,
+                    cursor: cancelButtonDisabled ? 'not-allowed' : 'pointer'
                   }
-                }, 'Cancel Subscription')
+                }, cancelButtonLabel)
               ),
               H('div', {
                 style: {
@@ -556,6 +597,7 @@
       const [deleteAccountError, setDeleteAccountError] = useState('');
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
       const [karmaListingId, setKarmaListingId] = useState(null);
+      const [cancelSubscriptionLoading, setCancelSubscriptionLoading] = useState(false);
 
       useEffect(() => {
         if (!user) return;
@@ -776,20 +818,31 @@
       }, [deleteConfirmText, onLogout]);
 
       const handleRequestCancelSubscription = useCallback(async () => {
+        if (cancelSubscriptionLoading) {
+          return;
+        }
+
         if (!confirm('Are you sure you want to cancel your monthly subscription? You will keep your supporter badge until the end of your current billing period.')) {
           return;
         }
 
+        setCancelSubscriptionLoading(true);
+
         try {
-          await api.cancelSubscription();
+          const response = await api.cancelSubscription();
+          if (response?.user) {
+            navBridge.setUser?.(response.user);
+          }
           setSettingsOpen(false);
           // Refresh user data to update UI
           window.location.reload();
         } catch (err) {
           console.error('Cancel subscription failed:', err);
           alert(err.message || 'Failed to cancel subscription');
+        } finally {
+          setCancelSubscriptionLoading(false);
         }
-      }, []);
+      }, [cancelSubscriptionLoading]);
 
       const handleToggleSoldWithKarma = useCallback(async (listing, makeSold) => {
         console.log('=== KARMA HANDLER START ===');
@@ -1033,6 +1086,9 @@
           setAutoPostNearbyEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,
           onRequestCancelSubscription: handleRequestCancelSubscription,
+          cancelSubscriptionLoading,
+          subscriptionStatus: user?.subscription_status,
+          subscriptionPeriodEnd: user?.subscription_current_period_end,
           isMobile,
           user
         }),

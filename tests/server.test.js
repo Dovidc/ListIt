@@ -3,14 +3,24 @@ if (!process.env.DB_PATH) {
   process.env.DB_PATH = ':memory:';
 }
 
+jest.mock('debug', () => {
+  const mock = () => () => {};
+  mock.log = () => {};
+  return mock;
+}, { virtual: true });
+
 jest.mock('stripe', () => {
   const retrieveSession = jest.fn();
   const retrieveSubscription = jest.fn();
+  const updateSubscription = jest.fn();
   const StripeMock = jest.fn().mockImplementation(() => ({
     checkout: { sessions: { retrieve: retrieveSession } },
-    subscriptions: { retrieve: retrieveSubscription }
+    subscriptions: {
+      retrieve: retrieveSubscription,
+      update: updateSubscription
+    }
   }));
-  StripeMock.__mock = { retrieveSession, retrieveSubscription };
+  StripeMock.__mock = { retrieveSession, retrieveSubscription, updateSubscription };
   return StripeMock;
 }, { virtual: true });
 
@@ -33,6 +43,7 @@ const mailService = require('../mail-service');
 beforeEach(() => {
   stripeMock.retrieveSession.mockReset();
   stripeMock.retrieveSubscription.mockReset();
+  stripeMock.updateSubscription.mockReset();
 });
 
 function bodyItems(body) {
@@ -346,6 +357,50 @@ describe('Supporter metadata', () => {
     expect(row.supporter_badge).toBe('trovelr_platinum');
     expect(row.stripe_subscription_id).toBe('sub_123');
     expect(row.subscription_status).toBe('active');
+  });
+
+  it('allows a premium user to cancel their subscription', async () => {
+    await resetDb();
+
+    const agent = request.agent(app);
+    const user = await registerAndVerify(agent, {
+      email: 'cancel@test.com',
+      password: 'secret1',
+      username: 'cancelUser'
+    });
+
+    await db.prepare(`
+      UPDATE users
+         SET supporter_tier = 'premium',
+             supporter_badge = 'trovelr_platinum',
+             stripe_subscription_id = 'sub_cancel',
+             subscription_status = 'active'
+       WHERE id = ?
+    `).run(user.id);
+
+    const nextPeriodEnd = Math.floor(new Date('2031-01-01T00:00:00.000Z').getTime() / 1000);
+    stripeMock.updateSubscription.mockResolvedValue({
+      id: 'sub_cancel',
+      cancel_at_period_end: true,
+      current_period_end: nextPeriodEnd
+    });
+
+    const res = await agent.post('/api/supporters/cancel');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(stripeMock.updateSubscription).toHaveBeenCalledWith('sub_cancel', { cancel_at_period_end: true });
+    expect(res.body.user.subscription_status).toBe('canceling');
+    expect(res.body.user.subscription_current_period_end).toBe('2031-01-01T00:00:00.000Z');
+
+    const row = await db.prepare(`
+      SELECT subscription_status, subscription_current_period_end
+        FROM users
+       WHERE id = ?
+    `).get(user.id);
+
+    expect(row.subscription_status).toBe('canceling');
+    expect(row.subscription_current_period_end).toBe('2031-01-01T00:00:00.000Z');
   });
 });
 
