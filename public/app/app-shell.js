@@ -199,7 +199,7 @@
         autoInquiryEnabled,
         setAutoInquiryEnabled
       } = useAppPreferences();
-      const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null });
+      const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, isSelf: false });
       const [supporterUpsellState, setSupporterUpsellState] = useState({
         open: false,
         mode: 'prompt',
@@ -252,7 +252,8 @@
         const usernameRaw = typeof payload?.username === 'string' ? payload.username.trim() : '';
         const username = usernameRaw || 'This user';
         const since = payload?.since || null;
-        setSupporterInfoState({ open: true, username, since });
+        const isSelf = Boolean(payload?.isSelf);
+        setSupporterInfoState({ open: true, username, since, isSelf });
       }, []);
 
       const handleSupporterInfoClose = useCallback(() => {
@@ -260,9 +261,11 @@
       }, []);
 
       const handleSupporterInfoJoin = useCallback(() => {
+        const isSelf = supporterInfoState.isSelf;
         setSupporterInfoState((prev) => ({ ...prev, open: false }));
+        if (isSelf) return;
         showSupporterPrompt();
-      }, [showSupporterPrompt]);
+      }, [showSupporterPrompt, supporterInfoState.isSelf]);
 
       const handleSupporterPromptCta = useCallback(() => {
         if (user?.supporter_badge) return;
@@ -801,6 +804,7 @@
           onClose: handleSupporterInfoClose,
           username: supporterInfoState.username,
           since: supporterInfoState.since,
+          isSelf: supporterInfoState.isSelf,
           onJoin: handleSupporterInfoJoin
         }),
         H(SupporterUpsellModal, {

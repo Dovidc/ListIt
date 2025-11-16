@@ -698,7 +698,8 @@
         if (!profileSupporter) return;
         onSupporterClick?.({
           username: profileSupporter.username,
-          since: profileSupporter.since || null
+          since: profileSupporter.since || null,
+          isSelf: true
         });
       }, [onSupporterClick, profileSupporter]);
       const handleJoinSupporterClick = useCallback(() => {
