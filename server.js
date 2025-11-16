@@ -2902,6 +2902,8 @@ async function getUserWithStatus(userId) {
 
              profile_avatar_border_style,
 
+             profile_bg_image_url,
+
              profile_bg_video_url,
 
              supporter_badge,
@@ -2942,7 +2944,8 @@ function mapUserRow(row, extra = {}) {
 
   if (!row) return null;
 
-  const bannerImageUrl = row.profile_bg_image_url || row.profile_bg_video_url || null;
+  const imageUrl = row.profile_bg_image_url || null;
+  const videoUrl = row.profile_bg_video_url || null;
 
   return {
 
@@ -2960,9 +2963,9 @@ function mapUserRow(row, extra = {}) {
 
     profile_avatar_border_style: row.profile_avatar_border_style || 'solid',
 
-    profile_bg_image_url: bannerImageUrl,
+    profile_bg_image_url: imageUrl || videoUrl || null,
 
-    profile_bg_video_url: bannerImageUrl,
+    profile_bg_video_url: videoUrl,
 
     account_status: row.account_status || 'active',
 
@@ -3502,6 +3505,8 @@ app.get('/api/me', async (req, res) => {
 
              profile_avatar_border_style,
 
+             profile_bg_image_url,
+
              profile_bg_video_url,
 
              created_at,
@@ -3691,7 +3696,8 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
       UPDATE users
       SET profile_avatar_border_color = ?,
           profile_avatar_border_style = ?,
-          profile_bg_video_url = ?
+          profile_bg_image_url = ?,
+          profile_bg_video_url = NULL
       WHERE id = ?
     `).run(borderColor, borderStyle, bgImageUrl || null, req.user.id);
 
@@ -3700,7 +3706,7 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
       profile_avatar_border_color: borderColor,
       profile_avatar_border_style: borderStyle,
       profile_bg_image_url: bgImageUrl,
-      profile_bg_video_url: bgImageUrl
+      profile_bg_video_url: null
     });
 
   } catch (e) {
@@ -5513,6 +5519,7 @@ app.get('/api/users/:userId', async (req, res) => {
              profile_picture_url,
              profile_avatar_border_color,
              profile_avatar_border_style,
+             profile_bg_image_url,
              profile_bg_video_url,
              karma
         FROM users
