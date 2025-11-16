@@ -1527,7 +1527,7 @@
             H('div', {
               style: {
                 position: 'relative',
-                padding: 16,
+                padding: '36px 16px 20px',
                 color: '#f8fafc'
               }
             }, profileHeaderContent)
