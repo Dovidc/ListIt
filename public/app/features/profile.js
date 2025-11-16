@@ -397,7 +397,10 @@
       borderStyle,
       onChangeBorderStyle,
       bgVideoUrl,
-      onChangeBgVideoUrl,
+      onUploadBgVideo,
+      onClearBgVideo,
+      bgVideoUploading,
+      bgVideoUploadError,
       onSave,
       statusMessage,
       isPremium
@@ -411,6 +414,18 @@
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
           onClose?.();
         }
+      };
+
+      const handleVideoFileChange = (evt) => {
+        if (!isPremium || bgVideoUploading) {
+          evt.target.value = '';
+          return;
+        }
+        const file = evt.target?.files && evt.target.files[0];
+        if (file) {
+          onUploadBgVideo?.(file);
+        }
+        evt.target.value = '';
       };
 
       const premiumMsg = !isPremium ? H('div', {
@@ -510,19 +525,86 @@
                 )
               ),
               H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Background Video URL'),
+                H('span', { style: { fontWeight: 600 } }, 'Background Video'),
                 H('input', {
-                  type: 'text',
-                  value: bgVideoUrl,
-                  onChange: (evt) => onChangeBgVideoUrl?.(evt.target.value),
-                  disabled: !isPremium,
-                  placeholder: 'https://example.com/video.mp4',
-                  style: { width: '100%', opacity: isPremium ? 1 : 0.6, cursor: isPremium ? 'text' : 'not-allowed' }
+                  type: 'file',
+                  accept: 'video/mp4',
+                  disabled: !isPremium || bgVideoUploading,
+                  onChange: handleVideoFileChange,
+                  style: {
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    cursor: isPremium && !bgVideoUploading ? 'pointer' : 'not-allowed',
+                    opacity: isPremium ? 1 : 0.6,
+                    background: '#fff'
+                  }
                 }),
                 H('p', {
                   className: 'muted',
                   style: { fontSize: 12, margin: '4px 0 0' }
-                }, 'Use an MP4 video. Keep it under 5MB for best performance.')
+                }, 'Upload an MP4 (10MB max). It will loop silently in your profile header.'),
+                bgVideoUploading && H('div', {
+                  role: 'status',
+                  style: {
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#2563eb'
+                  }
+                }, 'Uploading video...'),
+                bgVideoUploadError && H('div', {
+                  role: 'alert',
+                  style: {
+                    fontSize: 12,
+                    color: '#b91c1c'
+                  }
+                }, bgVideoUploadError),
+                bgVideoUrl
+                  ? H('div', { style: { display: 'grid', gap: 8 } },
+                    H('video', {
+                      key: bgVideoUrl,
+                      src: bgVideoUrl,
+                      autoPlay: true,
+                      muted: true,
+                      loop: true,
+                      playsInline: true,
+                      controls: true,
+                      style: {
+                        width: '100%',
+                        height: 190,
+                        borderRadius: 12,
+                        objectFit: 'cover',
+                        boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)'
+                      }
+                    }),
+                    H('div', {
+                      style: {
+                        display: 'flex',
+                        justifyContent: 'flex-end'
+                      }
+                    },
+                      H('button', {
+                        type: 'button',
+                        onClick: () => onClearBgVideo?.(),
+                        disabled: !isPremium || bgVideoUploading,
+                        style: {
+                          border: 'none',
+                          background: '#fee2e2',
+                          color: '#b91c1c',
+                          borderRadius: 999,
+                          padding: '6px 14px',
+                          cursor: isPremium && !bgVideoUploading ? 'pointer' : 'not-allowed'
+                        }
+                      }, 'Remove video')
+                    )
+                  )
+                  : H('div', {
+                    style: {
+                      fontSize: 12,
+                      color: '#6b7280'
+                    }
+                  }, 'No video uploaded yet.')
               ),
               H('div', {
                 style: {
@@ -773,8 +855,11 @@
       const [profileAvatarBorderColor, setProfileAvatarBorderColor] = useState(user?.profile_avatar_border_color || '#ffffff');
       const [profileAvatarBorderStyle, setProfileAvatarBorderStyle] = useState(user?.profile_avatar_border_style || 'solid');
       const [profileBgVideoUrl, setProfileBgVideoUrl] = useState(user?.profile_bg_video_url || '');
+      const [profileBgVideoUploading, setProfileBgVideoUploading] = useState(false);
+      const [profileBgVideoUploadError, setProfileBgVideoUploadError] = useState('');
       const [profileCustomizationModalOpen, setProfileCustomizationModalOpen] = useState(false);
       const [profileCustomizationStatusMessage, setProfileCustomizationStatusMessage] = useState('');
+      const isPremiumUser = useMemo(() => user?.supporter_tier === 'premium' || user?.subscription_status === 'active', [user]);
 
       useEffect(() => {
         if (!user) return;
@@ -1040,6 +1125,62 @@
           setProfileCustomizationStatusMessage('');
         }
       }, [profileAvatarBorderColor, profileAvatarBorderStyle, profileBgVideoUrl, user]);
+
+      const handleUploadProfileBgVideo = useCallback(async (file) => {
+        if (!file || !isPremiumUser) {
+          return;
+        }
+        if (!api?.signUpload || !api?.finalizeUpload) {
+          setProfileBgVideoUploadError('Uploads are unavailable right now.');
+          return;
+        }
+        if (file.type !== 'video/mp4') {
+          setProfileBgVideoUploadError('Please upload an MP4 video.');
+          return;
+        }
+        const maxBytes = 10 * 1024 * 1024;
+        if (file.size > maxBytes) {
+          setProfileBgVideoUploadError('Video must be under 10MB.');
+          return;
+        }
+        setProfileBgVideoUploading(true);
+        setProfileBgVideoUploadError('');
+        try {
+          const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+          if (!sig || sig.error || !sig.uploadUrl || !sig.publicUrl || !sig.Key) {
+            throw new Error(sig?.error || 'Upload failed');
+          }
+          const uploadRes = await fetch(sig.uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type }
+          });
+          if (!uploadRes.ok) {
+            throw new Error('Upload failed');
+          }
+          const finalizeRes = await api.finalizeUpload({ key: sig.Key, url: sig.publicUrl, bytes: file.size }, { silent: true });
+          if (finalizeRes?.error) {
+            throw new Error(finalizeRes.error);
+          }
+          const nextUrl = finalizeRes?.url || sig.publicUrl;
+          setProfileBgVideoUrl(nextUrl);
+          setProfileCustomizationStatusMessage('Video uploaded. Click Save to keep it.');
+        } catch (err) {
+          console.error('Profile background video upload failed:', err);
+          setProfileBgVideoUploadError(err?.message || 'Failed to upload video');
+        } finally {
+          setProfileBgVideoUploading(false);
+        }
+      }, [api, isPremiumUser]);
+
+      const handleClearProfileBgVideo = useCallback(() => {
+        if (!isPremiumUser) {
+          return;
+        }
+        setProfileBgVideoUrl('');
+        setProfileBgVideoUploadError('');
+        setProfileCustomizationStatusMessage('Background video removed. Click Save to apply.');
+      }, [isPremiumUser]);
 
       const handleRequestCancelSubscription = useCallback(async () => {
         if (!confirm('Are you sure you want to cancel your monthly subscription? You will keep your supporter badge until the end of your current billing period.')) {
@@ -1309,10 +1450,13 @@
           borderStyle: profileAvatarBorderStyle,
           onChangeBorderStyle: setProfileAvatarBorderStyle,
           bgVideoUrl: profileBgVideoUrl,
-          onChangeBgVideoUrl: setProfileBgVideoUrl,
+          onUploadBgVideo: handleUploadProfileBgVideo,
+          onClearBgVideo: handleClearProfileBgVideo,
+          bgVideoUploading: profileBgVideoUploading,
+          bgVideoUploadError: profileBgVideoUploadError,
           onSave: saveProfileCustomization,
           statusMessage: profileCustomizationStatusMessage,
-          isPremium: user?.supporter_tier === 'premium' || user?.subscription_status === 'active'
+          isPremium: isPremiumUser
         }),
 
         H(ProfileSettingsModal, {
