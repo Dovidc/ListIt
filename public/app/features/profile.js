@@ -77,6 +77,29 @@
       padding: 0
     };
 
+    function formatElapsedSince(value) {
+      if (!value) return null;
+      const date = new Date(value);
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+      const diff = Date.now() - date.getTime();
+      if (!Number.isFinite(diff) || diff <= 0) return 'just now';
+      const units = [
+        { label: 'year', ms: 1000 * 60 * 60 * 24 * 365 },
+        { label: 'month', ms: 1000 * 60 * 60 * 24 * 30 },
+        { label: 'week', ms: 1000 * 60 * 60 * 24 * 7 },
+        { label: 'day', ms: 1000 * 60 * 60 * 24 },
+        { label: 'hour', ms: 1000 * 60 * 60 },
+        { label: 'minute', ms: 1000 * 60 }
+      ];
+      for (const unit of units) {
+        const valueCount = Math.floor(diff / unit.ms);
+        if (valueCount >= 1) {
+          return `${valueCount} ${unit.label}${valueCount === 1 ? '' : 's'} ago`;
+        }
+      }
+      return 'just now';
+    }
+
     function formatSubscriptionEndDate(value) {
       if (!value) return null;
       try {
@@ -666,6 +689,11 @@
           since: user.supporter_since || null
         };
       }, [user]);
+      const userCreatedAt = user?.created_at || null;
+      const userJoinedText = useMemo(() => {
+        if (!userCreatedAt) return null;
+        return formatElapsedSince(userCreatedAt);
+      }, [userCreatedAt]);
       const handleSelfSupporterClick = useCallback(() => {
         if (!profileSupporter) return;
         onSupporterClick?.({
@@ -915,6 +943,7 @@
                   user.username ? `@${user.username}` : user.email
                 ),
                 H('div', { className: 'muted' }, 'Your account'),
+                userJoinedText && H('div', { className: 'muted' }, `Trovelr since ${userJoinedText}`),
                 profileSupporter && H('div', {
                   style: {
                     display: 'flex',
