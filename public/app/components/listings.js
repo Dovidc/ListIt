@@ -1819,164 +1819,309 @@
             badge: sellerInfo.supporter_badge
           }
         : null;
+      const avatarBorderColor = sellerInfo.profile_avatar_border_color || '#ffffff';
+      const avatarBorderStyle = sellerInfo.profile_avatar_border_style === 'dashed' ? 'dashed' : 'solid';
+      const bgVideoUrl = typeof sellerInfo.profile_bg_video_url === 'string' && sellerInfo.profile_bg_video_url.trim()
+        ? sellerInfo.profile_bg_video_url.trim()
+        : null;
+      const avatarUrl = typeof sellerInfo.profile_picture_url === 'string' && sellerInfo.profile_picture_url.trim()
+        ? sellerInfo.profile_picture_url.trim()
+        : null;
+      const username = sellerInfo.username || 'Seller';
+      const initials = username.trim().slice(0, 1).toUpperCase() || 'S';
+      const activeCount = Math.max(0, Number(activeListingCount) || 0);
+      const soldCount = Math.max(0, Number(soldListingCount) || 0);
+      const karmaValue = Number.isFinite(Number(sellerInfo.karma)) ? Number(sellerInfo.karma) : null;
+      const stats = [
+        { label: 'Active listings', value: activeCount },
+        { label: 'Sold', value: soldCount }
+      ];
+      if (karmaValue && karmaValue > 0) {
+        stats.push({ label: 'Karma', value: karmaValue });
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const statCard = (stat) => H('div', {
+        key: stat.label,
+        style: {
+          background: 'rgba(15, 23, 42, 0.65)',
+          border: '1px solid rgba(148, 163, 184, 0.35)',
+          borderRadius: 14,
+          padding: '12px 14px',
+          minWidth: 0
+        }
+      },
+        H('div', {
+          style: {
+            fontSize: 11,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#94a3b8'
+          }
+        }, stat.label),
+        H('div', {
+          style: {
+            marginTop: 4,
+            fontSize: 22,
+            fontWeight: 800,
+            color: '#f8fafc'
+          }
+        }, Number.isFinite(stat.value) ? stat.value.toLocaleString() : '0')
+      );
+
+      const pillStyle = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 12px',
+        borderRadius: 999,
+        border: '1px solid rgba(148, 163, 184, 0.4)',
+        background: 'rgba(51, 65, 85, 0.35)',
+        fontSize: 12,
+        color: '#cbd5f5',
+        fontWeight: 600
+      };
 
       return ReactDOM.createPortal(
         H('div', {
           className: 'modal open',
-          onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); },
-          style: { background: 'rgba(0,0,0,0.6)', animation: 'fadeIn 0.2s ease-in-out' }
+          onClick: handleOverlayClick,
+          style: { background: 'rgba(0, 0, 0, 0.75)', padding: 12 }
         },
           H('div', {
             className: 'modal-inner',
+            role: 'dialog',
+            'aria-modal': true,
             style: {
-              width: 'min(380px, 92vw)',
-              background: '#fff',
-              borderRadius: 12,
-              overflow: 'hidden',
-              boxShadow: '0 20px 60px rgba(0,0,0,.3)',
-              animation: 'slideUp 0.3s ease-out'
+              padding: 0,
+              width: 'min(420px, 94vw)',
+              background: 'transparent',
+              borderRadius: 24,
+              boxShadow: 'none'
             }
           },
-            // Background video
             H('div', {
               style: {
-                position: 'relative',
-                width: '100%',
-                height: 120,
-                background: '#f0f0f0',
+                background: '#0f172a',
+                borderRadius: 24,
+                color: '#f8fafc',
                 overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }
-            },
-              sellerInfo.profile_bg_video_url
-                ? H('video', {
-                    src: sellerInfo.profile_bg_video_url,
-                    autoplay: true,
-                    loop: true,
-                    muted: true,
-                    style: {
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover'
-                    }
-                  })
-                : H('div', { style: { fontSize: 48, opacity: 0.3 } }, '🎨')
-            ),
-
-            // Avatar and user info section
-            H('div', {
-              style: {
-                padding: '16px',
                 position: 'relative',
-                marginTop: -40
+                boxShadow: '0 35px 90px rgba(0, 0, 0, 0.55)',
+                fontFamily: 'Inter, system-ui'
               }
             },
+              H('button', {
+                type: 'button',
+                onClick: () => onClose?.(),
+                style: {
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(148, 163, 184, 0.4)',
+                  background: 'rgba(15, 23, 42, 0.45)',
+                  color: '#f8fafc',
+                  fontSize: 18,
+                  cursor: 'pointer'
+                }
+              }, '×'),
               H('div', {
                 style: {
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  marginBottom: 12
+                  position: 'relative',
+                  height: 170,
+                  background: 'linear-gradient(120deg, #1d1f3b, #3730a3)'
+                }
+              },
+                bgVideoUrl
+                  ? H('video', {
+                      key: bgVideoUrl,
+                      src: bgVideoUrl,
+                      autoPlay: true,
+                      muted: true,
+                      loop: true,
+                      playsInline: true,
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }
+                    })
+                  : H('div', {
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: 48,
+                        color: 'rgba(248, 250, 252, 0.5)'
+                      }
+                    }, '🎞️'),
+                H('div', {
+                  style: {
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
+                  }
+                })
+              ),
+              H('div', {
+                style: {
+                  padding: '0 24px 26px',
+                  marginTop: -60,
+                  display: 'grid',
+                  gap: 18
                 }
               },
                 H('div', {
                   style: {
-                    width: 80,
-                    height: 80,
-                    borderRadius: '50%',
-                    background: '#e5e7eb',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 32,
-                    border: `4px ${sellerInfo.profile_avatar_border_color || '#ffffff'} ${sellerInfo.profile_avatar_border_style === 'dashed' ? 'dashed' : 'solid'}`,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    flexShrink: 0
+                    alignItems: 'flex-end',
+                    gap: 18,
+                    flexWrap: 'wrap'
                   }
                 },
-                  sellerInfo.avatar ? H('img', {
-                    src: sellerInfo.avatar,
-                    style: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }
-                  }) : '👤'
+                  H('div', {
+                    style: {
+                      width: 110,
+                      height: 110,
+                      borderRadius: 28,
+                      border: `5px ${avatarBorderColor} ${avatarBorderStyle}`,
+                      background: '#0f172a',
+                      boxShadow: '0 18px 45px rgba(0, 0, 0, 0.45)',
+                      overflow: 'hidden',
+                      flexShrink: 0
+                    }
+                  },
+                    avatarUrl
+                      ? H('img', {
+                          src: avatarUrl,
+                          alt: `${username} avatar`,
+                          style: { width: '100%', height: '100%', objectFit: 'cover' }
+                        })
+                      : H('span', {
+                          style: {
+                            width: '100%',
+                            height: '100%',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontSize: 42,
+                            fontWeight: 800,
+                            color: '#e2e8f0'
+                          }
+                        }, initials)
+                  ),
+                  H('div', { style: { flex: 1, minWidth: 0 } },
+                    H('div', {
+                      style: {
+                        fontSize: 22,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        flexWrap: 'wrap'
+                      }
+                    }, username,
+                      sellerSupporter && H(SupporterBadge, {
+                        size: 'sm',
+                        since: sellerSupporter.since,
+                        badge: sellerSupporter.badge,
+                        onClick: () => onSupporterClick?.(sellerSupporter)
+                      })
+                    ),
+                    sellerJoinedText && H('div', {
+                      style: { fontSize: 13, color: '#cbd5f5', marginTop: 2 }
+                    }, `Trovelr since ${sellerJoinedText}`),
+                    H('div', {
+                      style: {
+                        marginTop: 10,
+                        display: 'flex',
+                        gap: 8,
+                        flexWrap: 'wrap'
+                      }
+                    },
+                      H('span', { style: pillStyle }, `🛍️ ${activeCount} active`),
+                      H('span', { style: pillStyle }, `✅ ${soldCount} sold`)
+                    )
+                  )
                 ),
                 H('div', {
-                  style: { flex: 1, paddingTop: 8 }
+                  style: {
+                    display: 'grid',
+                    gap: 12
+                  }
+                }, stats.map(statCard)),
+                H('div', {
+                  style: {
+                    padding: '14px 18px',
+                    background: 'rgba(15, 23, 42, 0.7)',
+                    borderRadius: 18,
+                    border: '1px solid rgba(148, 163, 184, 0.35)'
+                  }
                 },
-                  H('div', {
+                  H('div', { style: { fontSize: 13, color: '#94a3b8', marginBottom: 6, fontWeight: 700 } }, 'About this seller'),
+                  H('p', {
                     style: {
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: '#111',
-                      marginBottom: 4
-                    }
-                  }, sellerInfo.username),
-                  sellerSupporter && H(SupporterBadge, {
-                    size: 'sm',
-                    since: sellerSupporter.since,
-                    badge: sellerSupporter.badge,
-                    onClick: () => onSupporterClick?.(sellerSupporter),
-                    style: { marginBottom: 4 }
-                  }),
-                  H('div', {
-                    style: {
-                      fontSize: 12,
-                      color: '#666',
-                      lineHeight: 1.4
+                      margin: 0,
+                      fontSize: 14,
+                      color: '#e2e8f0',
+                      lineHeight: 1.5
                     }
                   },
-                    H('div', null, `📦 ${activeListingCount} Active · 🛒 ${soldListingCount} Sold`),
-                    sellerJoinedText && H('div', null, `⏱️ Trovelr since ${sellerJoinedText}`)
+                    activeCount > 0
+                      ? `Currently listing ${activeCount} ${activeCount === 1 ? 'item' : 'items'} with ${soldCount} sold overall.`
+                      : 'No active listings right now, but their sold history speaks for itself.'
                   )
+                ),
+                H('div', {
+                  style: {
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 12
+                  }
+                },
+                  H('button', {
+                    type: 'button',
+                    onClick: () => {
+                      onMessage?.();
+                      onClose?.();
+                    },
+                    style: {
+                      flex: '1 1 150px',
+                      padding: '12px 16px',
+                      borderRadius: 14,
+                      border: 'none',
+                      background: '#5865F2',
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 10px 25px rgba(88, 101, 242, 0.4)'
+                    }
+                  }, 'Message'),
+                  H('button', {
+                    type: 'button',
+                    onClick: () => onVisitProfile?.(),
+                    style: {
+                      flex: '1 1 150px',
+                      padding: '12px 16px',
+                      borderRadius: 14,
+                      border: '1px solid rgba(148, 163, 184, 0.4)',
+                      background: 'rgba(15, 23, 42, 0.5)',
+                      color: '#f8fafc',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }
+                  }, 'View profile')
                 )
-              ),
-
-              // Action buttons
-              H('div', {
-                style: {
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 8
-                }
-              },
-                H('button', {
-                  type: 'button',
-                  onClick: onVisitProfile,
-                  style: {
-                    padding: '10px 16px',
-                    background: '#3b82f6',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'background 0.2s'
-                  },
-                  onMouseEnter: (e) => e.target.style.background = '#2563eb',
-                  onMouseLeave: (e) => e.target.style.background = '#3b82f6'
-                }, 'View Profile'),
-                H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    onMessage?.();
-                    onClose?.();
-                  },
-                  style: {
-                    padding: '10px 16px',
-                    background: '#f3f4f6',
-                    color: '#111',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'background 0.2s'
-                  },
-                  onMouseEnter: (e) => e.target.style.background = '#e5e7eb',
-                  onMouseLeave: (e) => e.target.style.background = '#f3f4f6'
-                }, 'Message')
               )
             )
           )
