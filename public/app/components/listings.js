@@ -1839,6 +1839,8 @@
       if (karmaValue && karmaValue > 0) {
         stats.push({ label: 'Karma', value: karmaValue });
       }
+      const avatarSize = 118;
+      const avatarOverlap = 42;
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -1936,120 +1938,128 @@
               H('div', {
                 style: {
                   position: 'relative',
-                  height: 170,
-                  background: 'linear-gradient(120deg, #1d1f3b, #3730a3)'
+                  minHeight: 200,
+                  paddingBottom: avatarOverlap + 10
                 }
               },
-                bgVideoUrl
-                  ? H('video', {
-                      key: bgVideoUrl,
-                      src: bgVideoUrl,
-                      autoPlay: true,
-                      muted: true,
-                      loop: true,
-                      playsInline: true,
-                      style: {
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
-                      }
-                    })
-                  : H('div', {
-                      style: {
-                        width: '100%',
-                        height: '100%',
-                        display: 'grid',
-                        placeItems: 'center',
-                        fontSize: 48,
-                        color: 'rgba(248, 250, 252, 0.5)'
-                      }
-                    }, '🎞️'),
                 H('div', {
                   style: {
                     position: 'absolute',
                     inset: 0,
-                    background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
+                    overflow: 'hidden',
+                    borderTopLeftRadius: 24,
+                    borderTopRightRadius: 24,
+                    background: 'linear-gradient(120deg, #1d1f3b, #3730a3)'
                   }
-                })
+                },
+                  bgVideoUrl
+                    ? H('video', {
+                        key: bgVideoUrl,
+                        src: bgVideoUrl,
+                        autoPlay: true,
+                        muted: true,
+                        loop: true,
+                        playsInline: true,
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }
+                      })
+                    : H('div', {
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          fontSize: 48,
+                          color: 'rgba(248, 250, 252, 0.5)'
+                        }
+                      }, '🎞️'),
+                  H('div', {
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
+                    }
+                  })
+                ),
+                H('div', {
+                  style: {
+                    position: 'absolute',
+                    left: 24,
+                    bottom: -avatarOverlap,
+                    width: avatarSize,
+                    height: avatarSize,
+                    borderRadius: 30,
+                    border: `5px ${avatarBorderColor} ${avatarBorderStyle}`,
+                    background: '#0f172a',
+                    boxShadow: '0 18px 45px rgba(0, 0, 0, 0.45)',
+                    overflow: 'hidden'
+                  }
+                },
+                  avatarUrl
+                    ? H('img', {
+                        src: avatarUrl,
+                        alt: `${username} avatar`,
+                        style: { width: '100%', height: '100%', objectFit: 'cover' }
+                      })
+                    : H('span', {
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          fontSize: 42,
+                          fontWeight: 800,
+                          color: '#e2e8f0'
+                        }
+                      }, initials)
+                )
               ),
               H('div', {
                 style: {
-                  padding: '0 24px 26px',
-                  marginTop: -60,
+                  padding: `${avatarOverlap + 36}px 24px 26px`,
                   display: 'grid',
                   gap: 18
                 }
               },
                 H('div', {
                   style: {
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                    gap: 18,
-                    flexWrap: 'wrap'
+                    display: 'grid',
+                    gap: 4
                   }
                 },
                   H('div', {
                     style: {
-                      width: 110,
-                      height: 110,
-                      borderRadius: 28,
-                      border: `5px ${avatarBorderColor} ${avatarBorderStyle}`,
-                      background: '#0f172a',
-                      boxShadow: '0 18px 45px rgba(0, 0, 0, 0.45)',
-                      overflow: 'hidden',
-                      flexShrink: 0
+                      fontSize: 22,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexWrap: 'wrap'
+                    }
+                  }, username,
+                    sellerSupporter && H(SupporterBadge, {
+                      size: 'sm',
+                      since: sellerSupporter.since,
+                      badge: sellerSupporter.badge,
+                      onClick: () => onSupporterClick?.(sellerSupporter)
+                    })
+                  ),
+                  sellerJoinedText && H('div', {
+                    style: { fontSize: 13, color: '#cbd5f5' }
+                  }, `Trovelr since ${sellerJoinedText}`),
+                  H('div', {
+                    style: {
+                      marginTop: 10,
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap'
                     }
                   },
-                    avatarUrl
-                      ? H('img', {
-                          src: avatarUrl,
-                          alt: `${username} avatar`,
-                          style: { width: '100%', height: '100%', objectFit: 'cover' }
-                        })
-                      : H('span', {
-                          style: {
-                            width: '100%',
-                            height: '100%',
-                            display: 'grid',
-                            placeItems: 'center',
-                            fontSize: 42,
-                            fontWeight: 800,
-                            color: '#e2e8f0'
-                          }
-                        }, initials)
-                  ),
-                  H('div', { style: { flex: 1, minWidth: 0 } },
-                    H('div', {
-                      style: {
-                        fontSize: 22,
-                        fontWeight: 800,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        flexWrap: 'wrap'
-                      }
-                    }, username,
-                      sellerSupporter && H(SupporterBadge, {
-                        size: 'sm',
-                        since: sellerSupporter.since,
-                        badge: sellerSupporter.badge,
-                        onClick: () => onSupporterClick?.(sellerSupporter)
-                      })
-                    ),
-                    sellerJoinedText && H('div', {
-                      style: { fontSize: 13, color: '#cbd5f5', marginTop: 2 }
-                    }, `Trovelr since ${sellerJoinedText}`),
-                    H('div', {
-                      style: {
-                        marginTop: 10,
-                        display: 'flex',
-                        gap: 8,
-                        flexWrap: 'wrap'
-                      }
-                    },
-                      H('span', { style: pillStyle }, `🛍️ ${activeCount} active`),
-                      H('span', { style: pillStyle }, `✅ ${soldCount} sold`)
-                    )
+                    H('span', { style: pillStyle }, `🛍️ ${activeCount} active`),
+                    H('span', { style: pillStyle }, `✅ ${soldCount} sold`)
                   )
                 ),
                 H('div', {

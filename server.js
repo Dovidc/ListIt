@@ -3653,12 +3653,14 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
 
     // Validate video URL if provided
     if (bgVideoUrl) {
-      // Basic validation - should be HTTPS and end with .mp4
-      if (!bgVideoUrl.startsWith('https://') && !bgVideoUrl.startsWith('http://')) {
-        return res.status(400).json({ error: 'Video URL must be HTTPS' });
-      }
       if (bgVideoUrl.length > 500) {
         return res.status(400).json({ error: 'Video URL too long' });
+      }
+      if (!isAllowedPublicUrl(bgVideoUrl)) {
+        return res.status(400).json({ error: 'Video must be uploaded through Trovelr' });
+      }
+      if (!bgVideoUrl.toLowerCase().endsWith('.mp4')) {
+        return res.status(400).json({ error: 'Only MP4 videos are supported' });
       }
     }
 
