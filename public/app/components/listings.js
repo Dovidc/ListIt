@@ -1377,6 +1377,8 @@
       const [galleryLoading, setGalleryLoading] = useState(false);
       const [showReport, setShowReport] = useState(false);
       const [derivedMeters, setDerivedMeters] = React.useState(null);
+      const [showProfilePreview, setShowProfilePreview] = useState(false);
+      const [profileData, setProfileData] = useState(null);
 
       const isModalView = viewContext === 'modal';
 
@@ -1579,6 +1581,17 @@
         onSupporterClick?.(payload);
       };
 
+      const handleShowProfilePreview = useCallback(async (userId) => {
+        if (!api || typeof api.getUser !== 'function') return;
+        try {
+          const userData = await api.getUser(userId, { silent: true });
+          setProfileData(userData);
+          setShowProfilePreview(true);
+        } catch (err) {
+          console.warn('Failed to load profile data:', err);
+        }
+      }, [api]);
+
       const renderSellerInfo = () => {
         if (!item.owner_username) {
           return '--';
@@ -1586,7 +1599,11 @@
 
         const sellerNode = onViewSeller
           ? H('button', {
-              onClick: () => onViewSeller(item.user_id, item.owner_username),
+              onClick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleShowProfilePreview(item.user_id);
+              },
               style: {
                 background: 'none',
                 border: 'none',
@@ -1743,6 +1760,19 @@
           onClose: () => setShowReport(false)
         }),
 
+        showProfilePreview && H(ProfilePreviewModal, {
+          sellerInfo: profileData,
+          activeListingCount: item.activeListingCount || 0,
+          soldListingCount: item.soldListingCount || 0,
+          onClose: () => setShowProfilePreview(false),
+          onVisitProfile: () => {
+            setShowProfilePreview(false);
+            onViewSeller?.(item.user_id, item.owner_username);
+          },
+          onMessage: () => onMessage?.(item),
+          onSupporterClick
+        }),
+
         H(ListingGalleryModal, {
           open: galleryOpen,
           images: galleryImages,
@@ -1776,6 +1806,184 @@
       }
       return 'just now';
     };
+
+    // --- Profile Preview Modal (Discord-like) ---
+    function ProfilePreviewModal({ sellerInfo, activeListingCount, soldListingCount, onClose, onVisitProfile, onMessage, onSupporterClick }) {
+      if (!sellerInfo) return null;
+
+      const sellerJoinedText = sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
+      const sellerSupporter = sellerInfo.supporter_badge
+        ? {
+            username: sellerInfo.username,
+            since: sellerInfo.supporter_since,
+            badge: sellerInfo.supporter_badge
+          }
+        : null;
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); },
+          style: { background: 'rgba(0,0,0,0.6)', animation: 'fadeIn 0.2s ease-in-out' }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              width: 'min(380px, 92vw)',
+              background: '#fff',
+              borderRadius: 12,
+              overflow: 'hidden',
+              boxShadow: '0 20px 60px rgba(0,0,0,.3)',
+              animation: 'slideUp 0.3s ease-out'
+            }
+          },
+            // Background video
+            H('div', {
+              style: {
+                position: 'relative',
+                width: '100%',
+                height: 120,
+                background: '#f0f0f0',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }
+            },
+              sellerInfo.profile_bg_video_url
+                ? H('video', {
+                    src: sellerInfo.profile_bg_video_url,
+                    autoplay: true,
+                    loop: true,
+                    muted: true,
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }
+                  })
+                : H('div', { style: { fontSize: 48, opacity: 0.3 } }, '🎨')
+            ),
+
+            // Avatar and user info section
+            H('div', {
+              style: {
+                padding: '16px',
+                position: 'relative',
+                marginTop: -40
+              }
+            },
+              H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  marginBottom: 12
+                }
+              },
+                H('div', {
+                  style: {
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    background: '#e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 32,
+                    border: `4px ${sellerInfo.profile_avatar_border_color || '#ffffff'} ${sellerInfo.profile_avatar_border_style === 'dashed' ? 'dashed' : 'solid'}`,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    flexShrink: 0
+                  }
+                },
+                  sellerInfo.avatar ? H('img', {
+                    src: sellerInfo.avatar,
+                    style: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }
+                  }) : '👤'
+                ),
+                H('div', {
+                  style: { flex: 1, paddingTop: 8 }
+                },
+                  H('div', {
+                    style: {
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: '#111',
+                      marginBottom: 4
+                    }
+                  }, sellerInfo.username),
+                  sellerSupporter && H(SupporterBadge, {
+                    size: 'sm',
+                    since: sellerSupporter.since,
+                    badge: sellerSupporter.badge,
+                    onClick: () => onSupporterClick?.(sellerSupporter),
+                    style: { marginBottom: 4 }
+                  }),
+                  H('div', {
+                    style: {
+                      fontSize: 12,
+                      color: '#666',
+                      lineHeight: 1.4
+                    }
+                  },
+                    H('div', null, `📦 ${activeListingCount} Active · 🛒 ${soldListingCount} Sold`),
+                    sellerJoinedText && H('div', null, `⏱️ Trovelr since ${sellerJoinedText}`)
+                  )
+                )
+              ),
+
+              // Action buttons
+              H('div', {
+                style: {
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 8
+                }
+              },
+                H('button', {
+                  type: 'button',
+                  onClick: onVisitProfile,
+                  style: {
+                    padding: '10px 16px',
+                    background: '#3b82f6',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'background 0.2s'
+                  },
+                  onMouseEnter: (e) => e.target.style.background = '#2563eb',
+                  onMouseLeave: (e) => e.target.style.background = '#3b82f6'
+                }, 'View Profile'),
+                H('button', {
+                  type: 'button',
+                  onClick: () => {
+                    onMessage?.();
+                    onClose?.();
+                  },
+                  style: {
+                    padding: '10px 16px',
+                    background: '#f3f4f6',
+                    color: '#111',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'background 0.2s'
+                  },
+                  onMouseEnter: (e) => e.target.style.background = '#e5e7eb',
+                  onMouseLeave: (e) => e.target.style.background = '#f3f4f6'
+                }, 'Message')
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    }
 
     function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete, onSupporterClick }) {
       const [listings, setListings] = useState([]);

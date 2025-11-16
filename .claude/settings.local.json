@@ -6,7 +6,8 @@
       "Bash(findstr:*)",
       "Bash(sqlite3:*)",
       "Bash(dir:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

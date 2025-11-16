@@ -389,6 +389,170 @@
       );
     });
 
+    const ProfileCustomizationModal = React.memo(function ProfileCustomizationModal({
+      open,
+      onClose,
+      borderColor,
+      onChangeBorderColor,
+      borderStyle,
+      onChangeBorderStyle,
+      bgVideoUrl,
+      onChangeBgVideoUrl,
+      onSave,
+      statusMessage,
+      isPremium
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const premiumMsg = !isPremium ? H('div', {
+        style: {
+          padding: '12px',
+          background: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: 8,
+          fontSize: 13,
+          color: '#92400e',
+          marginBottom: 12
+        }
+      }, '✨ Profile customization is a premium subscriber feature') : null;
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '460px',
+              width: 'min(460px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16,
+              display: 'grid',
+              gap: 16
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close profile customization'
+            }, 'x'),
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
+              },
+                '🎨 Profile Display',
+                !isPremium && H('span', {
+                  style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    background: '#dbeafe',
+                    color: '#0c4a6e',
+                    borderRadius: 12,
+                    fontSize: 11,
+                    fontWeight: 700
+                  }
+                }, '✨ Premium')
+              ),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0 }
+              }, 'Customize how your profile appears when others view it from listings.')
+            ),
+            premiumMsg,
+            H('section', { style: { display: 'grid', gap: 12 } },
+              H('label', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Avatar Border Color'),
+                H('input', {
+                  type: 'color',
+                  value: borderColor,
+                  onChange: (evt) => onChangeBorderColor?.(evt.target.value),
+                  disabled: !isPremium,
+                  style: { width: '100%', height: 40, cursor: isPremium ? 'pointer' : 'not-allowed' }
+                })
+              ),
+              H('label', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Avatar Border Style'),
+                H('select', {
+                  value: borderStyle,
+                  onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
+                  disabled: !isPremium,
+                  style: {
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    cursor: isPremium ? 'pointer' : 'not-allowed'
+                  }
+                },
+                  H('option', { value: 'solid' }, 'Solid'),
+                  H('option', { value: 'dashed' }, 'Dashed')
+                )
+              ),
+              H('label', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Background Video URL'),
+                H('input', {
+                  type: 'text',
+                  value: bgVideoUrl,
+                  onChange: (evt) => onChangeBgVideoUrl?.(evt.target.value),
+                  disabled: !isPremium,
+                  placeholder: 'https://example.com/video.mp4',
+                  style: { width: '100%', opacity: isPremium ? 1 : 0.6, cursor: isPremium ? 'text' : 'not-allowed' }
+                }),
+                H('p', {
+                  className: 'muted',
+                  style: { fontSize: 12, margin: '4px 0 0' }
+                }, 'Use an MP4 video. Keep it under 5MB for best performance.')
+              ),
+              H('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'flex-end'
+                }
+              },
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onSave,
+                  disabled: !isPremium
+                }, 'Save Changes')
+              ),
+              statusMessage && H('div', {
+                role: 'status',
+                'aria-live': 'polite',
+                style: {
+                  fontSize: 13,
+                  color: '#047857',
+                  fontWeight: 600
+                }
+              }, statusMessage)
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     const ProfileSettingsModal = React.memo(function ProfileSettingsModal({
       open,
       onClose,
@@ -606,6 +770,11 @@
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
       const [karmaListingId, setKarmaListingId] = useState(null);
       const [subscriptionStatus, setSubscriptionStatus] = useState(user?.subscription_status || null);
+      const [profileAvatarBorderColor, setProfileAvatarBorderColor] = useState(user?.profile_avatar_border_color || '#ffffff');
+      const [profileAvatarBorderStyle, setProfileAvatarBorderStyle] = useState(user?.profile_avatar_border_style || 'solid');
+      const [profileBgVideoUrl, setProfileBgVideoUrl] = useState(user?.profile_bg_video_url || '');
+      const [profileCustomizationModalOpen, setProfileCustomizationModalOpen] = useState(false);
+      const [profileCustomizationStatusMessage, setProfileCustomizationStatusMessage] = useState('');
 
       useEffect(() => {
         if (!user) return;
@@ -837,6 +1006,41 @@
         }
       }, [deleteConfirmText, onLogout]);
 
+      const saveProfileCustomization = useCallback(async () => {
+        if (!api || typeof api.updateProfileCustomization !== 'function') {
+          alert('Profile customization API not available');
+          return;
+        }
+        try {
+          setProfileCustomizationStatusMessage('Saving...');
+          const response = await api.updateProfileCustomization({
+            profile_avatar_border_color: profileAvatarBorderColor,
+            profile_avatar_border_style: profileAvatarBorderStyle,
+            profile_bg_video_url: profileBgVideoUrl
+          });
+          if (response?.error) {
+            alert(response.error);
+            setProfileCustomizationStatusMessage('');
+            return;
+          }
+          if (user) {
+            navBridge.setUser?.({
+              ...user,
+              profile_avatar_border_color: profileAvatarBorderColor,
+              profile_avatar_border_style: profileAvatarBorderStyle,
+              profile_bg_video_url: profileBgVideoUrl
+            });
+          }
+          setProfileCustomizationStatusMessage('Saved!');
+          setTimeout(() => {
+            setProfileCustomizationStatusMessage('');
+          }, 2000);
+        } catch (err) {
+          alert(err?.message || 'Failed to save profile customization');
+          setProfileCustomizationStatusMessage('');
+        }
+      }, [profileAvatarBorderColor, profileAvatarBorderStyle, profileBgVideoUrl, user]);
+
       const handleRequestCancelSubscription = useCallback(async () => {
         if (!confirm('Are you sure you want to cancel your monthly subscription? You will keep your supporter badge until the end of your current billing period.')) {
           return;
@@ -1005,6 +1209,16 @@
               H('button', {
                 className: 'btn',
                 type: 'button',
+                onClick: () => setProfileCustomizationModalOpen(true),
+                title: 'Customize profile display',
+                style: iconButtonStyle
+              },
+                H('span', null, '🎨'),
+                H('span', { style: visuallyHidden }, 'Customize profile')
+              ),
+              H('button', {
+                className: 'btn',
+                type: 'button',
                 onClick: handleOpenSettings,
                 title: 'Profile settings',
                 style: iconButtonStyle
@@ -1085,6 +1299,20 @@
           onChangeLocationPreset: handleChangeLocationPreset,
           onSaveLocation: saveLocationPreset,
           locationStatusMessage: locationStatusMessage
+        }),
+
+        H(ProfileCustomizationModal, {
+          open: profileCustomizationModalOpen,
+          onClose: () => setProfileCustomizationModalOpen(false),
+          borderColor: profileAvatarBorderColor,
+          onChangeBorderColor: setProfileAvatarBorderColor,
+          borderStyle: profileAvatarBorderStyle,
+          onChangeBorderStyle: setProfileAvatarBorderStyle,
+          bgVideoUrl: profileBgVideoUrl,
+          onChangeBgVideoUrl: setProfileBgVideoUrl,
+          onSave: saveProfileCustomization,
+          statusMessage: profileCustomizationStatusMessage,
+          isPremium: user?.subscriber_tier === 'premium' || user?.subscription_status === 'active'
         }),
 
         H(ProfileSettingsModal, {

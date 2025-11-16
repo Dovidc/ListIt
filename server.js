@@ -981,6 +981,9 @@ async function initializeSchema() {
     try { await db.exec("ALTER TABLE users ADD COLUMN subscription_current_period_end TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN karma INTEGER DEFAULT 0"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_bg_video_url TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_avatar_border_color TEXT DEFAULT '#ffffff'"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_avatar_border_style TEXT DEFAULT 'solid'"); } catch {}
 
     try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
 
@@ -3595,6 +3598,68 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
   } catch (e) {
 
     console.error('Update profile picture failed:', e);
+
+    return res.status(500).json({ error: 'update_failed' });
+
+  }
+
+});
+
+app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) => {
+
+  try {
+
+    const borderColor = String(req.body?.profile_avatar_border_color || '#ffffff').trim();
+    const borderStyle = String(req.body?.profile_avatar_border_style || 'solid').trim();
+    const bgVideoUrl = String(req.body?.profile_bg_video_url || '').trim();
+
+    // Check if user is premium subscriber
+    const userRow = await db.prepare('SELECT subscription_status, supporter_tier FROM users WHERE id = ?').get(req.user.id);
+    const isPremium = userRow?.subscription_status === 'active' || userRow?.supporter_tier === 'premium';
+
+    if (!isPremium) {
+      return res.status(403).json({ error: 'Profile customization is only available for premium subscribers' });
+    }
+
+    // Validate border color format (hex)
+    if (!borderColor.match(/^#[0-9A-F]{6}$/i)) {
+      return res.status(400).json({ error: 'Invalid border color format' });
+    }
+
+    // Validate border style
+    if (!['solid', 'dashed'].includes(borderStyle)) {
+      return res.status(400).json({ error: 'Invalid border style' });
+    }
+
+    // Validate video URL if provided
+    if (bgVideoUrl) {
+      // Basic validation - should be HTTPS and end with .mp4
+      if (!bgVideoUrl.startsWith('https://') && !bgVideoUrl.startsWith('http://')) {
+        return res.status(400).json({ error: 'Video URL must be HTTPS' });
+      }
+      if (bgVideoUrl.length > 500) {
+        return res.status(400).json({ error: 'Video URL too long' });
+      }
+    }
+
+    await db.prepare(`
+      UPDATE users
+      SET profile_avatar_border_color = ?,
+          profile_avatar_border_style = ?,
+          profile_bg_video_url = ?
+      WHERE id = ?
+    `).run(borderColor, borderStyle, bgVideoUrl || null, req.user.id);
+
+    return res.json({
+      ok: true,
+      profile_avatar_border_color: borderColor,
+      profile_avatar_border_style: borderStyle,
+      profile_bg_video_url: bgVideoUrl
+    });
+
+  } catch (e) {
+
+    console.error('Update profile customization failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
 
