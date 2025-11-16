@@ -682,7 +682,7 @@
           return null;
         }
         const usernameLabel = user.username
-          ? `@${user.username}`
+          ? user.username
           : (user.email || 'This user');
         return {
           username: usernameLabel,
@@ -941,9 +941,8 @@
               ),
               H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
                 H('div', { style: { fontWeight: 800, fontSize: 18 } },
-                  user.username ? `@${user.username}` : user.email
+                  user.username ? user.username : user.email
                 ),
-                H('div', { className: 'muted' }, 'Your account'),
                 userJoinedText && H('div', { className: 'muted' }, `Trovelr since ${userJoinedText}`),
                 profileSupporter && H('div', {
                   style: {

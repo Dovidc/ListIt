@@ -950,7 +950,7 @@ function Header({ user, setUser, onNav, active, unreadCount, onAdminDeleteAll, i
   }
 
   // Original header for logged in users
-  const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+  const profileLabel = user ? (user.username ? user.username : user.email) : 'Profile';
 
   const authArea = user
     ? H('div', { className: 'row', style: { gap: 8 } },
@@ -2014,7 +2014,7 @@ async function submit(e){
 
     if (!open) return null;
 
-    const sellerName = listing?.owner_username ? `@${listing.owner_username}` : 'this seller';
+    const sellerName = listing?.owner_username ? listing.owner_username : 'this seller';
 
     const modal = H('div', {
       className: 'modal open',
@@ -2384,10 +2384,10 @@ function ListingCard({
           padding: 0,
           font: 'inherit'
         }
-      }, `@${item.owner_username}`);
+      }, item.owner_username);
     }
 
-    return H('span', null, `@${item.owner_username}`);
+    return H('span', null, item.owner_username);
   };
 
   const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');

@@ -168,7 +168,7 @@
             type: 'button',
             className: 'btn',
             onClick: () => onViewSeller(item.user_id, item.owner_username)
-          }, item?.owner_username ? `View @${item.owner_username}` : 'View seller'));
+          }, item?.owner_username ? `View ${item.owner_username}` : 'View seller'));
         }
 
         if ((isOwner || canEdit) && typeof onEdit === 'function') {
