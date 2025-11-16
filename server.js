@@ -3473,6 +3473,12 @@ app.get('/api/me', async (req, res) => {
 
              profile_picture_url,
 
+             profile_avatar_border_color,
+
+             profile_avatar_border_style,
+
+             profile_bg_video_url,
+
              created_at,
 
              COALESCE(account_status, 'active') AS account_status,
