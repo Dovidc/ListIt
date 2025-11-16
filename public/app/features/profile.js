@@ -396,11 +396,11 @@
       onChangeBorderColor,
       borderStyle,
       onChangeBorderStyle,
-      bgVideoUrl,
-      onUploadBgVideo,
-      onClearBgVideo,
-      bgVideoUploading,
-      bgVideoUploadError,
+      bgImageUrl,
+      onUploadBgImage,
+      onClearBgImage,
+      bgImageUploading,
+      bgImageUploadError,
       onSave,
       statusMessage,
       isPremium
@@ -410,20 +410,32 @@
         return null;
       }
 
+      const uploadInputRef = useRef(null);
+
+      const [previewScale, setPreviewScale] = useState(1.05);
+      const [previewOffset, setPreviewOffset] = useState(50);
+
+      if (useEffect) {
+        useEffect(() => {
+          setPreviewScale(1.05);
+          setPreviewOffset(50);
+        }, [bgImageUrl, open]);
+      }
+
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
           onClose?.();
         }
       };
 
-      const handleVideoFileChange = (evt) => {
-        if (!isPremium || bgVideoUploading) {
+      const handleBgImageFileChange = (evt) => {
+        if (!isPremium || bgImageUploading) {
           evt.target.value = '';
           return;
         }
         const file = evt.target?.files && evt.target.files[0];
         if (file) {
-          onUploadBgVideo?.(file);
+          onUploadBgImage?.(file);
         }
         evt.target.value = '';
       };
@@ -525,86 +537,180 @@
                 )
               ),
               H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Background Video'),
-                H('input', {
-                  type: 'file',
-                  accept: 'video/mp4',
-                  disabled: !isPremium || bgVideoUploading,
-                  onChange: handleVideoFileChange,
+                H('span', { style: { fontWeight: 600 } }, 'Banner Image'),
+                H('div', {
                   style: {
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    cursor: isPremium && !bgVideoUploading ? 'pointer' : 'not-allowed',
-                    opacity: isPremium ? 1 : 0.6,
-                    background: '#fff'
-                  }
-                }),
-                H('p', {
-                  className: 'muted',
-                  style: { fontSize: 12, margin: '4px 0 0' }
-                }, 'Upload an MP4 (10MB max). It will loop silently in your profile header.'),
-                bgVideoUploading && H('div', {
+                    position: 'relative',
+                    border: '1px dashed #cbd5f5',
+                    borderRadius: 10,
+                    padding: 16,
+                    background: '#f8fafc',
+                    cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed',
+                    transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.3)'
+                  },
+                  onClick: () => {
+                    if (!isPremium || bgImageUploading) return;
+                    uploadInputRef.current?.click();
+                  },
+                  onKeyDown: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    if (evt.key === 'Enter' || evt.key === ' ') {
+                      evt.preventDefault();
+                      uploadInputRef.current?.click();
+                    }
+                  },
+                  onDragOver: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    evt.preventDefault();
+                    evt.dataTransfer.dropEffect = 'copy';
+                  },
+                  onDrop: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    evt.preventDefault();
+                    const droppedFile = evt.dataTransfer?.files && evt.dataTransfer.files[0];
+                    if (droppedFile) {
+                      onUploadBgImage?.(droppedFile);
+                    }
+                  },
+                  role: 'button',
+                  tabIndex: isPremium && !bgImageUploading ? 0 : -1,
+                  'aria-label': 'Upload banner image'
+                },
+                  H('input', {
+                    ref: uploadInputRef,
+                    type: 'file',
+                    accept: 'image/*',
+                    disabled: !isPremium || bgImageUploading,
+                    onChange: handleBgImageFileChange,
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      opacity: 0
+                    }
+                  }),
+                  H('div', {
+                    style: {
+                      display: 'grid',
+                      gap: 4,
+                      color: '#1e3a8a'
+                    }
+                  },
+                    H('strong', { style: { fontSize: 14 } }, 'Click to upload or drop an image'),
+                    H('span', { style: { fontSize: 12, color: '#475569' } }, 'PNG, JPG, WEBP (8MB max)')
+                  )
+                ),
+                bgImageUploading && H('div', {
                   role: 'status',
                   style: {
                     fontSize: 12,
                     fontWeight: 600,
                     color: '#2563eb'
                   }
-                }, 'Uploading video...'),
-                bgVideoUploadError && H('div', {
+                }, 'Uploading image...'),
+                bgImageUploadError && H('div', {
                   role: 'alert',
                   style: {
                     fontSize: 12,
                     color: '#b91c1c'
                   }
-                }, bgVideoUploadError),
-                bgVideoUrl
-                  ? H('div', { style: { display: 'grid', gap: 8 } },
-                    H('video', {
-                      key: bgVideoUrl,
-                      src: bgVideoUrl,
-                      autoPlay: true,
-                      muted: true,
-                      loop: true,
-                      playsInline: true,
-                      controls: true,
-                      style: {
-                        width: '100%',
-                        height: 190,
-                        borderRadius: 12,
-                        objectFit: 'cover',
-                        boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)'
-                      }
-                    }),
-                    H('div', {
-                      style: {
-                        display: 'flex',
-                        justifyContent: 'flex-end'
-                      }
-                    },
-                      H('button', {
-                        type: 'button',
-                        onClick: () => onClearBgVideo?.(),
-                        disabled: !isPremium || bgVideoUploading,
-                        style: {
-                          border: 'none',
-                          background: '#fee2e2',
-                          color: '#b91c1c',
-                          borderRadius: 999,
-                          padding: '6px 14px',
-                          cursor: isPremium && !bgVideoUploading ? 'pointer' : 'not-allowed'
-                        }
-                      }, 'Remove video')
-                    )
-                  )
-                  : H('div', {
+                }, bgImageUploadError),
+                H('div', {
+                  style: {
+                    display: 'grid',
+                    gap: 8,
+                    marginTop: 4
+                  }
+                },
+                  H('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Preview & adjustments'),
+                  H('div', {
                     style: {
-                      fontSize: 12,
-                      color: '#6b7280'
+                      position: 'relative',
+                      width: '100%',
+                      height: 190,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      background: '#0f172a',
+                      boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)',
+                      display: 'grid',
+                      placeItems: 'center'
                     }
-                  }, 'No video uploaded yet.')
+                  },
+                    bgImageUrl
+                      ? H('img', {
+                          src: bgImageUrl,
+                          alt: 'Banner preview',
+                          style: {
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            objectPosition: `50% ${previewOffset}%`,
+                            transform: `scale(${previewScale})`,
+                            transition: 'transform 150ms ease, object-position 150ms ease'
+                          }
+                        })
+                      : H('div', {
+                          style: {
+                            color: '#94a3b8',
+                            fontSize: 18,
+                            textAlign: 'center',
+                            padding: '0 16px'
+                          }
+                        }, 'Upload an image to see a live preview')
+                  ),
+                  H('label', {
+                    style: { display: 'grid', gap: 4 }
+                  },
+                    H('span', { style: { fontSize: 12, fontWeight: 600 } }, 'Zoom'),
+                    H('input', {
+                      type: 'range',
+                      min: 1,
+                      max: 1.35,
+                      step: 0.01,
+                      value: previewScale,
+                      onChange: (evt) => setPreviewScale(Number(evt.target.value) || 1),
+                      disabled: !bgImageUrl
+                    })
+                  ),
+                  H('label', {
+                    style: { display: 'grid', gap: 4 }
+                  },
+                    H('span', { style: { fontSize: 12, fontWeight: 600 } }, 'Vertical focus'),
+                    H('input', {
+                      type: 'range',
+                      min: 0,
+                      max: 100,
+                      step: 1,
+                      value: previewOffset,
+                      onChange: (evt) => setPreviewOffset(Number(evt.target.value) || 50),
+                      disabled: !bgImageUrl
+                    })
+                  ),
+                  H('p', {
+                    className: 'muted',
+                    style: { fontSize: 12, margin: 0 }
+                  }, 'Tip: the preview controls let you experiment before committing the banner.'),
+                  bgImageUrl && H('div', {
+                    style: {
+                      display: 'flex',
+                      justifyContent: 'flex-end'
+                    }
+                  },
+                    H('button', {
+                      type: 'button',
+                      onClick: () => onClearBgImage?.(),
+                      disabled: !isPremium || bgImageUploading,
+                      style: {
+                        border: 'none',
+                        background: '#fee2e2',
+                        color: '#b91c1c',
+                        borderRadius: 999,
+                        padding: '6px 14px',
+                        cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed'
+                      }
+                    }, 'Remove image')
+                  )
+                )
               ),
               H('div', {
                 style: {
@@ -854,9 +960,9 @@
       const [subscriptionStatus, setSubscriptionStatus] = useState(user?.subscription_status || null);
       const [profileAvatarBorderColor, setProfileAvatarBorderColor] = useState(user?.profile_avatar_border_color || '#ffffff');
       const [profileAvatarBorderStyle, setProfileAvatarBorderStyle] = useState(user?.profile_avatar_border_style || 'solid');
-      const [profileBgVideoUrl, setProfileBgVideoUrl] = useState(user?.profile_bg_video_url || '');
-      const [profileBgVideoUploading, setProfileBgVideoUploading] = useState(false);
-      const [profileBgVideoUploadError, setProfileBgVideoUploadError] = useState('');
+      const [profileBgImageUrl, setProfileBgImageUrl] = useState(user?.profile_bg_image_url || user?.profile_bg_video_url || '');
+      const [profileBgImageUploading, setProfileBgImageUploading] = useState(false);
+      const [profileBgImageUploadError, setProfileBgImageUploadError] = useState('');
       const [profileCustomizationModalOpen, setProfileCustomizationModalOpen] = useState(false);
       const [profileCustomizationStatusMessage, setProfileCustomizationStatusMessage] = useState('');
       const isPremiumUser = useMemo(() => user?.supporter_tier === 'premium' || user?.subscription_status === 'active', [user]);
@@ -875,6 +981,13 @@
       useEffect(() => {
         if (user && 'subscription_status' in user) {
           setSubscriptionStatus(user.subscription_status || null);
+        }
+      }, [user]);
+
+      useEffect(() => {
+        if (!user) return;
+        if ('profile_bg_image_url' in user || 'profile_bg_video_url' in user) {
+          setProfileBgImageUrl(user.profile_bg_image_url || user.profile_bg_video_url || '');
         }
       }, [user]);
 
@@ -1101,7 +1214,8 @@
           const response = await api.updateProfileCustomization({
             profile_avatar_border_color: profileAvatarBorderColor,
             profile_avatar_border_style: profileAvatarBorderStyle,
-            profile_bg_video_url: profileBgVideoUrl
+            profile_bg_image_url: profileBgImageUrl,
+            profile_bg_video_url: profileBgImageUrl
           });
           if (response?.error) {
             alert(response.error);
@@ -1113,7 +1227,8 @@
               ...user,
               profile_avatar_border_color: profileAvatarBorderColor,
               profile_avatar_border_style: profileAvatarBorderStyle,
-              profile_bg_video_url: profileBgVideoUrl
+              profile_bg_video_url: profileBgImageUrl,
+              profile_bg_image_url: profileBgImageUrl
             });
           }
           setProfileCustomizationStatusMessage('Saved!');
@@ -1124,27 +1239,27 @@
           alert(err?.message || 'Failed to save profile customization');
           setProfileCustomizationStatusMessage('');
         }
-      }, [profileAvatarBorderColor, profileAvatarBorderStyle, profileBgVideoUrl, user]);
+      }, [profileAvatarBorderColor, profileAvatarBorderStyle, profileBgImageUrl, user]);
 
-      const handleUploadProfileBgVideo = useCallback(async (file) => {
+      const handleUploadProfileBgImage = useCallback(async (file) => {
         if (!file || !isPremiumUser) {
           return;
         }
         if (!api?.signUpload || !api?.finalizeUpload) {
-          setProfileBgVideoUploadError('Uploads are unavailable right now.');
+          setProfileBgImageUploadError('Uploads are unavailable right now.');
           return;
         }
-        if (file.type !== 'video/mp4') {
-          setProfileBgVideoUploadError('Please upload an MP4 video.');
+        if (!file.type || !file.type.startsWith('image/')) {
+          setProfileBgImageUploadError('Please upload an image file.');
           return;
         }
-        const maxBytes = 10 * 1024 * 1024;
+        const maxBytes = 8 * 1024 * 1024;
         if (file.size > maxBytes) {
-          setProfileBgVideoUploadError('Video must be under 10MB.');
+          setProfileBgImageUploadError('Image must be under 8MB.');
           return;
         }
-        setProfileBgVideoUploading(true);
-        setProfileBgVideoUploadError('');
+        setProfileBgImageUploading(true);
+        setProfileBgImageUploadError('');
         try {
           const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
           if (!sig || sig.error || !sig.uploadUrl || !sig.publicUrl || !sig.Key) {
@@ -1163,23 +1278,23 @@
             throw new Error(finalizeRes.error);
           }
           const nextUrl = finalizeRes?.url || sig.publicUrl;
-          setProfileBgVideoUrl(nextUrl);
-          setProfileCustomizationStatusMessage('Video uploaded. Click Save to keep it.');
+          setProfileBgImageUrl(nextUrl);
+          setProfileCustomizationStatusMessage('Image uploaded. Click Save to keep it.');
         } catch (err) {
-          console.error('Profile background video upload failed:', err);
-          setProfileBgVideoUploadError(err?.message || 'Failed to upload video');
+          console.error('Profile banner image upload failed:', err);
+          setProfileBgImageUploadError(err?.message || 'Failed to upload image');
         } finally {
-          setProfileBgVideoUploading(false);
+          setProfileBgImageUploading(false);
         }
       }, [api, isPremiumUser]);
 
-      const handleClearProfileBgVideo = useCallback(() => {
+      const handleClearProfileBgImage = useCallback(() => {
         if (!isPremiumUser) {
           return;
         }
-        setProfileBgVideoUrl('');
-        setProfileBgVideoUploadError('');
-        setProfileCustomizationStatusMessage('Background video removed. Click Save to apply.');
+        setProfileBgImageUrl('');
+        setProfileBgImageUploadError('');
+        setProfileCustomizationStatusMessage('Background image removed. Click Save to apply.');
       }, [isPremiumUser]);
 
       const handleRequestCancelSubscription = useCallback(async () => {
@@ -1263,8 +1378,8 @@
       const activeItems = asArray(items).filter(it => !it?.sold);
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
-      const trimmedBgVideoUrl = (profileBgVideoUrl || '').trim();
-      const hasBgVideo = !!trimmedBgVideoUrl;
+      const trimmedBgImageUrl = (profileBgImageUrl || '').trim();
+      const hasBgImage = !!trimmedBgImageUrl;
       const profileHeaderContent = H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
             H('div', { className: 'row', style: { gap: 12, alignItems: 'center' } },
               H('div', {
@@ -1379,7 +1494,7 @@
               )
             )
           );
-      const profileHeader = hasBgVideo
+      const profileHeader = hasBgImage
         ? H('div', {
             style: {
               position: 'relative',
@@ -1387,21 +1502,22 @@
               overflow: 'hidden'
             }
           },
-            H('video', {
-              key: trimmedBgVideoUrl,
-              src: trimmedBgVideoUrl,
-              autoPlay: true,
-              muted: true,
-              loop: true,
-              playsInline: true,
-              style: {
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
-              }
-            }),
+            trimmedBgImageUrl
+              ? H('img', {
+                  key: trimmedBgImageUrl,
+                  src: trimmedBgImageUrl,
+                  alt: 'Profile banner',
+                  loading: 'lazy',
+                  decoding: 'async',
+                  style: {
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }
+                })
+              : null,
             H('div', {
               style: {
                 position: 'absolute',
@@ -1422,11 +1538,11 @@
         H('section', {
           className: 'card',
           style: {
-            padding: hasBgVideo ? 0 : 16,
+            padding: hasBgImage ? 0 : 16,
             margin: '12px 0 16px',
-            overflow: hasBgVideo ? 'hidden' : undefined,
-            background: hasBgVideo ? '#020617' : undefined,
-            color: hasBgVideo ? '#f8fafc' : undefined
+            overflow: hasBgImage ? 'hidden' : undefined,
+            background: hasBgImage ? '#020617' : undefined,
+            color: hasBgImage ? '#f8fafc' : undefined
           }
         }, profileHeader),
 
@@ -1498,11 +1614,11 @@
           onChangeBorderColor: setProfileAvatarBorderColor,
           borderStyle: profileAvatarBorderStyle,
           onChangeBorderStyle: setProfileAvatarBorderStyle,
-          bgVideoUrl: profileBgVideoUrl,
-          onUploadBgVideo: handleUploadProfileBgVideo,
-          onClearBgVideo: handleClearProfileBgVideo,
-          bgVideoUploading: profileBgVideoUploading,
-          bgVideoUploadError: profileBgVideoUploadError,
+          bgImageUrl: profileBgImageUrl,
+          onUploadBgImage: handleUploadProfileBgImage,
+          onClearBgImage: handleClearProfileBgImage,
+          bgImageUploading: profileBgImageUploading,
+          bgImageUploadError: profileBgImageUploadError,
           onSave: saveProfileCustomization,
           statusMessage: profileCustomizationStatusMessage,
           isPremium: isPremiumUser
