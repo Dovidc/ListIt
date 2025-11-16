@@ -2877,6 +2877,12 @@ async function getUserWithStatus(userId) {
 
              profile_picture_url,
 
+             profile_avatar_border_color,
+
+             profile_avatar_border_style,
+
+             profile_bg_video_url,
+
              supporter_badge,
 
              supporter_since,
@@ -2889,7 +2895,9 @@ async function getUserWithStatus(userId) {
 
              subscription_current_period_end,
 
-             stripe_customer_id
+             stripe_customer_id,
+
+             karma
 
         FROM users
 
@@ -2924,6 +2932,12 @@ function mapUserRow(row, extra = {}) {
     is_admin: !!row.is_admin,
 
     profile_picture_url: row.profile_picture_url,
+
+    profile_avatar_border_color: row.profile_avatar_border_color || '#ffffff',
+
+    profile_avatar_border_style: row.profile_avatar_border_style || 'solid',
+
+    profile_bg_video_url: row.profile_bg_video_url || null,
 
     account_status: row.account_status || 'active',
 
@@ -5459,7 +5473,16 @@ app.get('/api/users/:userId', async (req, res) => {
 
 
     const user = await db.prepare(`
-      SELECT id, username, created_at, supporter_badge, supporter_since
+      SELECT id,
+             username,
+             created_at,
+             supporter_badge,
+             supporter_since,
+             profile_picture_url,
+             profile_avatar_border_color,
+             profile_avatar_border_style,
+             profile_bg_video_url,
+             karma
         FROM users
        WHERE id = ?
     `).get(userId);
@@ -5482,7 +5505,17 @@ app.get('/api/users/:userId', async (req, res) => {
 
       supporter_badge: user.supporter_badge || null,
 
-      supporter_since: user.supporter_since || null
+      supporter_since: user.supporter_since || null,
+
+      profile_picture_url: user.profile_picture_url || null,
+
+      profile_avatar_border_color: user.profile_avatar_border_color || null,
+
+      profile_avatar_border_style: user.profile_avatar_border_style || null,
+
+      profile_bg_video_url: user.profile_bg_video_url || null,
+
+      karma: user.karma || 0
 
     });
 
