@@ -378,6 +378,7 @@ if (IS_PROD && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev_jwt_c
 
 
 const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || 20);
+const SUPPORTED_BANNER_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
 const B64_SLOP = 1.6;
 
@@ -2567,6 +2568,26 @@ function isAllowedPublicUrl(u) {
 }
 
 
+function hasAllowedBannerImageExtension(u) {
+
+  if (typeof u !== 'string') return false;
+
+  const clean = u.split('?')[0]?.trim().toLowerCase();
+
+  if (!clean) return false;
+
+  return SUPPORTED_BANNER_IMAGE_EXTS.some((ext) => clean.endsWith(ext));
+
+}
+
+
+function isAllowedBannerImageUrl(u) {
+
+  return isAllowedPublicUrl(u) && hasAllowedBannerImageExtension(u);
+
+}
+
+
 
 function validateImages(images) {
 
@@ -2921,6 +2942,8 @@ function mapUserRow(row, extra = {}) {
 
   if (!row) return null;
 
+  const bannerImageUrl = row.profile_bg_image_url || row.profile_bg_video_url || null;
+
   return {
 
     id: row.id,
@@ -2937,7 +2960,9 @@ function mapUserRow(row, extra = {}) {
 
     profile_avatar_border_style: row.profile_avatar_border_style || 'solid',
 
-    profile_bg_video_url: row.profile_bg_video_url || null,
+    profile_bg_image_url: bannerImageUrl,
+
+    profile_bg_video_url: bannerImageUrl,
 
     account_status: row.account_status || 'active',
 
@@ -3631,7 +3656,8 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
 
     const borderColor = String(req.body?.profile_avatar_border_color || '#ffffff').trim();
     const borderStyle = String(req.body?.profile_avatar_border_style || 'solid').trim();
-    const bgVideoUrl = String(req.body?.profile_bg_video_url || '').trim();
+    const rawBannerUrl = req.body?.profile_bg_image_url ?? req.body?.profile_bg_video_url ?? '';
+    const bgImageUrl = String(rawBannerUrl || '').trim();
 
     // Check if user is premium subscriber
     const userRow = await db.prepare('SELECT subscription_status, supporter_tier FROM users WHERE id = ?').get(req.user.id);
@@ -3651,16 +3677,13 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
       return res.status(400).json({ error: 'Invalid border style' });
     }
 
-    // Validate video URL if provided
-    if (bgVideoUrl) {
-      if (bgVideoUrl.length > 500) {
-        return res.status(400).json({ error: 'Video URL too long' });
+    // Validate banner image URL if provided
+    if (bgImageUrl) {
+      if (bgImageUrl.length > 500) {
+        return res.status(400).json({ error: 'Image URL too long' });
       }
-      if (!isAllowedPublicUrl(bgVideoUrl)) {
-        return res.status(400).json({ error: 'Video must be uploaded through Trovelr' });
-      }
-      if (!bgVideoUrl.toLowerCase().endsWith('.mp4')) {
-        return res.status(400).json({ error: 'Only MP4 videos are supported' });
+      if (!isAllowedBannerImageUrl(bgImageUrl)) {
+        return res.status(400).json({ error: 'Image must be uploaded through Trovelr' });
       }
     }
 
@@ -3670,13 +3693,14 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
           profile_avatar_border_style = ?,
           profile_bg_video_url = ?
       WHERE id = ?
-    `).run(borderColor, borderStyle, bgVideoUrl || null, req.user.id);
+    `).run(borderColor, borderStyle, bgImageUrl || null, req.user.id);
 
     return res.json({
       ok: true,
       profile_avatar_border_color: borderColor,
       profile_avatar_border_style: borderStyle,
-      profile_bg_video_url: bgVideoUrl
+      profile_bg_image_url: bgImageUrl,
+      profile_bg_video_url: bgImageUrl
     });
 
   } catch (e) {
@@ -5521,7 +5545,9 @@ app.get('/api/users/:userId', async (req, res) => {
 
       profile_avatar_border_style: user.profile_avatar_border_style || null,
 
-      profile_bg_video_url: user.profile_bg_video_url || null,
+      profile_bg_image_url: user.profile_bg_image_url || user.profile_bg_video_url || null,
+
+      profile_bg_video_url: user.profile_bg_video_url || user.profile_bg_image_url || null,
 
       karma: user.karma || 0
 

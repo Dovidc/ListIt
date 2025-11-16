@@ -1821,8 +1821,9 @@
         : null;
       const avatarBorderColor = sellerInfo.profile_avatar_border_color || '#ffffff';
       const avatarBorderStyle = sellerInfo.profile_avatar_border_style === 'dashed' ? 'dashed' : 'solid';
-      const bgVideoUrl = typeof sellerInfo.profile_bg_video_url === 'string' && sellerInfo.profile_bg_video_url.trim()
-        ? sellerInfo.profile_bg_video_url.trim()
+      const bgImageUrlSource = sellerInfo.profile_bg_image_url || sellerInfo.profile_bg_video_url;
+      const bgImageUrl = typeof bgImageUrlSource === 'string' && bgImageUrlSource.trim()
+        ? bgImageUrlSource.trim()
         : null;
       const avatarUrl = typeof sellerInfo.profile_picture_url === 'string' && sellerInfo.profile_picture_url.trim()
         ? sellerInfo.profile_picture_url.trim()
@@ -1952,14 +1953,11 @@
                     background: 'linear-gradient(120deg, #1d1f3b, #3730a3)'
                   }
                 },
-                  bgVideoUrl
-                    ? H('video', {
-                        key: bgVideoUrl,
-                        src: bgVideoUrl,
-                        autoPlay: true,
-                        muted: true,
-                        loop: true,
-                        playsInline: true,
+                  bgImageUrl
+                    ? H(ImageWithSkeleton, {
+                        key: bgImageUrl,
+                        src: bgImageUrl,
+                        alt: `${username} banner`,
                         style: {
                           width: '100%',
                           height: '100%',
@@ -1975,7 +1973,7 @@
                           fontSize: 48,
                           color: 'rgba(248, 250, 252, 0.5)'
                         }
-                      }, '🎞️'),
+                      }, '🖼️'),
                   H('div', {
                     style: {
                       position: 'absolute',
