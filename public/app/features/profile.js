@@ -399,8 +399,11 @@
       // we limited cancellation controls to "premium" supporters which meant
       // basic monthly supporters couldn't see the button. Instead, treat the
       // presence of a Stripe subscription ID as the source of truth.
-      const hasCancelableSubscription = Boolean(user?.stripe_subscription_id);
       const currentSubscriptionStatus = subscriptionStatus || user?.subscription_status || null;
+      const hasCancelableSubscription = Boolean(
+        user?.stripe_subscription_id
+        || (currentSubscriptionStatus && currentSubscriptionStatus !== 'canceled')
+      );
       const normalizedPeriodEnd = subscriptionPeriodEnd || user?.subscription_current_period_end || null;
       const formattedPeriodEnd = formatPeriodDate(normalizedPeriodEnd);
       const isCancelingSubscription = currentSubscriptionStatus === 'canceling';
