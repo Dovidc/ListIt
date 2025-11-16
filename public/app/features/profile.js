@@ -484,18 +484,23 @@
               },
                 H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Subscription'),
                 H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } },
-                  'You have an active monthly subscription'
+                  subscriptionStatus === 'canceling'
+                    ? 'Your cancellation is scheduled. You will keep your supporter perks until the end of your current billing period and can renew your subscription once it ends.'
+                    : 'You have an active monthly subscription'
                 ),
                 H('button', {
                   className: 'btn',
-                  onClick: onRequestCancelSubscription,
+                  onClick: subscriptionStatus === 'canceling' ? undefined : onRequestCancelSubscription,
+                  disabled: subscriptionStatus === 'canceling',
                   style: {
                     width: '100%',
                     background: '#f59e0b',
                     color: 'white',
-                    border: 'none'
+                    border: 'none',
+                    cursor: subscriptionStatus === 'canceling' ? 'not-allowed' : 'pointer',
+                    opacity: subscriptionStatus === 'canceling' ? 0.7 : 1
                   }
-                }, 'Cancel Subscription')
+                }, subscriptionStatus === 'canceling' ? 'Cancellation Scheduled' : 'Cancel Subscription')
               ),
               H('div', {
                 style: {
@@ -556,6 +561,7 @@
       const [deleteAccountError, setDeleteAccountError] = useState('');
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
       const [karmaListingId, setKarmaListingId] = useState(null);
+      const [subscriptionStatus, setSubscriptionStatus] = useState(user?.subscription_status || null);
 
       useEffect(() => {
         if (!user) return;
@@ -565,6 +571,12 @@
         // This prevents overwriting with empty string when user object is being updated
         if ('profile_picture_url' in user) {
           setProfilePictureUrl(url);
+        }
+      }, [user]);
+
+      useEffect(() => {
+        if (user && 'subscription_status' in user) {
+          setSubscriptionStatus(user.subscription_status || null);
         }
       }, [user]);
 
@@ -782,6 +794,10 @@
 
         try {
           await api.cancelSubscription();
+          setSubscriptionStatus('canceling');
+          if (user) {
+            navBridge.setUser?.({ ...user, subscription_status: 'canceling' });
+          }
           setSettingsOpen(false);
           // Refresh user data to update UI
           window.location.reload();
@@ -789,7 +805,7 @@
           console.error('Cancel subscription failed:', err);
           alert(err.message || 'Failed to cancel subscription');
         }
-      }, []);
+      }, [user]);
 
       const handleToggleSoldWithKarma = useCallback(async (listing, makeSold) => {
         console.log('=== KARMA HANDLER START ===');
