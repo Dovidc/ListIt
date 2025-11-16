@@ -1214,8 +1214,7 @@
           const response = await api.updateProfileCustomization({
             profile_avatar_border_color: profileAvatarBorderColor,
             profile_avatar_border_style: profileAvatarBorderStyle,
-            profile_bg_image_url: profileBgImageUrl,
-            profile_bg_video_url: profileBgImageUrl
+            profile_bg_image_url: profileBgImageUrl
           });
           if (response?.error) {
             alert(response.error);
@@ -1227,7 +1226,7 @@
               ...user,
               profile_avatar_border_color: profileAvatarBorderColor,
               profile_avatar_border_style: profileAvatarBorderStyle,
-              profile_bg_video_url: profileBgImageUrl,
+              profile_bg_video_url: null,
               profile_bg_image_url: profileBgImageUrl
             });
           }
