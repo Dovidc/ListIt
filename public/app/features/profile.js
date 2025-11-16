@@ -394,7 +394,12 @@
         return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       };
 
-      const isPremiumSubscriber = user?.supporter_tier === 'premium' && user?.stripe_subscription_id;
+      // Any user with a Stripe subscription should be able to manage/cancel it,
+      // regardless of the supporter tier label they currently have. Previously
+      // we limited cancellation controls to "premium" supporters which meant
+      // basic monthly supporters couldn't see the button. Instead, treat the
+      // presence of a Stripe subscription ID as the source of truth.
+      const hasCancelableSubscription = Boolean(user?.stripe_subscription_id);
       const currentSubscriptionStatus = subscriptionStatus || user?.subscription_status || null;
       const normalizedPeriodEnd = subscriptionPeriodEnd || user?.subscription_current_period_end || null;
       const formattedPeriodEnd = formatPeriodDate(normalizedPeriodEnd);
@@ -507,8 +512,8 @@
                   }
                 }, '?')
               ),
-              // Show cancel subscription button for premium monthly subscribers
-              isPremiumSubscriber && H('div', {
+              // Show cancel subscription button for any managed Stripe subscription
+              hasCancelableSubscription && H('div', {
                 style: {
                   marginTop: 24,
                   paddingTop: 24,
