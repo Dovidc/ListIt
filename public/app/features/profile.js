@@ -1312,7 +1312,7 @@
           onChangeBgVideoUrl: setProfileBgVideoUrl,
           onSave: saveProfileCustomization,
           statusMessage: profileCustomizationStatusMessage,
-          isPremium: user?.subscriber_tier === 'premium' || user?.subscription_status === 'active'
+          isPremium: user?.supporter_tier === 'premium' || user?.subscription_status === 'active'
         }),
 
         H(ProfileSettingsModal, {
