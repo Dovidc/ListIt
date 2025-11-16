@@ -106,7 +106,7 @@
         );
       }
 
-      const profileLabel = user ? (user.username ? `@${user.username}` : user.email) : 'Profile';
+      const profileLabel = user ? (user.username ? user.username : user.email) : 'Profile';
       const profileButtonLabel = isMobile ? 'Profile' : profileLabel;
 
       function navButton(key, label, onClick, extraChild, extraProps) {

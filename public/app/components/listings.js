@@ -1125,7 +1125,7 @@
 
       if (!open) return null;
 
-      const sellerName = listing?.owner_username ? `@${listing.owner_username}` : 'this seller';
+      const sellerName = listing?.owner_username ? listing.owner_username : 'this seller';
 
       const modal = H('div', {
         className: 'modal open',
@@ -1565,7 +1565,7 @@
       }
 
       const supporterData = item?.owner_supporter_badge ? {
-        username: item?.owner_username ? `@${item.owner_username}` : null,
+        username: item?.owner_username ? item.owner_username : null,
         since: item?.owner_supporter_since || null,
         badge: item?.owner_supporter_badge || null
       } : null;
@@ -1573,7 +1573,7 @@
       const handleSupporterBadgeClick = () => {
         if (!supporterData) return;
         const payload = {
-          username: supporterData.username || (item?.owner_username ? `@${item.owner_username}` : 'This seller'),
+          username: supporterData.username || (item?.owner_username ? item.owner_username : 'This seller'),
           since: supporterData.since || null
         };
         onSupporterClick?.(payload);
@@ -1597,8 +1597,8 @@
                 padding: 0,
                 font: 'inherit'
               }
-            }, `@${item.owner_username}`)
-          : H('span', { style: { fontWeight: 600, color: '#111' } }, `@${item.owner_username}`);
+            }, item.owner_username)
+          : H('span', { style: { fontWeight: 600, color: '#111' } }, item.owner_username);
 
         if (!supporterData) {
           return sellerNode;
@@ -2008,9 +2008,7 @@
       const gridColumns = isMobile ? 3 : 4;
 
       const sellerDisplayName = (sellerInfo && sellerInfo.username) || sellerUsername || '';
-      const sellerLabel = sellerDisplayName
-        ? (sellerDisplayName.startsWith('@') ? sellerDisplayName : `@${sellerDisplayName}`)
-        : 'Seller';
+      const sellerLabel = sellerDisplayName || 'Seller';
       const sellerJoinedText = sellerInfo && sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
       const sellerSupporterSince = sellerInfo?.supporter_since || null;
       const sellerSupporter = sellerInfo?.supporter_badge
