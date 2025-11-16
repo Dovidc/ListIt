@@ -1418,7 +1418,7 @@
             }, profileHeaderContent)
           )
         : profileHeaderContent;
-      return H(React.Fragment, null,
+      const profileSections = [
         H('section', {
           className: 'card',
           style: {
@@ -1466,11 +1466,10 @@
                   })
                 : H('div', { style: { padding: 16 } }, 'ListingsGrid component not available')
               )
-              : H('p', {
-                  className: 'muted',
-                  style: { textAlign: 'center', margin: '28px 0' }
-                }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
-            )
+            : H('p', {
+                className: 'muted',
+                style: { textAlign: 'center', margin: '28px 0' }
+              }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
           )
         ),
 
@@ -1629,7 +1628,9 @@
           listingId: karmaListingId,
           onBuyerSelected: handleKarmaBuyerSelected
         })
-      );
+      ];
+
+      return H(React.Fragment, null, ...profileSections);
     });
 
     return {
