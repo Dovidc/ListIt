@@ -165,7 +165,7 @@
       }, [open, onClose]);
     }
 
-    function SupporterInfoModal({ open, onClose, username, since, onJoin }) {
+    function SupporterInfoModal({ open, onClose, username, since, onJoin, isSelf = false }) {
       useModalLifecycle(open, onClose);
       if (!open) return null;
 
@@ -196,7 +196,9 @@
             H('h2', { className: 'supporter-modal__title' }, `${username || 'This user'} is a Trovelr Supporter`),
             sinceLabel && H('p', { className: 'supporter-modal__subtitle' }, `Backing Trovelr since ${sinceLabel}`),
             H('p', { className: 'supporter-modal__body' },
-              'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
+              isSelf
+                ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
+                : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
             ),
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
@@ -206,14 +208,23 @@
                   onClose?.();
                 }
               }, 'Close'),
-              typeof onJoin === 'function' && H('button', {
-                type: 'button',
-                className: 'btn primary',
-                onClick: () => {
-                  onClose?.();
-                  onJoin();
-                }
-              }, 'Join the program')
+              isSelf
+                ? H('span', {
+                    className: 'muted',
+                    style: {
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginTop: 4
+                    }
+                  }, 'Already subscribed')
+                : typeof onJoin === 'function' && H('button', {
+                    type: 'button',
+                    className: 'btn primary',
+                    onClick: () => {
+                      onClose?.();
+                      onJoin();
+                    }
+                  }, 'Join the program')
             )
           )
         ),
