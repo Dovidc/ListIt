@@ -4196,16 +4196,21 @@ app.post('/api/supporters/cancel', auth, async (req, res) => {
     }
 
     // Cancel the subscription at period end (user keeps benefits until then)
-    await stripe.subscriptions.update(subscriptionId, {
+    const cancellation = await stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true
     });
+
+    const cancellationPeriodEnd = cancellation?.current_period_end
+      ? new Date(cancellation.current_period_end * 1000).toISOString()
+      : (req.user.subscription_current_period_end || null);
 
     // Update user record to reflect cancellation status
     await db.prepare(`
       UPDATE users
-      SET subscription_status = 'canceling'
+      SET subscription_status = 'canceling',
+          subscription_current_period_end = ?
       WHERE id = ?
-    `).run(req.user.id);
+    `).run(cancellationPeriodEnd, req.user.id);
 
     const refreshed = await getUserWithStatus(req.user.id);
 
