@@ -3637,17 +3637,65 @@ async function handleCheckoutSessionCompleted(session) {
   }
 }
 
+async function resolveUserIdForStripeSubscription({ userId, subscriptionId, customerId, customerEmail }) {
+  let user = null;
+
+  if (userId) {
+    const numericUserId = Number(userId);
+    if (!Number.isNaN(numericUserId)) {
+      user = await db.prepare('SELECT id FROM users WHERE id = ?').get(numericUserId);
+    }
+  }
+
+  if (!user && subscriptionId) {
+    user = await db.prepare('SELECT id FROM users WHERE stripe_subscription_id = ?').get(subscriptionId);
+  }
+
+  if (!user && customerId) {
+    user = await db.prepare('SELECT id FROM users WHERE stripe_customer_id = ?').get(customerId);
+  }
+
+  if (!user && customerEmail) {
+    const email = String(customerEmail).trim();
+    if (email) {
+      user = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+    }
+  }
+
+  if (!user && customerId && stripe?.customers?.retrieve) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      const email = customer?.email ? String(customer.email).trim() : '';
+      if (email) {
+        user = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch customer ${customerId} while resolving subscription user:`, err?.message || err);
+    }
+  }
+
+  return user?.id || null;
+}
+
 async function handleSubscriptionCreated(subscription) {
   console.log('Processing subscription.created:', subscription.id);
 
-  const userId = subscription.metadata?.user_id;
-  if (!userId) {
-    console.error('No user_id found in subscription metadata');
+  const periodEnd = subscription.current_period_end
+    ? new Date(subscription.current_period_end * 1000).toISOString()
+    : null;
+
+  const resolvedUserId = await resolveUserIdForStripeSubscription({
+    userId: subscription.metadata?.user_id,
+    subscriptionId: subscription.id,
+    customerId: subscription.customer
+  });
+
+  if (!resolvedUserId) {
+    console.error('Unable to find user for subscription.created event', subscription.id);
     return;
   }
 
   const supporterSince = nowIso();
-  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
   await db.prepare(`
     UPDATE users
@@ -3655,7 +3703,7 @@ async function handleSubscriptionCreated(subscription) {
         supporter_tier = 'premium',
         supporter_since = COALESCE(supporter_since, ?),
         stripe_subscription_id = ?,
-        stripe_customer_id = ?,
+        stripe_customer_id = COALESCE(?, stripe_customer_id),
         subscription_status = ?,
         subscription_current_period_end = ?,
         supporter_checkout_id = NULL
@@ -3667,46 +3715,85 @@ async function handleSubscriptionCreated(subscription) {
     subscription.customer,
     subscription.status,
     periodEnd,
-    userId
+    resolvedUserId
   );
 
-  console.log(`Premium supporter badge granted to user ${userId}`);
+  console.log(`Premium supporter badge granted to user ${resolvedUserId}`);
 }
 
 async function handleSubscriptionUpdated(subscription) {
   console.log('Processing subscription.updated:', subscription.id);
 
-  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+  const periodEnd = subscription.current_period_end
+    ? new Date(subscription.current_period_end * 1000).toISOString()
+    : null;
 
-  await db.prepare(`
+  const result = await db.prepare(`
     UPDATE users
     SET subscription_status = ?,
-        subscription_current_period_end = ?
+        subscription_current_period_end = ?,
+        stripe_customer_id = COALESCE(?, stripe_customer_id)
     WHERE stripe_subscription_id = ?
-  `).run(subscription.status, periodEnd, subscription.id);
+  `).run(subscription.status, periodEnd, subscription.customer, subscription.id);
 
-  console.log(`Subscription ${subscription.id} updated to status: ${subscription.status}`);
+  if (result.changes === 0) {
+    const resolvedUserId = await resolveUserIdForStripeSubscription({
+      userId: subscription.metadata?.user_id,
+      subscriptionId: subscription.id,
+      customerId: subscription.customer
+    });
+
+    if (resolvedUserId) {
+      await db.prepare(`
+        UPDATE users
+        SET subscription_status = ?,
+            subscription_current_period_end = ?,
+            stripe_subscription_id = ?,
+            stripe_customer_id = COALESCE(?, stripe_customer_id)
+        WHERE id = ?
+      `).run(subscription.status, periodEnd, subscription.id, subscription.customer, resolvedUserId);
+      console.log(`Subscription ${subscription.id} updated for resolved user ${resolvedUserId}`);
+    } else {
+      console.warn(`Failed to resolve user for subscription.update event ${subscription.id}`);
+    }
+  } else {
+    console.log(`Subscription ${subscription.id} updated to status: ${subscription.status}`);
+  }
 }
 
 async function handleSubscriptionDeleted(subscription) {
   console.log('Processing subscription.deleted:', subscription.id);
 
-  // Remove premium badge but keep basic tier if they had it before
-  const user = await db.prepare(`
-    SELECT supporter_tier, supporter_since FROM users WHERE stripe_subscription_id = ?
-  `).get(subscription.id);
+  const result = await db.prepare(`
+    UPDATE users
+    SET supporter_badge = NULL,
+        supporter_tier = NULL,
+        subscription_status = 'canceled',
+        stripe_subscription_id = NULL
+    WHERE stripe_subscription_id = ?
+  `).run(subscription.id);
 
-  if (user) {
-    // Downgrade to basic tier if they want to keep some recognition
-    await db.prepare(`
-      UPDATE users
-      SET supporter_badge = NULL,
-          supporter_tier = NULL,
-          subscription_status = 'canceled',
-          stripe_subscription_id = NULL
-      WHERE stripe_subscription_id = ?
-    `).run(subscription.id);
+  if (result.changes === 0) {
+    const resolvedUserId = await resolveUserIdForStripeSubscription({
+      userId: subscription.metadata?.user_id,
+      subscriptionId: subscription.id,
+      customerId: subscription.customer
+    });
 
+    if (resolvedUserId) {
+      await db.prepare(`
+        UPDATE users
+        SET supporter_badge = NULL,
+            supporter_tier = NULL,
+            subscription_status = 'canceled',
+            stripe_subscription_id = NULL
+        WHERE id = ?
+      `).run(resolvedUserId);
+      console.log(`Subscription ${subscription.id} canceled for resolved user ${resolvedUserId}`);
+    } else {
+      console.warn(`Failed to resolve user for subscription.deleted event ${subscription.id}`);
+    }
+  } else {
     console.log(`Subscription ${subscription.id} canceled, badge removed`);
   }
 }
@@ -3716,11 +3803,28 @@ async function handleInvoicePaymentSucceeded(invoice) {
 
   if (invoice.subscription) {
     // Ensure subscription status is active
-    await db.prepare(`
+    const result = await db.prepare(`
       UPDATE users
       SET subscription_status = 'active'
       WHERE stripe_subscription_id = ?
     `).run(invoice.subscription);
+
+    if (result.changes === 0) {
+      const resolvedUserId = await resolveUserIdForStripeSubscription({
+        subscriptionId: invoice.subscription,
+        customerId: invoice.customer
+      });
+      if (resolvedUserId) {
+        await db.prepare(`
+          UPDATE users
+          SET subscription_status = 'active',
+              stripe_subscription_id = COALESCE(stripe_subscription_id, ?)
+          WHERE id = ?
+        `).run(invoice.subscription, resolvedUserId);
+      } else {
+        console.warn(`Unable to resolve user for invoice.payment_succeeded ${invoice.id}`);
+      }
+    }
   }
 }
 
@@ -3729,11 +3833,28 @@ async function handleInvoicePaymentFailed(invoice) {
 
   if (invoice.subscription) {
     // Mark as past_due but don't immediately remove badge
-    await db.prepare(`
+    const result = await db.prepare(`
       UPDATE users
       SET subscription_status = 'past_due'
       WHERE stripe_subscription_id = ?
     `).run(invoice.subscription);
+
+    if (result.changes === 0) {
+      const resolvedUserId = await resolveUserIdForStripeSubscription({
+        subscriptionId: invoice.subscription,
+        customerId: invoice.customer
+      });
+      if (resolvedUserId) {
+        await db.prepare(`
+          UPDATE users
+          SET subscription_status = 'past_due',
+              stripe_subscription_id = COALESCE(stripe_subscription_id, ?)
+          WHERE id = ?
+        `).run(invoice.subscription, resolvedUserId);
+      } else {
+        console.warn(`Unable to resolve user for invoice.payment_failed ${invoice.id}`);
+      }
+    }
 
     console.log(`Payment failed for subscription ${invoice.subscription}, marked as past_due`);
   }
