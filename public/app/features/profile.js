@@ -251,7 +251,11 @@
       locationPreset,
       onChangeLocationPreset,
       onSaveLocation,
-      locationStatusMessage
+      locationStatusMessage,
+      profileAbout,
+      onChangeProfileAbout,
+      onSaveProfileAbout,
+      profileAboutStatusMessage
     }) {
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -378,6 +382,59 @@
                   fontWeight: 600
                 }
               }, locationStatusMessage)
+            ),
+            H('section', { style: { display: 'grid', gap: 12 } },
+              H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap'
+                }
+              },
+                H('span', { style: { fontWeight: 600 } }, 'About this seller'),
+                H('span', {
+                  className: 'muted',
+                  style: { fontSize: 12 }
+                }, 'Shown on your profile preview')
+              ),
+              H('textarea', {
+                value: profileAbout,
+                onChange: (evt) => onChangeProfileAbout?.(evt.target.value),
+                placeholder: 'Share a short bio, shipping info, or what you sell.',
+                rows: 4,
+                maxLength: 600,
+                style: { width: '100%', resize: 'vertical' }
+              }),
+              H('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 8
+                }
+              },
+                H('span', {
+                  className: 'muted',
+                  style: { fontSize: 12 }
+                }, `${(profileAbout || '').length}/600 characters`),
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onSaveProfileAbout
+                }, 'Save')
+              ),
+              profileAboutStatusMessage && H('div', {
+                role: 'status',
+                'aria-live': 'polite',
+                style: {
+                  fontSize: 13,
+                  color: '#047857',
+                  fontWeight: 600
+                }
+              }, profileAboutStatusMessage)
             ),
             H('p', {
               className: 'muted',
@@ -991,6 +1048,13 @@
         }
       }, [user]);
 
+      useEffect(() => {
+        if (!user) return;
+        if ('profile_about' in user) {
+          setProfileAbout(user.profile_about || '');
+        }
+      }, [user, setProfileAbout]);
+
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
         onEdit?.(it);
@@ -1044,6 +1108,15 @@
         setLocationPresetState(resolved);
       }, [locationPresetRef, setLocationPresetState]);
       const locationPreset = locationPresetState;
+      const [profileAboutState, setProfileAboutState] = useState(user?.profile_about || '');
+      const profileAboutRef = useRef(profileAboutState);
+      const setProfileAbout = useCallback((value) => {
+        const resolved = typeof value === 'function' ? value(profileAboutRef.current) : value;
+        profileAboutRef.current = resolved;
+        setProfileAboutState(resolved);
+      }, [profileAboutRef, setProfileAboutState]);
+      const profileAbout = profileAboutState;
+      const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
           return null;
@@ -1099,6 +1172,13 @@
           setLocationStatusMessage('');
         }
       }, [locationStatusMessage]);
+
+      const handleChangeProfileAbout = useCallback((value) => {
+        setProfileAbout(value);
+        if (profileAboutStatusMessage) {
+          setProfileAboutStatusMessage('');
+        }
+      }, [profileAboutStatusMessage, setProfileAbout]);
       async function savePaypal() {
         const trimmed = (paypalEmailRef.current || '').trim();
         let response;
@@ -1152,6 +1232,35 @@
           console.error('Refresh user failed:', err);
         }
         setLocationStatusMessage('Saved');
+      }
+
+      async function saveProfileAbout() {
+        const currentValue = profileAboutRef.current || '';
+        let response;
+        try {
+          if (typeof api.updateProfileAbout !== 'function') {
+            throw new Error('updateProfileAbout unavailable');
+          }
+          response = await api.updateProfileAbout(currentValue);
+        } catch (err) {
+          alert(err?.message || 'Failed to save about text.');
+          return;
+        }
+        if (response?.error) { alert(response.error); return; }
+        const nextAbout = typeof response?.profile_about === 'string' ? response.profile_about : (currentValue || '');
+        setProfileAbout(nextAbout);
+        if (user) {
+          navBridge.setUser?.({ ...user, profile_about: nextAbout });
+        }
+        try {
+          const me = await api.me({ silent: true });
+          if (me) {
+            navBridge.setUser?.(me);
+          }
+        } catch (err) {
+          console.error('Refresh user failed:', err);
+        }
+        setProfileAboutStatusMessage('Saved');
       }
 
       const handleOpenProfilePictureModal = useCallback(() => {
@@ -1603,7 +1712,11 @@
           locationPreset,
           onChangeLocationPreset: handleChangeLocationPreset,
           onSaveLocation: saveLocationPreset,
-          locationStatusMessage: locationStatusMessage
+          locationStatusMessage: locationStatusMessage,
+          profileAbout,
+          onChangeProfileAbout: handleChangeProfileAbout,
+          onSaveProfileAbout: saveProfileAbout,
+          profileAboutStatusMessage
         }),
 
         H(ProfileCustomizationModal, {
