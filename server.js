@@ -75,6 +75,24 @@ const {
 } = require('./contracts/http-schemas');
 
 const mailService = require('./mail-service');
+const { createMessageBus, TOPICS } = require('./lib/message-bus');
+const pushService = require('./lib/push-service');
+const {
+  isPushAvailable,
+  publicPushMeta,
+  normalizePushSubscriptionInput,
+  savePushSubscription,
+  deletePushSubscription
+} = pushService;
+const {
+  SUPPORTER_BADGE_CODE,
+  SUPPORTER_BADGE_CODE_PREMIUM,
+  SUPPORTER_DONATION_AMOUNT,
+  SUPPORTER_PREMIUM_AMOUNT,
+  SUPPORTER_DONATION_CURRENCY,
+  SUPPORTER_SUCCESS_PATH,
+  SUPPORTER_CANCEL_PATH
+} = require('./lib/supporter-config');
 
 
 
@@ -114,20 +132,6 @@ function getOpenAIClient() {
 
 }
 
-let webPush;
-try {
-  webPush = require('web-push');
-} catch (err) {
-  const msg = err?.message || err;
-  if (msg) {
-    console.warn('[push] web-push module unavailable:', msg);
-  } else {
-    console.warn('[push] web-push module unavailable');
-  }
-}
-
-
-
 const app = express();
 
 app.disable('x-powered-by');
@@ -142,67 +146,54 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 
 
 
-const http = require('http');
+const fallbackMessageBus = createMessageBus({ type: 'memory', name: 'server-fallback' });
+app.locals.messageBus = fallbackMessageBus;
+app.use((req, _res, next) => {
+  if (!req.messageBus) {
+    req.messageBus = app.locals.messageBus || fallbackMessageBus;
+  }
+  next();
+});
 
-const WebSocket = require('ws');
-
-const server = http.createServer(app);
-
-function createTestWebSocketServerMock() {
-
-  const noop = () => {};
-
-  const mock = {
-
-    options: { path: '/ws' },
-
-    clients: new Set(),
-
-    on: () => mock,
-
-    handleUpgrade: noop
-
-  };
-
-  return mock;
-
+function getAppMessageBus(req) {
+  if (req && req.messageBus) return req.messageBus;
+  return app.locals.messageBus || fallbackMessageBus;
 }
 
-const wss = IS_TEST
-
-  ? createTestWebSocketServerMock()
-
-  : new WebSocket.Server({
-
-    server,
-
-    path: '/ws'  // Add explicit path for clarity
-
-  });
-
-
-
-if (!IS_TEST) {
-
-  wss.on('error', (error) => {
-
-    console.error('WebSocket Server Error:', error);
-
-  });
-
-
-
-  server.on('upgrade', (request, socket, head) => {
-
-    console.log('WebSocket upgrade request received for:', request.url);
-
-  });
-
+async function publishBackgroundEvent(topic, payload, { req = null, failOnError = false } = {}) {
+  const bus = req?.messageBus || getAppMessageBus();
+  if (!bus) {
+    if (failOnError) {
+      throw new Error('message_bus_unavailable');
+    }
+    return;
+  }
+  try {
+    await bus.publish(topic, payload);
+  } catch (err) {
+    console.error(`[bus] Failed to publish "${topic}":`, err);
+    if (failOnError) {
+      throw err;
+    }
+  }
 }
 
-
-
-console.log('WebSocket server configured on path:', (wss.options && wss.options.path) || '/');
+if (IS_TEST && process.env.EMBED_WORKER !== 'false') {
+  const { createWorkerService } = require('./services/worker-service');
+  (async () => {
+    try {
+      const embeddedWorker = await createWorkerService(
+        { NODE_ENV: process.env.NODE_ENV || 'test', IS_TEST: true },
+        fallbackMessageBus,
+        { stripe, mailService, pushService }
+      );
+      await embeddedWorker.start();
+      app._embeddedWorker = embeddedWorker;
+    } catch (err) {
+      console.error('[worker] Failed to start embedded worker:', err);
+    }
+  })();
+}
 
 
 
@@ -262,19 +253,6 @@ const FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0 ? FRONTEND_ORIGINS[0] : null
 const HAS_FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0;
 const FRONTEND_ORIGIN_SET = new Set(FRONTEND_ORIGINS);
 
-const SUPPORTER_BADGE_CODE = process.env.SUPPORTER_BADGE_CODE || 'trovelr_gold';
-const SUPPORTER_BADGE_CODE_PREMIUM = process.env.SUPPORTER_BADGE_CODE_PREMIUM || 'trovelr_platinum';
-const SUPPORTER_DONATION_AMOUNT = (() => {
-  const raw = Number(process.env.SUPPORTER_DONATION_AMOUNT || 300);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 300;
-})();
-const SUPPORTER_PREMIUM_AMOUNT = (() => {
-  const raw = Number(process.env.SUPPORTER_PREMIUM_AMOUNT || 199);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 199;
-})();
-const SUPPORTER_DONATION_CURRENCY = (process.env.SUPPORTER_DONATION_CURRENCY || 'usd').toLowerCase();
-const SUPPORTER_SUCCESS_PATH = process.env.SUPPORTER_SUCCESS_PATH || '/?supporter=thanks&session_id={CHECKOUT_SESSION_ID}';
-const SUPPORTER_CANCEL_PATH = process.env.SUPPORTER_CANCEL_PATH || '/?supporter=remind-me-later';
 const PUBLIC_APP_BASE_URL = process.env.PUBLIC_APP_BASE_URL || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const STRIPE_PREMIUM_PRICE_ID = process.env.STRIPE_PREMIUM_PRICE_ID || '';
@@ -466,51 +444,6 @@ class LRUCache {
 
 const nearbyCache = new LRUCache(NEARBY_CACHE_MAX, NEARBY_CACHE_TTL_MS);
 
-const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || '').trim();
-const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || '').trim();
-const VAPID_SUBJECT_RAW = (process.env.VAPID_SUBJECT || process.env.PUSH_CONTACT_EMAIL || '').trim();
-const VAPID_SUBJECT = VAPID_SUBJECT_RAW
-  ? (/^(mailto:|https?:)/i.test(VAPID_SUBJECT_RAW)
-      ? VAPID_SUBJECT_RAW
-      : `mailto:${VAPID_SUBJECT_RAW.replace(/^mailto:/i, '')}`)
-  : 'mailto:support@listit.local';
-
-const PUSH_MAX_PER_USER = Math.max(1, Number(process.env.PUSH_MAX_PER_USER || 10));
-const PUSH_BROADCAST_LIMIT = Math.max(1, Number(process.env.PUSH_BROADCAST_LIMIT || 200));
-const PUSH_FAILURE_MAX = Math.max(1, Number(process.env.PUSH_FAILURE_MAX || 3));
-const PUSH_FAILURE_TTL_DAYS = Math.max(1, Number(process.env.PUSH_FAILURE_TTL_DAYS || 14));
-const PUSH_STALE_TTL_DAYS = Math.max(30, Number(process.env.PUSH_STALE_TTL_DAYS || 90));
-const PUSH_CLEANUP_INTERVAL_MS = Math.max(300000, Number(process.env.PUSH_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000));
-
-let PUSH_AVAILABLE = Boolean(webPush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
-
-if (PUSH_AVAILABLE) {
-  try {
-    webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-    console.log('[push] web-push configured with subject', VAPID_SUBJECT);
-  } catch (err) {
-    console.error('[push] Failed to configure web-push:', err);
-    PUSH_AVAILABLE = false;
-  }
-}
-
-if (!PUSH_AVAILABLE && !IS_TEST) {
-  if (!webPush) {
-    console.warn('[push] Push notifications disabled: web-push module missing');
-  } else if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.warn('[push] Push notifications disabled: VAPID keys not provided');
-  } else {
-    console.warn('[push] Push notifications disabled: web-push configuration failed');
-  }
-}
-
-function publicPushMeta() {
-  return {
-    available: !!PUSH_AVAILABLE,
-    vapid_public_key: PUSH_AVAILABLE ? VAPID_PUBLIC_KEY : null
-  };
-}
-
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
 const IS_POSTGRES = true;
@@ -677,28 +610,13 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
   console.log('Received Stripe webhook event:', event.type);
 
   try {
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(event.data.object);
-        break;
-      case 'customer.subscription.created':
-        await handleSubscriptionCreated(event.data.object);
-        break;
-      case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object);
-        break;
-      case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object);
-        break;
-      case 'invoice.payment_succeeded':
-        await handleInvoicePaymentSucceeded(event.data.object);
-        break;
-      case 'invoice.payment_failed':
-        await handleInvoicePaymentFailed(event.data.object);
-        break;
-      default:
-        console.log(`Unhandled webhook event type: ${event.type}`);
-    }
+    await publishBackgroundEvent(TOPICS.STRIPE_WEBHOOK, {
+      type: event.type,
+      data: event.data?.object || null,
+      id: event.id,
+      created: event.created,
+      livemode: event.livemode
+    }, { req, failOnError: true });
   } catch (err) {
     console.error('Error processing webhook:', err);
     return res.status(500).json({ error: 'webhook_processing_failed' });
@@ -1831,238 +1749,12 @@ async function issueEmailVerification(user) {
      WHERE id = ?
   `).run(hash, expiresAt, nextStatus, user.id);
 
-  await mailService.sendVerificationEmail(user.email, code);
-  return { code, expiresAt };
-}
-
-function normalizePushSubscriptionInput(raw) {
-  let source = raw;
-
-  if (typeof source === 'string') {
-    try {
-      source = JSON.parse(source);
-    } catch {
-      return { error: 'invalid_subscription' };
-    }
-  }
-
-  if (source && typeof source === 'object' && typeof source.subscription === 'string') {
-    try {
-      source = JSON.parse(source.subscription);
-    } catch {
-      return { error: 'invalid_subscription' };
-    }
-  } else if (source && typeof source === 'object' && source.subscription) {
-    source = source.subscription;
-  }
-
-  if (!source || typeof source !== 'object') {
-    return { error: 'invalid_subscription' };
-  }
-
-  const endpoint = String(source.endpoint || '').trim();
-  if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
-    return { error: 'invalid_endpoint' };
-  }
-
-  const keys = source.keys || {};
-  const auth = typeof keys.auth === 'string' ? keys.auth.trim() : '';
-  const p256dh = typeof keys.p256dh === 'string' ? keys.p256dh.trim() : '';
-  if (!auth || !p256dh) {
-    return { error: 'invalid_keys' };
-  }
-
-  let expiration = null;
-  if (source.expirationTime != null) {
-    const n = Number(source.expirationTime);
-    if (Number.isFinite(n)) {
-      expiration = Math.max(0, Math.trunc(n));
-    }
-  }
-
-  return {
-    value: {
-      endpoint,
-      keys: { auth, p256dh },
-      expiration_time: expiration
-    }
-  };
-}
-
-async function savePushSubscription(userId, normalized) {
-  if (!normalized || typeof normalized !== 'object') return;
-  const now = nowIso();
-
-  const payload = {
-    userId,
-    endpoint: normalized.endpoint,
-    auth: normalized.keys.auth,
-    p256dh: normalized.keys.p256dh,
-    expiration: normalized.expiration_time,
-    now
-  };
-
-  await db.prepare(`
-    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, expiration_time, created_at, updated_at, fail_count, last_failed_at, last_error)
-    VALUES (@userId, @endpoint, @p256dh, @auth, @expiration, @now, @now, 0, NULL, NULL)
-    ON CONFLICT(endpoint) DO UPDATE SET
-      user_id = excluded.user_id,
-      p256dh = excluded.p256dh,
-      auth = excluded.auth,
-      expiration_time = excluded.expiration_time,
-      updated_at = excluded.updated_at,
-      fail_count = 0,
-      last_failed_at = NULL,
-      last_error = NULL
-  `).run(payload);
-
-  await db.prepare(`
-    DELETE FROM push_subscriptions
-     WHERE user_id = @userId
-       AND id NOT IN (
-         SELECT id FROM push_subscriptions
-          WHERE user_id = @userId
-          ORDER BY updated_at DESC
-          LIMIT @limit
-       )
-  `).run({ userId, limit: PUSH_MAX_PER_USER });
-}
-
-async function deletePushSubscription(userId, endpoint) {
-  if (!endpoint) return;
-  await db.prepare(
-    'DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?'
-  ).run(userId, endpoint);
-}
-
-async function getPushSubscriptionsForUser(userId, limit = PUSH_MAX_PER_USER) {
-  return await db.prepare(`
-    SELECT id, endpoint, p256dh, auth, expiration_time
-      FROM push_subscriptions
-     WHERE user_id = ?
-     ORDER BY updated_at DESC
-     LIMIT ?
-  `).all(userId, Math.max(1, limit));
-}
-
-async function handlePushDeliveryFailure(row, error) {
-  try {
-    const statusCode = Number(error?.statusCode || error?.status || error?.code || 0);
-    const body = typeof error?.body === 'string' ? error.body : '';
-    const message = String(error?.message || body || statusCode || 'unknown');
-    const fatal = statusCode === 404 || statusCode === 410 || /gone|expired|unsubscribed/i.test(message) || /410/.test(body);
-
-    if (fatal) {
-      await db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(row.id);
-      return;
-    }
-
-    await db.prepare(`
-      UPDATE push_subscriptions
-         SET fail_count = fail_count + 1,
-             last_failed_at = @ts,
-             last_error = @err
-       WHERE id = @id
-    `).run({ id: row.id, ts: nowIso(), err: message.slice(0, 255) });
-  } catch (err) {
-    console.warn('[push] failed to mark delivery error:', err);
-  }
-}
-
-async function deliverPushRows(rows, payload, options = {}) {
-  if (!PUSH_AVAILABLE || !Array.isArray(rows) || rows.length === 0) return;
-  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
-
-  for (const row of rows) {
-    const subscription = {
-      endpoint: row.endpoint,
-      keys: {
-        auth: row.auth,
-        p256dh: row.p256dh
-      }
-    };
-    if (row.expiration_time != null) {
-      subscription.expirationTime = Number(row.expiration_time);
-    }
-
-    try {
-      await webPush.sendNotification(subscription, body, options);
-    } catch (err) {
-      await handlePushDeliveryFailure(row, err);
-    }
-  }
-}
-
-async function sendPushToUser(userId, payload, options = {}) {
-  if (!PUSH_AVAILABLE) return;
-  const rows = await getPushSubscriptionsForUser(userId, options.limit || PUSH_MAX_PER_USER);
-  await deliverPushRows(rows, payload, options);
-}
-
-async function broadcastPushNotification(payload, options = {}) {
-  if (!PUSH_AVAILABLE) return;
-  const limit = Math.max(1, Number(options.limit || PUSH_BROADCAST_LIMIT));
-  const excludeUserId = options.excludeUserId ?? null;
-  const rows = await db.prepare(`
-    SELECT id, user_id, endpoint, p256dh, auth, expiration_time
-      FROM push_subscriptions
-     WHERE (@exclude IS NULL OR user_id <> @exclude)
-     ORDER BY updated_at DESC
-     LIMIT @limit
-  `).all({ exclude: excludeUserId, limit });
-  await deliverPushRows(rows, payload, options);
-}
-
-async function notifyNearbyListing(listing) {
-  if (!PUSH_AVAILABLE) return;
-  if (!listing || !listing.enable_nearby) return;
-  const lat = Number(listing.lat);
-  const lon = Number(listing.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-
-  const payload = {
-    type: 'nearby_listing',
-    listing_id: listing.id,
-    title: listing.title,
-    location: listing.location,
-    price: listing.price,
-    created_at: listing.created_at,
-    lat,
-    lon,
-    image: listing.image_data || null
-  };
-
-  await broadcastPushNotification(payload, { excludeUserId: listing.user_id });
-}
-
-async function cleanupStalePushSubscriptions() {
-  if (!PUSH_AVAILABLE) return;
-  const errorCutoff = new Date(Date.now() - PUSH_FAILURE_TTL_DAYS * 86400000).toISOString();
-  const staleCutoff = new Date(Date.now() - PUSH_STALE_TTL_DAYS * 86400000).toISOString();
-  try {
-    await db.prepare(`
-      DELETE FROM push_subscriptions
-       WHERE fail_count >= @maxFails
-          OR (last_failed_at IS NOT NULL AND last_failed_at < @errorCutoff)
-          OR updated_at < @staleCutoff
-    `).run({ maxFails: PUSH_FAILURE_MAX, errorCutoff, staleCutoff });
-  } catch (err) {
-    console.warn('[push] cleanup failed:', err?.message || err);
-  }
-}
-
-if (PUSH_AVAILABLE && !IS_TEST) {
-  cleanupStalePushSubscriptions().catch((err) => {
-    console.warn('[push] initial cleanup failed:', err?.message || err);
+  await publishBackgroundEvent(TOPICS.USER_REGISTERED, {
+    userId: user.id,
+    email: user.email,
+    verificationCode: code
   });
-  const pushCleanupTimer = setInterval(() => {
-    cleanupStalePushSubscriptions().catch((err) => {
-      console.warn('[push] scheduled cleanup failed:', err?.message || err);
-    });
-  }, PUSH_CLEANUP_INTERVAL_MS);
-  if (typeof pushCleanupTimer.unref === 'function') {
-    pushCleanupTimer.unref();
-  }
+  return { code, expiresAt };
 }
 
 function normalizePair(u1, u2) {
@@ -3421,7 +3113,11 @@ app.post('/api/password/reset/request', writeLimiter, validateBody(validatePassw
          WHERE id = ?
       `).run(tokenHash, expiresAt, row.id);
 
-      await mailService.sendPasswordResetEmail(row.email, token);
+      await publishBackgroundEvent(TOPICS.USER_PASSWORD_RESET, {
+        userId: row.id,
+        email: row.email,
+        token
+      }, { req });
     }
   } catch (err) {
     console.error('Password reset request failed:', err);
@@ -3751,143 +3447,6 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
   }
 
 });
-
-/* ------------------------------------------------------------------ */
-
-/* Stripe Webhook Handlers                                            */
-
-/* ------------------------------------------------------------------ */
-
-async function handleCheckoutSessionCompleted(session) {
-  console.log('Processing checkout.session.completed:', session.id);
-
-  const userId = session.client_reference_id || session.metadata?.user_id;
-  if (!userId) {
-    console.error('No user_id found in checkout session');
-    return;
-  }
-
-  const tier = session.metadata?.tier || 'basic';
-
-  if (session.mode === 'subscription') {
-    // Premium subscription - will be handled by subscription.created event
-    console.log(`Subscription checkout completed for user ${userId}`);
-  } else {
-    // One-time payment for basic tier
-    const supporterSince = nowIso();
-    await db.prepare(`
-      UPDATE users
-      SET supporter_badge = ?,
-          supporter_tier = 'basic',
-          supporter_since = COALESCE(supporter_since, ?),
-          supporter_checkout_id = NULL
-      WHERE id = ?
-    `).run(SUPPORTER_BADGE_CODE, supporterSince, userId);
-    console.log(`Basic supporter badge granted to user ${userId}`);
-  }
-}
-
-async function handleSubscriptionCreated(subscription) {
-  console.log('Processing subscription.created:', subscription.id);
-
-  const userId = subscription.metadata?.user_id;
-  if (!userId) {
-    console.error('No user_id found in subscription metadata');
-    return;
-  }
-
-  const supporterSince = nowIso();
-  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
-
-  await db.prepare(`
-    UPDATE users
-    SET supporter_badge = ?,
-        supporter_tier = 'premium',
-        supporter_since = COALESCE(supporter_since, ?),
-        stripe_subscription_id = ?,
-        stripe_customer_id = ?,
-        subscription_status = ?,
-        subscription_current_period_end = ?,
-        supporter_checkout_id = NULL
-    WHERE id = ?
-  `).run(
-    SUPPORTER_BADGE_CODE_PREMIUM,
-    supporterSince,
-    subscription.id,
-    subscription.customer,
-    subscription.status,
-    periodEnd,
-    userId
-  );
-
-  console.log(`Premium supporter badge granted to user ${userId}`);
-}
-
-async function handleSubscriptionUpdated(subscription) {
-  console.log('Processing subscription.updated:', subscription.id);
-
-  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
-
-  await db.prepare(`
-    UPDATE users
-    SET subscription_status = ?,
-        subscription_current_period_end = ?
-    WHERE stripe_subscription_id = ?
-  `).run(subscription.status, periodEnd, subscription.id);
-
-  console.log(`Subscription ${subscription.id} updated to status: ${subscription.status}`);
-}
-
-async function handleSubscriptionDeleted(subscription) {
-  console.log('Processing subscription.deleted:', subscription.id);
-
-  // Remove premium badge but keep basic tier if they had it before
-  const user = await db.prepare(`
-    SELECT supporter_tier, supporter_since FROM users WHERE stripe_subscription_id = ?
-  `).get(subscription.id);
-
-  if (user) {
-    // Downgrade to basic tier if they want to keep some recognition
-    await db.prepare(`
-      UPDATE users
-      SET supporter_badge = NULL,
-          supporter_tier = NULL,
-          subscription_status = 'canceled',
-          stripe_subscription_id = NULL
-      WHERE stripe_subscription_id = ?
-    `).run(subscription.id);
-
-    console.log(`Subscription ${subscription.id} canceled, badge removed`);
-  }
-}
-
-async function handleInvoicePaymentSucceeded(invoice) {
-  console.log('Processing invoice.payment_succeeded:', invoice.id);
-
-  if (invoice.subscription) {
-    // Ensure subscription status is active
-    await db.prepare(`
-      UPDATE users
-      SET subscription_status = 'active'
-      WHERE stripe_subscription_id = ?
-    `).run(invoice.subscription);
-  }
-}
-
-async function handleInvoicePaymentFailed(invoice) {
-  console.log('Processing invoice.payment_failed:', invoice.id);
-
-  if (invoice.subscription) {
-    // Mark as past_due but don't immediately remove badge
-    await db.prepare(`
-      UPDATE users
-      SET subscription_status = 'past_due'
-      WHERE stripe_subscription_id = ?
-    `).run(invoice.subscription);
-
-    console.log(`Payment failed for subscription ${invoice.subscription}, marked as past_due`);
-  }
-}
 
 // Get potential buyers for a listing (users who messaged about it)
 app.get('/api/listings/:id/potential-buyers', auth, async (req, res) => {
@@ -4464,7 +4023,7 @@ app.delete('/api/me', auth, async (req, res) => {
 
 app.post('/api/push/subscribe', auth, async (req, res) => {
   try {
-    if (!PUSH_AVAILABLE) {
+    if (!isPushAvailable()) {
       return res.status(503).json({ error: 'push_unavailable' });
     }
 
@@ -5502,9 +5061,7 @@ app.post(
     invalidateNearbyCache();
 
     if (row) {
-      notifyNearbyListing(row).catch((err) => {
-        console.warn('[push] nearby listing notification failed:', err?.message || err);
-      });
+      await publishBackgroundEvent(TOPICS.NEARBY_LISTING_AVAILABLE, { listing: row }, { req });
     }
 
     return sendSchema(res, validateListingResponse, row);
@@ -7400,59 +6957,20 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
 
-    const wsMessage = {
+    const recipientId = convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id;
+    const preview = typeof messagePayload.body === 'string'
+      ? messagePayload.body.slice(0, 160)
+      : '';
 
-      type: 'new_message',
-
-      conversation_id: id,
-
+    await publishBackgroundEvent(TOPICS.MESSAGE_SENT, {
+      conversationId: id,
       message: messagePayload,
-
-      sender_id: req.user.id,
-
-      recipient_id: convo.a_user_id === req.user.id ? convo.b_user_id : convo.a_user_id,
-
-      sender_username: senderUsername,
-
-      listing_id: convo.listing_id || null
-
-    };
-
-    
-
-    wss.clients.forEach(client => {
-
-      if (client.readyState === WebSocket.OPEN && 
-
-          (client.userId === wsMessage.recipient_id || client.userId === wsMessage.sender_id)) {
-
-        client.send(JSON.stringify(wsMessage));
-
-      }
-
-    });
-
-    if (PUSH_AVAILABLE && wsMessage.recipient_id && wsMessage.recipient_id !== req.user.id) {
-      const preview = typeof messagePayload.body === 'string'
-        ? messagePayload.body.slice(0, 160)
-        : '';
-      const hasImages = Array.isArray(messagePayload.images) && messagePayload.images.length > 0;
-      const pushSender = messagePayload.sender_username || req.user.username || null;
-      sendPushToUser(wsMessage.recipient_id, {
-        type: 'new_message',
-        conversation_id: id,
-        message_id: messagePayload.id,
-        sender_id: req.user.id,
-        sender_username: pushSender,
-        sender_name: pushSender,
-        listing_id: convo.listing_id || null,
-        body: preview,
-        has_images: hasImages,
-        created_at: messagePayload.created_at
-      }).catch((err) => {
-        console.warn('[push] new_message notification failed:', err?.message || err);
-      });
-    }
+      senderId: req.user.id,
+      recipientId,
+      senderUsername,
+      listingId: convo.listing_id || null,
+      preview
+    }, { req });
 
     return sendSchema(res, validateMessageEnvelopeResponse, { message: messagePayload, other_user_deleted: !!otherDeleted });
 
@@ -7466,101 +6984,6 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 });
 
-
-
-// WebSocket connection handler
-
-wss.on('connection', (ws, req) => {
-
-  // Extract token from query string or cookie
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-
-  const token = url.searchParams.get('token') || req.headers.cookie?.match(/token=([^;]+)/)?.[1];
-
-  
-
-  if (!token) {
-
-    ws.close(1008, 'No token provided');
-
-    return;
-
-  }
-
-  
-
-  try {
-
-    const user = jwt.verify(token, JWT_SECRET);
-
-    ws.userId = user.id;
-
-    ws.isAlive = true;
-
-    
-
-    ws.on('pong', () => { ws.isAlive = true; });
-
-    
-
-    ws.on('message', (message) => {
-
-      try {
-
-        const data = JSON.parse(message);
-
-        if (data.type === 'ping') {
-
-          ws.send(JSON.stringify({ type: 'pong' }));
-
-        }
-
-      } catch {}
-
-    });
-
-    
-
-    ws.send(JSON.stringify({ type: 'connected', userId: user.id }));
-
-  } catch {
-
-    ws.close(1008, 'Invalid token');
-
-  }
-
-});
-
-
-
-// Heartbeat to detect disconnected clients
-
-let wsHeartbeat = null;
-
-if (!IS_TEST) {
-
-  wsHeartbeat = setInterval(() => {
-
-    wss.clients.forEach(ws => {
-
-      if (ws.isAlive === false) return ws.terminate();
-
-      ws.isAlive = false;
-
-      ws.ping();
-
-    });
-
-  }, 30000);
-
-  if (wsHeartbeat && typeof wsHeartbeat.unref === 'function') {
-
-    wsHeartbeat.unref();
-
-  }
-
-}
 
 
 
@@ -9293,51 +8716,19 @@ app.use((err, _req, res, _next) => {
 
 
 
-/* ------------------------------------------------------------------ */
-
-/* Server startup                                                      */
-
-/* ------------------------------------------------------------------ */
-
-async function startServer() {
-
-  await initializeSchema();
-
-  await maybeCreateAdmin();
-
-  
-
-  server.listen(PORT, () => {
-
-    console.log(`ListIt running at http://localhost:${PORT}`);
-
-    console.log('WebSocket server ready');
-
-  });
-
-}
-
-
-
 app._initializeSchema = initializeSchema;
 
 app._maybeCreateAdmin = maybeCreateAdmin;
-
-app._startServer = startServer;
 
 app._db = db;
 
 app._features = GEO_FEATURES;
 
-
-
-// ADD THIS:
-
-if (require.main === module) {
-
-  startServer();
-
-}
+app._deps = {
+  stripe,
+  mailService,
+  pushService
+};
 
 
 
