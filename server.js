@@ -8730,7 +8730,28 @@ app._deps = {
   pushService
 };
 
+/**
+ * Start the server
+ */
+async function startServer() {
+  try {
+    await initializeSchema();
+    await maybeCreateAdmin();
 
+    const server = require('http').createServer(app);
+    server.listen(PORT, () => {
+      console.log(`ListIt running at http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('[Server] Failed to start:', err);
+    process.exit(1);
+  }
+}
+
+// Start server if this is the main module
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
 

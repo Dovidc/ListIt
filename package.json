@@ -3,12 +3,12 @@
   "version": "1.1.0",
   "private": true,
   "type": "commonjs",
-  "main": "server-orchestrated.js",
+  "main": "server.js",
   "engines": {
     "node": "18.20.8"
   },
   "scripts": {
-    "start": "node server-orchestrated.js",
+    "start": "node server.js",
     "start:monolith": "node server.js",
     "services:api": "cross-env ENABLE_HTTP_API=true ENABLE_WEBSOCKET=false ENABLE_WORKER=false node server-orchestrated.js",
     "services:websocket": "cross-env ENABLE_HTTP_API=false ENABLE_WEBSOCKET=true ENABLE_WORKER=false node server-orchestrated.js",

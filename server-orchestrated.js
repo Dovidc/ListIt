@@ -30,21 +30,28 @@ const { createAPIService } = require('./services/api-service');
 const { createWebSocketService } = require('./services/websocket-service');
 const { createWorkerService } = require('./services/worker-service');
 
+// Validate critical environment before loading the heavy server module
+const config = getServiceConfig();
+if (!validateConfig(config)) {
+  console.error('[Main] Configuration validation failed');
+  process.exit(1);
+}
+
 // Load the existing Express app
-const app = require('./server');
+let app;
+try {
+  app = require('./server');
+} catch (err) {
+  console.error('[Main] Failed to load Express app:', err.message);
+  process.exit(1);
+}
 
 /**
  * Main entry point
  */
 async function main() {
   try {
-    // Get configuration
-    const config = getServiceConfig();
-
-    // Validate configuration
-    if (!validateConfig(config)) {
-      process.exit(1);
-    }
+    // Configuration already loaded and validated above
 
     console.log('[Main] Configuration loaded');
     console.log(`[Main] Node environment: ${config.NODE_ENV}`);
