@@ -8,7 +8,10 @@
     "node": "18.20.8"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node apps/api.js",
+    "start:api": "node apps/api.js",
+    "start:realtime": "node apps/realtime.js",
+    "start:worker": "node apps/worker.js",
     "test": "npm run build:core && NODE_ENV=test node node_modules/jest/bin/jest.js --runInBand",
     "build:core": "node scripts/build-core.js",
     "sync:ios": "npx cap sync ios",
