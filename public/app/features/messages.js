@@ -36,6 +36,21 @@
       throw new Error('Messages feature requires saveSeen helper.');
     }
 
+    const fallbackRealtimeUrlResolver = (path = '/ws') => {
+      const safePath = typeof path === 'string' && path.trim()
+        ? `/${path.trim().replace(/^\/+/u, '')}`
+        : '/ws';
+      if (typeof window === 'undefined') {
+        return `ws://localhost${safePath}`;
+      }
+      const protocol = window.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location?.host || 'localhost';
+      return `${protocol}//${host}${safePath}`;
+    };
+    const resolveRealtimeWebSocketUrl = typeof helpers?.resolveRealtimeWebSocketUrl === 'function'
+      ? helpers.resolveRealtimeWebSocketUrl
+      : fallbackRealtimeUrlResolver;
+
     const Lightbox = components?.Lightbox;
     const ImageWithSkeleton = components?.ImageWithSkeleton;
     if (typeof Lightbox !== 'function' || typeof ImageWithSkeleton !== 'function') {
@@ -581,8 +596,7 @@
         if (!user) return;
 
         function connectWebSocket() {
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = `${protocol}//${window.location.host}/ws`;
+          const wsUrl = resolveRealtimeWebSocketUrl('/ws');
           const ws = new WebSocket(wsUrl);
           wsRef.current = ws;
 

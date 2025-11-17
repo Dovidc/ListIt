@@ -50,6 +50,145 @@
       }
     }
 
+    function isProbablyLocalhost(hostname) {
+      if (!hostname || typeof hostname !== 'string') return false;
+      const normalized = hostname.toLowerCase();
+      return normalized === 'localhost'
+        || normalized === '127.0.0.1'
+        || normalized === '::1';
+    }
+
+    function normalizeRealtimePort(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const parsed = parseInt(value, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return String(parsed);
+      }
+      return null;
+    }
+
+    function resolveRealtimeWebSocketUrl(path = '/ws') {
+      const normalizedPath = typeof path === 'string' && path.trim()
+        ? `/${path.trim().replace(/^\/+/u, '')}`
+        : '/ws';
+
+      if (typeof window === 'undefined') {
+        return `ws://localhost${normalizedPath}`;
+      }
+
+      const defaultProtocol = window.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+
+      const ensurePath = (value) => {
+        if (!value || typeof value !== 'string') return null;
+        try {
+          const url = new URL(value);
+          if (!url.pathname || url.pathname === '/' || url.pathname === '') {
+            url.pathname = normalizedPath;
+          }
+          return url.toString();
+        } catch {
+          const trimmed = value.replace(/\/+$/u, '');
+          return trimmed ? `${trimmed}${normalizedPath}` : null;
+        }
+      };
+
+      const normalizeCandidate = (candidate) => {
+        if (typeof candidate !== 'string') return null;
+        const trimmed = candidate.trim();
+        if (!trimmed) return null;
+
+        if (/^wss?:\/\//iu.test(trimmed)) {
+          return ensurePath(trimmed);
+        }
+        if (/^https?:\/\//iu.test(trimmed)) {
+          try {
+            const url = new URL(trimmed);
+            url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+            if (!url.pathname || url.pathname === '/' || url.pathname === '') {
+              url.pathname = normalizedPath;
+            }
+            return url.toString();
+          } catch {
+            return null;
+          }
+        }
+        if (trimmed.startsWith('//')) {
+          return ensurePath(`${defaultProtocol}${trimmed}`);
+        }
+
+        const hostAndPath = trimmed.replace(/^\/+/u, '');
+        const slashIndex = hostAndPath.indexOf('/');
+        if (slashIndex > -1) {
+          const hostPart = hostAndPath.slice(0, slashIndex);
+          const pathPart = hostAndPath.slice(slashIndex);
+          const resolvedPath = pathPart && pathPart !== '/' ? pathPart : normalizedPath;
+          return `${defaultProtocol}//${hostPart}${resolvedPath}`;
+        }
+        return `${defaultProtocol}//${hostAndPath}${normalizedPath}`;
+      };
+
+      const platform = window.Capacitor?.getPlatform?.();
+      const isNativeShell = platform && platform !== 'web';
+
+      const metaRealtimeBase = isNativeShell && typeof document !== 'undefined'
+        ? document.querySelector('meta[name="listit-realtime-base"]')?.getAttribute('content')
+        : null;
+
+      let storedRealtimeBase = null;
+      try {
+        storedRealtimeBase = window.localStorage?.getItem?.('listit.realtimeBaseUrl') || null;
+      } catch {
+        storedRealtimeBase = null;
+      }
+
+      const candidates = [
+        window.ListItRealtimeUrl,
+        window.LISTIT_REALTIME_URL,
+        window.ListItRealtimeBaseUrl,
+        window.LISTIT_REALTIME_BASE_URL,
+        metaRealtimeBase,
+        storedRealtimeBase
+      ];
+
+      for (const candidate of candidates) {
+        const resolved = normalizeCandidate(candidate);
+        if (resolved) return resolved;
+      }
+
+      const metaRealtimePort = isNativeShell && typeof document !== 'undefined'
+        ? document.querySelector('meta[name="listit-realtime-port"]')?.getAttribute('content')
+        : null;
+
+      let storedRealtimePort = null;
+      try {
+        storedRealtimePort = window.localStorage?.getItem?.('listit.realtimePort') || null;
+      } catch {
+        storedRealtimePort = null;
+      }
+
+      let portOverride = null;
+      const portCandidates = [
+        window.ListItRealtimePort,
+        window.LISTIT_REALTIME_PORT,
+        metaRealtimePort,
+        storedRealtimePort
+      ];
+
+      for (const candidate of portCandidates) {
+        const normalized = normalizeRealtimePort(candidate);
+        if (normalized) {
+          portOverride = normalized;
+          break;
+        }
+      }
+
+      const hostname = window.location?.hostname || 'localhost';
+      const port = portOverride || window.location?.port || (isProbablyLocalhost(hostname) ? '4000' : '');
+      const hostPort = port ? `${hostname}:${port}` : hostname;
+
+      return `${defaultProtocol}//${hostPort}${normalizedPath}`;
+    }
+
     async function urlToDataUrl(url) {
       if (!url || !url.startsWith('http')) return null;
       try {
@@ -455,7 +594,8 @@
       pageTop,
       normalizeListingsResponse,
       asArray,
-      useVirtualMasonry
+      useVirtualMasonry,
+      resolveRealtimeWebSocketUrl
     };
   }
 
