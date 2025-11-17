@@ -404,7 +404,7 @@
                 onChange: (evt) => onChangeProfileAbout?.(evt.target.value),
                 placeholder: 'Share a short bio, shipping info, or what you sell.',
                 rows: 4,
-                maxLength: 600,
+                maxLength: 50,
                 style: { width: '100%', resize: 'vertical' }
               }),
               H('div', {
@@ -419,7 +419,7 @@
                 H('span', {
                   className: 'muted',
                   style: { fontSize: 12 }
-                }, `${(profileAbout || '').length}/600 characters`),
+                }, `${(profileAbout || '').length}/50 characters`),
                 H('button', {
                   className: 'btn primary',
                   type: 'button',
@@ -1164,10 +1164,12 @@
 
       useEffect(() => {
         if (!user) return;
-        if ('profile_about' in user) {
+        // Only sync from server on initial load, not on every user update
+        // to preserve local edits
+        if ('profile_about' in user && !profileAboutState) {
           setProfileAbout(user.profile_about || '');
         }
-      }, [user, setProfileAbout]);
+      }, [user?.id]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
@@ -1313,6 +1315,9 @@
           console.error('Refresh user failed:', err);
         }
         setProfileAboutStatusMessage('Saved');
+        setTimeout(() => {
+          setProfileAboutStatusMessage('');
+        }, 2000);
       }
 
       const handleOpenProfilePictureModal = useCallback(() => {
@@ -1544,8 +1549,8 @@
       const avatarBorderColorValue = typeof profileAvatarBorderColor === 'string' && profileAvatarBorderColor.trim()
         ? profileAvatarBorderColor.trim()
         : '#ffffff';
-      const profileHeaderContent = H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
-            H('div', { className: 'row', style: { gap: 12, alignItems: 'center' } },
+      const profileHeaderContent = H('div', { style: { position: 'relative', minHeight: hasBgImage ? 180 : 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
+            H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
               H('div', {
                 className: 'profile-avatar',
                 onClick: handleOpenProfilePictureModal,
@@ -1623,7 +1628,7 @@
                 }, 'Donate once to unlock a dazzling golden badge on every listing you share.')
               )
             ),
-            H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: -6, right: 0 } },
               H('button', {
                 className: 'btn',
                 type: 'button',
@@ -1670,7 +1675,7 @@
         ? H('div', {
             style: {
               position: 'relative',
-              minHeight: 180,
+              height: 220,
               overflow: 'hidden'
             }
           },
@@ -1700,7 +1705,7 @@
             H('div', {
               style: {
                 position: 'relative',
-                padding: '36px 16px 20px',
+                padding: '16px 16px 60px',
                 color: '#f8fafc'
               }
             }, profileHeaderContent)

@@ -1917,10 +1917,13 @@
                 background: '#0f172a',
                 borderRadius: 24,
                 color: '#f8fafc',
-                overflow: 'hidden',
+                overflow: 'auto',
                 position: 'relative',
                 boxShadow: '0 35px 90px rgba(0, 0, 0, 0.55)',
-                fontFamily: 'Inter, system-ui'
+                fontFamily: 'Inter, system-ui',
+                maxHeight: '85vh',
+                maxWidth: '600px',
+                width: '90vw'
               }
             },
               H('button', {
@@ -2042,12 +2045,102 @@
                       flexWrap: 'wrap'
                     }
                   }, username,
-                    sellerSupporter && H(SupporterBadge, {
-                      size: 'sm',
-                      since: sellerSupporter.since,
-                      badge: sellerSupporter.badge,
-                      onClick: () => onSupporterClick?.(sellerSupporter)
-                    })
+                    sellerSupporter && (() => {
+                      const sinceDate = sellerSupporter.since ? new Date(sellerSupporter.since) : null;
+                      const now = Date.now();
+                      const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
+                      const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
+                      const yearsSince = Math.floor(monthsSince / 12);
+                      const remainingMonths = monthsSince % 12;
+
+                      let durationText = '';
+                      if (yearsSince > 0) {
+                        durationText = yearsSince === 1
+                          ? `1 year${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`
+                          : `${yearsSince} years${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`;
+                      } else {
+                        durationText = monthsSince === 1 ? '1 month' : `${monthsSince} months`;
+                      }
+
+                      let badgeStyle = {
+                        Bronze: { gradient: 'linear-gradient(135deg, #ff6b35, #f7931e, #ffb84d)', glow: 'rgba(255, 107, 53, 0.9)' },
+                        Silver: { gradient: 'linear-gradient(135deg, #c0c0c0, #e8e8e8, #d0d0d0)', glow: 'rgba(192, 192, 192, 0.9)' },
+                        Gold: { gradient: 'linear-gradient(135deg, #ffd700, #ffed4e, #ffa500)', glow: 'rgba(255, 215, 0, 0.9)' },
+                        Platinum: { gradient: 'linear-gradient(135deg, #00bfff, #00d4ff, #00ffff)', glow: 'rgba(0, 212, 255, 0.9)' },
+                        Diamond: { gradient: 'linear-gradient(135deg, #b366ff, #d699ff, #e6ccff)', glow: 'rgba(179, 102, 255, 0.9)' },
+                        Emerald: { gradient: 'linear-gradient(135deg, #00ff41, #39ff14, #00ff00)', glow: 'rgba(0, 255, 65, 0.9)' },
+                        Ruby: { gradient: 'linear-gradient(135deg, #ff1744, #ff5252, #ff6e40)', glow: 'rgba(255, 23, 68, 0.9)' },
+                        Opal: { gradient: 'linear-gradient(135deg, #87ceeb, #4fc3f7, #81d4fa)', glow: 'rgba(135, 206, 235, 0.9)' }
+                      };
+
+                      let tier = 'Bronze';
+                      if (monthsSince >= 72) tier = 'Opal';
+                      else if (monthsSince >= 60) tier = 'Ruby';
+                      else if (monthsSince >= 36) tier = 'Emerald';
+                      else if (monthsSince >= 24) tier = 'Diamond';
+                      else if (monthsSince >= 12) tier = 'Platinum';
+                      else if (monthsSince >= 6) tier = 'Gold';
+                      else if (monthsSince >= 3) tier = 'Silver';
+
+                      const style = badgeStyle[tier];
+                      const [showTooltip, setShowTooltip] = React.useState(false);
+                      const tooltipText = `${tier} Supporter - ${durationText}`;
+
+                      return H('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
+                        H('div', {
+                          style: {
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            background: style.gradient,
+                            border: '1px solid rgba(255, 255, 255, 0.8)',
+                            cursor: 'pointer',
+                            position: 'relative',
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: '#fff',
+                            textShadow: '0 1px 2px rgba(0, 0, 0, 0.4)',
+                            boxShadow: `0 0 12px ${style.glow}, 0 0 24px ${style.glow}`,
+                            animation: 'badge-shine 2.5s ease-in-out infinite',
+                            title: tooltipText,
+                            transition: 'transform 0.2s ease',
+                            zIndex: 1
+                          },
+                          onMouseEnter: (e) => {
+                            e.target.style.transform = 'scale(1.25)';
+                            setShowTooltip(true);
+                          },
+                          onMouseLeave: (e) => {
+                            e.target.style.transform = 'scale(1)';
+                            setShowTooltip(false);
+                          }
+                        },
+                          'T'
+                        ),
+                        showTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: `1px solid ${style.glow}`
+                          }
+                        }, tooltipText)
+                      );
+                    })()
                   ),
                   sellerJoinedText && H('div', {
                     style: { fontSize: 13, color: '#cbd5f5' }
@@ -2085,7 +2178,9 @@
                       fontSize: 14,
                       color: '#e2e8f0',
                       lineHeight: 1.5,
-                      whiteSpace: 'pre-line'
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word'
                     }
                   },
                     sellerAboutText
@@ -2387,50 +2482,129 @@
           }
         : null;
 
-      return H(React.Fragment, null,
-        H('section', { className: 'card', style: { padding: '16px', margin: '12px 0 16px' } },
-          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
-            H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-              H('div', {
-                style: {
-                  fontWeight: 800,
-                  fontSize: 20,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  flexWrap: 'wrap'
-                }
-              },
-                sellerLabel,
-                sellerSupporter && H(SupporterBadge, {
-                  size: 'sm',
-                  since: sellerSupporter.since,
-                  badge: sellerSupporter.badge,
-                  onClick: () => onSupporterClick?.(sellerSupporter)
-                }),
-                sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: '#374151',
-                    border: '1px solid #d1d5db'
-                  }
-                },
-                  H('span', { style: { fontSize: 14 } }, '⭐'),
-                  H('span', null, `${sellerInfo.karma} Karma`)
-                )
-              ),
-              H('div', { className: 'muted' }, `Active ${activeListings.length} · Sold ${soldListings.length}`),
-              sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`)
+      const sellerBgImageUrl = (sellerInfo && sellerInfo.profile_bg_image_url) || '';
+      const trimmedSellerBgImageUrl = (sellerBgImageUrl || '').trim();
+      const hasSellerBgImage = !!trimmedSellerBgImageUrl;
+      const sellerAvatarBorderStyleValue = (sellerInfo?.profile_avatar_border_style === 'dashed') ? 'dashed' : 'solid';
+      const sellerAvatarBorderColorValue = typeof sellerInfo?.profile_avatar_border_color === 'string' && sellerInfo.profile_avatar_border_color.trim()
+        ? sellerInfo.profile_avatar_border_color.trim()
+        : '#ffffff';
+
+      const sellerProfileHeaderContent = H('div', { style: { position: 'relative', minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: 16, left: 16 } },
+          H('div', {
+            style: {
+              cursor: 'pointer',
+              borderColor: sellerAvatarBorderColorValue,
+              borderStyle: sellerAvatarBorderStyleValue,
+              borderWidth: 4,
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              flexShrink: 0,
+              backgroundColor: '#f0f0f0',
+              fontSize: 32,
+              fontWeight: 800,
+              color: '#666'
+            }
+          },
+            (sellerInfo?.profile_picture_url && sellerInfo.profile_picture_url.trim())
+              ? H('img', {
+                  src: sellerInfo.profile_picture_url,
+                  alt: 'Seller profile picture',
+                  style: { width: '100%', height: '100%', objectFit: 'cover' },
+                  onError: (e) => { e.target.style.display = 'none'; }
+                })
+              : (sellerLabel.charAt(0).toUpperCase())
+          ),
+          H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
+            H('div', { style: { fontWeight: 800, fontSize: 18 } }, sellerLabel),
+            sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`),
+            sellerSupporter && H('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8
+              }
+            },
+              H(SupporterBadge, {
+                size: 'sm',
+                since: sellerSupporter.since,
+                onClick: () => onSupporterClick?.(sellerSupporter)
+              })
             ),
-            H('button', { className: 'btn', onClick: onBack }, '<- Back')
+            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#374151',
+                border: '1px solid #d1d5db'
+              }
+            },
+              H('span', { style: { fontSize: 14 } }, '⭐'),
+              H('span', null, `${sellerInfo.karma} Karma`)
+            )
           )
+        ),
+        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: 16, right: 16 } },
+          H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '<- Back')
+        )
+      );
+
+      const sellerProfileHeader = H('div', {
+        style: {
+          position: 'relative',
+          height: 220,
+          overflow: 'hidden',
+          background: hasSellerBgImage ? undefined : '#1a1f2e'
+        }
+      },
+        trimmedSellerBgImageUrl
+          ? H('img', {
+              key: trimmedSellerBgImageUrl,
+              src: trimmedSellerBgImageUrl,
+              alt: 'Seller profile banner',
+              loading: 'lazy',
+              decoding: 'async',
+              style: {
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }
+            })
+          : null,
+        H('div', {
+          style: {
+            position: 'absolute',
+            inset: 0,
+            background: hasSellerBgImage ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)' : undefined
+          }
+        }),
+        H('div', {
+          style: {
+            position: 'relative',
+            height: '100%',
+            color: '#f8fafc'
+          }
+        }, sellerProfileHeaderContent)
+      );
+
+      return H(React.Fragment, null,
+        H('section', { className: 'card', style: { padding: hasSellerBgImage ? 0 : 16, margin: '12px 0 16px', overflow: hasSellerBgImage ? 'hidden' : undefined, background: hasSellerBgImage ? '#020617' : undefined, color: hasSellerBgImage ? '#f8fafc' : undefined } },
+          sellerProfileHeader
         ),
 
         H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
