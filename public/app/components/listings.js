@@ -214,49 +214,48 @@
               borderRadius: 16,
               padding: 16,
               boxShadow: '0 16px 48px rgba(0,0,0,.45)',
-              lineHeight: 1.55
+              lineHeight: 1.55,
+              position: 'relative'
             }
           },
-            H('div', {
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              'aria-label': 'Close',
               style: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                marginBottom: 8
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                color: '#fff', cursor: 'pointer',
+                fontWeight: 'bold'
               }
-            },
-              H('div', { style: { fontWeight: 800, fontSize: 16 } }, title),
-              H('button', {
-                type: 'button',
-                onClick: onClose,
-                'aria-label': 'Close',
+            }, '✕'),
+            H('div', { style: { paddingTop: '28px', fontWeight: 800, fontSize: 16, marginBottom: 8 } }, title),
+            H('div', null,
+              intro && H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, intro),
+              Array.isArray(bullets) && bullets.length > 0 && H('ul', {
                 style: {
-                  width: 28, height: 28, borderRadius: 14,
-                  border: '1px solid rgba(255,255,255,0.25)',
-                  background: 'rgba(255,255,255,0.08)',
-                  color: '#fff', cursor: 'pointer',
-                  display: 'grid', placeItems: 'center',
-                  fontSize: 16, lineHeight: '26px'
+                  paddingLeft: 18,
+                  margin: '0 0 12px',
+                  listStyle: 'disc'
                 }
-              }, 'x')
-            ),
-            intro && H('p', { style: { margin: '6px 0 10px', opacity: 0.9 } }, intro),
-            Array.isArray(bullets) && bullets.length > 0 && H('ul', {
-              style: {
-                paddingLeft: 18,
-                margin: '0 0 12px',
-                listStyle: 'disc'
-              }
-            }, bullets.map((line, idx) => H('li', { key: idx }, line))),
-            footer && H('div', {
-              style: {
-                fontSize: 13,
-                opacity: 0.9,
-                borderTop: '1px solid rgba(255,255,255,0.12)',
-                paddingTop: 10
-              }
-            }, footer)
+              }, bullets.map((line, idx) => H('li', { key: idx }, line))),
+              footer && H('div', {
+                style: {
+                  fontSize: 13,
+                  opacity: 0.9,
+                  borderTop: '1px solid rgba(255,255,255,0.12)',
+                  paddingTop: 10
+                }
+              }, footer)
+            )
           )
         ),
         document.body
@@ -1617,7 +1616,7 @@
             }, item.owner_username)
           : H('span', { style: { fontWeight: 600, color: '#111' } }, item.owner_username);
 
-        if (!supporterData) {
+        if (!supporterData || viewContext === 'grid') {
           return sellerNode;
         }
 
@@ -2157,12 +2156,6 @@
                     H('span', { style: pillStyle }, `✅ ${soldCount} sold`)
                   )
                 ),
-                H('div', {
-                  style: {
-                    display: 'grid',
-                    gap: 12
-                  }
-                }, stats.map(statCard)),
                 H('div', {
                   style: {
                     padding: '14px 18px',

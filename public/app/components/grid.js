@@ -162,30 +162,7 @@
                   fontWeight: 600,
                   fontSize: 12
                 }
-              }, 'No image'),
-          supporterData && H('div', {
-            style: {
-              position: 'absolute',
-              top: 8,
-              left: 8,
-              zIndex: 2
-            }
-          },
-            H(SupporterBadge, {
-              size: 'sm',
-              since: supporterData.since,
-              badge: supporterData.badge,
-              onClick: onSupporterClick
-                ? (evt) => {
-                    evt.stopPropagation?.();
-                    onSupporterClick({
-                      username: supporterData.username,
-                      since: supporterData.since
-                    });
-                  }
-                : undefined
-            })
-          )
+              }, 'No image')
         )
       );
     });

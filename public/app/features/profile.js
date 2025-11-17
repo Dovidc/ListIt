@@ -283,14 +283,30 @@
               color: '#111',
               borderRadius: 16,
               display: 'grid',
-              gap: 16
+              gap: 16,
+              position: 'relative'
             }
           },
             H('button', {
               className: 'close',
               onClick: onClose,
-              title: 'Close preset settings'
-            }, 'x'),
+              title: 'Close preset settings',
+              style: {
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#111',
+                fontWeight: 'bold'
+              }
+            }, '✕'),
             H('div', { style: { display: 'grid', gap: 8 } },
               H('h2', {
                 style: {
@@ -529,14 +545,30 @@
               color: '#111',
               borderRadius: 16,
               display: 'grid',
-              gap: 16
+              gap: 16,
+              position: 'relative'
             }
           },
             H('button', {
               className: 'close',
               onClick: onClose,
-              title: 'Close profile customization'
-            }, 'x'),
+              title: 'Close profile customization',
+              style: {
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#111',
+                fontWeight: 'bold'
+              }
+            }, '✕'),
             H('div', { style: { display: 'grid', gap: 8 } },
               H('h2', {
                 style: {
@@ -904,14 +936,30 @@
               padding: '24px',
               background: '#fff',
               color: '#111',
-              borderRadius: 16
+              borderRadius: 16,
+              position: 'relative'
             }
           },
             H('button', {
               className: 'close',
               onClick: onClose,
-              title: 'Close settings'
-            }, 'x'),
+              title: 'Close settings',
+              style: {
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#111',
+                fontWeight: 'bold'
+              }
+            }, '✕'),
             H('div', { style: { display: 'grid', gap: 12 } },
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
@@ -1628,48 +1676,6 @@
                 }, 'Donate once to unlock a dazzling golden badge on every listing you share.')
               )
             ),
-            H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: -6, right: 0 } },
-              H('button', {
-                className: 'btn',
-                type: 'button',
-                onClick: handleOpenPaypalModal,
-                title: 'Manage payment preset',
-                style: iconButtonStyle
-              },
-                H(SettingsIcon, null),
-                H('span', { style: visuallyHidden }, 'Manage payment preset')
-              ),
-              H('button', {
-                className: 'btn',
-                type: 'button',
-                onClick: () => setProfileCustomizationModalOpen(true),
-                title: 'Customize profile display',
-                style: iconButtonStyle
-              },
-                H('span', null, '🎨'),
-                H('span', { style: visuallyHidden }, 'Customize profile')
-              ),
-              H('button', {
-                className: 'btn',
-                type: 'button',
-                onClick: handleOpenSettings,
-                title: 'Profile settings',
-                style: iconButtonStyle
-              },
-                H(PresetIcon, null),
-                H('span', { style: visuallyHidden }, 'Open profile settings')
-              ),
-              H('button', {
-                className: 'btn',
-                type: 'button',
-                onClick: onLogout,
-                title: 'Log out',
-                style: iconButtonStyle
-              },
-                H(LogoutIcon, null),
-                H('span', { style: visuallyHidden, onClick: onLogout }, 'Log out')
-              )
-            )
           );
       const profileHeader = hasBgImage
         ? H('div', {
@@ -1722,6 +1728,49 @@
             color: hasBgImage ? '#f8fafc' : undefined
           }
         }, profileHeader),
+
+        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 16px', justifyContent: 'flex-end' } },
+          H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: handleOpenPaypalModal,
+            title: 'Manage payment preset',
+            style: iconButtonStyle
+          },
+            H(SettingsIcon, null),
+            H('span', { style: visuallyHidden }, 'Manage payment preset')
+          ),
+          H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: () => setProfileCustomizationModalOpen(true),
+            title: 'Customize profile display',
+            style: iconButtonStyle
+          },
+            H('span', null, '🎨'),
+            H('span', { style: visuallyHidden }, 'Customize profile')
+          ),
+          H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: handleOpenSettings,
+            title: 'Profile settings',
+            style: iconButtonStyle
+          },
+            H(PresetIcon, null),
+            H('span', { style: visuallyHidden }, 'Open profile settings')
+          ),
+          H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: onLogout,
+            title: 'Log out',
+            style: iconButtonStyle
+          },
+            H(LogoutIcon, null),
+            H('span', { style: visuallyHidden, onClick: onLogout }, 'Log out')
+          )
+        ),
 
         H('section', null,
           H('div', {
