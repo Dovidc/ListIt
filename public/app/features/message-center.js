@@ -18,6 +18,21 @@
       throw new Error('Message center feature requires saveSeen helper.');
     }
 
+    const fallbackRealtimeUrlResolver = (path = '/ws') => {
+      const safePath = typeof path === 'string' && path.trim()
+        ? `/${path.trim().replace(/^\/+/u, '')}`
+        : '/ws';
+      if (typeof window === 'undefined') {
+        return `ws://localhost${safePath}`;
+      }
+      const protocol = window.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location?.host || 'localhost';
+      return `${protocol}//${host}${safePath}`;
+    };
+    const resolveRealtimeWebSocketUrl = typeof helpers?.resolveRealtimeWebSocketUrl === 'function'
+      ? helpers.resolveRealtimeWebSocketUrl
+      : fallbackRealtimeUrlResolver;
+
     const useMessageNotifications = notifications?.useMessageNotifications;
     if (typeof useMessageNotifications !== 'function') {
       throw new Error('Message center feature requires useMessageNotifications hook.');
@@ -147,8 +162,7 @@
         let reconnectTimeout = null;
 
         function connectWebSocket() {
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = `${protocol}//${window.location.host}/ws`;
+          const wsUrl = resolveRealtimeWebSocketUrl('/ws');
 
           ws = new WebSocket(wsUrl);
 
