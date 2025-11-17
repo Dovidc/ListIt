@@ -11,7 +11,7 @@
     const { useState, useRef, useCallback, useEffect } = React;
     const { uploadOneMessageImage } = uploads;
 
-    function ProfilePictureUploadModal({ open, onClose, onUploadComplete, currentPictureUrl }) {
+    function ProfilePictureUploadModal({ open, onClose, onUploadComplete, currentPictureUrl, avatarBorderColor, avatarBorderStyle, onChangeBorderColor, onChangeBorderStyle }) {
       const [selectedFile, setSelectedFile] = useState(null);
       const [previewUrl, setPreviewUrl] = useState(null);
       const [uploading, setUploading] = useState(false);
@@ -20,6 +20,11 @@
       const fileInputRef = useRef(null);
       const canvasRef = useRef(null);
       const imageRef = useRef(null);
+
+      const borderColorValue = typeof avatarBorderColor === 'string' && avatarBorderColor.trim()
+        ? avatarBorderColor.trim()
+        : '#ffffff';
+      const borderStyleValue = avatarBorderStyle === 'dashed' ? 'dashed' : 'solid';
 
       useEffect(() => {
         if (!open) {
@@ -182,6 +187,87 @@
               onClick: onClose,
               'aria-label': 'Close'
             }, '×')
+          ),
+          avatarBorderColor && avatarBorderStyle && H('div', {
+            style: {
+              display: 'grid',
+              gap: 16,
+              padding: '16px',
+              background: '#f8fafc',
+              borderBottom: '1px solid #e5e7eb'
+            }
+          },
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Avatar outline'),
+              H('div', {
+                style: {
+                  display: 'grid',
+                  gap: 12,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
+                }
+              },
+                H('label', { style: { display: 'grid', gap: 4 } },
+                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Color'),
+                  H('input', {
+                    type: 'color',
+                    value: borderColorValue,
+                    onChange: (evt) => onChangeBorderColor?.(evt.target.value),
+                    style: {
+                      width: '100%',
+                      height: 36,
+                      borderRadius: 10,
+                      border: '1px solid #d1d5db',
+                      cursor: 'pointer'
+                    }
+                  })
+                ),
+                H('label', { style: { display: 'grid', gap: 4 } },
+                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Style'),
+                  H('select', {
+                    value: borderStyleValue,
+                    onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
+                    style: {
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                      background: '#fff'
+                    }
+                  },
+                    H('option', { value: 'solid' }, 'Solid'),
+                    H('option', { value: 'dashed' }, 'Dashed')
+                  )
+                )
+              ),
+              H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap'
+                }
+              },
+                H('div', {
+                  style: {
+                    width: 56,
+                    height: 56,
+                    borderRadius: '50%',
+                    borderColor: borderColorValue,
+                    borderStyle: borderStyleValue,
+                    borderWidth: 4,
+                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.2)',
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontWeight: 700,
+                    fontSize: 18
+                  }
+                }, 'Aa'),
+                H('span', { className: 'muted', style: { fontSize: 12 } }, 'Live preview of your outline')
+              )
+            )
           ),
           H('div', { className: 'modal-body' },
             error && H('div', {

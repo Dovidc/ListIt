@@ -370,12 +370,12 @@
                 H('span', { style: { fontWeight: 600 } }, 'Saved address'),
                 H(LocationPresetIcon, { size: 18 })
               ),
-              H('textarea', {
+              H('input', {
                 value: locationPreset,
                 onChange: (evt) => onChangeLocationPreset?.(evt.target.value),
                 placeholder: '123 Main St, City, State',
-                rows: 3,
-                style: { width: '100%', resize: 'vertical' }
+                maxLength: 240,
+                style: { width: '100%' }
               }),
               H('div', {
                 style: {
@@ -415,13 +415,12 @@
                   style: { fontSize: 12 }
                 }, 'Shown on your profile preview')
               ),
-              H('textarea', {
+              H('input', {
                 value: profileAbout,
                 onChange: (evt) => onChangeProfileAbout?.(evt.target.value),
                 placeholder: 'Share a short bio, shipping info, or what you sell.',
-                rows: 4,
                 maxLength: 50,
-                style: { width: '100%', resize: 'vertical' }
+                style: { width: '100%' }
               }),
               H('div', {
                 style: {
@@ -602,79 +601,6 @@
             ),
             premiumMsg,
             H('section', { style: { display: 'grid', gap: 16 } },
-              H('div', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Avatar outline'),
-                H('div', {
-                  style: {
-                    display: 'grid',
-                    gap: 12,
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
-                  }
-                },
-                  H('label', { style: { display: 'grid', gap: 4 } },
-                    H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Color'),
-                    H('input', {
-                      type: 'color',
-                      value: borderColor,
-                      onChange: (evt) => onChangeBorderColor?.(evt.target.value),
-                      disabled: !isPremium,
-                      style: {
-                        width: '100%',
-                        height: 36,
-                        borderRadius: 10,
-                        border: '1px solid #d1d5db',
-                        cursor: isPremium ? 'pointer' : 'not-allowed'
-                      }
-                    })
-                  ),
-                  H('label', { style: { display: 'grid', gap: 4 } },
-                    H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Style'),
-                    H('select', {
-                      value: borderStyle,
-                      onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
-                      disabled: !isPremium,
-                      style: {
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 10,
-                        cursor: isPremium ? 'pointer' : 'not-allowed',
-                        background: '#fff'
-                      }
-                    },
-                      H('option', { value: 'solid' }, 'Solid'),
-                      H('option', { value: 'dashed' }, 'Dashed')
-                    )
-                  )
-                ),
-                H('div', {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    flexWrap: 'wrap'
-                  }
-                },
-                  H('div', {
-                    style: {
-                      width: 56,
-                      height: 56,
-                      borderRadius: '50%',
-                      borderColor: borderColorValue,
-                      borderStyle: borderStyleValue,
-                      borderWidth: 4,
-                      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.2)',
-                      background: '#0f172a',
-                      color: '#e2e8f0',
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontWeight: 700,
-                      fontSize: 18
-                    }
-                  }, 'Aa'),
-                  H('span', { className: 'muted', style: { fontSize: 12 } }, 'Live preview of your outline')
-                )
-              ),
               H('label', { style: { display: 'grid', gap: 8 } },
                 H('span', { style: { fontWeight: 600 } }, 'Banner Image'),
                 H('div', {
@@ -797,58 +723,6 @@
                           }
                         }, 'Upload an image to see a live preview')
                   ),
-                  H('label', {
-                    style: { display: 'grid', gap: 4 }
-                  },
-                    H('span', { style: { fontSize: 12, fontWeight: 600 } }, 'Zoom'),
-                    H('input', {
-                      type: 'range',
-                      min: 1,
-                      max: 1.35,
-                      step: 0.01,
-                      value: previewScale,
-                      onChange: (evt) => setPreviewScale(Number(evt.target.value) || 1),
-                      disabled: !bgImageUrl
-                    })
-                  ),
-                  H('label', {
-                    style: { display: 'grid', gap: 4 }
-                  },
-                    H('span', { style: { fontSize: 12, fontWeight: 600 } }, 'Vertical focus'),
-                    H('input', {
-                      type: 'range',
-                      min: 0,
-                      max: 100,
-                      step: 1,
-                      value: previewOffset,
-                      onChange: (evt) => setPreviewOffset(Number(evt.target.value) || 50),
-                      disabled: !bgImageUrl
-                    })
-                  ),
-                  H('p', {
-                    className: 'muted',
-                    style: { fontSize: 12, margin: 0 }
-                  }, 'Tip: the preview controls let you experiment before committing the banner.'),
-                  bgImageUrl && H('div', {
-                    style: {
-                      display: 'flex',
-                      justifyContent: 'flex-end'
-                    }
-                  },
-                    H('button', {
-                      type: 'button',
-                      onClick: () => onClearBgImage?.(),
-                      disabled: !isPremium || bgImageUploading,
-                      style: {
-                        border: 'none',
-                        background: '#fee2e2',
-                        color: '#b91c1c',
-                        borderRadius: 999,
-                        padding: '6px 14px',
-                        cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed'
-                      }
-                    }, 'Remove image')
-                  )
                 )
               ),
               H('footer', {
@@ -1875,7 +1749,11 @@
           open: profilePictureModalOpen,
           onClose: handleCloseProfilePictureModal,
           onUploadComplete: handleProfilePictureUploadComplete,
-          currentPictureUrl: profilePictureUrl
+          currentPictureUrl: profilePictureUrl,
+          avatarBorderColor: profileAvatarBorderColor,
+          avatarBorderStyle: profileAvatarBorderStyle,
+          onChangeBorderColor: setProfileAvatarBorderColor,
+          onChangeBorderStyle: setProfileAvatarBorderStyle
         }),
 
         deleteAccountModalOpen && createPortal(

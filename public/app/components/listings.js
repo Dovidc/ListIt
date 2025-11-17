@@ -1584,7 +1584,17 @@
         if (!api || typeof api.getUser !== 'function') return;
         try {
           const userData = await api.getUser(userId, { silent: true });
-          setProfileData(userData);
+          // Fetch listings to calculate active/sold counts
+          const listings = await api.listByUser(userId, { silent: true });
+          const activeCount = Array.isArray(listings) ? listings.filter(l => !l.sold).length : 0;
+          const soldCount = Array.isArray(listings) ? listings.filter(l => l.sold).length : 0;
+          // Add counts to user data
+          const dataWithCounts = {
+            ...userData,
+            active_listing_count: activeCount,
+            sold_listing_count: soldCount
+          };
+          setProfileData(dataWithCounts);
           setShowProfilePreview(true);
         } catch (err) {
           console.warn('Failed to load profile data:', err);
@@ -1761,8 +1771,8 @@
 
         showProfilePreview && H(ProfilePreviewModal, {
           sellerInfo: profileData,
-          activeListingCount: item.activeListingCount || 0,
-          soldListingCount: item.soldListingCount || 0,
+          activeListingCount: profileData?.active_listing_count || 0,
+          soldListingCount: profileData?.sold_listing_count || 0,
           onClose: () => setShowProfilePreview(false),
           onVisitProfile: () => {
             setShowProfilePreview(false);
