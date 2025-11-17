@@ -1048,13 +1048,6 @@
         }
       }, [user]);
 
-      useEffect(() => {
-        if (!user) return;
-        if ('profile_about' in user) {
-          setProfileAbout(user.profile_about || '');
-        }
-      }, [user, setProfileAbout]);
-
       const handleEdit = useCallback((it) => {
         setProfileSelected(null);
         onEdit?.(it);
@@ -1116,6 +1109,13 @@
         setProfileAboutState(resolved);
       }, [profileAboutRef, setProfileAboutState]);
       const profileAbout = profileAboutState;
+
+      useEffect(() => {
+        if (!user) return;
+        if ('profile_about' in user) {
+          setProfileAbout(user.profile_about || '');
+        }
+      }, [user, setProfileAbout]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
