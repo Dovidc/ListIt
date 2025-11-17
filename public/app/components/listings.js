@@ -1840,8 +1840,12 @@
       if (karmaValue && karmaValue > 0) {
         stats.push({ label: 'Karma', value: karmaValue });
       }
-      const avatarSize = 118;
-      const avatarOverlap = 42;
+      const avatarSize = 96;
+      const avatarOverlap = 34;
+      const avatarBorderWidth = 4;
+      const sellerAboutText = typeof sellerInfo.profile_about === 'string' && sellerInfo.profile_about.trim()
+        ? sellerInfo.profile_about.trim()
+        : null;
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -1989,8 +1993,8 @@
                     bottom: -avatarOverlap,
                     width: avatarSize,
                     height: avatarSize,
-                    borderRadius: 30,
-                    border: `5px ${avatarBorderColor} ${avatarBorderStyle}`,
+                    borderRadius: '50%',
+                    border: `${avatarBorderWidth}px ${avatarBorderColor} ${avatarBorderStyle}`,
                     background: '#0f172a',
                     boxShadow: '0 18px 45px rgba(0, 0, 0, 0.45)',
                     overflow: 'hidden'
@@ -2008,7 +2012,7 @@
                           height: '100%',
                           display: 'grid',
                           placeItems: 'center',
-                          fontSize: 42,
+                          fontSize: 36,
                           fontWeight: 800,
                           color: '#e2e8f0'
                         }
@@ -2080,12 +2084,15 @@
                       margin: 0,
                       fontSize: 14,
                       color: '#e2e8f0',
-                      lineHeight: 1.5
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-line'
                     }
                   },
-                    activeCount > 0
-                      ? `Currently listing ${activeCount} ${activeCount === 1 ? 'item' : 'items'} with ${soldCount} sold overall.`
-                      : 'No active listings right now, but their sold history speaks for itself.'
+                    sellerAboutText
+                      ? sellerAboutText
+                      : (activeCount > 0
+                        ? `Currently listing ${activeCount} ${activeCount === 1 ? 'item' : 'items'} with ${soldCount} sold overall.`
+                        : 'No active listings right now, but their sold history speaks for itself.')
                   )
                 ),
                 H('div', {

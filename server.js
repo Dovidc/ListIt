@@ -946,7 +946,9 @@ async function initializeSchema() {
 
         supporter_checkout_id TEXT,
 
-        profile_bg_image_url TEXT
+        profile_bg_image_url TEXT,
+
+        profile_about TEXT
 
       );
 
@@ -975,6 +977,7 @@ async function initializeSchema() {
 
     try { await db.exec("ALTER TABLE users ADD COLUMN profile_picture_url TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN profile_bg_image_url TEXT"); } catch {}
+    try { await db.exec("ALTER TABLE users ADD COLUMN profile_about TEXT"); } catch {}
 
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_badge TEXT"); } catch {}
     try { await db.exec("ALTER TABLE users ADD COLUMN supporter_since TEXT"); } catch {}
@@ -2908,6 +2911,7 @@ async function getUserWithStatus(userId) {
              profile_bg_image_url,
 
              profile_bg_video_url,
+             profile_about,
 
              supporter_badge,
 
@@ -2969,6 +2973,7 @@ function mapUserRow(row, extra = {}) {
     profile_bg_image_url: imageUrl || videoUrl || null,
 
     profile_bg_video_url: videoUrl,
+    profile_about: row.profile_about || '',
 
     account_status: row.account_status || 'active',
 
@@ -3619,6 +3624,31 @@ app.put('/api/me/location-preset', auth, writeLimiter, async (req, res) => {
     console.error('Update location preset failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
+
+  }
+
+});
+
+app.put('/api/me/profile-about', auth, writeLimiter, async (req, res) => {
+
+  try {
+
+    const rawAbout = typeof req.body?.profile_about === 'string' ? req.body.profile_about : '';
+    const normalized = rawAbout.replace(/\r\n/g, '\n').replace(/\u0000/g, '');
+    const trimmed = normalized.trim();
+
+    if (trimmed.length > 600) {
+      return res.status(400).json({ error: 'About text is too long (max 600 characters)' });
+    }
+
+    await db.prepare('UPDATE users SET profile_about = ? WHERE id = ?').run(trimmed || null, req.user.id);
+
+    return res.json({ ok: true, profile_about: trimmed });
+
+  } catch (e) {
+
+    console.error('PUT /api/me/profile-about failed:', e);
+    return res.status(500).json({ error: 'profile_about_failed' });
 
   }
 
@@ -5524,6 +5554,7 @@ app.get('/api/users/:userId', async (req, res) => {
              profile_avatar_border_style,
              profile_bg_image_url,
              profile_bg_video_url,
+             profile_about,
              karma
         FROM users
        WHERE id = ?
@@ -5555,11 +5586,13 @@ app.get('/api/users/:userId', async (req, res) => {
 
       profile_avatar_border_style: user.profile_avatar_border_style || null,
 
-      profile_bg_image_url: user.profile_bg_image_url || user.profile_bg_video_url || null,
+        profile_bg_image_url: user.profile_bg_image_url || user.profile_bg_video_url || null,
 
-      profile_bg_video_url: user.profile_bg_video_url || user.profile_bg_image_url || null,
+        profile_bg_video_url: user.profile_bg_video_url || user.profile_bg_image_url || null,
 
-      karma: user.karma || 0
+        profile_about: user.profile_about || '',
+
+        karma: user.karma || 0
 
     });
 

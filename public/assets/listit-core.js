@@ -321,13 +321,25 @@
   
   
     const updateLocationPreset = (locationPreset, meta) => request('/api/me/location-preset', {
-  
+
       method: 'PUT',
-  
+
       headers: { 'Content-Type': 'application/json' },
-  
+
       body: JSON.stringify({ location_preset: locationPreset })
-  
+
+    }, meta);
+
+
+
+    const updateProfileAbout = (profileAbout, meta) => request('/api/me/profile-about', {
+
+      method: 'PUT',
+
+      headers: { 'Content-Type': 'application/json' },
+
+      body: JSON.stringify({ profile_about: profileAbout })
+
     }, meta);
   
   
@@ -865,11 +877,13 @@
       pushUnsubscribe,
   
       updatePaypalEmail,
-  
-  
-  
+
+
+
       updateLocationPreset,
-  
+
+      updateProfileAbout,
+
       updateProfilePicture,
       updateProfileCustomization,
   
