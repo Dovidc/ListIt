@@ -479,6 +479,11 @@
         }, [bgImageUrl, open]);
       }
 
+      const borderStyleValue = borderStyle === 'dashed' ? 'dashed' : 'solid';
+      const borderColorValue = typeof borderColor === 'string' && borderColor.trim()
+        ? borderColor.trim()
+        : '#ffffff';
+
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
           onClose?.();
@@ -564,33 +569,78 @@
               }, 'Customize how your profile appears when others view it from listings.')
             ),
             premiumMsg,
-            H('section', { style: { display: 'grid', gap: 12 } },
-              H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Avatar Border Color'),
-                H('input', {
-                  type: 'color',
-                  value: borderColor,
-                  onChange: (evt) => onChangeBorderColor?.(evt.target.value),
-                  disabled: !isPremium,
-                  style: { width: '100%', height: 40, cursor: isPremium ? 'pointer' : 'not-allowed' }
-                })
-              ),
-              H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Avatar Border Style'),
-                H('select', {
-                  value: borderStyle,
-                  onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
-                  disabled: !isPremium,
+            H('section', { style: { display: 'grid', gap: 16 } },
+              H('div', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Avatar outline'),
+                H('div', {
                   style: {
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    cursor: isPremium ? 'pointer' : 'not-allowed'
+                    display: 'grid',
+                    gap: 12,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
                   }
                 },
-                  H('option', { value: 'solid' }, 'Solid'),
-                  H('option', { value: 'dashed' }, 'Dashed')
+                  H('label', { style: { display: 'grid', gap: 4 } },
+                    H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Color'),
+                    H('input', {
+                      type: 'color',
+                      value: borderColor,
+                      onChange: (evt) => onChangeBorderColor?.(evt.target.value),
+                      disabled: !isPremium,
+                      style: {
+                        width: '100%',
+                        height: 36,
+                        borderRadius: 10,
+                        border: '1px solid #d1d5db',
+                        cursor: isPremium ? 'pointer' : 'not-allowed'
+                      }
+                    })
+                  ),
+                  H('label', { style: { display: 'grid', gap: 4 } },
+                    H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Style'),
+                    H('select', {
+                      value: borderStyle,
+                      onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
+                      disabled: !isPremium,
+                      style: {
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 10,
+                        cursor: isPremium ? 'pointer' : 'not-allowed',
+                        background: '#fff'
+                      }
+                    },
+                      H('option', { value: 'solid' }, 'Solid'),
+                      H('option', { value: 'dashed' }, 'Dashed')
+                    )
+                  )
+                ),
+                H('div', {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    flexWrap: 'wrap'
+                  }
+                },
+                  H('div', {
+                    style: {
+                      width: 56,
+                      height: 56,
+                      borderRadius: '50%',
+                      borderColor: borderColorValue,
+                      borderStyle: borderStyleValue,
+                      borderWidth: 4,
+                      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.2)',
+                      background: '#0f172a',
+                      color: '#e2e8f0',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontWeight: 700,
+                      fontSize: 18
+                    }
+                  }, 'Aa'),
+                  H('span', { className: 'muted', style: { fontSize: 12 } }, 'Live preview of your outline')
                 )
               ),
               H('label', { style: { display: 'grid', gap: 8 } },
@@ -769,28 +819,30 @@
                   )
                 )
               ),
-              H('div', {
+              H('footer', {
                 style: {
                   display: 'flex',
-                  justifyContent: 'flex-end'
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  marginTop: 8
                 }
               },
+                statusMessage
+                  ? H('div', {
+                      role: 'status',
+                      'aria-live': 'polite',
+                      style: { fontSize: 13, color: '#047857', fontWeight: 600 }
+                    }, statusMessage)
+                  : H('span', { className: 'muted', style: { fontSize: 12 } }, 'Press save to apply your changes'),
                 H('button', {
                   className: 'btn primary',
                   type: 'button',
                   onClick: onSave,
                   disabled: !isPremium
-                }, 'Save Changes')
-              ),
-              statusMessage && H('div', {
-                role: 'status',
-                'aria-live': 'polite',
-                style: {
-                  fontSize: 13,
-                  color: '#047857',
-                  fontWeight: 600
-                }
-              }, statusMessage)
+                }, 'Save changes')
+              )
             )
           )
         ),
@@ -1488,12 +1540,24 @@
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
       const trimmedBgImageUrl = (profileBgImageUrl || '').trim();
       const hasBgImage = !!trimmedBgImageUrl;
+      const avatarBorderStyleValue = profileAvatarBorderStyle === 'dashed' ? 'dashed' : 'solid';
+      const avatarBorderColorValue = typeof profileAvatarBorderColor === 'string' && profileAvatarBorderColor.trim()
+        ? profileAvatarBorderColor.trim()
+        : '#ffffff';
       const profileHeaderContent = H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
             H('div', { className: 'row', style: { gap: 12, alignItems: 'center' } },
               H('div', {
                 className: 'profile-avatar',
                 onClick: handleOpenProfilePictureModal,
-                style: { cursor: 'pointer' },
+                style: {
+                  cursor: 'pointer',
+                  borderColor: avatarBorderColorValue,
+                  borderStyle: avatarBorderStyleValue,
+                  borderWidth: 4,
+                  boxShadow: hasBgImage
+                    ? '0 16px 35px rgba(2, 6, 23, 0.5)'
+                    : '0 8px 18px rgba(15, 23, 42, 0.25)'
+                },
                 title: 'Click to change profile picture'
               },
                 (profilePictureUrl && profilePictureUrl.trim())
