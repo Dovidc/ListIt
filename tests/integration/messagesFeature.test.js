@@ -196,6 +196,7 @@ describe('messages feature integration', () => {
         [], // conversations
         'convo-1', // activeId
         [], // messages
+        false, // loadingMsgs
         'Hello there', // input
         [fileA, fileB], // imgFiles
         { open: false, images: [], index: 0 }, // lightbox state
@@ -239,8 +240,8 @@ describe('messages feature integration', () => {
       'https://cdn/photo-b.jpg'
     ]);
 
-    expect(states[3].setter).toHaveBeenCalledWith('');
-    expect(states[4].setter).toHaveBeenCalledWith([]);
+    expect(states[4].setter).toHaveBeenCalledWith('');
+    expect(states[5].setter).toHaveBeenCalledWith([]);
 
     expect(deps.api.getMessages).toHaveBeenCalledWith('convo-1', { silent: true });
     expect(states[2].setter).toHaveBeenCalledWith([{ id: 99, sender_id: 7 }]);
