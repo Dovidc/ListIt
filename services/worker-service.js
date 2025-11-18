@@ -10,6 +10,7 @@
  */
 
 const { TOPICS } = require('../lib/message-bus');
+const { createJobQueue } = require('../lib/redis-job-queue');
 const db = require('../db-wrapper');
 const {
   SUPPORTER_BADGE_CODE,
@@ -23,33 +24,42 @@ function nowIso() {
 }
 
 class WorkerService {
-  constructor(config, messageBus) {
-    this.config = config;
+  constructor(config, messageBus, options = {}) {
+    this.config = config || {};
     this.messageBus = messageBus;
 
-    // Job queue for resilience
-    this.jobQueue = [];
-    this.activeJobs = new Set();
-    this.completedJobs = new Map();
+    const queueRequiresRedis = options.requireRedis ?? (!this.config.IS_TEST && (this.config.IS_PROD || process.env.NODE_ENV === 'production'));
+    this.jobQueue = options.jobQueue || createJobQueue({
+      name: options.queueName || 'worker',
+      requireRedis: queueRequiresRedis
+    });
 
     // Worker configuration
-    this.maxRetries = 3;
-    this.retryDelayMs = 1000;
-    this.processingInterval = 5000; // Process queue every 5 seconds
+    this.maxRetries = options.maxRetries || 3;
+    this.retryDelayMs = options.retryDelayMs || 1000;
 
     // Processing loop
-    this.processingLoop = null;
+    this.loopActive = false;
+    this.loopPromise = null;
 
     // Service references (injected later)
     this.stripe = null;
     this.mailService = defaultMailService;
     this.pushService = pushServiceModule;
 
+    this.metrics = {
+      processed: 0,
+      failed: 0,
+      lastError: null
+    };
+
+    this.subscriptions = [];
+
     // Bind methods
     this.start = this.start.bind(this);
     this.stop = this.stop.bind(this);
     this.enqueueJob = this.enqueueJob.bind(this);
-    this.processQueue = this.processQueue.bind(this);
+    this._processLoop = this._processLoop.bind(this);
   }
 
   /**
@@ -58,45 +68,25 @@ class WorkerService {
   async start() {
     console.log('[Worker] Service starting...');
 
+    const subscribe = (topic, handler) => {
+      const unsubscribe = this.messageBus.subscribe(topic, handler);
+      this.subscriptions.push(unsubscribe);
+    };
+
     // Subscribe to relevant topics
-    this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
-      await this.handleStripeWebhook(event);
-    });
+    subscribe(TOPICS.STRIPE_WEBHOOK, (event) => this.handleStripeWebhook(event));
+    subscribe(TOPICS.USER_REGISTERED, (event) => this.handleUserRegistered(event));
+    subscribe(TOPICS.USER_VERIFIED, (event) => this.handleUserVerified(event));
+    subscribe(TOPICS.PUSH_SEND, (event) => this.handlePushNotification(event));
+    subscribe(TOPICS.MESSAGE_SENT, (event) => this.handleMessageSent(event));
+    subscribe(TOPICS.USER_PASSWORD_RESET, (event) => this.handlePasswordResetRequested(event));
+    subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, (event) => this.handleNearbyListing(event));
 
-    this.messageBus.subscribe(TOPICS.USER_REGISTERED, async (event) => {
-      await this.handleUserRegistered(event);
-    });
-
-    this.messageBus.subscribe(TOPICS.USER_VERIFIED, async (event) => {
-      await this.handleUserVerified(event);
-    });
-
-    this.messageBus.subscribe(TOPICS.PUSH_SEND, async (event) => {
-      await this.handlePushNotification(event);
-    });
-
-    this.messageBus.subscribe(TOPICS.MESSAGE_SENT, async (event) => {
-      await this.handleMessageSent(event);
-    });
-
-    this.messageBus.subscribe(TOPICS.USER_PASSWORD_RESET, async (event) => {
-      await this.handlePasswordResetRequested(event);
-    });
-
-    this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
-      await this.handleNearbyListing(event);
-    });
-
-    // Start job processor
-    this.processingLoop = setInterval(() => {
-      this.processQueue().catch(err => {
-        console.error('[Worker] Error processing queue:', err);
-      });
-    }, this.processingInterval);
-
-    if (typeof this.processingLoop.unref === 'function') {
-      this.processingLoop.unref();
+    if (typeof this.jobQueue.start === 'function') {
+      await this.jobQueue.start();
     }
+    this.loopActive = true;
+    this.loopPromise = this._processLoop();
 
     console.log('[Worker] Service started');
   }
@@ -105,20 +95,29 @@ class WorkerService {
    * Stop the worker service
    */
   async stop() {
-    if (this.processingLoop) {
-      clearInterval(this.processingLoop);
-      this.processingLoop = null;
+    this.loopActive = false;
+    if (this.loopPromise) {
+      try {
+        await this.loopPromise;
+      } catch (err) {
+        console.error('[Worker] Error while stopping loop:', err);
+      }
+      this.loopPromise = null;
     }
 
-    // Wait for active jobs to complete (with timeout)
-    const timeout = 30000; // 30 seconds
-    const start = Date.now();
-    while (this.activeJobs.size > 0 && Date.now() - start < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    if (Array.isArray(this.subscriptions)) {
+      for (const unsubscribe of this.subscriptions) {
+        try {
+          if (typeof unsubscribe === 'function') unsubscribe();
+        } catch (err) {
+          console.warn('[Worker] Failed to clean up subscription:', err?.message || err);
+        }
+      }
+      this.subscriptions = [];
     }
 
-    if (this.activeJobs.size > 0) {
-      console.warn(`[Worker] ${this.activeJobs.size} jobs still active after timeout`);
+    if (typeof this.jobQueue.stop === 'function') {
+      await this.jobQueue.stop();
     }
 
     console.log('[Worker] Service stopped');
@@ -128,68 +127,42 @@ class WorkerService {
    * Enqueue a job for processing
    */
   async enqueueJob(job) {
-    const jobId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const wrappedJob = {
-      id: jobId,
+    const jobId = await this.jobQueue.enqueue({
       type: job.type,
       payload: job.payload,
-      retries: 0,
       maxRetries: job.maxRetries || this.maxRetries,
-      createdAt: Date.now(),
       priority: job.priority || 0
-    };
-
-    this.jobQueue.push(wrappedJob);
-
-    // Sort by priority (higher first)
-    this.jobQueue.sort((a, b) => b.priority - a.priority);
-
+    });
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
     return jobId;
   }
 
-  /**
-   * Process queued jobs
-   */
-  async processQueue() {
-    if (this.jobQueue.length === 0) {
-      return;
+  async _processLoop() {
+    while (this.loopActive) {
+      try {
+        const job = await this.jobQueue.reserveNext();
+        if (!job) {
+          continue;
+        }
+        await this._processReservedJob(job);
+      } catch (err) {
+        this.metrics.lastError = err?.message || err;
+        console.error('[Worker] Processing loop error:', err);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
+  }
 
-    const job = this.jobQueue.shift();
-
-    // Skip if already active
-    if (this.activeJobs.has(job.id)) {
-      this.jobQueue.unshift(job); // Put back in queue
-      return;
-    }
-
-    this.activeJobs.add(job.id);
-
+  async _processReservedJob(job) {
     try {
       await this.processJob(job);
-      this.completedJobs.set(job.id, {
-        status: 'success',
-        completedAt: Date.now()
-      });
+      await this.jobQueue.ack(job);
+      this.metrics.processed += 1;
     } catch (err) {
-      console.error(`[Worker] Job failed: ${job.id}`, err.message);
-
-      if (job.retries < job.maxRetries) {
-        job.retries++;
-        this.jobQueue.push(job);
-        console.log(`[Worker] Job requeued: ${job.id} (attempt ${job.retries + 1}/${job.maxRetries + 1})`);
-      } else {
-        this.completedJobs.set(job.id, {
-          status: 'failed',
-          error: err.message,
-          completedAt: Date.now()
-        });
-        console.error(`[Worker] Job failed permanently: ${job.id}`);
-      }
-    } finally {
-      this.activeJobs.delete(job.id);
+      this.metrics.failed += 1;
+      this.metrics.lastError = err?.message || err;
+      console.error(`[Worker] Job failed: ${job.id}`, err);
+      await this.jobQueue.fail(job, err);
     }
   }
 
@@ -585,11 +558,21 @@ class WorkerService {
   /**
    * Get queue stats
    */
-  getStats() {
+  async getStats() {
+    let queueStats = {};
+    if (typeof this.jobQueue.getStats === 'function') {
+      try {
+        queueStats = await this.jobQueue.getStats();
+      } catch (err) {
+        console.warn('[Worker] Failed to read queue stats:', err?.message || err);
+      }
+    }
+
     return {
-      queueLength: this.jobQueue.length,
-      activeJobs: this.activeJobs.size,
-      completedJobs: this.completedJobs.size
+      ...queueStats,
+      processed: this.metrics.processed,
+      failed: this.metrics.failed,
+      lastError: this.metrics.lastError
     };
   }
 
@@ -597,9 +580,10 @@ class WorkerService {
    * Health check
    */
   async healthCheck() {
+    const stats = await this.getStats();
     return {
       ok: true,
-      ...this.getStats()
+      ...stats
     };
   }
 }
@@ -607,8 +591,8 @@ class WorkerService {
 /**
  * Create and export worker service
  */
-async function createWorkerService(config, messageBus, dependencies = {}) {
-  const service = new WorkerService(config, messageBus);
+async function createWorkerService(config, messageBus, dependencies = {}, options = {}) {
+  const service = new WorkerService(config, messageBus, options);
   service.setDependencies(dependencies);
   return service;
 }
