@@ -229,8 +229,8 @@ WEBSOCKET_PORT=3002
 WORKER_PORT=3003
 
 # Message Bus
-MESSAGE_BUS_TYPE=memory|redis
-REDIS_URL=redis://localhost:6379
+MESSAGE_BUS_TYPE=memory|redis   # default: memory (dev/test), redis (production)
+REDIS_URL=redis://localhost:6379 # required whenever MESSAGE_BUS_TYPE=redis
 
 # External Services
 STRIPE_SECRET_KEY=...
@@ -267,7 +267,7 @@ node server.js
 
 **Configuration:**
 ```bash
-MESSAGE_BUS_TYPE=memory
+MESSAGE_BUS_TYPE=memory  # development-only fallback
 ENABLE_HTTP_API=true
 ENABLE_WEBSOCKET=true
 ENABLE_WORKER=true
