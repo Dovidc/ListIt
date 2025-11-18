@@ -93,7 +93,7 @@ async function resetDb() {
 }
 
 beforeAll(async () => {
-  await app._initializeSchema();
+  await app._runMigrations();
 });
 
 afterAll(() => {

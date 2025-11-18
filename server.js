@@ -77,6 +77,7 @@ const {
 const mailService = require('./mail-service');
 const { createMessageBus, TOPICS } = require('./lib/message-bus');
 const pushService = require('./lib/push-service');
+const { runMigrations } = require('./lib/run-migrations');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -448,8 +449,6 @@ const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
 const IS_POSTGRES = true;
 
-const PRIMARY_KEY = 'SERIAL PRIMARY KEY';
-
 const GEO_FEATURES = {
   postgisNearby: false,
   reason: 'uninitialized'
@@ -816,669 +815,7 @@ app.use(originGuard);
 
 /* ------------------------------------------------------------------ */
 
-async function initializeSchema() {
-
-  try {
-
-    // Create tables with PostgreSQL-compatible syntax
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS users (
-
-        id ${PRIMARY_KEY},
-
-        email TEXT UNIQUE NOT NULL,
-
-        password_hash TEXT NOT NULL,
-
-        created_at TEXT NOT NULL,
-
-        username TEXT UNIQUE,
-
-        reset_token_hash TEXT,
-
-        reset_token_expires_at TEXT,
-
-        is_admin INTEGER DEFAULT 0,
-
-        paypal_email TEXT,
-
-        location_preset TEXT,
-
-        account_status TEXT DEFAULT 'active',
-
-        status_note TEXT,
-
-        status_updated_at TEXT,
-
-        last_login_at TEXT,
-
-        email_verification_code_hash TEXT,
-
-        email_verification_expires_at TEXT,
-
-        supporter_badge TEXT,
-
-        supporter_since TEXT,
-
-        supporter_checkout_id TEXT,
-
-        profile_bg_image_url TEXT,
-
-        profile_about TEXT
-
-      );
-
-    `);
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"); } catch {}
-
-    try { await db.exec("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN paypal_email TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN location_preset TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN account_status TEXT DEFAULT 'active'"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN status_note TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN status_updated_at TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN last_login_at TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN email_verification_code_hash TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN email_verification_expires_at TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_hash TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN reset_token_expires_at TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_picture_url TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_bg_image_url TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_about TEXT"); } catch {}
-
-    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_badge TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_since TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_checkout_id TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN supporter_tier TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN subscription_status TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN subscription_current_period_end TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN karma INTEGER DEFAULT 0"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_bg_video_url TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_avatar_border_color TEXT DEFAULT '#ffffff'"); } catch {}
-    try { await db.exec("ALTER TABLE users ADD COLUMN profile_avatar_border_style TEXT DEFAULT 'solid'"); } catch {}
-
-    try { await db.exec("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"); } catch {}
-
-
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS listings (
-
-        id ${PRIMARY_KEY},
-
-        user_id INTEGER NOT NULL REFERENCES users(id),
-
-        image_data TEXT,
-
-        title TEXT,
-
-        description TEXT NOT NULL,
-
-        location TEXT NOT NULL,
-
-        price REAL NOT NULL,
-
-        created_at TEXT NOT NULL,
-
-        tags TEXT,
-
-        lat REAL,
-
-        lon REAL,
-
-        enable_nearby INTEGER DEFAULT 0,
-
-        inquiry_enabled INTEGER DEFAULT 0,
-
-        sold INTEGER DEFAULT 0,
-
-        is_test_listing INTEGER DEFAULT 0
-
-      );
-
-    `);
-
-    try { await db.exec('ALTER TABLE listings ADD COLUMN title TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN tags TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN lat REAL'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN lon REAL'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN enable_nearby INTEGER DEFAULT 0'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN inquiry_enabled INTEGER DEFAULT 0'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN sold INTEGER DEFAULT 0'); } catch {}
-    try { await db.exec('ALTER TABLE listings ADD COLUMN is_test_listing INTEGER DEFAULT 0'); } catch {}
-    try { await db.exec("UPDATE listings SET enable_nearby = 0 WHERE enable_nearby IS NULL"); } catch {}
-    try { await db.exec("UPDATE listings SET inquiry_enabled = 0 WHERE inquiry_enabled IS NULL"); } catch {}
-    try { await db.exec("UPDATE listings SET sold = 0 WHERE sold IS NULL"); } catch {}
-    try { await db.exec("UPDATE listings SET is_test_listing = 0 WHERE is_test_listing IS NULL"); } catch {}
-
-
-
-    // Updated schema: image_data can be NULL since we're using S3
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS listing_images (
-
-        id ${PRIMARY_KEY},
-
-        listing_id INTEGER NOT NULL REFERENCES listings(id),
-
-        image_data TEXT,
-
-        position INTEGER NOT NULL,
-
-        key TEXT,
-
-        url TEXT,
-
-        width INTEGER,
-
-        height INTEGER,
-
-        bytes INTEGER,
-
-        created_at INTEGER DEFAULT 0
-
-      );
-
-    `);
-
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN key TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN url TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN width INTEGER'); } catch {}
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN height INTEGER'); } catch {}
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN bytes INTEGER'); } catch {}
-    try { await db.exec('ALTER TABLE listing_images ADD COLUMN created_at INTEGER DEFAULT 0'); } catch {}
-
-
-
-    if (!IS_POSTGRES) {
-      const listingCols = await db.prepare("PRAGMA table_info('listings')").all();
-      const listingImageData = listingCols.find((col) => col.name === 'image_data');
-      const needsListingRebuild = listingImageData?.notnull;
-
-      if (needsListingRebuild) {
-        const fkStateRow = await db.prepare('PRAGMA foreign_keys').get();
-        const foreignKeysInitiallyOn = Number(fkStateRow?.foreign_keys) === 1;
-
-        await db.exec('PRAGMA foreign_keys=OFF;');
-        await db.exec('BEGIN TRANSACTION;');
-        try {
-          await db.exec('ALTER TABLE listings RENAME TO listings_old;');
-          await db.exec(`
-            CREATE TABLE listings (
-              id ${PRIMARY_KEY},
-              user_id INTEGER NOT NULL REFERENCES users(id),
-              image_data TEXT,
-              title TEXT,
-              description TEXT NOT NULL,
-              location TEXT NOT NULL,
-              price REAL NOT NULL,
-              created_at TEXT NOT NULL,
-              tags TEXT,
-              lat REAL,
-              lon REAL,
-              enable_nearby INTEGER DEFAULT 0,
-              inquiry_enabled INTEGER DEFAULT 0,
-              sold INTEGER DEFAULT 0,
-              is_test_listing INTEGER DEFAULT 0
-            );
-          `);
-          await db.exec(`
-            INSERT INTO listings (
-              id, user_id, image_data, title, description, location, price, created_at,
-              tags, lat, lon, enable_nearby, inquiry_enabled, sold, is_test_listing
-            )
-            SELECT
-              id,
-              user_id,
-              NULLIF(image_data, ''),
-              title,
-              description,
-              location,
-              price,
-              created_at,
-              tags,
-              lat,
-              lon,
-              COALESCE(enable_nearby, 0),
-              COALESCE(inquiry_enabled, 0),
-              COALESCE(sold, 0),
-              COALESCE(is_test_listing, 0)
-            FROM listings_old;
-          `);
-          await db.exec('DROP TABLE listings_old;');
-          await db.exec('COMMIT;');
-        } catch (err) {
-          await db.exec('ROLLBACK;');
-          throw err;
-        } finally {
-          await db.exec(`PRAGMA foreign_keys=${foreignKeysInitiallyOn ? 'ON' : 'OFF'};`);
-        }
-
-        try {
-          await db.exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM listings) WHERE name = 'listings';");
-        } catch {}
-      }
-
-      const listingImageCols = await db.prepare("PRAGMA table_info('listing_images')").all();
-      const listingImageDataCol = listingImageCols.find((col) => col.name === 'image_data');
-      const needsImageRebuild = listingImageDataCol?.notnull;
-
-      if (needsImageRebuild) {
-        const fkStateRow = await db.prepare('PRAGMA foreign_keys').get();
-        const foreignKeysInitiallyOn = Number(fkStateRow?.foreign_keys) === 1;
-
-        await db.exec('PRAGMA foreign_keys=OFF;');
-        await db.exec('BEGIN TRANSACTION;');
-        try {
-          await db.exec('ALTER TABLE listing_images RENAME TO listing_images_old;');
-          await db.exec(`
-            CREATE TABLE listing_images (
-              id ${PRIMARY_KEY},
-              listing_id INTEGER NOT NULL REFERENCES listings(id),
-              image_data TEXT,
-              position INTEGER NOT NULL,
-              key TEXT,
-              url TEXT,
-              width INTEGER,
-              height INTEGER,
-              bytes INTEGER,
-              created_at INTEGER DEFAULT 0
-            );
-          `);
-          await db.exec(`
-            INSERT INTO listing_images (
-              id, listing_id, image_data, position, key, url, width, height, bytes, created_at
-            )
-            SELECT
-              id,
-              listing_id,
-              NULLIF(image_data, ''),
-              position,
-              key,
-              url,
-              width,
-              height,
-              bytes,
-              COALESCE(created_at, 0)
-            FROM listing_images_old;
-          `);
-          await db.exec('DROP TABLE listing_images_old;');
-          await db.exec('COMMIT;');
-        } catch (err) {
-          await db.exec('ROLLBACK;');
-          throw err;
-        } finally {
-          await db.exec(`PRAGMA foreign_keys=${foreignKeysInitiallyOn ? 'ON' : 'OFF'};`);
-        }
-
-        try {
-          await db.exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM listing_images) WHERE name = 'listing_images';");
-        } catch {}
-      }
-    }
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS listing_upload_drafts (
-
-        id ${PRIMARY_KEY},
-
-        user_id INTEGER NOT NULL REFERENCES users(id),
-
-        token TEXT NOT NULL UNIQUE,
-
-        key TEXT NOT NULL,
-
-        url TEXT NOT NULL,
-
-        width INTEGER,
-
-        height INTEGER,
-
-        bytes INTEGER,
-
-        created_at INTEGER NOT NULL
-
-      );
-
-    `);
-
-
-
-    await db.exec(`CREATE INDEX IF NOT EXISTS idx_listing_upload_drafts_user ON listing_upload_drafts(user_id);`);
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS conversations (
-
-        id ${PRIMARY_KEY},
-
-        a_user_id INTEGER NOT NULL,
-
-        b_user_id INTEGER NOT NULL,
-
-        listing_id INTEGER,
-
-        a_deleted_at TEXT,
-
-        b_deleted_at TEXT,
-
-        created_at TEXT NOT NULL,
-
-        UNIQUE (a_user_id, b_user_id, listing_id)
-
-      );
-
-    `);
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS messages (
-
-        id ${PRIMARY_KEY},
-
-        conversation_id INTEGER NOT NULL REFERENCES conversations(id),
-
-        sender_id INTEGER NOT NULL,
-
-        body TEXT NOT NULL,
-
-        created_at TEXT NOT NULL
-
-      );
-
-    `);
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS message_images (
-
-        id ${PRIMARY_KEY},
-
-        message_id INTEGER NOT NULL REFERENCES messages(id),
-
-        image_data TEXT,
-
-        position INTEGER NOT NULL,
-
-        key TEXT,
-
-        url TEXT,
-
-        width INTEGER,
-
-        height INTEGER,
-
-        bytes INTEGER,
-
-        created_at INTEGER DEFAULT 0
-
-      );
-
-    `);
-
-
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
-        id ${PRIMARY_KEY},
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        endpoint TEXT NOT NULL UNIQUE,
-        p256dh TEXT NOT NULL,
-        auth TEXT NOT NULL,
-        expiration_time INTEGER,
-        fail_count INTEGER DEFAULT 0,
-        last_failed_at TEXT,
-        last_error TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id, updated_at DESC);');
-
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN fail_count INTEGER DEFAULT 0'); } catch {}
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_failed_at TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN last_error TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN expiration_time INTEGER'); } catch {}
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN updated_at TEXT'); } catch {}
-    try { await db.exec('ALTER TABLE push_subscriptions ADD COLUMN created_at TEXT'); } catch {}
-
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS karma_transactions (
-        id ${PRIMARY_KEY},
-        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
-        seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        seller_points INTEGER NOT NULL,
-        buyer_points INTEGER NOT NULL,
-        awarded BOOLEAN DEFAULT FALSE,
-        created_at TEXT NOT NULL
-      );
-    `);
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_listing ON karma_transactions(listing_id);');
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_seller ON karma_transactions(seller_id);');
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_karma_buyer ON karma_transactions(buyer_id);');
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS ads (
-
-        id ${PRIMARY_KEY},
-
-        title TEXT NOT NULL,
-
-        subtitle TEXT,
-
-        target_url TEXT NOT NULL,
-
-        image_url TEXT,
-
-        cta_label TEXT,
-
-        background TEXT,
-
-        is_active INTEGER DEFAULT 1,
-
-        position INTEGER DEFAULT 0,
-
-        created_at TEXT NOT NULL,
-
-        updated_at TEXT NOT NULL
-
-      );
-
-    `);
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_ads_active ON ads(is_active, position DESC, id DESC);');
-
-
-
-
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS seller_reports (
-
-        id ${PRIMARY_KEY},
-
-        reporter_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-
-        reported_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-
-        listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
-
-        reasons TEXT NOT NULL,
-
-        details TEXT,
-
-        captcha_question TEXT,
-
-        created_at TEXT NOT NULL,
-
-        status TEXT DEFAULT 'open',
-        admin_note TEXT,
-        resolved_at TEXT,
-        resolved_by INTEGER REFERENCES users(id),
-        resolved_note TEXT
-      );
-
-    `);
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_reported ON seller_reports(reported_user_id, status);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_seller_reports_created ON seller_reports(created_at DESC);');
-    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_at TEXT"); } catch {}
-    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_by INTEGER"); } catch {}
-    try { await db.exec("ALTER TABLE seller_reports ADD COLUMN resolved_note TEXT"); } catch {}
-
-    await ensureFlaggedAttemptsSchema();
-
-    await db.exec(`
-
-      CREATE TABLE IF NOT EXISTS listing_cities (
-
-        city TEXT PRIMARY KEY,
-
-        slug TEXT UNIQUE,
-
-        count INTEGER DEFAULT 0
-
-      );
-
-    `);
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_cities_slug ON listing_cities(slug);');
-
-
-
-    const cityIndexCount = await db.prepare('SELECT COUNT(*) AS c FROM listing_cities').get();
-
-    if (!Number.isFinite(cityIndexCount?.c) || cityIndexCount.c === 0) {
-
-      const existingLocations = await db.prepare("SELECT location FROM listings WHERE location IS NOT NULL AND TRIM(location) <> ''").all();
-
-      for (const row of existingLocations) {
-
-        try { await incrementCityCount(row.location); } catch {}
-
-      }
-
-    }
-
-
-
-    // Create indexes
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id, id);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_lat_lon ON listings(lat, lon);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_price_desc ON listings(price DESC, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_price_asc ON listings(price ASC, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_enable_nearby_lat_lon ON listings(enable_nearby, lat, lon, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_location_lower ON listings(LOWER(location));');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listings_sold ON listings(sold, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_listing ON listing_images(listing_id, position);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_msg_imgs_msg ON message_images(message_id, position);');
-
-    try { await db.exec('ALTER TABLE conversations ADD COLUMN a_deleted_at TEXT'); } catch {}
-
-    try { await db.exec('ALTER TABLE conversations ADD COLUMN b_deleted_at TEXT'); } catch {}
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_conversations_a_user ON conversations(a_user_id, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_conversations_b_user ON conversations(b_user_id, id DESC);');
-
-    await db.exec('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id DESC);');
-
-    if (IS_POSTGRES) {
-
-      try {
-
-        await db.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm');
-
-      } catch (extErr) {
-
-        console.warn('[pg] pg_trgm extension unavailable:', extErr?.message || extErr);
-
-      }
-
-      const trigramIndexes = [
-
-        "CREATE INDEX IF NOT EXISTS idx_listings_title_trgm ON listings USING gin (LOWER(title) gin_trgm_ops)",
-
-        "CREATE INDEX IF NOT EXISTS idx_listings_description_trgm ON listings USING gin (LOWER(description) gin_trgm_ops)",
-
-        "CREATE INDEX IF NOT EXISTS idx_listings_tags_trgm ON listings USING gin (LOWER(COALESCE(tags, '')) gin_trgm_ops)",
-
-        "CREATE INDEX IF NOT EXISTS idx_listings_location_trgm ON listings USING gin (LOWER(location) gin_trgm_ops)"
-
-      ];
-
-      for (const sql of trigramIndexes) {
-
-        try {
-
-          await db.exec(sql);
-
-        } catch (idxErr) {
-
-          console.warn('[pg] trigram index skipped:', idxErr?.message || idxErr);
-
-        }
-
-      }
-
-    }
-
-    await configureSpatialFeatures();
-
-
-
-    console.log('Schema initialized');
-
-  } catch (e) {
-
-    console.error('Schema initialization failed:', e);
-
-  }
-
-}
+// Schema migrations are managed via Knex (see migrations directory).
 
 
 
@@ -1648,7 +985,7 @@ async function ensureFlaggedAttemptsSchema() {
     try {
       await db.exec(`
         CREATE TABLE IF NOT EXISTS flagged_attempts (
-          id ${PRIMARY_KEY},
+          id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
           listing_title TEXT,
@@ -8625,57 +7962,19 @@ if (IS_TEST) {
 
     try {
 
-      await initializeSchema();
-
       const tables = [
-
         'push_subscriptions',
-
         'message_images',
-
         'messages',
-
         'conversations',
-
         'listing_images',
-
         'seller_reports',
-
         'listings',
-
         'listing_cities',
-
         'users'
-
       ];
 
-      for (const name of tables) {
-
-        try {
-
-          await db.exec(`DELETE FROM ${name};`);
-
-        } catch (err) {
-
-          console.error('Reset delete failed for', name, err);
-
-        }
-
-      }
-
-      if (!process.env.DATABASE_URL) {
-
-        try {
-
-          await db.exec("DELETE FROM sqlite_sequence WHERE name IN ('push_subscriptions','message_images','messages','conversations','listing_images','seller_reports','listings','listing_cities','users')");
-
-        } catch (err) {
-
-          // ignore
-
-        }
-
-      }
+      await db.exec(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE;`);
 
       if (mailService.__reset) mailService.__reset();
       invalidateNearbyCache();
@@ -8716,8 +8015,6 @@ app.use((err, _req, res, _next) => {
 
 
 
-app._initializeSchema = initializeSchema;
-
 app._maybeCreateAdmin = maybeCreateAdmin;
 
 app._db = db;
@@ -8730,12 +8027,14 @@ app._deps = {
   pushService
 };
 
+app._runMigrations = runMigrations;
+app._initializeSchema = runMigrations;
+
 /**
  * Start the server
  */
 async function startServer() {
   try {
-    await initializeSchema();
     await maybeCreateAdmin();
 
     const server = require('http').createServer(app);
@@ -8743,7 +8042,11 @@ async function startServer() {
       console.log(`ListIt running at http://localhost:${PORT}`);
     });
   } catch (err) {
-    console.error('[Server] Failed to start:', err);
+    if (String(err?.message || '').includes('relation')) {
+      console.error('[Server] Failed to start: database schema missing. Run `npm run migrate:latest` before starting the server.');
+    } else {
+      console.error('[Server] Failed to start:', err);
+    }
     process.exit(1);
   }
 }

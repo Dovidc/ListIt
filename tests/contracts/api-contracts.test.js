@@ -37,7 +37,7 @@ function scrubAuthPayload(payload) {
 
 describe('API contracts', () => {
   beforeAll(async () => {
-    await app._initializeSchema();
+    await app._runMigrations();
   });
 
   beforeEach(async () => {

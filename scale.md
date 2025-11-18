@@ -17,6 +17,7 @@ This document summarizes the key issues identified in the current ListIt archite
 - Use a migration tool (Prisma Migrate, Knex, dbmate, or similar) that runs during CI/CD or deployment rather than at runtime.
 - Ensure migrations are idempotent and coordinated so that multiple application instances do not attempt the same DDL concurrently.
 - Remove `initializeSchema` from application boot to reduce startup latency and avoid race conditions.
+- **How:** Knex migrations now live in `/migrations`; run `npm run migrate:latest` locally before `npm start`, and add the same command to Render’s deploy hook so schema changes execute before new pods boot.
 - **Why:** Dedicated migration tooling validates schema changes in advance, provides rollback paths, and keeps boot time predictable so new instances can join the fleet quickly during scaling events.
 - **If skipped:** Each new replica would continue to run blocking DDL on startup, creating deployment races, potential table corruption, and multi-minute cold starts that prevent auto-scaling from reacting to traffic spikes.
 
