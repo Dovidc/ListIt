@@ -148,7 +148,7 @@ export function createApiClient(options = {}) {
     return request('/api/push/unsubscribe', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
+      body: JSON.stringify(subscription)
     }, meta);
   };
 
