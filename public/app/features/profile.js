@@ -996,7 +996,9 @@
       const [profileBgImageUploadError, setProfileBgImageUploadError] = useState('');
       const [profileCustomizationModalOpen, setProfileCustomizationModalOpen] = useState(false);
       const [profileCustomizationStatusMessage, setProfileCustomizationStatusMessage] = useState('');
-      const isPremiumUser = useMemo(() => user?.supporter_tier === 'premium' || user?.subscription_status === 'active', [user]);
+      const isPremiumUser = useMemo(() => {
+        return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
+      }, [premiumFreeForAll, user?.supporter_tier, user?.subscription_status]);
 
       useEffect(() => {
         if (!user) return;
@@ -1093,6 +1095,8 @@
         }
       }, [user?.id]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
+      const premiumFreeForAll = Boolean(user?.payments_disabled);
+      const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
           return null;
@@ -1123,7 +1127,7 @@
           onJoinSupporterProgram();
         }
       }, [onJoinSupporterProgram]);
-      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function';
+      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll;
       const visuallyHidden = {
         position: 'absolute',
         width: 1,
@@ -1409,15 +1413,15 @@
         console.log('Listing:', listing);
         console.log('Make sold?', makeSold);
         console.log('User object:', user);
-        console.log('User tier:', user?.supporter_tier);
+        console.log('User tier:', user?.supporter_tier, 'Premium free:', premiumFreeForAll);
         console.log('handleToggleSoldWithKarma called:', {
           listingId: listing?.id,
           makeSold,
           userTier: user?.supporter_tier,
-          willShowModal: makeSold && user?.supporter_tier === 'premium'
+          willShowModal: makeSold && isPremiumUser
         });
 
-        if (makeSold && user?.supporter_tier === 'premium') {
+        if (makeSold && isPremiumUser) {
           // Show karma modal for premium users when marking as sold
           console.log('Opening karma modal for listing:', listing.id);
           console.log('Setting karmaListingId to:', listing.id);
@@ -1547,7 +1551,20 @@
                     lineHeight: 1.45,
                     maxWidth: 280
                   }
-                }, 'Donate once to unlock a dazzling golden badge on every listing you share.')
+                }, 'Donate once to unlock a dazzling golden badge on every listing you share.'),
+                premiumFreeForAll && H('div', {
+                  className: 'muted',
+                  style: {
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    maxWidth: 320,
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    background: '#eef2ff',
+                    color: '#1e3a8a',
+                    fontWeight: 600
+                  }
+                }, premiumFreeNotice)
               )
             ),
           );

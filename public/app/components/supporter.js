@@ -165,7 +165,7 @@
       }, [open, onClose]);
     }
 
-    function SupporterInfoModal({ open, onClose, username, since, onJoin, isSelf = false }) {
+    function SupporterInfoModal({ open, onClose, username, since, onJoin, isSelf = false, paymentsDisabled = false }) {
       useModalLifecycle(open, onClose);
       if (!open) return null;
 
@@ -196,10 +196,13 @@
             H('h2', { className: 'supporter-modal__title' }, `${username || 'This user'} is a Trovelr Supporter`),
             sinceLabel && H('p', { className: 'supporter-modal__subtitle' }, `Backing Trovelr since ${sinceLabel}`),
             H('p', { className: 'supporter-modal__body' },
-              isSelf
-                ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
-                : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
+              paymentsDisabled
+                ? 'Premium perks are currently free for everyone while payments are paused.'
+                : isSelf
+                  ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
+                  : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
             ),
+            paymentsDisabled && H('div', { className: 'supporter-modal__notice' }, 'Supporter payments are disabled, so premium access is unlocked for the whole community.'),
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
                 type: 'button',
@@ -217,7 +220,7 @@
                       marginTop: 4
                     }
                   }, 'Already subscribed')
-                : typeof onJoin === 'function' && H('button', {
+                : (!paymentsDisabled && typeof onJoin === 'function') && H('button', {
                     type: 'button',
                     className: 'btn primary',
                     onClick: () => {
@@ -256,7 +259,9 @@
       currency,
       premiumAmount,
       selectedTier = 'premium',
-      onTierChange
+      onTierChange,
+      paymentsDisabled = false,
+      notice = ''
     }) {
       useModalLifecycle(open, onClose);
 
@@ -278,6 +283,10 @@
           onTierChange(tier);
         }
       };
+
+      const effectiveNotice = paymentsDisabled
+        ? (notice || 'Supporter payments are currently disabled, so premium perks are unlocked for everyone.')
+        : notice;
 
       return ReactDOM.createPortal(
         H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
@@ -345,6 +354,7 @@
               : H('p', { className: 'supporter-modal__body' },
                   'Thanks for supporting Trovelr and showing off the most exclusive badge on the platform!'
                 ),
+            effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
@@ -359,8 +369,8 @@
                 onClick: () => {
                   onJoin('premium');
                 },
-                disabled: busy
-              }, busy ? 'Redirecting…' : 'Subscribe')
+                disabled: busy || paymentsDisabled
+              }, paymentsDisabled ? 'Payments disabled' : (busy ? 'Redirecting…' : 'Subscribe'))
             )
           )
         ),
@@ -375,7 +385,8 @@
       onBuyerSelected,
       onSkip,
       busy = false,
-      error = ''
+      error = '',
+      premiumFreeForAll = false
     }) {
       const [buyers, setBuyers] = useState([]);
       const [loading, setLoading] = useState(false);
@@ -467,6 +478,7 @@
             H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
               'Select the buyer to award karma points. You\'ll get 1 point, they\'ll get 2 points.'
             ),
+            premiumFreeForAll && H('div', { className: 'supporter-modal__notice' }, 'Premium perks are unlocked for everyone right now, so awarding karma is available on every sale.'),
             loading
               ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')
               : buyers.length === 0

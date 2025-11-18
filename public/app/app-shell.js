@@ -168,6 +168,11 @@
 
     const App = React.memo(function AppComponent(){
       const { user, setUser, pushMeta } = useAuth();
+      const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
+      const premiumFreeForAll = Boolean(user?.payments_disabled);
+      const hasPremiumAccess = useMemo(() => {
+        return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
+      }, [premiumFreeForAll, user?.supporter_tier, user?.subscription_status]);
       const appView = useAppView({ user });
       const {
         tab,
@@ -207,7 +212,8 @@
         error: '',
         amount: SUPPORTER_DEFAULT_AMOUNT,
         currency: SUPPORTER_DEFAULT_CURRENCY,
-        selectedTier: 'basic'
+        selectedTier: 'basic',
+        notice: ''
       });
       const supporterQueryHandledRef = useRef(false);
 
@@ -230,13 +236,14 @@
           error: '',
           amount: prev.amount ?? SUPPORTER_DEFAULT_AMOUNT,
           currency: prev.currency || SUPPORTER_DEFAULT_CURRENCY,
-          selectedTier: 'basic'
+          selectedTier: 'basic',
+          notice: premiumFreeForAll ? premiumFreeNotice : ''
         }));
         setSupporterPromptSeen();
-      }, [setSupporterPromptSeen]);
+      }, [setSupporterPromptSeen, premiumFreeForAll, premiumFreeNotice]);
 
       const closeSupporterUpsell = useCallback(() => {
-        setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false }));
+        setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false, notice: '' }));
         setSupporterPromptSeen();
       }, [setSupporterPromptSeen]);
 
@@ -273,14 +280,19 @@
       }, [showSupporterPrompt, user?.supporter_badge]);
 
       const handleJoinSupporterProgram = useCallback(async (tier = 'basic') => {
-        setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '' }));
+        if (premiumFreeForAll) {
+          setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: premiumFreeNotice }));
+          return;
+        }
+        setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '', notice: '' }));
         try {
           const response = await api.startSupporterCheckout(tier);
           if (response && typeof response.amount !== 'undefined') {
             setSupporterUpsellState((prev) => ({
               ...prev,
               amount: Number.isFinite(Number(response.amount)) ? Number(response.amount) : prev.amount,
-              currency: response.currency || prev.currency
+              currency: response.currency || prev.currency,
+              notice: ''
             }));
           }
           if (response?.url) {
@@ -291,10 +303,14 @@
           }
           throw new Error(response?.error || 'Checkout unavailable');
         } catch (err) {
-          const message = err?.message || 'Could not start checkout.';
+          let message = err?.message || 'Could not start checkout.';
+          if (message === 'payments_disabled') {
+            setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: premiumFreeNotice }));
+            return;
+          }
           setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: message }));
         }
-      }, [api]);
+      }, [api, premiumFreeForAll, premiumFreeNotice]);
 
       const { ads, refreshAds } = useAds();
 
@@ -337,9 +353,9 @@
         console.log('Listing:', listing);
         console.log('Make sold?', makeSold);
         console.log('User:', user);
-        console.log('User tier:', user?.supporter_tier);
+        console.log('User has premium access:', hasPremiumAccess);
 
-        if (makeSold && user?.supporter_tier === 'premium') {
+        if (makeSold && hasPremiumAccess) {
           // Show karma modal for premium users when marking as sold
           console.log('Opening karma modal for listing:', listing.id);
           setKarmaListingId(listing.id);
@@ -351,7 +367,7 @@
           await toggleSold?.(listing, makeSold);
         }
         console.log('=== KARMA HANDLER (app-shell) END ===');
-      }, [user, toggleSold]);
+      }, [user, toggleSold, hasPremiumAccess]);
 
       const handleKarmaBuyerSelected = useCallback(async (result) => {
         setKarmaModalOpen(false);
@@ -465,7 +481,8 @@
             open: true,
             mode: 'success',
             busy: true,
-            error: ''
+            error: '',
+            notice: ''
           }));
           setSupporterPromptSeen();
           if (!sessionId) {
@@ -473,7 +490,8 @@
               ...prev,
               busy: false,
               mode: 'success',
-              error: 'We could not verify your supporter badge. Please contact support.'
+              error: 'We could not verify your supporter badge. Please contact support.',
+              notice: ''
             }));
             return;
           }
@@ -487,7 +505,8 @@
                 ...prev,
                 busy: false,
                 mode: 'success',
-                error: ''
+                error: '',
+                notice: ''
               }));
             } catch (err) {
               const message = err?.message || 'We could not confirm your supporter badge. Please try again.';
@@ -495,7 +514,8 @@
                 ...prev,
                 busy: false,
                 mode: 'success',
-                error: message
+                error: message,
+                notice: ''
               }));
             }
           })();
@@ -510,6 +530,7 @@
       useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         if (!user || user.supporter_badge) return undefined;
+        if (premiumFreeForAll) return undefined;
         if (supporterUpsellState.open || supporterInfoState.open) return undefined;
         if (tab !== 'browse') return undefined;
 
@@ -530,7 +551,7 @@
         return () => {
           window.clearTimeout(timer);
         };
-      }, [user, tab, supporterUpsellState.open, supporterInfoState.open, showSupporterPrompt]);
+      }, [user, tab, supporterUpsellState.open, supporterInfoState.open, showSupporterPrompt, premiumFreeForAll]);
 
       const mineById = useMemo(() => {
         const map = Object.create(null);
@@ -805,7 +826,8 @@
           username: supporterInfoState.username,
           since: supporterInfoState.since,
           isSelf: supporterInfoState.isSelf,
-          onJoin: handleSupporterInfoJoin
+          onJoin: handleSupporterInfoJoin,
+          paymentsDisabled: premiumFreeForAll
         }),
         H(SupporterUpsellModal, {
           open: supporterUpsellState.open,
@@ -818,7 +840,9 @@
           currency: supporterUpsellState.currency,
           premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
           selectedTier: supporterUpsellState.selectedTier,
-          onTierChange: handleTierChange
+          onTierChange: handleTierChange,
+          paymentsDisabled: premiumFreeForAll,
+          notice: supporterUpsellState.notice
         }),
 
         H(SelectBuyerModal, {
@@ -826,7 +850,8 @@
           onClose: handleKarmaModalClose,
           listingId: karmaListingId,
           onBuyerSelected: handleKarmaBuyerSelected,
-          onSkip: handleKarmaSkip
+          onSkip: handleKarmaSkip,
+          premiumFreeForAll
         }),
 
         H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
