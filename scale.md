@@ -31,6 +31,10 @@ This document summarizes the key issues identified in the current ListIt archite
 - **Why:** A distributed cache or key-value store lets any API instance validate tokens, enforce rate limits, and reuse expensive query results, providing consistent behavior regardless of which node handles the request.
 - **If skipped:** In-memory state will diverge between nodes, so users could receive a password-reset email from one instance and be unable to redeem it on another, while caches reset on each deploy and rate limits are easily bypassed.
 
+### Step 3 implementation progress
+- Added Redis-backed cache helpers (`lib/shared-cache.js`) and wired the nearby listings and reverse-geocode responses to use them, with per-key TTLs and a fallback LRU implementation for local development.
+- Created a Redis-powered Express rate-limit store (`lib/redis-rate-limit-store.js`) so login, write, upload, geocode, and user listing limits share counters across API replicas when `REDIS_URL` is configured.
+
 ## 4. Introduce background job queues
 - For Stripe webhooks, push notifications, and emails:
   - Accept the event synchronously, enqueue a job, and acknowledge the request quickly.
