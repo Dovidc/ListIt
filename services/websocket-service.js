@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const { MessageBus, TOPICS } = require('../lib/message-bus');
 
 class WebSocketService {
-  constructor(config, messageBus) {
+  constructor(config, messageBus, options = {}) {
     this.config = config;
     this.messageBus = messageBus;
 
@@ -24,6 +24,8 @@ class WebSocketService {
     // WebSocket server instance
     this.wss = null;
     this.server = null;
+    this.externalServer = options?.server || null;
+    this.ownsServer = !this.externalServer;
     this.heartbeatInterval = null;
     this.subscriptions = [];
 
@@ -42,28 +44,27 @@ class WebSocketService {
    */
   async start() {
     return new Promise((resolve, reject) => {
-      try {
-        // Create HTTP server for WebSocket
-        this.server = http.createServer();
+      const initialize = () => {
+        try {
+          this.wss = new WebSocket.Server({
+            server: this.server,
+            path: '/ws'
+          });
 
-        // Create WebSocket server
-        this.wss = new WebSocket.Server({
-          server: this.server,
-          path: '/ws'
-        });
+          // Setup error handler
+          this.wss.on('error', (error) => {
+            console.error('[WebSocket] Server error:', error);
+          });
 
-        // Setup error handler
-        this.wss.on('error', (error) => {
-          console.error('[WebSocket] Server error:', error);
-        });
+          // Setup connection handler
+          this.wss.on('connection', this.handleConnection);
 
-        // Setup connection handler
-        this.wss.on('connection', this.handleConnection);
-
-        // Start listening
-        const port = this.config.WEBSOCKET_PORT || 3002;
-        this.server.listen(port, () => {
-          console.log(`[WebSocket] Service listening on port ${port}`);
+          const port = this.config.WEBSOCKET_PORT || 3002;
+          if (this.ownsServer) {
+            console.log(`[WebSocket] Service listening on port ${port}`);
+          } else {
+            console.log('[WebSocket] Service attached to existing HTTP server');
+          }
 
           // Setup heartbeat to detect stale connections
           if (!this.config.IS_TEST) {
@@ -75,14 +76,31 @@ class WebSocketService {
           );
 
           resolve();
-        });
+        } catch (err) {
+          console.error('[WebSocket] Failed to start service:', err);
+          reject(err);
+        }
+      };
+
+      try {
+        if (this.externalServer) {
+          this.server = this.externalServer;
+          initialize();
+          return;
+        }
+
+        // Create HTTP server for WebSocket when running standalone
+        this.server = http.createServer();
+
+        // Start listening
+        const port = this.config.WEBSOCKET_PORT || 3002;
+        this.server.listen(port, initialize);
 
         // Setup server error handler
         this.server.on('error', (err) => {
           console.error('[WebSocket] HTTP server error:', err);
           reject(err);
         });
-
       } catch (err) {
         console.error('[WebSocket] Failed to start service:', err);
         reject(err);
@@ -119,14 +137,15 @@ class WebSocketService {
           ws.close(1001, 'Server shutting down');
         });
 
-        // Close server
-        if (this.server) {
-          this.server.close(() => {
-            console.log('[WebSocket] Service stopped');
-            resolve();
-          });
-        } else {
+        const finalize = () => {
+          console.log('[WebSocket] Service stopped');
           resolve();
+        };
+
+        if (this.server && this.ownsServer) {
+          this.server.close(finalize);
+        } else {
+          finalize();
         }
       } else {
         resolve();
@@ -324,8 +343,8 @@ class WebSocketService {
 /**
  * Create and export WebSocket service
  */
-async function createWebSocketService(config, messageBus) {
-  const service = new WebSocketService(config, messageBus);
+async function createWebSocketService(config, messageBus, options = {}) {
+  const service = new WebSocketService(config, messageBus, options);
   return service;
 }
 

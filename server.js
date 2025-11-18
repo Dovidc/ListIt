@@ -156,6 +156,8 @@ app.use((req, _res, next) => {
   next();
 });
 
+const EMBED_WEBSOCKET = process.env.EMBED_WEBSOCKET !== 'false';
+
 function getAppMessageBus(req) {
   if (req && req.messageBus) return req.messageBus;
   return app.locals.messageBus || fallbackMessageBus;
@@ -8038,8 +8040,35 @@ async function startServer() {
     await maybeCreateAdmin();
 
     const server = require('http').createServer(app);
+    let embeddedWebSocket = null;
+
+    if (EMBED_WEBSOCKET) {
+      try {
+        const { createWebSocketService } = require('./services/websocket-service');
+        const wsConfig = {
+          JWT_SECRET,
+          WEBSOCKET_PORT: Number(process.env.WEBSOCKET_PORT || PORT),
+          NODE_ENV: process.env.NODE_ENV || 'development',
+          IS_TEST
+        };
+        embeddedWebSocket = await createWebSocketService(wsConfig, fallbackMessageBus, { server });
+        app._embeddedWebSocket = embeddedWebSocket;
+      } catch (err) {
+        console.error('[Server] Failed to initialize embedded WebSocket service:', err);
+      }
+    }
+
     server.listen(PORT, () => {
       console.log(`ListIt running at http://localhost:${PORT}`);
+      if (embeddedWebSocket) {
+        embeddedWebSocket.start()
+          .then(() => {
+            console.log('[Server] WebSocket endpoint ready at /ws');
+          })
+          .catch((err) => {
+            console.error('[Server] Failed to start embedded WebSocket service:', err);
+          });
+      }
     });
   } catch (err) {
     if (String(err?.message || '').includes('relation')) {
