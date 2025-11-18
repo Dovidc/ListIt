@@ -88,6 +88,13 @@
         handleSeedListings,
         handleDeleteSeedListings,
         seedActionsDisabled,
+        paymentsDisabled,
+        paymentsLoading,
+        paymentsSaving,
+        paymentsUpdatedAt,
+        paymentsError,
+        loadPaymentsStatus,
+        handleUpdatePayments,
         loadUser,
         handleStatusChange,
         handleViewUserFromTop,
@@ -145,6 +152,17 @@
           alert('Allow pop-ups to open the ad preview.');
         }
       }, [adForm?.target_url]);
+
+      const handlePaymentsToggleClick = useCallback(() => {
+        handleUpdatePayments(!paymentsDisabled);
+      }, [handleUpdatePayments, paymentsDisabled]);
+
+      const paymentsStatusText = paymentsDisabled
+        ? 'Payments are disabled. Premium features are free for everyone.'
+        : 'Payments are enabled. Premium features require a supporter subscription.';
+
+      const togglePaymentsLabel = paymentsDisabled ? 'Enable payments' : 'Disable payments';
+      const togglePaymentsClass = paymentsDisabled ? 'btn primary' : 'btn danger';
 
       const userSummary = selectedUser ? H('div', { style: { display: 'grid', gap: 8 } },
         H('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
@@ -231,7 +249,8 @@
           H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
           H('button', { className: `btn ${tab === 'flagged' ? 'primary' : ''}`, onClick: () => setTab('flagged') }, 'Flagged'),
           H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
-          H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing')
+          H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing'),
+          H('button', { className: `btn ${tab === 'settings' ? 'primary' : ''}`, onClick: () => setTab('settings') }, 'Settings')
         ),
 
         tab === 'users' && H('div', { style: { display: 'grid', gap: 16 } },
@@ -673,6 +692,34 @@
             H('button', { className: 'btn primary', onClick: handleSeedListings, disabled: seedActionsDisabled }, seedBusy ? 'Seeding…' : 'Seed listings'),
             H('button', { className: 'btn danger', onClick: handleDeleteSeedListings, disabled: seedActionsDisabled }, seedDeleteBusy ? 'Deleting…' : 'Delete seeded listings')
           )
+        ),
+
+        tab === 'settings' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+            H('h3', { style: { margin: 0, fontSize: 18 } }, 'Payment settings'),
+            H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
+              H('button', {
+                className: 'btn',
+                type: 'button',
+                onClick: loadPaymentsStatus,
+                disabled: paymentsLoading
+              }, paymentsLoading ? 'Refreshing…' : 'Refresh status'),
+              H('button', {
+                className: togglePaymentsClass,
+                type: 'button',
+                onClick: handlePaymentsToggleClick,
+                disabled: paymentsSaving || paymentsLoading
+              }, paymentsSaving ? 'Saving…' : togglePaymentsLabel)
+            )
+          ),
+          paymentsError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, paymentsError),
+          H('div', { style: { display: 'grid', gap: 8 } },
+            H('div', { style: { fontWeight: 600, fontSize: 16 } }, paymentsDisabled ? 'Payments disabled' : 'Payments enabled'),
+            H('div', { className: 'muted', style: { fontSize: 13 } }, paymentsStatusText),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, paymentsUpdatedAt ? `Last updated: ${formatDateTime(paymentsUpdatedAt)}` : 'Last updated: --'),
+            paymentsLoading && H('div', { className: 'muted', style: { fontSize: 12 } }, 'Loading latest setting…')
+          ),
+          H('div', { className: 'muted', style: { fontSize: 13 } }, 'When payments are disabled, Stripe checkout is unavailable and Premium features such as profile customization and karma awards are unlocked for everyone.')
         )
       );
     }

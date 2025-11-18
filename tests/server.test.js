@@ -92,6 +92,21 @@ async function resetDb() {
   }
 }
 
+async function createAdminAgent({ email = 'admin@test.com', password = 'secret1', username = 'adminUser' } = {}) {
+  const agent = request.agent(app);
+  const user = await registerAndVerify(agent, { email, password, username });
+  await db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(user.id);
+  await agent.post('/api/login').send({ email, password });
+  return agent;
+}
+
+async function setPaymentsDisabled(agent, disabled = true) {
+  const res = await agent.post('/api/admin/payments').send({ disabled });
+  expect(res.status).toBe(200);
+  expect(res.body.payments_disabled).toBe(Boolean(disabled));
+  return res.body;
+}
+
 beforeAll(async () => {
   await app._runMigrations();
 });
@@ -346,6 +361,75 @@ describe('Supporter metadata', () => {
     expect(row.supporter_badge).toBe('trovelr_platinum');
     expect(row.stripe_subscription_id).toBe('sub_123');
     expect(row.subscription_status).toBe('active');
+  });
+});
+
+describe('Payments admin controls', () => {
+  it('allows profile customization for everyone when payments are disabled', async () => {
+    await resetDb();
+
+    const admin = await createAdminAgent();
+    await setPaymentsDisabled(admin, true);
+
+    const member = request.agent(app);
+    await registerAndVerify(member, { email: 'member@test.com', password: 'secret1', username: 'memberUser' });
+
+    const res = await member.put('/api/me/profile-customization').send({
+      profile_avatar_border_color: '#abcdef',
+      profile_avatar_border_style: 'solid',
+      profile_bg_image_url: 'https://example-bucket.s3.amazonaws.com/banner.jpg'
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.profile_bg_image_url).toContain('example-bucket');
+  });
+
+  it('awards karma to non-premium users when payments are disabled', async () => {
+    await resetDb();
+
+    const admin = await createAdminAgent({ email: 'karma-admin@test.com', username: 'karmaAdmin' });
+    await setPaymentsDisabled(admin, true);
+
+    const seller = request.agent(app);
+    const buyer = request.agent(app);
+
+    await registerAndVerify(seller, { email: 'seller-premium@test.com', password: 'secret1', username: 'karmaSeller' });
+    const buyerUser = await registerAndVerify(buyer, { email: 'buyer-premium@test.com', password: 'secret1', username: 'karmaBuyer' });
+
+    const uploadToken = await uploadTestImage(seller);
+    const listingRes = await seller.post('/api/listings').send({
+      title: 'Vintage console',
+      description: 'Works fine',
+      location: 'Austin, TX',
+      price: 150,
+      upload_tokens: [uploadToken]
+    });
+
+    expect(listingRes.status).toBe(200);
+    const listingId = listingRes.body.id;
+
+    const karmaRes = await seller.post(`/api/listings/${listingId}/award-karma`).send({ buyer_id: buyerUser.id });
+    expect(karmaRes.status).toBe(200);
+    expect(karmaRes.body.awarded).toBe(true);
+    expect(karmaRes.body.user.karma).toBe(1);
+
+    const buyerRow = await db.prepare('SELECT karma FROM users WHERE id = ?').get(buyerUser.id);
+    expect(buyerRow.karma).toBe(2);
+  });
+
+  it('blocks supporter checkout while payments are disabled', async () => {
+    await resetDb();
+
+    const admin = await createAdminAgent({ email: 'billing-admin@test.com', username: 'billingAdmin' });
+    await setPaymentsDisabled(admin, true);
+
+    const customer = request.agent(app);
+    await registerAndVerify(customer, { email: 'customer@test.com', password: 'secret1', username: 'customerUser' });
+
+    const res = await customer.post('/api/supporters/checkout').send({ tier: 'premium' });
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'payments_disabled' });
   });
 });
 

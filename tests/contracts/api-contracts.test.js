@@ -83,6 +83,7 @@ describe('API contracts', () => {
   "id": "[id]",
   "is_admin": false,
   "last_login_at": "[iso]",
+  "payments_disabled": false,
   "push_meta": {
     "available": false,
     "vapid_public_key": null,

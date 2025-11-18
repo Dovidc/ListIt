@@ -82,6 +82,11 @@
       const [seedMessage, setSeedMessage] = useState('');
       const [seedError, setSeedError] = useState('');
       const [seedCount, setSeedCount] = useState('');
+      const [paymentsDisabled, setPaymentsDisabled] = useState(false);
+      const [paymentsLoading, setPaymentsLoading] = useState(false);
+      const [paymentsSaving, setPaymentsSaving] = useState(false);
+      const [paymentsError, setPaymentsError] = useState('');
+      const [paymentsUpdatedAt, setPaymentsUpdatedAt] = useState(null);
 
       const searchTimer = useRef(null);
 
@@ -212,6 +217,40 @@
           loadAds();
         }
       }, [tab, loadAds]);
+
+      const loadPaymentsStatus = useCallback(async () => {
+        setPaymentsLoading(true);
+        setPaymentsError('');
+        try {
+          const result = await api.adminGetPaymentsStatus({ silent: true });
+          setPaymentsDisabled(Boolean(result?.payments_disabled));
+          setPaymentsUpdatedAt(result?.updated_at || null);
+        } catch (err) {
+          setPaymentsError(err?.message || 'Failed to load payment settings');
+        } finally {
+          setPaymentsLoading(false);
+        }
+      }, [api]);
+
+      const handleUpdatePayments = useCallback(async (nextDisabled) => {
+        setPaymentsSaving(true);
+        setPaymentsError('');
+        try {
+          const result = await api.adminSetPaymentsStatus(Boolean(nextDisabled), { silent: true });
+          setPaymentsDisabled(Boolean(result?.payments_disabled));
+          setPaymentsUpdatedAt(result?.updated_at || null);
+        } catch (err) {
+          setPaymentsError(err?.message || 'Failed to update payment settings');
+        } finally {
+          setPaymentsSaving(false);
+        }
+      }, [api]);
+
+      useEffect(() => {
+        if (tab === 'settings') {
+          loadPaymentsStatus();
+        }
+      }, [tab, loadPaymentsStatus]);
 
       const handleStatusChange = useCallback(async (status) => {
         if (!selectedUser) return;
@@ -463,6 +502,13 @@
         handleSeedListings,
         handleDeleteSeedListings,
         seedActionsDisabled,
+        paymentsDisabled,
+        paymentsLoading,
+        paymentsSaving,
+        paymentsUpdatedAt,
+        paymentsError,
+        loadPaymentsStatus,
+        handleUpdatePayments,
         loadUser,
         handleStatusChange,
         handleViewUserFromTop,

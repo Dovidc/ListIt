@@ -121,6 +121,13 @@ const stripe = (Stripe && process.env.STRIPE_SECRET_KEY)
     })
   : null;
 
+const APP_SETTING_KEYS = {
+  PAYMENTS_DISABLED: 'payments_disabled'
+};
+
+const SETTINGS_CACHE_TTL_MS = 30_000;
+const appSettingsCache = new Map();
+
 function getOpenAIClient() {
 
   if (!process.env.OPENAI_API_KEY || !OpenAI) return null;
@@ -994,6 +1001,63 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+function parseBooleanSetting(value) {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  return Boolean(value);
+}
+
+async function getAppSettingValue(key, { useCache = true } = {}) {
+  const cacheEntry = appSettingsCache.get(key);
+  if (useCache && cacheEntry && cacheEntry.expiresAt > Date.now()) {
+    return cacheEntry;
+  }
+
+  const row = await db.prepare('SELECT value, updated_at FROM app_settings WHERE key = ?').get(key);
+  const defaultValue = key === APP_SETTING_KEYS.PAYMENTS_DISABLED ? '0' : null;
+  const value = row?.value ?? defaultValue;
+  const entry = {
+    value,
+    updatedAt: row?.updated_at || null,
+    expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS
+  };
+
+  if (useCache) {
+    appSettingsCache.set(key, entry);
+  }
+
+  return entry;
+}
+
+function invalidateSettingCache(key) {
+  appSettingsCache.delete(key);
+}
+
+async function setAppSettingValue(key, value) {
+  const updatedAt = nowIso();
+  await db.prepare(`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(key, value, updatedAt);
+  invalidateSettingCache(key);
+  return { value, updated_at: updatedAt };
+}
+
+async function getPaymentsSetting(options = {}) {
+  const entry = await getAppSettingValue(APP_SETTING_KEYS.PAYMENTS_DISABLED, options);
+  return { disabled: parseBooleanSetting(entry.value), updated_at: entry.updatedAt };
+}
+
+async function arePaymentsDisabled(options = {}) {
+  const setting = await getPaymentsSetting(options);
+  return setting.disabled;
+}
 
 function hashValue(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -1983,6 +2047,11 @@ function mapUserRow(row, extra = {}) {
 
 }
 
+async function mapUserWithPayments(row, extra = {}) {
+  const paymentsDisabled = await arePaymentsDisabled();
+  return mapUserRow(row, { ...extra, payments_disabled: paymentsDisabled });
+}
+
 
 
 function isLockedAccount(user) {
@@ -2053,7 +2122,7 @@ async function auth(req, res, next) {
 
 
 
-    req.user = mapUserRow(row);
+    req.user = await mapUserWithPayments(row);
 
     next();
 
@@ -2248,7 +2317,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       const now = nowIso();
       await db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, row.id);
 
-      const user = mapUserRow(row, { last_login_at: now });
+      const user = await mapUserWithPayments(row, { last_login_at: now });
       const token = setAuthCookie(res, { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin, account_status: user.account_status });
       return sendSchema(res, validateAuthResponse, { ...user, token, push_meta: publicPushMeta() });
     }
@@ -2288,7 +2357,7 @@ app.post('/api/register/verify', writeLimiter, validateBody(validateVerifyRegist
       return res.status(403).json({ error: 'account_banned' });
     }
 
-    const user = mapUserRow(row, {
+    const user = await mapUserWithPayments(row, {
       account_status: accountStatus,
       last_login_at: now
     });
@@ -2364,7 +2433,7 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
 
 
-    const user = mapUserRow(row, {
+    const user = await mapUserWithPayments(row, {
 
       account_status: accountStatus,
 
@@ -2547,7 +2616,7 @@ app.get('/api/me', async (req, res) => {
 
     
 
-    const user = mapUserRow(row, {
+    const user = await mapUserWithPayments(row, {
       paypal_email: row.paypal_email,
       location_preset: row.location_preset,
       push_meta: publicPushMeta()
@@ -2691,7 +2760,10 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
 
     // Check if user is premium subscriber
     const userRow = await db.prepare('SELECT subscription_status, supporter_tier FROM users WHERE id = ?').get(req.user.id);
-    const isPremium = userRow?.subscription_status === 'active' || userRow?.supporter_tier === 'premium';
+    const paymentsDisabled = Boolean(req.user?.payments_disabled);
+    const isPremium = paymentsDisabled
+      || userRow?.subscription_status === 'active'
+      || userRow?.supporter_tier === 'premium';
 
     if (!isPremium) {
       return res.status(403).json({ error: 'Profile customization is only available for premium subscribers' });
@@ -2845,14 +2917,19 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
     }
 
     // Get buyer info
-    const buyer = await db.prepare('SELECT id, supporter_tier FROM users WHERE id = ?').get(buyerId);
+    const buyer = await db.prepare('SELECT id, supporter_tier, subscription_status FROM users WHERE id = ?').get(buyerId);
     if (!buyer) {
       return res.status(404).json({ error: 'Buyer not found' });
     }
 
     // Check if both users are premium subscribers
-    const sellerIsPremium = req.user.supporter_tier === 'premium';
-    const buyerIsPremium = buyer.supporter_tier === 'premium';
+    const paymentsDisabled = Boolean(req.user?.payments_disabled);
+    const sellerIsPremium = paymentsDisabled
+      || req.user.supporter_tier === 'premium'
+      || req.user.subscription_status === 'active';
+    const buyerIsPremium = paymentsDisabled
+      || buyer.supporter_tier === 'premium'
+      || buyer.subscription_status === 'active';
     const shouldAward = sellerIsPremium && buyerIsPremium;
 
     const sellerPoints = 1;
@@ -2872,7 +2949,7 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
 
     // Get updated user
     const refreshed = await getUserWithStatus(req.user.id);
-    const user = mapUserRow(refreshed);
+    const user = await mapUserWithPayments(refreshed);
 
     res.json({
       success: true,
@@ -2894,13 +2971,17 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
 
 app.post('/api/supporters/checkout', auth, async (req, res) => {
 
-  if (!stripe) {
-
-    return res.status(503).json({ error: 'stripe_unavailable' });
-
-  }
-
   try {
+
+    if (await arePaymentsDisabled()) {
+      return res.status(503).json({ error: 'payments_disabled' });
+    }
+
+    if (!stripe) {
+
+      return res.status(503).json({ error: 'stripe_unavailable' });
+
+    }
 
     const tier = String(req.body?.tier || 'basic').toLowerCase();
 
@@ -3166,7 +3247,7 @@ app.post('/api/supporters/confirm', auth, async (req, res) => {
 
     const refreshed = await getUserWithStatus(req.user.id);
 
-    const user = mapUserRow(refreshed);
+    const user = await mapUserWithPayments(refreshed);
 
     req.user = user;
 
@@ -3214,7 +3295,7 @@ app.post('/api/supporters/cancel', auth, async (req, res) => {
 
     const refreshed = await getUserWithStatus(req.user.id);
 
-    const user = mapUserRow(refreshed);
+    const user = await mapUserWithPayments(refreshed);
 
     return res.json({ success: true, user });
 
@@ -7931,6 +8012,38 @@ app.delete('/api/admin/listings', auth, requireAdmin, async (_req, res) => {
 
 });
 
+app.get('/api/admin/payments', auth, requireAdmin, async (_req, res) => {
+  try {
+    const setting = await getPaymentsSetting({ useCache: false });
+    return res.json({ payments_disabled: setting.disabled, updated_at: setting.updated_at });
+  } catch (err) {
+    console.error('Admin payments settings fetch failed:', err);
+    return res.status(500).json({ error: 'admin_payments_failed' });
+  }
+});
+
+app.post('/api/admin/payments', auth, requireAdmin, async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'disabled_required' });
+    }
+    const rawValue = req.body.disabled;
+    if (typeof rawValue === 'undefined') {
+      return res.status(400).json({ error: 'disabled_required' });
+    }
+    const normalized = typeof rawValue === 'string'
+      ? parseBooleanSetting(rawValue)
+      : Boolean(rawValue);
+    const value = normalized ? '1' : '0';
+    const result = await setAppSettingValue(APP_SETTING_KEYS.PAYMENTS_DISABLED, value);
+    const latest = await getPaymentsSetting({ useCache: false });
+    return res.json({ payments_disabled: latest.disabled, updated_at: result.updated_at });
+  } catch (err) {
+    console.error('Admin payments update failed:', err);
+    return res.status(500).json({ error: 'admin_payments_failed' });
+  }
+});
+
 
 
 if (IS_TEST) {
@@ -7948,13 +8061,20 @@ if (IS_TEST) {
         'seller_reports',
         'listings',
         'listing_cities',
-        'users'
+        'users',
+        'app_settings'
       ];
 
       await db.exec(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE;`);
 
       if (mailService.__reset) mailService.__reset();
       await invalidateNearbyCache();
+
+      await db.prepare(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `).run(APP_SETTING_KEYS.PAYMENTS_DISABLED, '0', nowIso());
 
       res.json({ ok: true });
 

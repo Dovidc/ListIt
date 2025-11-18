@@ -139,7 +139,7 @@ export function createApiClient(options = {}) {
     return request('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
+      body: JSON.stringify(subscription)
     }, meta);
   };
 
@@ -148,7 +148,7 @@ export function createApiClient(options = {}) {
     return request('/api/push/unsubscribe', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription })
+      body: JSON.stringify(subscription)
     }, meta);
   };
 
@@ -395,6 +395,14 @@ export function createApiClient(options = {}) {
     }, meta);
   };
 
+  const adminGetPaymentsStatus = (meta) => request('/api/admin/payments', { method: 'GET' }, meta);
+
+  const adminSetPaymentsStatus = (disabled, meta) => request('/api/admin/payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled })
+  }, meta);
+
   const signUpload = ({ filename, contentType, bytes }, meta) => request('/api/uploads/sign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -473,6 +481,8 @@ export function createApiClient(options = {}) {
     adminUpdateUserStatus,
     adminTopReports,
     adminClearUserReports,
+    adminGetPaymentsStatus,
+    adminSetPaymentsStatus,
     signUpload,
     finalizeUpload
   };

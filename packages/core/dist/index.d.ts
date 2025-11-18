@@ -61,6 +61,8 @@ export interface ApiClient {
   adminUpdateUserStatus(id: number | string, payload?: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
   adminTopReports(params?: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
   adminClearUserReports(id: number | string, payload?: Record<string, unknown>, meta?: RequestMeta): Promise<unknown>;
+  adminGetPaymentsStatus(meta?: RequestMeta): Promise<unknown>;
+  adminSetPaymentsStatus(disabled: boolean | string | number, meta?: RequestMeta): Promise<unknown>;
   signUpload(args: { filename: string; contentType: string; bytes: number }, meta?: RequestMeta): Promise<unknown>;
   finalizeUpload(args: { listingId?: number; key?: string; url?: string; width?: number | null; height?: number | null; bytes?: number | null }, meta?: RequestMeta): Promise<unknown>;
 }
