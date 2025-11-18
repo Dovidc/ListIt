@@ -78,6 +78,8 @@ const mailService = require('./mail-service');
 const { createMessageBus, TOPICS } = require('./lib/message-bus');
 const pushService = require('./lib/push-service');
 const { runMigrations } = require('./lib/run-migrations');
+const { createSharedCache } = require('./lib/shared-cache');
+const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -373,79 +375,11 @@ const NEARBY_CACHE_TTL_MS = Number(process.env.NEARBY_CACHE_TTL_MS || 20000);
 
 const NEARBY_CACHE_MAX = Number(process.env.NEARBY_CACHE_MAX || 200);
 
-// Simple LRU Cache implementation to prevent memory leaks
-class LRUCache {
-  constructor(maxSize, ttlMs = null) {
-    this.maxSize = maxSize;
-    this.ttlMs = ttlMs;
-    this.cache = new Map(); // Map maintains insertion order
-  }
-
-  has(key) {
-    if (!this.cache.has(key)) return false;
-
-    const item = this.cache.get(key);
-
-    // Check TTL if enabled
-    if (this.ttlMs && Date.now() - item.timestamp > this.ttlMs) {
-      this.cache.delete(key);
-      return false;
-    }
-
-    return true;
-  }
-
-  get(key) {
-    if (!this.cache.has(key)) return undefined;
-
-    const item = this.cache.get(key);
-
-    // Check TTL if enabled
-    if (this.ttlMs && Date.now() - item.timestamp > this.ttlMs) {
-      this.cache.delete(key);
-      return undefined;
-    }
-
-    // Move to end (most recently used)
-    this.cache.delete(key);
-    this.cache.set(key, item);
-
-    return item.value;
-  }
-
-  set(key, value) {
-    // Delete if exists (to update position)
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    }
-
-    // Evict oldest if at capacity
-    if (this.cache.size >= this.maxSize) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
-    }
-
-    // Add new item
-    this.cache.set(key, {
-      value,
-      timestamp: Date.now()
-    });
-  }
-
-  delete(key) {
-    return this.cache.delete(key);
-  }
-
-  clear() {
-    this.cache.clear();
-  }
-
-  get size() {
-    return this.cache.size;
-  }
-}
-
-const nearbyCache = new LRUCache(NEARBY_CACHE_MAX, NEARBY_CACHE_TTL_MS);
+const nearbyCache = createSharedCache({
+  prefix: 'nearby-listings',
+  ttlMs: NEARBY_CACHE_TTL_MS,
+  maxSize: NEARBY_CACHE_MAX
+});
 
 const ADMIN_REPORT_MIN = Math.max(1, Number(process.env.ADMIN_REPORT_MIN || 1));
 
@@ -563,18 +497,29 @@ function makeNearbyCacheKey(lat, lon, radius) {
 
 }
 
-function getNearbyCache(key) {
-  // LRU cache handles TTL automatically
-  return nearbyCache.get(key) || null;
+async function getNearbyCache(key) {
+  try {
+    return (await nearbyCache.get(key)) || null;
+  } catch (err) {
+    console.warn('[nearby-cache] get failed:', err?.message || err);
+    return null;
+  }
 }
 
-function setNearbyCache(key, value) {
-  // LRU cache handles eviction automatically
-  nearbyCache.set(key, value);
+async function setNearbyCache(key, value) {
+  try {
+    await nearbyCache.set(key, value);
+  } catch (err) {
+    console.warn('[nearby-cache] set failed:', err?.message || err);
+  }
 }
 
-function invalidateNearbyCache() {
-  nearbyCache.clear();
+async function invalidateNearbyCache() {
+  try {
+    await nearbyCache.clear();
+  } catch (err) {
+    console.warn('[nearby-cache] clear failed:', err?.message || err);
+  }
 }
 
 
@@ -2140,19 +2085,26 @@ function requireAdmin(req, res, next) {
 
 /* ------------------------------------------------------------------ */
 
-function mkLimiter(cfg) {
+function mkLimiter(cfg, name) {
 
-  return rateLimit ? rateLimit({ ...cfg, standardHeaders: true, legacyHeaders: false }) : (req,res,next)=>next();
+  if (!rateLimit) return (req, res, next) => next();
+
+  const options = { ...cfg, standardHeaders: true, legacyHeaders: false };
+  const store = createRateLimitStore({ name, windowMs: cfg.windowMs });
+  if (store) {
+    options.store = store;
+  }
+  return rateLimit(options);
 
 }
 
-const loginLimiter = mkLimiter({ windowMs: 15*60*1000, max: 20 });
+const loginLimiter = mkLimiter({ windowMs: 15*60*1000, max: 20 }, 'login');
 
-const writeLimiter = mkLimiter({ windowMs: 60*1000, max: 60 });
+const writeLimiter = mkLimiter({ windowMs: 60*1000, max: 60 }, 'write');
 
-const uploadLimiter = mkLimiter({ windowMs: 10*60*1000, max: 120 });
+const uploadLimiter = mkLimiter({ windowMs: 10*60*1000, max: 120 }, 'upload');
 
-const geocodeLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
+const geocodeLimiter = mkLimiter({ windowMs: 60*1000, max: 30 }, 'geocode');
 
 
 
@@ -2218,7 +2170,7 @@ async function maybeCreateAdmin() {
 
 }
 
-const userListingsLimiter = mkLimiter({ windowMs: 60*1000, max: 30 });
+const userListingsLimiter = mkLimiter({ windowMs: 60*1000, max: 30 }, 'user-listings');
 
 /* ------------------------------------------------------------------ */
 
@@ -4397,7 +4349,7 @@ app.post(
 
     }
 
-    invalidateNearbyCache();
+    await invalidateNearbyCache();
 
     if (row) {
       await publishBackgroundEvent(TOPICS.NEARBY_LISTING_AVAILABLE, { listing: row }, { req });
@@ -4868,7 +4820,7 @@ app.put(
 
 
 
-    invalidateNearbyCache();
+    await invalidateNearbyCache();
 
     return sendSchema(res, validateListingResponse, row);
 
@@ -4912,7 +4864,7 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     try { await decrementCityCount(existing.location); } catch {}
 
-    invalidateNearbyCache();
+    await invalidateNearbyCache();
 
     res.json({ ok: true });
 
@@ -4988,7 +4940,7 @@ app.get('/api/listings/nearby', async (req, res) => {
 
     const cacheKey = makeNearbyCacheKey(lat0, lon0, radius);
 
-    const cached = getNearbyCache(cacheKey);
+    const cached = await getNearbyCache(cacheKey);
 
     if (cached) {
 
@@ -5154,7 +5106,7 @@ app.get('/api/listings/nearby', async (req, res) => {
 
 
 
-    setNearbyCache(cacheKey, out);
+    await setNearbyCache(cacheKey, out);
 
     res.set('X-Nearby-Cache', 'MISS');
 
@@ -6799,7 +6751,11 @@ app.delete('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 // LRU cache with 1000 entries max and 24 hour TTL to prevent unbounded growth
 const GEO_CACHE_MAX = 1000;
 const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const geoCache = new LRUCache(GEO_CACHE_MAX, GEO_CACHE_TTL_MS);
+const geoCache = createSharedCache({
+  prefix: 'reverse-geocode',
+  ttlMs: GEO_CACHE_TTL_MS,
+  maxSize: GEO_CACHE_MAX
+});
 
 app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
@@ -6829,7 +6785,13 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 
-    if (geoCache.has(key)) return res.json(geoCache.get(key));
+    let cached = null;
+    try {
+      cached = await geoCache.get(key);
+    } catch (err) {
+      console.warn('[reverse-geocode-cache] get failed:', err?.message || err);
+    }
+    if (cached) return res.json(cached);
 
 
 
@@ -6871,7 +6833,11 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
       const out = { city: '', state: '', country: '', display: key, lat, lon };
 
-      geoCache.set(key, out);
+      try {
+        await geoCache.set(key, out);
+      } catch (err) {
+        console.warn('[reverse-geocode-cache] set failed:', err?.message || err);
+      }
 
       return res.json(out);
 
@@ -6930,7 +6896,11 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
     const out = { city, state, country, display, lat, lon };
 
-    geoCache.set(key, out);
+    try {
+      await geoCache.set(key, out);
+    } catch (err) {
+      console.warn('[reverse-geocode-cache] set failed:', err?.message || err);
+    }
 
     res.json(out);
 
@@ -7227,7 +7197,7 @@ async function deleteSeedListingsInternal() {
 
   await db.exec(`DELETE FROM listings WHERE id IN (${idList});`);
 
-  invalidateNearbyCache();
+  await invalidateNearbyCache();
 
   return ids.length;
 }
@@ -7317,7 +7287,7 @@ async function seedListingsInternal(requestedCount) {
     created += 1;
   }
 
-  invalidateNearbyCache();
+  await invalidateNearbyCache();
 
   return { created, sellerId };
 }
@@ -7376,7 +7346,7 @@ app.delete('/api/admin/listings/:id', auth, requireAdmin, async (req, res) => {
 
     const info = await db.prepare('DELETE FROM listings WHERE id = ?').run(id);
 
-    invalidateNearbyCache();
+    await invalidateNearbyCache();
 
     res.json({ ok: true, deleted: info.changes });
 
@@ -7942,7 +7912,7 @@ app.delete('/api/admin/listings', auth, requireAdmin, async (_req, res) => {
 
     await db.exec('DELETE FROM listing_images; DELETE FROM listings;');
 
-    invalidateNearbyCache();
+    await invalidateNearbyCache();
 
     res.json({ ok: true });
 
@@ -7979,7 +7949,7 @@ if (IS_TEST) {
       await db.exec(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE;`);
 
       if (mailService.__reset) mailService.__reset();
-      invalidateNearbyCache();
+      await invalidateNearbyCache();
 
       res.json({ ok: true });
 
