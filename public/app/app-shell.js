@@ -683,14 +683,14 @@
         return true;
       }
 
-      function handleMobileCaptureClick(kind) {
+      const handleMobileCaptureClick = useCallback((kind) => {
         if (!isMobile) return;
         if (!ensureCanCreate()) return;
         const ref = kind === 'camera' ? cameraInputRef.current : galleryInputRef.current;
         if (ref) {
           ref.click();
         }
-      }
+      }, [user, isMobile, ensureCanCreate, cameraInputRef, galleryInputRef]);
 
       function normalizeFiles(fileList) {
         const MAX_MB = 20;
@@ -791,7 +791,7 @@
           console.log('Opening camera directly');
           handleMobileCaptureClick('camera');
         }
-      }, [askCreateActionEnabled]);
+      }, [askCreateActionEnabled, handleMobileCaptureClick]);
 
       const mobileNavIcons = {
         browse: () => H('svg', {
