@@ -79,6 +79,7 @@ const { createMessageBus, TOPICS } = require('./lib/message-bus');
 const pushService = require('./lib/push-service');
 const { runMigrations } = require('./lib/run-migrations');
 const { createSharedCache } = require('./lib/shared-cache');
+const { getRedisClient } = require('./lib/redis-client');
 const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
 const {
   isPushAvailable,
@@ -129,6 +130,17 @@ const SETTINGS_CACHE_TTL_MS = 30_000;
 const OPENAI_TIMEOUT_MS = Math.max(1000, Number(process.env.OPENAI_TIMEOUT_MS || 6000));
 const appSettingsCache = new Map();
 
+const REQUIRED_TABLES = [
+  'users',
+  'listings',
+  'listing_images',
+  'conversations',
+  'messages',
+  'push_subscriptions',
+  'app_settings',
+  'flagged_attempts'
+];
+
 let appSettingsSchemaReady = false;
 let appSettingsSchemaPromise = null;
 
@@ -158,6 +170,61 @@ async function assertTableExists(tableName, requiredColumns = []) {
       throw new Error(`missing_columns:${tableName}:${missing.join(',')}`);
     }
   }
+}
+
+async function assertRequiredSchema() {
+  for (const table of REQUIRED_TABLES) {
+    await assertTableExists(table);
+  }
+}
+
+async function verifyDatabaseConnectivity() {
+  const row = await db.prepare('SELECT 1 AS ok').get();
+  if (!row || row.ok !== 1) {
+    throw new Error('db_unreachable');
+  }
+}
+
+async function checkRedisHealth() {
+  const redis = getRedisClient();
+  if (!redis) {
+    return { ok: false, reason: 'not_configured' };
+  }
+  try {
+    const pong = await redis.ping();
+    return { ok: pong === 'PONG' };
+  } catch (err) {
+    return { ok: false, reason: err?.message || 'redis_error' };
+  }
+}
+
+async function getDependencyHealth() {
+  const status = {
+    ok: true,
+    db: { ok: true },
+    redis: { ok: true }
+  };
+
+  try {
+    await verifyDatabaseConnectivity();
+    await assertRequiredSchema();
+  } catch (err) {
+    status.db = { ok: false, reason: err?.message || 'db_error' };
+    status.ok = false;
+  }
+
+  try {
+    const redisStatus = await checkRedisHealth();
+    status.redis = redisStatus;
+    if (!redisStatus.ok) {
+      status.ok = false;
+    }
+  } catch (err) {
+    status.redis = { ok: false, reason: err?.message || 'redis_error' };
+    status.ok = false;
+  }
+
+  return status;
 }
 
 async function ensureAppSettingsSchema() {
@@ -8233,6 +8300,15 @@ if (IS_TEST) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
+app.get('/api/health/deps', async (_req, res) => {
+  try {
+    const status = await getDependencyHealth();
+    res.status(status.ok ? 200 : 503).json(status);
+  } catch (err) {
+    res.status(503).json({ ok: false, error: err?.message || 'health_failed' });
+  }
+});
+
 
 
 app.use((err, _req, res, _next) => {
@@ -8256,6 +8332,7 @@ app._deps = {
   mailService,
   pushService
 };
+app._checkDependencies = getDependencyHealth;
 
 app._runMigrations = runMigrations;
 app._initializeSchema = runMigrations;
@@ -8265,6 +8342,8 @@ app._initializeSchema = runMigrations;
  */
 async function startServer() {
   try {
+    await verifyDatabaseConnectivity();
+    await assertRequiredSchema();
     await maybeCreateAdmin();
 
     const server = require('http').createServer(app);
