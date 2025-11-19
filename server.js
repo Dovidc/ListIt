@@ -99,26 +99,26 @@ const {
 
 
 
-let cors; try { cors = require('cors'); } catch {}
+let cors; try { cors = require('cors'); } catch { }
 
-let compression; try { compression = require('compression'); } catch {}
+let compression; try { compression = require('compression'); } catch { }
 
-let helmet; try { helmet = require('helmet'); } catch {}
+let helmet; try { helmet = require('helmet'); } catch { }
 
-let rateLimit; try { rateLimit = require('express-rate-limit'); } catch {}
+let rateLimit; try { rateLimit = require('express-rate-limit'); } catch { }
 
-let OpenAI; try { OpenAI = require('openai'); } catch {}
+let OpenAI; try { OpenAI = require('openai'); } catch { }
 let cachedOpenAIClient = null;
 
 let Stripe;
 try {
   Stripe = require('stripe');
-} catch {}
+} catch { }
 
 const stripe = (Stripe && process.env.STRIPE_SECRET_KEY)
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20'
-    })
+    apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20'
+  })
   : null;
 
 const APP_SETTING_KEYS = {
@@ -653,7 +653,7 @@ if (HAS_FRONTEND_ORIGIN && cors) {
 
     credentials: true,
 
-    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 
     allowedHeaders: ['Content-Type', 'Authorization'],
 
@@ -661,7 +661,7 @@ if (HAS_FRONTEND_ORIGIN && cors) {
 
   };
 
-   // Must come before your routes
+  // Must come before your routes
   app.use(cors(corsCfg));
 
   // Enable preflight across-the-board (fixes the path-to-regexp error)
@@ -710,11 +710,11 @@ if (helmet) {
 
       "connect-src": [
 
-        "'self'", 
+        "'self'",
 
-        "https://nominatim.openstreetmap.org", 
+        "https://nominatim.openstreetmap.org",
 
-        "https:", 
+        "https:",
 
         "wss:",
 
@@ -978,15 +978,15 @@ async function ensureFlaggedAttemptsSchema() {
       `);
       try {
         await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL');
-      } catch {}
-      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch {}
-      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch {}
+      } catch { }
+      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch { }
+      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch { }
       try {
         await db.exec('ALTER TABLE flagged_attempts ADD COLUMN flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-      } catch {}
+      } catch { }
       try {
         await db.exec('CREATE INDEX IF NOT EXISTS idx_flagged_attempts_flagged_at ON flagged_attempts(flagged_at DESC, id DESC)');
-      } catch {}
+      } catch { }
       flaggedSchemaReady = true;
     } catch (err) {
       flaggedSchemaReady = false;
@@ -1015,7 +1015,7 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
   if (Array.isArray(flagged) && flagged.length) {
     const normalized = normalizeFlaggedDetails(flagged);
     if (normalized.length) {
-      try { detailsJson = JSON.stringify(normalized); } catch {}
+      try { detailsJson = JSON.stringify(normalized); } catch { }
     }
   }
   try {
@@ -1075,6 +1075,7 @@ async function setAppSettingValue(key, value) {
     INSERT INTO app_settings (key, value, updated_at)
     VALUES (?, ?, ?)
     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    RETURNING key
   `).run(key, value, updatedAt);
   invalidateSettingCache(key);
   return { value, updated_at: updatedAt };
@@ -1206,9 +1207,9 @@ function fallbackTagsFromTitleDesc(title, desc) {
 
   for (const w of words) { freq[w] = (freq[w] || 1) + 1; }
 
-  const base = Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([w])=>w).slice(0,10);
+  const base = Object.entries(freq).sort((a, b) => b[1] - a[1]).map(([w]) => w).slice(0, 10);
 
-  const generic = ['sale','buy','deal','used','second hand','good','condition','local','pickup','cheap','discount','shop','offer'];
+  const generic = ['sale', 'buy', 'deal', 'used', 'second hand', 'good', 'condition', 'local', 'pickup', 'cheap', 'discount', 'shop', 'offer'];
 
   return [...new Set([...base, ...generic])].slice(0, 20);
 
@@ -1316,9 +1317,9 @@ function applyListingSearchTokens(where, params, tokens, alias = 'l') {
 
 
 
-function normLetters(s) { return String(s||'').toLowerCase().replace(/[^a-z]/g,''); }
+function normLetters(s) { return String(s || '').toLowerCase().replace(/[^a-z]/g, ''); }
 
-function cityOf(location) { return String(location||'').split(',')[0].trim(); }
+function cityOf(location) { return String(location || '').split(',')[0].trim(); }
 
 function normalizeCitySlug(city) {
 
@@ -1328,31 +1329,31 @@ function normalizeCitySlug(city) {
 
 
 
-function levenshtein(a,b) {
+function levenshtein(a, b) {
 
   a = String(a); b = String(b);
 
   const m = a.length, n = b.length;
 
-  if (m===0) return n; if (n===0) return m;
+  if (m === 0) return n; if (n === 0) return m;
 
-  const dp = new Array(n+1);
+  const dp = new Array(n + 1);
 
-  for (let j=0;j<=n;j++) dp[j]=j;
+  for (let j = 0; j <= n; j++) dp[j] = j;
 
-  for (let i=1;i<=m;i++){
+  for (let i = 1; i <= m; i++) {
 
-    let prev = i-1;
+    let prev = i - 1;
 
-    dp[0]=i;
+    dp[0] = i;
 
-    for (let j=1;j<=n;j++){
+    for (let j = 1; j <= n; j++) {
 
       const tmp = dp[j];
 
-      const cost = a[i-1]===b[j-1]?0:1;
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
 
-      dp[j] = Math.min(dp[j]+1, dp[j-1]+1, prev+cost);
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
 
       prev = tmp;
 
@@ -1370,13 +1371,13 @@ function pickMatchingCities(allCities, query) {
 
   const out = new Set();
 
-  const q = (query||'').trim();
+  const q = (query || '').trim();
 
   const qn = normLetters(q);
 
   if (!q) return out;
 
-  for (const c of allCities){
+  for (const c of allCities) {
 
     const cn = normLetters(c);
 
@@ -1905,7 +1906,7 @@ function setAuthCookie(res, payload) {
 
     domain: COOKIE_DOMAIN,
 
-    maxAge: 7*24*60*60*1000,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
 
     path: '/'
 
@@ -2203,13 +2204,13 @@ function mkLimiter(cfg, name) {
 
 }
 
-const loginLimiter = mkLimiter({ windowMs: 15*60*1000, max: 20 }, 'login');
+const loginLimiter = mkLimiter({ windowMs: 15 * 60 * 1000, max: 20 }, 'login');
 
-const writeLimiter = mkLimiter({ windowMs: 60*1000, max: 60 }, 'write');
+const writeLimiter = mkLimiter({ windowMs: 60 * 1000, max: 60 }, 'write');
 
-const uploadLimiter = mkLimiter({ windowMs: 10*60*1000, max: 120 }, 'upload');
+const uploadLimiter = mkLimiter({ windowMs: 10 * 60 * 1000, max: 120 }, 'upload');
 
-const geocodeLimiter = mkLimiter({ windowMs: 60*1000, max: 30 }, 'geocode');
+const geocodeLimiter = mkLimiter({ windowMs: 60 * 1000, max: 30 }, 'geocode');
 
 
 
@@ -2245,17 +2246,17 @@ async function maybeCreateAdmin() {
 
   if (!email || !username || !password) return;
 
-  
+
 
   try {
 
     const exists = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
 
-    if (exists) { 
+    if (exists) {
 
-      console.log('Admin exists:', email); 
+      console.log('Admin exists:', email);
 
-      return; 
+      return;
 
     }
 
@@ -2275,7 +2276,7 @@ async function maybeCreateAdmin() {
 
 }
 
-const userListingsLimiter = mkLimiter({ windowMs: 60*1000, max: 30 }, 'user-listings');
+const userListingsLimiter = mkLimiter({ windowMs: 60 * 1000, max: 30 }, 'user-listings');
 
 /* ------------------------------------------------------------------ */
 
@@ -2412,7 +2413,7 @@ app.post('/api/login', loginLimiter, validateBody(validateLoginRequest), async (
 
     const { email, password } = req.body;
 
-    
+
 
     const row = await db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
@@ -2645,7 +2646,7 @@ app.get('/api/me', async (req, res) => {
 
     if (!row) return res.json(null);
 
-    
+
 
     const user = await mapUserWithPayments(row, {
       paypal_email: row.paypal_email,
@@ -3001,6 +3002,10 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 app.post('/api/supporters/checkout', auth, async (req, res) => {
+  if (await arePaymentsDisabled()) {
+    return res.status(403).json({ error: 'payments_disabled' });
+  }
+
 
   try {
 
@@ -3258,21 +3263,21 @@ app.post('/api/supporters/confirm', auth, async (req, res) => {
 
     const params = tier === 'premium'
       ? [
-          badgeCode,
-          supporterSince,
-          tier,
-          subscriptionId,
-          subscriptionStatus,
-          subscriptionPeriodEnd,
-          stripeCustomerId,
-          req.user.id
-        ]
+        badgeCode,
+        supporterSince,
+        tier,
+        subscriptionId,
+        subscriptionStatus,
+        subscriptionPeriodEnd,
+        stripeCustomerId,
+        req.user.id
+      ]
       : [
-          badgeCode,
-          supporterSince,
-          tier,
-          req.user.id
-        ];
+        badgeCode,
+        supporterSince,
+        tier,
+        req.user.id
+      ];
 
     await db.prepare(updateSql).run(...params);
 
@@ -3611,7 +3616,7 @@ app.get('/api/listings', async (req, res) => {
 
       const params = { uid: userId };
 
-      
+
 
       if (hasSearch) {
 
@@ -3701,7 +3706,7 @@ app.get('/api/listings', async (req, res) => {
 
       const next_cursor = items.length ? items[items.length - 1].id : null;
 
-      return { 
+      return {
 
         items: items.map(r => {
 
@@ -3711,15 +3716,15 @@ app.get('/api/listings', async (req, res) => {
 
           return out;
 
-        }), 
+        }),
 
-        page, 
+        page,
 
-        limit, 
+        limit,
 
-        has_more, 
+        has_more,
 
-        next_cursor 
+        next_cursor
 
       };
 
@@ -3735,7 +3740,7 @@ app.get('/api/listings', async (req, res) => {
 
       const params = {};
 
-      
+
 
       if (hasSearch) {
 
@@ -3911,7 +3916,7 @@ app.get('/api/listings/covers', async (req, res) => {
 
     if (!idsStr) return res.json([]);
 
-    
+
 
     let ids = idsStr.split(',').map(s => Number(s)).filter(Number.isFinite);
 
@@ -3919,9 +3924,9 @@ app.get('/api/listings/covers', async (req, res) => {
 
     if (!ids.length) return res.json([]);
 
-    
 
-    const placeholders = ids.map(()=>'?').join(',');
+
+    const placeholders = ids.map(() => '?').join(',');
 
     const rows = await db.prepare(`
 
@@ -3951,7 +3956,7 @@ app.get('/api/listings/covers', async (req, res) => {
 
     `).all(...ids);
 
-    
+
 
     const normalized = rows.map(row => ({
 
@@ -4154,69 +4159,69 @@ app.post(
   validateBody(validateCreateListingRequest),
   async (req, res) => {
 
-  try {
+    try {
 
-    if (isLockedAccount(req.user)) return respondLocked(res);
+      if (isLockedAccount(req.user)) return respondLocked(res);
 
       const { title, description, location, price, tags, enable_nearby, inquiry_enabled } = req.body || {};
 
-    
 
-    // Since we're using S3 only, we don't handle images here
 
-    // Images will be uploaded separately via /api/uploads/sign and /api/uploads/finalize
+      // Since we're using S3 only, we don't handle images here
 
-    
+      // Images will be uploaded separately via /api/uploads/sign and /api/uploads/finalize
 
-    const descStr = String(description ?? '').slice(0,400);
 
-    const locStr = String(location ?? '').slice(0,80);
 
-    const pNum = Number(price);
+      const descStr = String(description ?? '').slice(0, 400);
 
-    const safePrice = (Number.isFinite(pNum) && pNum >= 0) ? pNum : 0;
+      const locStr = String(location ?? '').slice(0, 80);
 
-    const tagStr = normalizeTags(tags);
+      const pNum = Number(price);
 
-    const safeTitle = shortTitle(title) || shortTitle(description);
+      const safePrice = (Number.isFinite(pNum) && pNum >= 0) ? pNum : 0;
 
-    const uploadTokensRaw = Array.isArray(req.body.upload_tokens)
+      const tagStr = normalizeTags(tags);
 
-      ? req.body.upload_tokens
+      const safeTitle = shortTitle(title) || shortTitle(description);
 
-      : (Array.isArray(req.body.uploadTokens) ? req.body.uploadTokens : []);
+      const uploadTokensRaw = Array.isArray(req.body.upload_tokens)
 
-    const uploadTokens = Array.from(new Set(
+        ? req.body.upload_tokens
 
-      uploadTokensRaw
+        : (Array.isArray(req.body.uploadTokens) ? req.body.uploadTokens : []);
 
-        .map((token) => typeof token === 'string' ? token.trim() : '')
+      const uploadTokens = Array.from(new Set(
 
-        .filter(Boolean)
+        uploadTokensRaw
 
-    )).slice(0, 12);
+          .map((token) => typeof token === 'string' ? token.trim() : '')
 
-    if (!uploadTokens.length) {
+          .filter(Boolean)
 
-      return res.status(400).json({ error: 'image_required' });
+      )).slice(0, 12);
 
-    }
+      if (!uploadTokens.length) {
 
-    const tokenParams = { userId: req.user.id };
+        return res.status(400).json({ error: 'image_required' });
 
-    const placeholders = uploadTokens.map((_, idx) => {
+      }
 
-      const key = `t${idx}`;
+      const tokenParams = { userId: req.user.id };
 
-      tokenParams[key] = uploadTokens[idx];
+      const placeholders = uploadTokens.map((_, idx) => {
 
-      return `@${key}`;
+        const key = `t${idx}`;
 
-    }).join(', ');
+        tokenParams[key] = uploadTokens[idx];
 
-    const rows = placeholders
+        return `@${key}`;
 
-      ? await db.prepare(`
+      }).join(', ');
+
+      const rows = placeholders
+
+        ? await db.prepare(`
 
           SELECT token, key, url, width, height, bytes, created_at
 
@@ -4228,101 +4233,101 @@ app.post(
 
         `).all(tokenParams)
 
-      : [];
+        : [];
 
-    const rowByToken = new Map((rows || []).map((r) => [r.token, r]));
+      const rowByToken = new Map((rows || []).map((r) => [r.token, r]));
 
-    const orderedRows = uploadTokens.map((token) => rowByToken.get(token)).filter(Boolean);
+      const orderedRows = uploadTokens.map((token) => rowByToken.get(token)).filter(Boolean);
 
-    const uploads = orderedRows.map((r) => {
+      const uploads = orderedRows.map((r) => {
 
-      const safeWidth = Number(r?.width);
+        const safeWidth = Number(r?.width);
 
-      const safeHeight = Number(r?.height);
+        const safeHeight = Number(r?.height);
 
-      const safeBytes = Number(r?.bytes);
+        const safeBytes = Number(r?.bytes);
 
-      const createdAt = Number.isFinite(Number(r?.created_at)) ? Number(r.created_at) : Math.floor(Date.now() / 1000);
+        const createdAt = Number.isFinite(Number(r?.created_at)) ? Number(r.created_at) : Math.floor(Date.now() / 1000);
 
-      const url = canonicalAssetUrl(String(r?.url || ''));
+        const url = canonicalAssetUrl(String(r?.url || ''));
 
-      return {
+        return {
 
-        token: r?.token,
+          token: r?.token,
 
-        key: String(r?.key || ''),
+          key: String(r?.key || ''),
 
-        url,
+          url,
 
-        width: Number.isFinite(safeWidth) ? safeWidth : null,
+          width: Number.isFinite(safeWidth) ? safeWidth : null,
 
-        height: Number.isFinite(safeHeight) ? safeHeight : null,
+          height: Number.isFinite(safeHeight) ? safeHeight : null,
 
-        bytes: Number.isFinite(safeBytes) ? safeBytes : null,
+          bytes: Number.isFinite(safeBytes) ? safeBytes : null,
 
-        createdAt
+          createdAt
 
-      };
+        };
 
-    }).filter((item) => typeof item.url === 'string' && item.url && isAllowedPublicUrl(item.url));
+      }).filter((item) => typeof item.url === 'string' && item.url && isAllowedPublicUrl(item.url));
 
-    if (!uploads.length) {
+      if (!uploads.length) {
 
-      return res.status(400).json({ error: 'image_required' });
-
-    }
-
-    try {
-
-      const flagged = await moderateListingContent({
-
-        title: String(safeTitle || ''),
-
-        description: String(descStr || ''),
-
-        imageUrls: uploads.map((item) => item.url)
-
-      });
-
-      if (flagged?.length) {
-        await recordFlaggedAttempt({ userId: req.user?.id, title: safeTitle, flagged });
-
-        return res.status(400).json({ error: 'moderation_flagged', flagged });
+        return res.status(400).json({ error: 'image_required' });
 
       }
 
-    } catch (err) {
+      try {
 
-      if (err?.code === 'moderation_failed') {
+        const flagged = await moderateListingContent({
 
-        console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+          title: String(safeTitle || ''),
 
-        return res.status(502).json({ error: 'moderation_failed' });
+          description: String(descStr || ''),
+
+          imageUrls: uploads.map((item) => item.url)
+
+        });
+
+        if (flagged?.length) {
+          await recordFlaggedAttempt({ userId: req.user?.id, title: safeTitle, flagged });
+
+          return res.status(400).json({ error: 'moderation_flagged', flagged });
+
+        }
+
+      } catch (err) {
+
+        if (err?.code === 'moderation_failed') {
+
+          console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+
+          return res.status(502).json({ error: 'moderation_failed' });
+
+        }
+
+        throw err;
 
       }
 
-      throw err;
-
-    }
 
 
+      let lat = Number(req.body.lat);
 
-    let lat = Number(req.body.lat);
+      let lon = Number(req.body.lon);
 
-    let lon = Number(req.body.lon);
+      if (!Number.isFinite(lat)) lat = null;
 
-    if (!Number.isFinite(lat)) lat = null;
-
-    if (!Number.isFinite(lon)) lon = null;
+      if (!Number.isFinite(lon)) lon = null;
 
 
 
-    const enNearby = enable_nearby ? 1 : 0;
-    const inquiryEnabled = inquiry_enabled ? 1 : 0;
+      const enNearby = enable_nearby ? 1 : 0;
+      const inquiryEnabled = inquiry_enabled ? 1 : 0;
 
 
 
-    const info = await db.prepare(`
+      const info = await db.prepare(`
 
       INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled)
 
@@ -4330,45 +4335,45 @@ app.post(
 
     `).run(
 
-      req.user.id,
+        req.user.id,
 
-      null, // No cover image initially since S3 uploads happen separately
+        null, // No cover image initially since S3 uploads happen separately
 
-      String(safeTitle),
+        String(safeTitle),
 
-      String(descStr),
+        String(descStr),
 
-      String(locStr),
+        String(locStr),
 
-      Number(safePrice),
+        Number(safePrice),
 
-      nowIso(),
+        nowIso(),
 
-      tagStr,
+        tagStr,
 
-      lat, lon, enNearby, inquiryEnabled
+        lat, lon, enNearby, inquiryEnabled
 
-    );
-
-
-
-    const listingId = info.lastInsertRowid;
-
-    await maybeUpdateListingGeography(listingId, lat, lon);
+      );
 
 
 
-    if (uploads.length) {
+      const listingId = info.lastInsertRowid;
 
-      const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(listingId);
+      await maybeUpdateListingGeography(listingId, lat, lon);
 
-      let pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
 
-      let coverUrl = null;
 
-      for (const upload of uploads) {
+      if (uploads.length) {
 
-        await db.prepare(`
+        const pRow = await db.prepare('SELECT MAX(position) AS maxp FROM listing_images WHERE listing_id = ?').get(listingId);
+
+        let pos = Number.isFinite(pRow?.maxp) ? (pRow.maxp + 1) : 0;
+
+        let coverUrl = null;
+
+        for (const upload of uploads) {
+
+          await db.prepare(`
 
           INSERT INTO listing_images (listing_id, image_data, position, key, url, width, height, bytes, created_at)
 
@@ -4376,33 +4381,33 @@ app.post(
 
         `).run(
 
-          listingId,
+            listingId,
 
-          pos,
+            pos,
 
-          upload.key,
+            upload.key,
 
-          upload.url,
+            upload.url,
 
-          upload.width,
+            upload.width,
 
-          upload.height,
+            upload.height,
 
-          upload.bytes,
+            upload.bytes,
 
-          upload.createdAt
+            upload.createdAt
 
-        );
+          );
 
-        if (!coverUrl) coverUrl = upload.url;
+          if (!coverUrl) coverUrl = upload.url;
 
-        pos += 1;
+          pos += 1;
 
-      }
+        }
 
-      if (coverUrl) {
+        if (coverUrl) {
 
-        await db.prepare(`
+          await db.prepare(`
 
           UPDATE listings
 
@@ -4412,27 +4417,27 @@ app.post(
 
         `).run({ listingId, url: coverUrl });
 
-      }
+        }
 
-      const tokensToDelete = uploads.map((item) => item.token).filter(Boolean);
+        const tokensToDelete = uploads.map((item) => item.token).filter(Boolean);
 
-      if (tokensToDelete.length) {
+        if (tokensToDelete.length) {
 
-        const deleteParams = { userId: req.user.id };
+          const deleteParams = { userId: req.user.id };
 
-        const deletePlaceholders = tokensToDelete.map((token, idx) => {
+          const deletePlaceholders = tokensToDelete.map((token, idx) => {
 
-          const key = `d${idx}`;
+            const key = `d${idx}`;
 
-          deleteParams[key] = token;
+            deleteParams[key] = token;
 
-          return `@${key}`;
+            return `@${key}`;
 
-        }).join(', ');
+          }).join(', ');
 
-        if (deletePlaceholders) {
+          if (deletePlaceholders) {
 
-          await db.prepare(`
+            await db.prepare(`
 
             DELETE FROM listing_upload_drafts
 
@@ -4442,49 +4447,49 @@ app.post(
 
           `).run(deleteParams);
 
+          }
+
         }
 
       }
 
+
+
+      try { await incrementCityCount(locStr); } catch { }
+
+
+
+      // NOTE: Images are NOT inserted here anymore - they come via S3 upload flow
+
+
+
+      const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
+
+      if (row && Object.prototype.hasOwnProperty.call(row, 'image_data')) {
+
+        row.image_data = canonicalAssetUrl(row.image_data);
+
+      }
+
+      await invalidateNearbyCache();
+
+      if (row) {
+        await publishBackgroundEvent(TOPICS.NEARBY_LISTING_AVAILABLE, { listing: row }, { req });
+      }
+
+      return sendSchema(res, validateListingResponse, row);
+
+    } catch (e) {
+
+      const msg = String(e && e.message || e || 'db_error');
+
+      console.error('Create listing failed:', msg);
+
+      return res.status(500).json({ error: 'server_error', detail: msg });
+
     }
 
-
-
-    try { await incrementCityCount(locStr); } catch {}
-
-
-
-    // NOTE: Images are NOT inserted here anymore - they come via S3 upload flow
-
-    
-
-    const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
-
-    if (row && Object.prototype.hasOwnProperty.call(row, 'image_data')) {
-
-      row.image_data = canonicalAssetUrl(row.image_data);
-
-    }
-
-    await invalidateNearbyCache();
-
-    if (row) {
-      await publishBackgroundEvent(TOPICS.NEARBY_LISTING_AVAILABLE, { listing: row }, { req });
-    }
-
-    return sendSchema(res, validateListingResponse, row);
-
-  } catch (e) {
-
-    const msg = String(e && e.message || e || 'db_error');
-
-    console.error('Create listing failed:', msg);
-
-    return res.status(500).json({ error: 'server_error', detail: msg });
-
-  }
-
-});
+  });
 
 
 
@@ -4551,13 +4556,13 @@ app.get('/api/users/:userId', async (req, res) => {
 
       profile_avatar_border_style: user.profile_avatar_border_style || null,
 
-        profile_bg_image_url: user.profile_bg_image_url || user.profile_bg_video_url || null,
+      profile_bg_image_url: user.profile_bg_image_url || user.profile_bg_video_url || null,
 
-        profile_bg_video_url: user.profile_bg_video_url || user.profile_bg_image_url || null,
+      profile_bg_video_url: user.profile_bg_video_url || user.profile_bg_image_url || null,
 
-        profile_about: user.profile_about || '',
+      profile_about: user.profile_about || '',
 
-        karma: user.karma || 0
+      karma: user.karma || 0
 
     });
 
@@ -4666,290 +4671,290 @@ app.put(
   validateBody(validateUpdateListingRequest),
   async (req, res) => {
 
-  try {
-
-    if (isLockedAccount(req.user)) return respondLocked(res);
-
-    const id = Number(req.params.id);
-
-    const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
-
-    if (!existing) return res.status(404).json({ error: 'Not found' });
-
-    if (!req.user.is_admin && existing.user_id !== req.user.id) {
-
-      return res.status(403).json({ error: 'Not your listing' });
-
-    }
-
-
-
-    const { title, description, location, price, tags, deletedImages } = req.body || {};
-
-
-
-    const existingImages = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position, id')
-
-      .all(id);
-
-    const existingImageUrls = existingImages
-
-      .map((img) => canonicalAssetUrl(img?.url || img?.image_data))
-
-      .filter((url) => typeof url === 'string' && url);
-
-    const deleteCanonical = new Set();
-
-    if (Array.isArray(deletedImages) && deletedImages.length > 0) {
-
-      for (const imageUrl of deletedImages) {
-
-        const raw = String(imageUrl ?? '').trim();
-
-        if (!raw) continue;
-
-        const variants = assetVariants(raw);
-
-        const pool = variants.length ? variants : [raw];
-
-        for (const variant of pool) {
-
-          const canonical = canonicalAssetUrl(variant);
-
-          if (typeof canonical === 'string' && canonical) deleteCanonical.add(canonical);
-
-        }
-
-      }
-
-    }
-
-    const remainingImageUrls = existingImageUrls.filter((url) => !deleteCanonical.has(url));
-
-    const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
-
-    const newDesc = (description !== undefined) ? String(description).slice(0,400) : existing.description;
-
-    const newLoc = (location !== undefined) ? String(location).slice(0,80) : existing.location;
-
     try {
 
-      const flagged = await moderateListingContent({
+      if (isLockedAccount(req.user)) return respondLocked(res);
 
-        title: String(newTitle || ''),
+      const id = Number(req.params.id);
 
-        description: String(newDesc || ''),
+      const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
 
-        imageUrls: remainingImageUrls
+      if (!existing) return res.status(404).json({ error: 'Not found' });
 
-      });
+      if (!req.user.is_admin && existing.user_id !== req.user.id) {
 
-      if (flagged?.length) {
-        await recordFlaggedAttempt({ userId: req.user?.id, listingId: id, title: newTitle, flagged });
-
-        return res.status(400).json({ error: 'moderation_flagged', flagged });
-
-      }
-
-    } catch (err) {
-
-      if (err?.code === 'moderation_failed') {
-
-        console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
-
-        return res.status(502).json({ error: 'moderation_failed' });
-
-      }
-
-      throw err;
-
-    }
-
-
-
-    // Handle image deletions
-
-    if (Array.isArray(deletedImages) && deletedImages.length > 0) {
-
-      for (const imageUrl of deletedImages) {
-
-        const raw = String(imageUrl ?? '').trim();
-
-        const variants = assetVariants(raw);
-
-        const pool = variants.length ? variants : (raw ? [raw] : []);
-
-        for (const variant of pool) {
-
-          if (!variant) continue;
-
-          await db.prepare('DELETE FROM listing_images WHERE listing_id = ? AND (url = ? OR image_data = ?)')
-
-            .run(id, variant, variant);
-
-        }
+        return res.status(403).json({ error: 'Not your listing' });
 
       }
 
 
 
-      // Re-index remaining images
+      const { title, description, location, price, tags, deletedImages } = req.body || {};
 
-      const remaining = await db.prepare('SELECT id FROM listing_images WHERE listing_id = ? ORDER BY position, id')
+
+
+      const existingImages = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position, id')
 
         .all(id);
 
-      for (let i = 0; i < remaining.length; i++) {
+      const existingImageUrls = existingImages
 
-        await db.prepare('UPDATE listing_images SET position = ? WHERE id = ?')
+        .map((img) => canonicalAssetUrl(img?.url || img?.image_data))
 
-          .run(i, remaining[i].id);
+        .filter((url) => typeof url === 'string' && url);
+
+      const deleteCanonical = new Set();
+
+      if (Array.isArray(deletedImages) && deletedImages.length > 0) {
+
+        for (const imageUrl of deletedImages) {
+
+          const raw = String(imageUrl ?? '').trim();
+
+          if (!raw) continue;
+
+          const variants = assetVariants(raw);
+
+          const pool = variants.length ? variants : [raw];
+
+          for (const variant of pool) {
+
+            const canonical = canonicalAssetUrl(variant);
+
+            if (typeof canonical === 'string' && canonical) deleteCanonical.add(canonical);
+
+          }
+
+        }
+
+      }
+
+      const remainingImageUrls = existingImageUrls.filter((url) => !deleteCanonical.has(url));
+
+      const newTitle = (title !== undefined) ? shortTitle(title) : (existing.title || '');
+
+      const newDesc = (description !== undefined) ? String(description).slice(0, 400) : existing.description;
+
+      const newLoc = (location !== undefined) ? String(location).slice(0, 80) : existing.location;
+
+      try {
+
+        const flagged = await moderateListingContent({
+
+          title: String(newTitle || ''),
+
+          description: String(newDesc || ''),
+
+          imageUrls: remainingImageUrls
+
+        });
+
+        if (flagged?.length) {
+          await recordFlaggedAttempt({ userId: req.user?.id, listingId: id, title: newTitle, flagged });
+
+          return res.status(400).json({ error: 'moderation_flagged', flagged });
+
+        }
+
+      } catch (err) {
+
+        if (err?.code === 'moderation_failed') {
+
+          console.error('Listing moderation failed:', err.cause?.message || err.cause || err);
+
+          return res.status(502).json({ error: 'moderation_failed' });
+
+        }
+
+        throw err;
 
       }
 
 
 
-      // Update listing cover if needed
+      // Handle image deletions
 
-      const firstImage = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1')
+      if (Array.isArray(deletedImages) && deletedImages.length > 0) {
 
-        .get(id);
+        for (const imageUrl of deletedImages) {
 
-      if (firstImage) {
+          const raw = String(imageUrl ?? '').trim();
 
-        const cover = canonicalAssetUrl(firstImage.url || firstImage.image_data);
+          const variants = assetVariants(raw);
 
-        await db.prepare('UPDATE listings SET image_data = ? WHERE id = ?')
+          const pool = variants.length ? variants : (raw ? [raw] : []);
 
-          .run(cover, id);
+          for (const variant of pool) {
+
+            if (!variant) continue;
+
+            await db.prepare('DELETE FROM listing_images WHERE listing_id = ? AND (url = ? OR image_data = ?)')
+
+              .run(id, variant, variant);
+
+          }
+
+        }
+
+
+
+        // Re-index remaining images
+
+        const remaining = await db.prepare('SELECT id FROM listing_images WHERE listing_id = ? ORDER BY position, id')
+
+          .all(id);
+
+        for (let i = 0; i < remaining.length; i++) {
+
+          await db.prepare('UPDATE listing_images SET position = ? WHERE id = ?')
+
+            .run(i, remaining[i].id);
+
+        }
+
+
+
+        // Update listing cover if needed
+
+        const firstImage = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1')
+
+          .get(id);
+
+        if (firstImage) {
+
+          const cover = canonicalAssetUrl(firstImage.url || firstImage.image_data);
+
+          await db.prepare('UPDATE listings SET image_data = ? WHERE id = ?')
+
+            .run(cover, id);
+
+        } else {
+
+          await db.prepare('UPDATE listings SET image_data = NULL WHERE id = ?')
+
+            .run(id);
+
+        }
+
+      }
+
+
+
+      let newPrice;
+
+      if (price !== undefined) {
+
+        const p = Number(price);
+
+        newPrice = (Number.isFinite(p) && p >= 0) ? p : 0;
 
       } else {
 
-        await db.prepare('UPDATE listings SET image_data = NULL WHERE id = ?')
-
-          .run(id);
+        newPrice = existing.price;
 
       }
 
-    }
 
 
+      let newLat = null, newLon = null;
 
-    let newPrice;
+      if (existing.lat == null && req.body.enable_nearby) {
 
-    if (price !== undefined) {
+        newLat = Number(req.body.lat);
 
-      const p = Number(price);
+        newLon = Number(req.body.lon);
 
-      newPrice = (Number.isFinite(p) && p >= 0) ? p : 0;
+        if (!Number.isFinite(newLat)) newLat = null;
 
-    } else {
-
-      newPrice = existing.price;
-
-    }
-
-
-
-    let newLat = null, newLon = null;
-
-    if (existing.lat == null && req.body.enable_nearby) {
-
-      newLat = Number(req.body.lat);
-
-      newLon = Number(req.body.lon);
-
-      if (!Number.isFinite(newLat)) newLat = null;
-
-      if (!Number.isFinite(newLon)) newLon = null;
-
-    }
-
-
-
-    await db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
-
-      .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
-
-
-
-    if (typeof tags !== 'undefined') {
-
-      const tagStr = normalizeTags(tags);
-
-      await db.prepare('UPDATE listings SET tags=? WHERE id=?').run(tagStr, id);
-
-    }
-
-
-
-    if (typeof req.body.enable_nearby !== 'undefined') {
-
-      await db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(req.body.enable_nearby ? 1 : 0, id);
-
-    }
-
-    if (typeof req.body.inquiry_enabled !== 'undefined') {
-
-      await db.prepare('UPDATE listings SET inquiry_enabled=? WHERE id=?').run(req.body.inquiry_enabled ? 1 : 0, id);
-
-    }
-
-
-
-    if (typeof req.body.sold !== 'undefined') {
-
-      const soldVal = req.body.sold ? 1 : 0;
-
-      await db.prepare('UPDATE listings SET sold=? WHERE id=?').run(soldVal, id);
-
-    }
-
-
-
-    const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
-
-    if (row && Object.prototype.hasOwnProperty.call(row, 'image_data')) {
-
-      row.image_data = canonicalAssetUrl(row.image_data);
-
-    }
-
-    await maybeUpdateListingGeography(id, row?.lat, row?.lon);
-
-
-
-    try {
-
-      const prevCity = cityOf(existing.location);
-
-      const nextCity = cityOf(newLoc);
-
-      if (prevCity.toLowerCase() !== nextCity.toLowerCase()) {
-
-        await decrementCityCount(existing.location);
-
-        await incrementCityCount(newLoc);
+        if (!Number.isFinite(newLon)) newLon = null;
 
       }
 
-    } catch {}
+
+
+      await db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
+
+        .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
 
 
 
-    await invalidateNearbyCache();
+      if (typeof tags !== 'undefined') {
 
-    return sendSchema(res, validateListingResponse, row);
+        const tagStr = normalizeTags(tags);
 
-  } catch (e) {
+        await db.prepare('UPDATE listings SET tags=? WHERE id=?').run(tagStr, id);
 
-    console.error('Update listing failed:', e);
+      }
 
-    return res.status(500).json({ error: 'update_failed' });
 
-  }
 
-});
+      if (typeof req.body.enable_nearby !== 'undefined') {
+
+        await db.prepare('UPDATE listings SET enable_nearby=? WHERE id=?').run(req.body.enable_nearby ? 1 : 0, id);
+
+      }
+
+      if (typeof req.body.inquiry_enabled !== 'undefined') {
+
+        await db.prepare('UPDATE listings SET inquiry_enabled=? WHERE id=?').run(req.body.inquiry_enabled ? 1 : 0, id);
+
+      }
+
+
+
+      if (typeof req.body.sold !== 'undefined') {
+
+        const soldVal = req.body.sold ? 1 : 0;
+
+        await db.prepare('UPDATE listings SET sold=? WHERE id=?').run(soldVal, id);
+
+      }
+
+
+
+      const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
+
+      if (row && Object.prototype.hasOwnProperty.call(row, 'image_data')) {
+
+        row.image_data = canonicalAssetUrl(row.image_data);
+
+      }
+
+      await maybeUpdateListingGeography(id, row?.lat, row?.lon);
+
+
+
+      try {
+
+        const prevCity = cityOf(existing.location);
+
+        const nextCity = cityOf(newLoc);
+
+        if (prevCity.toLowerCase() !== nextCity.toLowerCase()) {
+
+          await decrementCityCount(existing.location);
+
+          await incrementCityCount(newLoc);
+
+        }
+
+      } catch { }
+
+
+
+      await invalidateNearbyCache();
+
+      return sendSchema(res, validateListingResponse, row);
+
+    } catch (e) {
+
+      console.error('Update listing failed:', e);
+
+      return res.status(500).json({ error: 'update_failed' });
+
+    }
+
+  });
 
 
 
@@ -4963,7 +4968,7 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
 
-    
+
 
     if (!existing) return res.status(404).json({ error: 'Not found' });
 
@@ -4973,13 +4978,13 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     }
 
-    
+
 
     await db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(id);
 
     await db.prepare('DELETE FROM listings WHERE id = ?').run(id);
 
-    try { await decrementCityCount(existing.location); } catch {}
+    try { await decrementCityCount(existing.location); } catch { }
 
     await invalidateNearbyCache();
 
@@ -5542,13 +5547,13 @@ app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async
 
     const imageId = Number(req.params.imageId);
 
-    
+
 
     const listing = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(listingId);
 
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
-    
+
 
     if (!req.user.is_admin && listing.user_id !== req.user.id) {
 
@@ -5556,11 +5561,11 @@ app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async
 
     }
 
-    
+
 
     await db.prepare('DELETE FROM listing_images WHERE id = ? AND listing_id = ?').run(imageId, listingId);
 
-    
+
 
     // Update positions of remaining images
 
@@ -5592,7 +5597,7 @@ app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async
 
     }
 
-    
+
 
     res.json({ ok: true });
 
@@ -5787,9 +5792,9 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
       let parsed = {};
 
-      try { parsed = JSON.parse(txt); } catch {}
+      try { parsed = JSON.parse(txt); } catch { }
 
-      
+
 
       let title = shortTitle(parsed.title || '');
 
@@ -5833,7 +5838,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
         const extra = fallbackTagsFromTitleDesc(title, hint);
 
-        const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0,20);
+        const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 20);
 
         return res.json({ title, description, tags: merged, suggested_price });
 
@@ -5921,7 +5926,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
     }
 
-    
+
 
     if (listing_id) {
 
@@ -5933,7 +5938,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
     }
 
-    
+
 
     with_user_id = Number(with_user_id);
 
@@ -5977,7 +5982,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
     // This ensures that the potential-buyers query can find the correct buyers
     // for each listing based on the listing_id in the conversation
 
-    
+
 
     try {
 
@@ -6303,7 +6308,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
       'INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)'
 
-    ).run(id, req.user.id, String(body || '').slice(0,2000), nowIso());
+    ).run(id, req.user.id, String(body || '').slice(0, 2000), nowIso());
 
 
 
@@ -6411,11 +6416,11 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
 
 
 
-    const isMem = (req.user?.id === convo.a_user_id) || 
+    const isMem = (req.user?.id === convo.a_user_id) ||
 
-                  (req.user?.id === convo.b_user_id) || 
+      (req.user?.id === convo.b_user_id) ||
 
-                  !!req.user?.is_admin;
+      !!req.user?.is_admin;
 
     if (!isMem) return res.status(403).json({ error: 'Forbidden' });
 
@@ -7302,15 +7307,15 @@ async function deleteSeedListingsInternal() {
 
   for (const row of rows) {
 
-    try { await decrementCityCount(row.location); } catch {}
+    try { await decrementCityCount(row.location); } catch { }
 
   }
 
   const idList = ids.join(',');
 
-  try { await db.exec(`DELETE FROM listing_images WHERE listing_id IN (${idList});`); } catch {}
+  try { await db.exec(`DELETE FROM listing_images WHERE listing_id IN (${idList});`); } catch { }
 
-  try { await db.exec(`DELETE FROM seller_reports WHERE listing_id IN (${idList});`); } catch {}
+  try { await db.exec(`DELETE FROM seller_reports WHERE listing_id IN (${idList});`); } catch { }
 
   await db.exec(`DELETE FROM listings WHERE id IN (${idList});`);
 
@@ -7365,11 +7370,11 @@ async function seedListingsInternal(requestedCount) {
 
     const listingId = info.lastInsertRowid;
 
-    try { await incrementCityCount(template.location); } catch {}
+    try { await incrementCityCount(template.location); } catch { }
 
     if (Number.isFinite(template.lat) && Number.isFinite(template.lon)) {
 
-      try { await maybeUpdateListingGeography(listingId, template.lat, template.lon); } catch {}
+      try { await maybeUpdateListingGeography(listingId, template.lat, template.lon); } catch { }
 
     }
 

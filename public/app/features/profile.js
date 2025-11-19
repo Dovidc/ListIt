@@ -66,7 +66,7 @@
     const useRef = typeof reactUseRef === 'function' ? reactUseRef : ((initial) => ({ current: initial }));
     const { createPortal } = resolvedReactDOM;
 
-    const navBridge = appNav || { setUser: () => {} };
+    const navBridge = appNav || { setUser: () => { } };
 
     const iconButtonStyle = {
       display: 'inline-flex',
@@ -129,10 +129,10 @@
         focusable: 'false',
         'aria-hidden': 'true'
       }, props),
-      H('path', {
-        d: 'M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.17a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.17a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33h.17A1.7 1.7 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.17a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82v.17a1.7 1.7 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.17a1.7 1.7 0 0 0-1.51 1z'
-      }),
-      H('circle', { cx: 12, cy: 12, r: 3.2 }));
+        H('path', {
+          d: 'M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.17a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.17a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33h.17A1.7 1.7 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.17a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82v.17a1.7 1.7 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.17a1.7 1.7 0 0 0-1.51 1z'
+        }),
+        H('circle', { cx: 12, cy: 12, r: 3.2 }));
     }
 
     function LogoutIcon(props = {}) {
@@ -148,9 +148,9 @@
         focusable: 'false',
         'aria-hidden': 'true'
       }, props),
-      H('path', { d: 'M14 5h5a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5' }),
-      H('polyline', { points: '9 8 4 12 9 16' }),
-      H('line', { x1: 4, y1: 12, x2: 16, y2: 12 }));
+        H('path', { d: 'M14 5h5a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5' }),
+        H('polyline', { points: '9 8 4 12 9 16' }),
+        H('line', { x1: 4, y1: 12, x2: 16, y2: 12 }));
     }
 
     function PresetIcon(props = {}) {
@@ -166,12 +166,12 @@
         focusable: 'false',
         'aria-hidden': 'true'
       }, props),
-      H('line', { x1: 4, y1: 6.5, x2: 20, y2: 6.5 }),
-      H('line', { x1: 4, y1: 12, x2: 20, y2: 12 }),
-      H('line', { x1: 4, y1: 17.5, x2: 20, y2: 17.5 }),
-      H('circle', { cx: 9, cy: 6.5, r: 2.1, fill: 'currentColor', stroke: 'none' }),
-      H('circle', { cx: 15.5, cy: 12, r: 2.1, fill: 'currentColor', stroke: 'none' }),
-      H('circle', { cx: 7.5, cy: 17.5, r: 2.1, fill: 'currentColor', stroke: 'none' }));
+        H('line', { x1: 4, y1: 6.5, x2: 20, y2: 6.5 }),
+        H('line', { x1: 4, y1: 12, x2: 20, y2: 12 }),
+        H('line', { x1: 4, y1: 17.5, x2: 20, y2: 17.5 }),
+        H('circle', { cx: 9, cy: 6.5, r: 2.1, fill: 'currentColor', stroke: 'none' }),
+        H('circle', { cx: 15.5, cy: 12, r: 2.1, fill: 'currentColor', stroke: 'none' }),
+        H('circle', { cx: 7.5, cy: 17.5, r: 2.1, fill: 'currentColor', stroke: 'none' }));
     }
 
     function PaypalPresetIcon(props = {}) {
@@ -189,11 +189,11 @@
         'aria-hidden': 'true',
         style
       }, rest),
-      H('rect', { x: 3.2, y: 7.6, width: 17.6, height: 11.6, rx: 2.8, ry: 2.8 }),
-      H('path', { d: 'M6.2 7.6V6.1c0-2 1.6-3.6 3.6-3.6h8.2a1.8 1.8 0 0 1 0 3.6H6.2' }),
-      H('path', { d: 'M10.8 11.2h2.3a1.9 1.9 0 0 1 0 3.8h-2.3V18' }),
-      H('path', { d: 'M10.8 15h1.8' }),
-      H('circle', { cx: 16.8, cy: 13.4, r: 1.5 }));
+        H('rect', { x: 3.2, y: 7.6, width: 17.6, height: 11.6, rx: 2.8, ry: 2.8 }),
+        H('path', { d: 'M6.2 7.6V6.1c0-2 1.6-3.6 3.6-3.6h8.2a1.8 1.8 0 0 1 0 3.6H6.2' }),
+        H('path', { d: 'M10.8 11.2h2.3a1.9 1.9 0 0 1 0 3.8h-2.3V18' }),
+        H('path', { d: 'M10.8 15h1.8' }),
+        H('circle', { cx: 16.8, cy: 13.4, r: 1.5 }));
     }
 
     function LocationPresetIcon(props = {}) {
@@ -211,8 +211,8 @@
         'aria-hidden': 'true',
         style
       }, rest),
-      H('path', { d: 'M12 21s6-5.2 6-11a6 6 0 0 0-12 0c0 5.8 6 11 6 11z' }),
-      H('circle', { cx: 12, cy: 10, r: 2.6 }));
+        H('path', { d: 'M12 21s6-5.2 6-11a6 6 0 0 0-12 0c0 5.8 6 11 6 11z' }),
+        H('circle', { cx: 12, cy: 10, r: 2.6 }));
     }
 
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
@@ -318,9 +318,9 @@
                   gap: 8
                 }
               },
-              'Payment preset',
-              H(PaypalPresetIcon, { size: 22 })
-            ),
+                'Payment preset',
+                H(PaypalPresetIcon, { size: 22 })
+              ),
               H('p', {
                 className: 'muted',
                 style: { fontSize: 13, margin: 0 }
@@ -475,8 +475,10 @@
       bgImageUploadError,
       onSave,
       statusMessage,
-      isPremium
+      isPremium: isPremiumProp
     }) {
+      const isPremium = isPremiumProp; // The prop passed in should already account for payments_disabled, but let's be safe in the parent
+
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
@@ -703,25 +705,25 @@
                   },
                     bgImageUrl
                       ? H('img', {
-                          src: bgImageUrl,
-                          alt: 'Banner preview',
-                          style: {
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            objectPosition: `50% ${previewOffset}%`,
-                            transform: `scale(${previewScale})`,
-                            transition: 'transform 150ms ease, object-position 150ms ease'
-                          }
-                        })
+                        src: bgImageUrl,
+                        alt: 'Banner preview',
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: `50% ${previewOffset}%`,
+                          transform: `scale(${previewScale})`,
+                          transition: 'transform 150ms ease, object-position 150ms ease'
+                        }
+                      })
                       : H('div', {
-                          style: {
-                            color: '#94a3b8',
-                            fontSize: 18,
-                            textAlign: 'center',
-                            padding: '0 16px'
-                          }
-                        }, 'Upload an image to see a live preview')
+                        style: {
+                          color: '#94a3b8',
+                          fontSize: 18,
+                          textAlign: 'center',
+                          padding: '0 16px'
+                        }
+                      }, 'Upload an image to see a live preview')
                   ),
                 )
               ),
@@ -737,10 +739,10 @@
               },
                 statusMessage
                   ? H('div', {
-                      role: 'status',
-                      'aria-live': 'polite',
-                      style: { fontSize: 13, color: '#047857', fontWeight: 600 }
-                    }, statusMessage)
+                    role: 'status',
+                    'aria-live': 'polite',
+                    style: { fontSize: 13, color: '#047857', fontWeight: 600 }
+                  }, statusMessage)
                   : H('span', { className: 'muted', style: { fontSize: 12 } }, 'Press save to apply your changes'),
                 H('button', {
                   className: 'btn primary',
@@ -900,7 +902,6 @@
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('nearby'); },
                   title: 'Nearby auto-post info',
                   style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
                     borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
                   }
                 }, '?')
@@ -1476,137 +1477,137 @@
         ? profileAvatarBorderColor.trim()
         : '#ffffff';
       const profileHeaderContent = H('div', { style: { position: 'relative', minHeight: hasBgImage ? 180 : 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
-            H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
-              H('div', {
-                className: 'profile-avatar',
-                onClick: handleOpenProfilePictureModal,
-                style: {
-                  cursor: 'pointer',
-                  borderColor: avatarBorderColorValue,
-                  borderStyle: avatarBorderStyleValue,
-                  borderWidth: 4,
-                  boxShadow: hasBgImage
-                    ? '0 16px 35px rgba(2, 6, 23, 0.5)'
-                    : '0 8px 18px rgba(15, 23, 42, 0.25)'
-                },
-                title: 'Click to change profile picture'
-              },
-                (profilePictureUrl && profilePictureUrl.trim())
-                  ? H('img', {
-                      src: profilePictureUrl,
-                      alt: 'Profile picture',
-                      onError: (e) => {
-                        console.error('Failed to load profile picture:', profilePictureUrl);
-                        e.target.style.display = 'none';
-                      }
-                    })
-                  : (user.username ? user.username.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase())
-              ),
-              H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
-                H('div', { style: { fontWeight: 800, fontSize: 18 } },
-                  user.username ? user.username : user.email
-                ),
-                userJoinedText && H('div', { className: 'muted' }, `Trovelr since ${userJoinedText}`),
-                profileSupporter && H('div', {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 8
-                  }
-                },
-                  H(SupporterBadge, {
-                    size: 'sm',
-                    since: profileSupporter.since,
-                    onClick: handleSelfSupporterClick
-                  })
-                ),
-                profileSupporter && typeof user.karma === 'number' && user.karma > 0 && H('div', {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: '#374151',
-                    border: '1px solid #d1d5db'
-                  }
-                },
-                  H('span', { style: { fontSize: 14 } }, '⭐'),
-                  H('span', null, `${user.karma} Karma`)
-                ),
-                showSupporterCta && H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: handleJoinSupporterClick,
-                  style: { alignSelf: 'flex-start' }
-                }, 'Get the Trovelr supporter badge'),
-                showSupporterCta && H('span', {
-                  className: 'muted',
-                  style: {
-                    fontSize: 12,
-                    lineHeight: 1.45,
-                    maxWidth: 280
-                  }
-                }, 'Donate once to unlock a dazzling golden badge on every listing you share.'),
-                premiumFreeForAll && H('div', {
-                  className: 'muted',
-                  style: {
-                    fontSize: 12,
-                    lineHeight: 1.45,
-                    maxWidth: 320,
-                    padding: '6px 10px',
-                    borderRadius: 10,
-                    background: '#eef2ff',
-                    color: '#1e3a8a',
-                    fontWeight: 600
-                  }
-                }, premiumFreeNotice)
-              )
+        H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
+          H('div', {
+            className: 'profile-avatar',
+            onClick: handleOpenProfilePictureModal,
+            style: {
+              cursor: 'pointer',
+              borderColor: avatarBorderColorValue,
+              borderStyle: avatarBorderStyleValue,
+              borderWidth: 4,
+              boxShadow: hasBgImage
+                ? '0 16px 35px rgba(2, 6, 23, 0.5)'
+                : '0 8px 18px rgba(15, 23, 42, 0.25)'
+            },
+            title: 'Click to change profile picture'
+          },
+            (profilePictureUrl && profilePictureUrl.trim())
+              ? H('img', {
+                src: profilePictureUrl,
+                alt: 'Profile picture',
+                onError: (e) => {
+                  console.error('Failed to load profile picture:', profilePictureUrl);
+                  e.target.style.display = 'none';
+                }
+              })
+              : (user.username ? user.username.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase())
+          ),
+          H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
+            H('div', { style: { fontWeight: 800, fontSize: 18 } },
+              user.username ? user.username : user.email
             ),
-          );
+            userJoinedText && H('div', { className: 'muted' }, `Trovelr since ${userJoinedText}`),
+            profileSupporter && H('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8
+              }
+            },
+              H(SupporterBadge, {
+                size: 'sm',
+                since: profileSupporter.since,
+                onClick: handleSelfSupporterClick
+              })
+            ),
+            profileSupporter && typeof user.karma === 'number' && user.karma > 0 && H('div', {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#374151',
+                border: '1px solid #d1d5db'
+              }
+            },
+              H('span', { style: { fontSize: 14 } }, '⭐'),
+              H('span', null, `${user.karma} Karma`)
+            ),
+            showSupporterCta && H('button', {
+              className: 'btn primary',
+              type: 'button',
+              onClick: handleJoinSupporterClick,
+              style: { alignSelf: 'flex-start' }
+            }, 'Get the Trovelr supporter badge'),
+            showSupporterCta && H('span', {
+              className: 'muted',
+              style: {
+                fontSize: 12,
+                lineHeight: 1.45,
+                maxWidth: 280
+              }
+            }, 'Donate once to unlock a dazzling golden badge on every listing you share.'),
+            premiumFreeForAll && H('div', {
+              className: 'muted',
+              style: {
+                fontSize: 12,
+                lineHeight: 1.45,
+                maxWidth: 320,
+                padding: '6px 10px',
+                borderRadius: 10,
+                background: '#eef2ff',
+                color: '#1e3a8a',
+                fontWeight: 600
+              }
+            }, premiumFreeNotice)
+          )
+        ),
+      );
       const profileHeader = hasBgImage
         ? H('div', {
-            style: {
-              position: 'relative',
-              height: 220,
-              overflow: 'hidden'
-            }
-          },
-            trimmedBgImageUrl
-              ? H('img', {
-                  key: trimmedBgImageUrl,
-                  src: trimmedBgImageUrl,
-                  alt: 'Profile banner',
-                  loading: 'lazy',
-                  decoding: 'async',
-                  style: {
-                    position: 'absolute',
-                    inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
-                  }
-                })
-              : null,
-            H('div', {
+          style: {
+            position: 'relative',
+            height: 220,
+            overflow: 'hidden'
+          }
+        },
+          trimmedBgImageUrl
+            ? H('img', {
+              key: trimmedBgImageUrl,
+              src: trimmedBgImageUrl,
+              alt: 'Profile banner',
+              loading: 'lazy',
+              decoding: 'async',
               style: {
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
               }
-            }),
-            H('div', {
-              style: {
-                position: 'relative',
-                padding: '16px 16px 60px',
-                color: '#f8fafc'
-              }
-            }, profileHeaderContent)
-          )
+            })
+            : null,
+          H('div', {
+            style: {
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+            }
+          }),
+          H('div', {
+            style: {
+              position: 'relative',
+              padding: '16px 16px 60px',
+              color: '#f8fafc'
+            }
+          }, profileHeaderContent)
+        )
         : profileHeaderContent;
       const profileSections = [
         H('section', {
@@ -1690,19 +1691,19 @@
           ),
           (shownItems.length
             ? (ListingsGrid
-                ? H(ListingsGrid, {
-                    items: shownItems,
-                    onEnsureCover: onEnsureCover,
-                    onSelect: (evt, item) => setProfileSelected(item),
-                    columns: isMobile ? 3 : 4,
-                    onSupporterClick
-                  })
-                : H('div', { style: { padding: 16 } }, 'ListingsGrid component not available')
-              )
+              ? H(ListingsGrid, {
+                items: shownItems,
+                onEnsureCover: onEnsureCover,
+                onSelect: (evt, item) => setProfileSelected(item),
+                columns: isMobile ? 3 : 4,
+                onSupporterClick
+              })
+              : H('div', { style: { padding: 16 } }, 'ListingsGrid component not available')
+            )
             : H('p', {
-                className: 'muted',
-                style: { textAlign: 'center', margin: '28px 0' }
-              }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
+              className: 'muted',
+              style: { textAlign: 'center', margin: '28px 0' }
+            }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
           )
         ),
 
