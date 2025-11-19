@@ -262,9 +262,31 @@
         return null;
       }
 
+      const [saving, setSaving] = useState(false);
+      const [saveStatus, setSaveStatus] = useState('');
+
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
           onClose?.();
+        }
+      };
+
+      const handleSaveAll = async () => {
+        setSaving(true);
+        setSaveStatus('');
+        try {
+          // Save all three items in sequence
+          await onSavePaypal?.();
+          await onSaveLocation?.();
+          await onSaveProfileAbout?.();
+          setSaveStatus('Saved');
+          setTimeout(() => {
+            setSaveStatus('');
+          }, 2000);
+        } catch (err) {
+          setSaveStatus('Error saving. Please try again.');
+        } finally {
+          setSaving(false);
         }
       };
 
@@ -336,28 +358,7 @@
                   maxLength: 240,
                   style: { width: '100%' }
                 })
-              ),
-              H('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'flex-end'
-                }
-              },
-                H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: onSavePaypal
-                }, 'Save')
-              ),
-              statusMessage && H('div', {
-                role: 'status',
-                'aria-live': 'polite',
-                style: {
-                  fontSize: 13,
-                  color: '#047857',
-                  fontWeight: 600
-                }
-              }, statusMessage)
+              )
             ),
             H('section', { style: { display: 'grid', gap: 12 } },
               H('div', {
@@ -376,28 +377,7 @@
                 placeholder: '123 Main St, City, State',
                 maxLength: 240,
                 style: { width: '100%' }
-              }),
-              H('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'flex-end'
-                }
-              },
-                H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: onSaveLocation
-                }, 'Save')
-              ),
-              locationStatusMessage && H('div', {
-                role: 'status',
-                'aria-live': 'polite',
-                style: {
-                  fontSize: 13,
-                  color: '#047857',
-                  fontWeight: 600
-                }
-              }, locationStatusMessage)
+              })
             ),
             H('section', { style: { display: 'grid', gap: 12 } },
               H('div', {
@@ -425,7 +405,7 @@
               H('div', {
                 style: {
                   display: 'flex',
-                  justifyContent: 'space-between',
+                  justifyContent: 'flex-end',
                   alignItems: 'center',
                   flexWrap: 'wrap',
                   gap: 8
@@ -434,22 +414,34 @@
                 H('span', {
                   className: 'muted',
                   style: { fontSize: 12 }
-                }, `${(profileAbout || '').length}/80 characters`),
-                H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: onSaveProfileAbout
-                }, 'Save')
-              ),
-              profileAboutStatusMessage && H('div', {
+                }, `${(profileAbout || '').length}/80 characters`)
+              )
+            ),
+            H('div', {
+              style: {
+                marginTop: 8,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12
+              }
+            },
+              saveStatus && H('div', {
                 role: 'status',
                 'aria-live': 'polite',
                 style: {
                   fontSize: 13,
-                  color: '#047857',
+                  color: saveStatus === 'Saved' ? '#047857' : '#dc2626',
                   fontWeight: 600
                 }
-              }, profileAboutStatusMessage)
+              }, saveStatus),
+              H('button', {
+                className: 'btn primary',
+                type: 'button',
+                onClick: handleSaveAll,
+                disabled: saving,
+                style: { marginLeft: 'auto' }
+              }, saving ? 'Saving...' : 'Save')
             ),
             H('p', {
               className: 'muted',
