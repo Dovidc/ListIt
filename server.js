@@ -185,20 +185,23 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 
 
 
-const fallbackMessageBus = createMessageBus({ type: 'memory', name: 'server-fallback' });
-app.locals.messageBus = fallbackMessageBus;
+const appMessageBus = createMessageBus({
+  type: process.env.MESSAGE_BUS_TYPE,
+  redisUrl: process.env.REDIS_URL,
+  namespace: process.env.MESSAGE_BUS_NAMESPACE,
+  name: 'api-service'
+});
+app.locals.messageBus = appMessageBus;
 app.use((req, _res, next) => {
   if (!req.messageBus) {
-    req.messageBus = app.locals.messageBus || fallbackMessageBus;
+    req.messageBus = app.locals.messageBus || appMessageBus;
   }
   next();
 });
 
-const EMBED_WEBSOCKET = process.env.EMBED_WEBSOCKET !== 'false';
-
 function getAppMessageBus(req) {
   if (req && req.messageBus) return req.messageBus;
-  return app.locals.messageBus || fallbackMessageBus;
+  return app.locals.messageBus || appMessageBus;
 }
 
 async function publishBackgroundEvent(topic, payload, { req = null, failOnError = false } = {}) {
@@ -218,31 +221,6 @@ async function publishBackgroundEvent(topic, payload, { req = null, failOnError 
     }
   }
 }
-
-if (IS_TEST && process.env.EMBED_WORKER !== 'false') {
-  const { createWorkerService } = require('./services/worker-service');
-  (async () => {
-    try {
-      const embeddedWorker = await createWorkerService(
-        { NODE_ENV: process.env.NODE_ENV || 'test', IS_TEST: true },
-        fallbackMessageBus,
-        { stripe, mailService, pushService }
-      );
-      await embeddedWorker.start();
-      app._embeddedWorker = embeddedWorker;
-    } catch (err) {
-      console.error('[worker] Failed to start embedded worker:', err);
-    }
-  })();
-}
-
-
-
-
-
-
-
-
 
 // S3 presign module
 
@@ -8235,35 +8213,9 @@ async function startServer() {
     await maybeCreateAdmin();
 
     const server = require('http').createServer(app);
-    let embeddedWebSocket = null;
-
-    if (EMBED_WEBSOCKET) {
-      try {
-        const { createWebSocketService } = require('./services/websocket-service');
-        const wsConfig = {
-          JWT_SECRET,
-          WEBSOCKET_PORT: Number(process.env.WEBSOCKET_PORT || PORT),
-          NODE_ENV: process.env.NODE_ENV || 'development',
-          IS_TEST
-        };
-        embeddedWebSocket = await createWebSocketService(wsConfig, fallbackMessageBus, { server });
-        app._embeddedWebSocket = embeddedWebSocket;
-      } catch (err) {
-        console.error('[Server] Failed to initialize embedded WebSocket service:', err);
-      }
-    }
 
     server.listen(PORT, () => {
       console.log(`ListIt running at http://localhost:${PORT}`);
-      if (embeddedWebSocket) {
-        embeddedWebSocket.start()
-          .then(() => {
-            console.log('[Server] WebSocket endpoint ready at /ws');
-          })
-          .catch((err) => {
-            console.error('[Server] Failed to start embedded WebSocket service:', err);
-          });
-      }
     });
   } catch (err) {
     if (String(err?.message || '').includes('relation')) {
