@@ -1771,7 +1771,9 @@
           avatarBorderColor: profileAvatarBorderColor,
           avatarBorderStyle: profileAvatarBorderStyle,
           onChangeBorderColor: setProfileAvatarBorderColor,
-          onChangeBorderStyle: setProfileAvatarBorderStyle
+          onChangeBorderStyle: setProfileAvatarBorderStyle,
+          onSave: saveProfileCustomization,
+          isPremium: isPremiumUser
         }),
 
         deleteAccountModalOpen && createPortal(

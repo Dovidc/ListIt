@@ -11,7 +11,7 @@
     const { useState, useRef, useCallback, useEffect } = React;
     const { uploadOneMessageImage } = uploads;
 
-    function ProfilePictureUploadModal({ open, onClose, onUploadComplete, currentPictureUrl, avatarBorderColor, avatarBorderStyle, onChangeBorderColor, onChangeBorderStyle }) {
+    function ProfilePictureUploadModal({ open, onClose, onUploadComplete, currentPictureUrl, avatarBorderColor, avatarBorderStyle, onChangeBorderColor, onChangeBorderStyle, onSave, isPremium }) {
       const [selectedFile, setSelectedFile] = useState(null);
       const [previewUrl, setPreviewUrl] = useState(null);
       const [uploading, setUploading] = useState(false);
@@ -198,7 +198,15 @@
             }
           },
             H('div', { style: { display: 'grid', gap: 8 } },
-              H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Avatar outline'),
+              H('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Avatar outline'),
+                onSave && H('button', {
+                  className: 'btn primary',
+                  onClick: onSave,
+                  disabled: !isPremium,
+                  style: { padding: '4px 12px', fontSize: 13, height: 28, minHeight: 0 }
+                }, 'Save')
+              ),
               H('div', {
                 style: {
                   display: 'grid',
