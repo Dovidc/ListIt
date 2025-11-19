@@ -9,9 +9,12 @@
  */
 
 const http = require('http');
+const crypto = require('crypto');
+const os = require('os');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { MessageBus, TOPICS } = require('../lib/message-bus');
+const { createPresenceStore } = require('../lib/presence-store');
 
 class WebSocketService {
   constructor(config, messageBus, options = {}) {
@@ -28,6 +31,11 @@ class WebSocketService {
     this.ownsServer = !this.externalServer;
     this.heartbeatInterval = null;
     this.subscriptions = [];
+    this.nodeId = options.nodeId || process.env.INSTANCE_ID || os.hostname();
+    this.presenceStore = options.presenceStore || createPresenceStore({
+      nodeId: this.nodeId,
+      ttlMs: options.presenceTtlMs || 60000
+    });
 
     // Bind methods
     this.start = this.start.bind(this);
@@ -44,7 +52,7 @@ class WebSocketService {
    */
   async start() {
     return new Promise((resolve, reject) => {
-      const initialize = () => {
+      const initialize = async () => {
         try {
           this.wss = new WebSocket.Server({
             server: this.server,
@@ -75,6 +83,10 @@ class WebSocketService {
             this.messageBus.subscribe(TOPICS.MESSAGE_SENT, this.handleMessageEvent)
           );
 
+          if (typeof this.presenceStore.start === 'function') {
+            await this.presenceStore.start();
+          }
+
           resolve();
         } catch (err) {
           console.error('[WebSocket] Failed to start service:', err);
@@ -85,7 +97,7 @@ class WebSocketService {
       try {
         if (this.externalServer) {
           this.server = this.externalServer;
-          initialize();
+          initialize().catch(reject);
           return;
         }
 
@@ -94,7 +106,9 @@ class WebSocketService {
 
         // Start listening
         const port = this.config.WEBSOCKET_PORT || 3002;
-        this.server.listen(port, initialize);
+        this.server.listen(port, () => {
+          initialize().catch(reject);
+        });
 
         // Setup server error handler
         this.server.on('error', (err) => {
@@ -124,6 +138,10 @@ class WebSocketService {
       });
     }
     this.subscriptions = [];
+
+    if (typeof this.presenceStore.stop === 'function') {
+      await this.presenceStore.stop();
+    }
 
     return new Promise((resolve) => {
       if (this.heartbeatInterval) {
@@ -170,6 +188,7 @@ class WebSocketService {
       // Verify JWT token
       const user = jwt.verify(token, this.config.JWT_SECRET);
       ws.userId = user.id;
+      ws.sessionId = crypto.randomUUID();
       ws.isAlive = true;
 
       // Register user session
@@ -178,11 +197,29 @@ class WebSocketService {
       }
       this.userSessions.get(user.id).add(ws);
 
+      Promise.resolve(
+        this.presenceStore.addSession(user.id, ws.sessionId, {
+          nodeId: this.nodeId,
+          userAgent: req.headers['user-agent'] || null,
+          connectedAt: Date.now()
+        })
+      ).catch((err) => {
+        console.error('[WebSocket] Failed to persist presence:', err);
+      });
+
       console.log(`[WebSocket] User ${user.id} connected`);
 
       // Setup pong handler for heartbeat
       ws.on('pong', () => {
         ws.isAlive = true;
+        Promise.resolve(
+          this.presenceStore.touchSession(ws.userId, ws.sessionId, {
+            nodeId: this.nodeId,
+            heartbeatAt: Date.now()
+          })
+        ).catch((err) => {
+          console.error('[WebSocket] Failed to update presence heartbeat:', err);
+        });
       });
 
       // Setup message handler
@@ -192,11 +229,19 @@ class WebSocketService {
 
       // Setup close handler
       ws.on('close', () => {
-        this.userSessions.get(user.id).delete(ws);
-        if (this.userSessions.get(user.id).size === 0) {
-          this.userSessions.delete(user.id);
+        const sessions = this.userSessions.get(user.id);
+        if (sessions) {
+          sessions.delete(ws);
+          if (sessions.size === 0) {
+            this.userSessions.delete(user.id);
+          }
         }
         console.log(`[WebSocket] User ${user.id} disconnected`);
+        Promise.resolve(
+          this.presenceStore.removeSession(user.id, ws.sessionId)
+        ).catch((err) => {
+          console.error('[WebSocket] Failed to remove presence session:', err);
+        });
       });
 
       // Setup error handler
@@ -332,10 +377,19 @@ class WebSocketService {
    * Health check
    */
   async healthCheck() {
+    let presence = {};
+    if (this.presenceStore && typeof this.presenceStore.getSummary === 'function') {
+      try {
+        presence = await this.presenceStore.getSummary();
+      } catch (err) {
+        presence = { error: err?.message || err };
+      }
+    }
     return {
       ok: this.wss !== null,
       connections: this.getConnectionCount(),
-      users: this.userSessions.size
+      users: this.userSessions.size,
+      presence
     };
   }
 }
