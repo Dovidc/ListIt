@@ -8,10 +8,12 @@
  * - Heartbeat and connection health
  */
 
+const crypto = require('crypto');
 const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { MessageBus, TOPICS } = require('../lib/message-bus');
+const { getRedisClient } = require('../lib/redis-client');
 
 class WebSocketService {
   constructor(config, messageBus, options = {}) {
@@ -28,12 +30,18 @@ class WebSocketService {
     this.ownsServer = !this.externalServer;
     this.heartbeatInterval = null;
     this.subscriptions = [];
+    this.redisPublisher = null;
+    this.redisSubscriber = null;
+    this.redisChannel = process.env.WS_DELIVERY_CHANNEL || 'ws:deliver';
+    this.nodeId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
     // Bind methods
     this.start = this.start.bind(this);
     this.stop = this.stop.bind(this);
     this.broadcast = this.broadcast.bind(this);
     this.sendToUser = this.sendToUser.bind(this);
+    this._deliverLocal = this._deliverLocal.bind(this);
+    this._handleRedisMessage = this._handleRedisMessage.bind(this);
     this.handleConnection = this.handleConnection.bind(this);
     this.handleMessage = this.handleMessage.bind(this);
     this.handleMessageEvent = this.handleMessageEvent.bind(this);
@@ -75,6 +83,11 @@ class WebSocketService {
             this.messageBus.subscribe(TOPICS.MESSAGE_SENT, this.handleMessageEvent)
           );
 
+          // Optional Redis bridge for cross-instance delivery
+          this.setupRedisBridge().catch((err) => {
+            console.warn('[WebSocket] Redis bridge disabled:', err?.message || err);
+          });
+
           resolve();
         } catch (err) {
           console.error('[WebSocket] Failed to start service:', err);
@@ -112,6 +125,16 @@ class WebSocketService {
    * Stop the WebSocket service
    */
   async stop() {
+    if (this.redisSubscriber) {
+      try { await this.redisSubscriber.unsubscribe(this.redisChannel); } catch { }
+      try { await this.redisSubscriber.quit(); } catch { }
+      this.redisSubscriber = null;
+    }
+    if (this.redisPublisher) {
+      try { await this.redisPublisher.quit(); } catch { }
+      this.redisPublisher = null;
+    }
+
     if (Array.isArray(this.subscriptions)) {
       this.subscriptions.forEach((unsubscribe) => {
         if (typeof unsubscribe === 'function') {
@@ -303,6 +326,25 @@ class WebSocketService {
    * Send message to specific user
    */
   async sendToUser(userId, message) {
+    // Deliver locally
+    await this._deliverLocal({ userId, message });
+
+    // Fan out to other instances via Redis, avoid echoing to self
+    if (this.redisPublisher) {
+      try {
+        const payload = JSON.stringify({
+          origin: this.nodeId,
+          userId,
+          message
+        });
+        await this.redisPublisher.publish(this.redisChannel, payload);
+      } catch (err) {
+        console.warn('[WebSocket] Redis publish failed:', err?.message || err);
+      }
+    }
+  }
+
+  async _deliverLocal({ userId, message }) {
     const sessions = this.userSessions.get(userId);
     if (!sessions) return;
 
@@ -312,6 +354,46 @@ class WebSocketService {
         ws.send(payload);
       }
     });
+  }
+
+  async _handleRedisMessage(_channel, raw) {
+    if (!raw) return;
+    let parsed = null;
+    try {
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      return;
+    }
+    if (!parsed || parsed.origin === this.nodeId) return;
+    if (!parsed.userId || !parsed.message) return;
+    await this._deliverLocal({ userId: parsed.userId, message: parsed.message });
+  }
+
+  async setupRedisBridge() {
+    const base = getRedisClient();
+    if (!base) {
+      throw new Error('Redis not configured for WebSocket delivery');
+    }
+
+    const makeDup = typeof base.duplicate === 'function' ? () => base.duplicate() : null;
+    if (!makeDup) {
+      throw new Error('Redis duplicate connection unavailable for WebSocket bridge');
+    }
+
+    this.redisPublisher = makeDup();
+    this.redisSubscriber = makeDup();
+
+    if (!this.redisSubscriber || !this.redisPublisher) {
+      throw new Error('Failed to create Redis pub/sub clients');
+    }
+
+    await Promise.all([
+      typeof this.redisPublisher.connect === 'function' ? this.redisPublisher.connect() : Promise.resolve(),
+      typeof this.redisSubscriber.connect === 'function' ? this.redisSubscriber.connect() : Promise.resolve()
+    ]);
+
+    await this.redisSubscriber.subscribe(this.redisChannel, this._handleRedisMessage);
+    console.log(`[WebSocket] Redis bridge active on channel ${this.redisChannel}`);
   }
 
   /**
