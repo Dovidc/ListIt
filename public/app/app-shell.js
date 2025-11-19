@@ -217,6 +217,28 @@
       });
       const supporterQueryHandledRef = useRef(false);
 
+      // Scroll preservation
+      const browseScrollPos = useRef(0);
+      const prevTabRef = useRef(tab);
+
+      // Wrapper for tab changes to save scroll position
+      const onTabChange = useCallback((newTab) => {
+        if (tab === 'browse') {
+          browseScrollPos.current = window.scrollY;
+        }
+        handleTabChange(newTab);
+      }, [tab, handleTabChange]);
+
+      // Restore scroll position when returning to browse
+      React.useLayoutEffect(() => {
+        if (tab === 'browse' && prevTabRef.current !== 'browse') {
+          window.scrollTo(0, browseScrollPos.current);
+        } else if (tab !== 'browse') {
+          window.scrollTo(0, 0);
+        }
+        prevTabRef.current = tab;
+      }, [tab]);
+
       const setSupporterPromptSeen = useCallback(() => {
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
@@ -405,7 +427,7 @@
       } = useMessageCenter({
         user,
         tab,
-        onTabChange: setTab,
+        onTabChange: onTabChange,
         onClearSeller: () => setViewingSeller(null)
       });
       const {
@@ -432,21 +454,21 @@
       const { startMessage, startDirectMessage, handleSeen } = useMessageActions({
         user,
         onConversationOpened: setActiveConvoId,
-        onTabChange: setTab,
+        onTabChange: onTabChange,
         onSellerCleared: () => setViewingSeller(null),
         recomputeUnread
       });
 
       useEffect(() => {
         AppNav.setUser = setUser;
-        AppNav.setTab = setTab;
+        AppNav.setTab = onTabChange;
         AppNav.notifyLocked = showLockedBanner;
         return () => {
           AppNav.setUser = () => { };
           AppNav.setTab = () => { };
           AppNav.notifyLocked = () => { };
         };
-      }, [setUser, setTab, showLockedBanner]);
+      }, [setUser, onTabChange, showLockedBanner]);
       useEffect(() => {
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
@@ -571,7 +593,7 @@
         if (!editorState.isOpen) {
           resetEditorState();
           if (tab === 'listing-edit') {
-            handleTabChange('browse');
+            onTabChange('browse');
           }
           return;
         }
@@ -582,7 +604,7 @@
 
         resetEditorState();
 
-        handleTabChange(origin);
+        onTabChange(origin);
 
         if (origin === 'browse' && reopenId) {
           const listingArray = Array.isArray(items) ? items : [];
@@ -591,7 +613,7 @@
             setSelectedListing(listing);
           }
         }
-      }, [editorState, handleTabChange, items, mineById, resetEditorState, setSelectedListing, tab]);
+      }, [editorState, onTabChange, items, mineById, resetEditorState, setSelectedListing, tab]);
 
       const openListingEditor = useCallback(({ draft = null, files = [], originTab: origin, reopenListingId } = {}) => {
         const normalizedFiles = Array.isArray(files) ? files.slice() : [];
@@ -606,15 +628,15 @@
           reopenListingId: reopenListingId ?? (draft?.id ?? null),
           draftSnapshot: draft || null
         }));
-        setTab('listing-edit');
-      }, [setEditing, setEditorState, setInitialListingFiles, setTab, setViewingSeller, tab]);
+        onTabChange('listing-edit');
+      }, [setEditing, setEditorState, setInitialListingFiles, onTabChange, setViewingSeller, tab]);
 
       const handleNavigate = useCallback((target) => {
         if (isEditingScreen) {
           resetEditorState();
         }
-        handleTabChange(target);
-      }, [handleTabChange, isEditingScreen, resetEditorState]);
+        onTabChange(target);
+      }, [onTabChange, isEditingScreen, resetEditorState]);
 
       function handleViewSeller(userId, username) {
         setViewingSeller({ id: userId, username });
@@ -640,7 +662,7 @@
         await removePushSubscription();
         await api.logout();
         setUser(null);
-        setTab('browse');
+        onTabChange('browse');
       }
 
       function ensureCanCreate() {
@@ -1071,7 +1093,7 @@
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldWithKarma,
                         onSupporterClick: handleSupporterBadgeClick,
-                        setTab
+                        setTab: onTabChange
                       }),
 
                       (tab === 'messages') &&
