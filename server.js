@@ -2747,6 +2747,70 @@ app.put('/api/me/profile-about', auth, writeLimiter, async (req, res) => {
 
 });
 
+app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
+  try {
+    // Check if user is allowed to customize (premium or payments disabled)
+    const paymentsDisabled = await arePaymentsDisabled();
+    const isPremium = req.user.supporter_tier === 'premium' || paymentsDisabled;
+
+    if (!isPremium) {
+      return res.status(403).json({ error: 'premium_required' });
+    }
+
+    const {
+      profile_bg_image_url,
+      profile_bg_video_url,
+      profile_avatar_border_color,
+      profile_avatar_border_style
+    } = req.body;
+
+    const updates = [];
+    const params = [];
+
+    if (profile_bg_image_url !== undefined) {
+      updates.push('profile_bg_image_url = ?');
+      params.push(String(profile_bg_image_url || '').trim() || null);
+    }
+
+    if (profile_bg_video_url !== undefined) {
+      updates.push('profile_bg_video_url = ?');
+      params.push(String(profile_bg_video_url || '').trim() || null);
+    }
+
+    if (profile_avatar_border_color !== undefined) {
+      updates.push('profile_avatar_border_color = ?');
+      params.push(String(profile_avatar_border_color || '').trim() || '#ffffff');
+    }
+
+    if (profile_avatar_border_style !== undefined) {
+      updates.push('profile_avatar_border_style = ?');
+      params.push(String(profile_avatar_border_style || '').trim() || 'solid');
+    }
+
+    if (updates.length === 0) {
+      return res.json(req.user);
+    }
+
+    params.push(req.user.id);
+
+    await db.prepare(`
+      UPDATE users
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `).run(...params);
+
+    const refreshed = await getUserWithStatus(req.user.id);
+    const user = await mapUserWithPayments(refreshed);
+    req.user = user;
+
+    return res.json(user);
+
+  } catch (err) {
+    console.error('Update profile customization failed:', err);
+    return res.status(500).json({ error: 'update_failed' });
+  }
+});
+
 app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
 
   try {
