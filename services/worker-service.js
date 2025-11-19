@@ -11,6 +11,7 @@
 
 const { TOPICS } = require('../lib/message-bus');
 const db = require('../db-wrapper');
+const { createWorkerQueue } = require('../lib/worker-queue');
 const {
   SUPPORTER_BADGE_CODE,
   SUPPORTER_BADGE_CODE_PREMIUM
@@ -27,8 +28,10 @@ class WorkerService {
     this.config = config;
     this.messageBus = messageBus;
 
-    // Job queue for resilience
-    this.jobQueue = [];
+    // Job queue for resilience (Redis-backed when available)
+    this.jobQueue = createWorkerQueue({
+      prefix: process.env.WORKER_QUEUE_PREFIX || 'listit:jobs'
+    });
     this.activeJobs = new Set();
     this.completedJobs = new Map();
 
@@ -143,10 +146,7 @@ class WorkerService {
       priority: job.priority || 0
     };
 
-    this.jobQueue.push(wrappedJob);
-
-    // Sort by priority (higher first)
-    this.jobQueue.sort((a, b) => b.priority - a.priority);
+    await this.jobQueue.enqueue(wrappedJob);
 
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
     // Kick the processor quickly instead of waiting for the next interval tick
@@ -165,9 +165,12 @@ class WorkerService {
 
     try {
       // Launch jobs up to the configured concurrency
-      while (this.jobQueue.length > 0 && this.activeJobs.size < this.maxConcurrency) {
-        const job = this.jobQueue.shift();
-        if (!job || this.activeJobs.has(job.id)) {
+      while (this.activeJobs.size < this.maxConcurrency) {
+        const job = await this.jobQueue.dequeue();
+        if (!job) {
+          break;
+        }
+        if (this.activeJobs.has(job.id)) {
           continue;
         }
         this.activeJobs.add(job.id);
@@ -210,9 +213,7 @@ class WorkerService {
 
       if (job.retries < job.maxRetries) {
         job.retries++;
-        this.jobQueue.push(job);
-        // Keep queue ordered after requeue
-        this.jobQueue.sort((a, b) => b.priority - a.priority);
+        await this.jobQueue.requeue(job);
         console.log(`[Worker] Job requeued: ${job.id} (attempt ${job.retries + 1}/${job.maxRetries + 1})`);
       } else {
         this.completedJobs.set(job.id, {
@@ -625,20 +626,25 @@ class WorkerService {
    * Get queue stats
    */
   getStats() {
-    return {
-      queueLength: this.jobQueue.length,
+    return this.jobQueue.size().then((queued) => ({
+      queueLength: queued,
       activeJobs: this.activeJobs.size,
       completedJobs: this.completedJobs.size
-    };
+    })).catch(() => ({
+      queueLength: null,
+      activeJobs: this.activeJobs.size,
+      completedJobs: this.completedJobs.size
+    }));
   }
 
   /**
    * Health check
    */
   async healthCheck() {
+    const stats = await this.getStats();
     return {
       ok: true,
-      ...this.getStats()
+      ...stats
     };
   }
 }
