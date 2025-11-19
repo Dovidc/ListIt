@@ -419,7 +419,7 @@
                 value: profileAbout,
                 onChange: (evt) => onChangeProfileAbout?.(evt.target.value),
                 placeholder: 'Share a short bio, shipping info, or what you sell.',
-                maxLength: 50,
+                maxLength: 80,
                 style: { width: '100%' }
               }),
               H('div', {
@@ -434,7 +434,7 @@
                 H('span', {
                   className: 'muted',
                   style: { fontSize: 12 }
-                }, `${(profileAbout || '').length}/50 characters`),
+                }, `${(profileAbout || '').length}/80 characters`),
                 H('button', {
                   className: 'btn primary',
                   type: 'button',

@@ -172,6 +172,12 @@
       body: JSON.stringify({ profile_picture_url: profilePictureUrl })
     }, meta);
 
+    const updateProfileAbout = (profileAbout, meta) => request('/api/me/profile-about', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_about: profileAbout })
+    }, meta);
+
     const updateProfileCustomization = (payload, meta) => request('/api/me/customization', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -447,6 +453,7 @@
 
       updateLocationPreset,
       updateProfilePicture,
+      updateProfileAbout,
       updateProfileCustomization,
       startSupporterCheckout,
       confirmSupporterCheckout,
