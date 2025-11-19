@@ -128,6 +128,35 @@ const APP_SETTING_KEYS = {
 const SETTINGS_CACHE_TTL_MS = 30_000;
 const appSettingsCache = new Map();
 
+let appSettingsSchemaReady = false;
+let appSettingsSchemaPromise = null;
+
+async function ensureAppSettingsSchema() {
+  if (appSettingsSchemaReady) return;
+  if (appSettingsSchemaPromise) return appSettingsSchemaPromise;
+
+  appSettingsSchemaPromise = (async () => {
+    try {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      appSettingsSchemaReady = true;
+    } catch (err) {
+      appSettingsSchemaReady = false;
+      console.error('Failed to ensure app_settings schema:', err);
+      throw err;
+    } finally {
+      appSettingsSchemaPromise = null;
+    }
+  })();
+
+  return appSettingsSchemaPromise;
+}
+
 function getOpenAIClient() {
 
   if (!process.env.OPENAI_API_KEY || !OpenAI) return null;
@@ -1013,6 +1042,7 @@ function parseBooleanSetting(value) {
 }
 
 async function getAppSettingValue(key, { useCache = true } = {}) {
+  await ensureAppSettingsSchema();
   const cacheEntry = appSettingsCache.get(key);
   if (useCache && cacheEntry && cacheEntry.expiresAt > Date.now()) {
     return cacheEntry;
@@ -1039,6 +1069,7 @@ function invalidateSettingCache(key) {
 }
 
 async function setAppSettingValue(key, value) {
+  await ensureAppSettingsSchema();
   const updatedAt = nowIso();
   await db.prepare(`
     INSERT INTO app_settings (key, value, updated_at)
