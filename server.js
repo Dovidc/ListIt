@@ -185,7 +185,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 
 
 
-const fallbackMessageBus = createMessageBus({ type: 'memory', name: 'server-fallback' });
+const fallbackMessageBus = createMessageBus({ name: 'server-fallback' });
 app.locals.messageBus = fallbackMessageBus;
 app.use((req, _res, next) => {
   if (!req.messageBus) {

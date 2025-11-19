@@ -5,7 +5,7 @@
  */
 
 const assert = require('assert');
-const { MessageBus, TOPICS, createMessage } = require('../lib/message-bus');
+const { MessageBus, TOPICS, createMessage, createMessageBus } = require('../lib/message-bus');
 const { ServiceOrchestrator } = require('../lib/service-orchestrator');
 const { getServiceConfig, validateConfig } = require('../lib/service-config');
 const { createWebSocketService } = require('../services/websocket-service');
@@ -187,6 +187,27 @@ test('TOPICS should define all major event types', () => {
   });
 });
 
+test('createMessageBus enforces Redis outside dev/test', () => {
+  const originalEnv = process.env.NODE_ENV;
+  const originalType = process.env.MESSAGE_BUS_TYPE;
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.MESSAGE_BUS_TYPE = 'memory';
+    assert.throws(() => createMessageBus(), /In-memory message bus/);
+  } finally {
+    if (originalEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalEnv;
+    }
+    if (originalType === undefined) {
+      delete process.env.MESSAGE_BUS_TYPE;
+    } else {
+      process.env.MESSAGE_BUS_TYPE = originalType;
+    }
+  }
+});
+
 // ============================================================================
 // 2. SERVICE CONFIGURATION TESTS
 // ============================================================================
@@ -207,6 +228,51 @@ test('getServiceConfig should return all required properties', () => {
   required.forEach(prop => {
     assert(config.hasOwnProperty(prop), `Missing config.${prop}`);
   });
+});
+
+test('getServiceConfig defaults to Redis bus in production', () => {
+  const originalEnv = process.env.NODE_ENV;
+  const originalType = process.env.MESSAGE_BUS_TYPE;
+  const originalRedis = process.env.REDIS_URL;
+  try {
+    process.env.NODE_ENV = 'production';
+    delete process.env.MESSAGE_BUS_TYPE;
+    delete process.env.REDIS_URL;
+    const config = getServiceConfig();
+    assert(config.MESSAGE_BUS_TYPE === 'redis');
+    assert.strictEqual(config.REDIS_URL, undefined);
+    assert(config.IS_PROD === true);
+  } finally {
+    if (originalEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalEnv;
+    }
+    if (originalType === undefined) {
+      delete process.env.MESSAGE_BUS_TYPE;
+    } else {
+      process.env.MESSAGE_BUS_TYPE = originalType;
+    }
+    if (originalRedis === undefined) {
+      delete process.env.REDIS_URL;
+    } else {
+      process.env.REDIS_URL = originalRedis;
+    }
+  }
+});
+
+test('validateConfig enforces Redis requirements in production', () => {
+  const config = {
+    DB_CONN_STRING: 'postgres://example',
+    JWT_SECRET: 'secret',
+    NODE_ENV: 'production',
+    IS_PROD: true,
+    IS_TEST: false,
+    MESSAGE_BUS_TYPE: 'memory',
+    REDIS_URL: undefined
+  };
+
+  assert.strictEqual(validateConfig(config), false);
 });
 
 test('getServiceConfig should parse PORT from env', () => {
@@ -237,7 +303,10 @@ test('getServiceConfig should have sensible defaults', () => {
 test('validateConfig should validate JWT_SECRET requirement', () => {
   const testConfig = {
     DB_CONN_STRING: 'postgresql://test',
-    JWT_SECRET: 'test-secret'
+    JWT_SECRET: 'test-secret',
+    MESSAGE_BUS_TYPE: 'memory',
+    REDIS_URL: 'redis://localhost:6379',
+    IS_PROD: false
   };
 
   const result = validateConfig(testConfig);

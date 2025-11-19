@@ -120,8 +120,8 @@ ENABLE_WEBSOCKET=true
 ENABLE_WORKER=true
 
 # Message Bus
-MESSAGE_BUS_TYPE=memory|redis  (default: memory)
-REDIS_URL=redis://localhost:6379
+MESSAGE_BUS_TYPE=memory|redis  (default: memory in dev/test, redis in production)
+REDIS_URL=redis://localhost:6379  # required when MESSAGE_BUS_TYPE=redis
 
 # Service Ports
 API_PORT=3000
