@@ -760,6 +760,8 @@
       setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
+      askCreateActionEnabled,
+      setAskCreateActionEnabled,
       onRequestDeleteAccount,
       onRequestCancelSubscription,
       isMobile,
@@ -898,6 +900,22 @@
                   }
                 }, '?')
               ),
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!askCreateActionEnabled,
+                  onChange: (e) => {
+                    console.log('Toggle changed:', e.target.checked);
+                    setAskCreateActionEnabled?.(e.target.checked);
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Ask before creating'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Choose Camera or Gallery')
+                )
+              ),
               // Show cancel subscription button for premium monthly subscribers
               user?.supporter_tier === 'premium' && user?.stripe_subscription_id && H('div', {
                 style: {
@@ -966,7 +984,9 @@
       onViewSeller,
       onToggleSold,
       onSupporterClick,
-      onJoinSupporterProgram
+      onJoinSupporterProgram,
+      askCreateActionEnabled,
+      setAskCreateActionEnabled
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
@@ -1743,7 +1763,9 @@
           onRequestCancelSubscription: handleRequestCancelSubscription,
           isMobile,
           user,
-          subscriptionStatus
+          subscriptionStatus,
+          askCreateActionEnabled,
+          setAskCreateActionEnabled
         }),
 
         H(ProfilePictureUploadModal, {

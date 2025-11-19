@@ -50,7 +50,7 @@
         }
       }, []);
 
-      const noop = useCallback(() => {}, []);
+      const noop = useCallback(() => { }, []);
 
       return useMemo(() => ({
         enabled: true,
@@ -60,12 +60,14 @@
     const useAiDescriptionToggle = createStoredToggle('listit_ai_descriptions');
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
     const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
+    const useCreateActionToggle = createStoredToggle('listit_ask_create_action', false);
 
     function useAppPreferences() {
       const autoList = useAlwaysOnAutoList();
       const aiDescription = useAiDescriptionToggle();
       const autoNearby = useAutoPostNearbyToggle();
       const inquiryText = useInquiryTextToggle();
+      const createAction = useCreateActionToggle();
 
       return {
         autoListEnabled: autoList.enabled,
@@ -75,7 +77,9 @@
         autoPostNearbyEnabled: autoNearby.enabled,
         setAutoPostNearbyEnabled: autoNearby.setEnabled,
         autoInquiryEnabled: inquiryText.enabled,
-        setAutoInquiryEnabled: inquiryText.setEnabled
+        setAutoInquiryEnabled: inquiryText.setEnabled,
+        askCreateActionEnabled: createAction.enabled,
+        setAskCreateActionEnabled: createAction.setEnabled
       };
     }
 

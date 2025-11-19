@@ -202,7 +202,9 @@
         autoPostNearbyEnabled,
         setAutoPostNearbyEnabled,
         autoInquiryEnabled,
-        setAutoInquiryEnabled
+        setAutoInquiryEnabled,
+        askCreateActionEnabled,
+        setAskCreateActionEnabled
       } = useAppPreferences();
       const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, isSelf: false });
       const [supporterUpsellState, setSupporterUpsellState] = useState({
@@ -216,6 +218,9 @@
         notice: ''
       });
       const supporterQueryHandledRef = useRef(false);
+      const [createChoiceModalOpen, setCreateChoiceModalOpen] = useState(false);
+      const plusButtonTimerRef = useRef(null);
+      const isLongPressRef = useRef(false);
 
       // Scroll preservation
       const browseScrollPos = useRef(0);
@@ -747,6 +752,47 @@
         handleNavigate(target);
       }
 
+      const handlePlusButtonStart = useCallback((e) => {
+        console.log('handlePlusButtonStart', e.type);
+        isLongPressRef.current = false;
+        plusButtonTimerRef.current = setTimeout(() => {
+          console.log('Long press triggered');
+          isLongPressRef.current = true;
+          if (navigator.vibrate) {
+            navigator.vibrate(50);
+          }
+          setMobileCreateMode('masslist');
+          setShowMassList(true);
+        }, 500);
+      }, [setShowMassList]);
+
+      const handlePlusButtonEnd = useCallback((e) => {
+        console.log('handlePlusButtonEnd', e.type);
+        if (plusButtonTimerRef.current) {
+          clearTimeout(plusButtonTimerRef.current);
+          plusButtonTimerRef.current = null;
+        }
+
+        if (isLongPressRef.current) {
+          console.log('Preventing click due to long press');
+          e.preventDefault();
+          return;
+        }
+      }, []);
+
+      const handlePlusClick = useCallback((e) => {
+        console.log('handlePlusClick', { isLongPress: isLongPressRef.current, askCreateActionEnabled });
+        if (isLongPressRef.current) return;
+
+        if (askCreateActionEnabled) {
+          console.log('Opening choice modal');
+          setCreateChoiceModalOpen(true);
+        } else {
+          console.log('Opening camera directly');
+          handleMobileCaptureClick('camera');
+        }
+      }, [askCreateActionEnabled]);
+
       const mobileNavIcons = {
         browse: () => H('svg', {
           viewBox: '0 0 24 24',
@@ -956,68 +1002,7 @@
                           )
                         ),
 
-                        isMobile && H('section', {
-                          className: 'mobile-create-card',
-                          role: 'region',
-                          'aria-label': 'Create listings'
-                        },
-                          H('div', { className: 'mobile-create-toggle' },
-                            H('div', { className: 'mobile-create-toggle-track' }),
-                            H('div', {
-                              className: 'mobile-create-toggle-thumb',
-                              style: { transform: mobileCreateMode === 'masslist' ? 'translateX(100%)' : 'translateX(0%)' }
-                            }),
-                            H('button', {
-                              type: 'button',
-                              className: ['mobile-create-toggle-btn', mobileCreateMode === 'list' ? 'is-active' : ''].filter(Boolean).join(' '),
-                              onClick: () => setMobileCreateMode('list'),
-                              'aria-pressed': mobileCreateMode === 'list'
-                            }, 'List'),
-                            H('button', {
-                              type: 'button',
-                              className: ['mobile-create-toggle-btn', mobileCreateMode === 'masslist' ? 'is-active' : ''].filter(Boolean).join(' '),
-                              onClick: () => setMobileCreateMode('masslist'),
-                              'aria-pressed': mobileCreateMode === 'masslist'
-                            }, 'Masslist')
-                          ),
-                          H('div', { className: 'mobile-create-actions' },
-                            H('button', {
-                              type: 'button',
-                              className: 'mobile-create-icon',
-                              onClick: () => handleMobileCaptureClick('gallery'),
-                              'aria-label': mobileCreateMode === 'masslist' ? 'Select gallery photos for Masslist' : 'Select gallery photos for a listing'
-                            },
-                              H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.gallery())
-                            ),
-                            H('button', {
-                              type: 'button',
-                              className: 'mobile-create-icon',
-                              onClick: () => handleMobileCaptureClick('camera'),
-                              'aria-label': mobileCreateMode === 'masslist' ? 'Use camera for Masslist' : 'Use camera for a listing'
-                            },
-                              H('span', { className: 'mobile-create-icon-shell' }, mobileCreateIcons.camera())
-                            )
-                          ),
-                          H('input', {
-                            key: `gallery-${mobileCreateMode}`,
-                            ref: galleryInputRef,
-                            type: 'file',
-                            accept: 'image/*',
-                            multiple: mobileCreateMode === 'masslist',
-                            style: { display: 'none' },
-                            onChange: handleGalleryChange
-                          }),
-                          H('input', {
-                            key: `camera-${mobileCreateMode}`,
-                            ref: cameraInputRef,
-                            type: 'file',
-                            accept: 'image/*',
-                            multiple: mobileCreateMode === 'masslist',
-                            capture: 'environment',
-                            style: { display: 'none' },
-                            onChange: handleCameraChange
-                          })
-                        ),
+
 
                         H(ListingsGrid, {
                           items,
@@ -1136,7 +1121,9 @@
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldWithKarma,
                         onSupporterClick: handleSupporterBadgeClick,
-                        onJoinSupporterProgram: handleSupporterPromptCta
+                        onJoinSupporterProgram: handleSupporterPromptCta,
+                        askCreateActionEnabled,
+                        setAskCreateActionEnabled
                       }),
 
                       (tab === 'admin') &&
@@ -1171,6 +1158,52 @@
 
             H(ListingQueueToast, null),
 
+            createChoiceModalOpen && H('div', {
+              className: 'modal open',
+              style: { zIndex: 9999 },
+              onClick: (e) => { if (e.target === e.currentTarget) setCreateChoiceModalOpen(false); }
+            },
+              H('div', { className: 'modal-inner', style: { maxWidth: 300, padding: 24, textAlign: 'center', borderRadius: 16 } },
+                H('h3', { style: { marginTop: 0, marginBottom: 20 } }, 'Create Listing'),
+                H('div', { style: { display: 'grid', gap: 12 } },
+                  H('button', {
+                    className: 'btn primary',
+                    style: { justifyContent: 'center' },
+                    onClick: () => { setCreateChoiceModalOpen(false); handleMobileCaptureClick('camera'); }
+                  }, 'Take Photo'),
+                  H('button', {
+                    className: 'btn',
+                    style: { justifyContent: 'center' },
+                    onClick: () => { setCreateChoiceModalOpen(false); handleMobileCaptureClick('gallery'); }
+                  }, 'Choose from Gallery')
+                ),
+                H('button', {
+                  className: 'btn',
+                  style: { marginTop: 16, border: 'none', background: 'transparent', width: '100%', color: '#666' },
+                  onClick: () => setCreateChoiceModalOpen(false)
+                }, 'Cancel')
+              )
+            ),
+
+            // Hidden inputs for camera/gallery
+            H('input', {
+              key: `gallery-hidden`,
+              ref: galleryInputRef,
+              type: 'file',
+              accept: 'image/*',
+              style: { display: 'none' },
+              onChange: handleGalleryChange
+            }),
+            H('input', {
+              key: `camera-hidden`,
+              ref: cameraInputRef,
+              type: 'file',
+              accept: 'image/*',
+              capture: 'environment',
+              style: { display: 'none' },
+              onChange: handleCameraChange
+            }),
+
             messageToasts.length > 0 && H('div', {
               className: 'message-toast-container',
               'aria-live': 'assertive'
@@ -1198,26 +1231,66 @@
               role: 'navigation',
               'aria-label': 'Primary'
             },
-              ['browse', 'nearby', 'messages', 'profile'].map((key) => {
-                const label = mobileNavLabels[key];
-                const icon = mobileNavIcons[key];
-                const isActive = tab === key || (key === 'browse' && tab === 'browse');
-                return H('button', {
-                  key,
+              // Browse
+              H('button', {
+                type: 'button',
+                className: ['mobile-dashboard__button', tab === 'browse' ? 'is-active' : ''].filter(Boolean).join(' '),
+                onClick: () => handleMobileNav('browse'),
+                'aria-label': 'Home'
+              },
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.browse()),
+                H('span', { className: 'mobile-dashboard__label' }, 'Home')
+              ),
+              // Nearby
+              H('button', {
+                type: 'button',
+                className: ['mobile-dashboard__button', tab === 'nearby' ? 'is-active' : ''].filter(Boolean).join(' '),
+                onClick: () => handleMobileNav('nearby'),
+                'aria-label': 'Nearby'
+              },
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.nearby()),
+                H('span', { className: 'mobile-dashboard__label' }, 'Nearby')
+              ),
+              // Plus Button
+              H('div', { className: 'mobile-dashboard__plus-container' },
+                H('button', {
                   type: 'button',
-                  className: ['mobile-dashboard__button', isActive ? 'is-active' : ''].filter(Boolean).join(' '),
-                  onClick: () => handleMobileNav(key),
-                  'aria-current': isActive ? 'page' : undefined,
-                  'aria-label': label
+                  className: 'mobile-dashboard__plus-btn',
+                  onMouseDown: handlePlusButtonStart,
+                  onMouseUp: handlePlusButtonEnd,
+                  onMouseLeave: handlePlusButtonEnd,
+                  onTouchStart: handlePlusButtonStart,
+                  onTouchEnd: handlePlusButtonEnd,
+                  onClick: handlePlusClick,
+                  'aria-label': 'Create Listing'
                 },
-                  H('span', { className: 'mobile-dashboard__icon', 'aria-hidden': 'true' }, icon?.()),
-                  H('span', { className: 'mobile-dashboard__label' }, label),
-                  (key === 'messages' && unreadCount > 0) && H('span', {
-                    className: 'mobile-dashboard__badge',
-                    'aria-hidden': 'true'
-                  })
-                );
-              })
+                  H('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'white', strokeWidth: 3, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    H('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+                    H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+                  )
+                )
+              ),
+              // Messages
+              H('button', {
+                type: 'button',
+                className: ['mobile-dashboard__button', tab === 'messages' ? 'is-active' : ''].filter(Boolean).join(' '),
+                onClick: () => handleMobileNav('messages'),
+                'aria-label': 'Messages'
+              },
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.messages()),
+                H('span', { className: 'mobile-dashboard__label' }, 'Messages'),
+                unreadCount > 0 && H('span', { className: 'mobile-dashboard__badge' })
+              ),
+              // Profile
+              H('button', {
+                type: 'button',
+                className: ['mobile-dashboard__button', tab === 'profile' ? 'is-active' : ''].filter(Boolean).join(' '),
+                onClick: () => handleMobileNav('profile'),
+                'aria-label': 'Profile'
+              },
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.profile()),
+                H('span', { className: 'mobile-dashboard__label' }, 'Profile')
+              )
             )
           )
         )

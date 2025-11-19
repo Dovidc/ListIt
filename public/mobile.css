@@ -28,18 +28,46 @@
 /* Mobile-only tweaks. Desktop stays unchanged. */
 
 /* Base readability & tap targets */
-html, body { font-size: 16px; }
-* { -webkit-text-size-adjust: 100%; }
-.container { padding: 12px; }
+html,
+body {
+  font-size: 16px;
+}
+
+* {
+  -webkit-text-size-adjust: 100%;
+}
+
+.container {
+  padding: 12px;
+}
 
 /* Layout */
-.grid { grid-template-columns: 1fr; gap: 14px; }
-.split { flex-direction: column; gap: 12px; }
-.sidebar { width: 100%; max-width: 100%; }
-.row { flex-wrap: wrap; } /* allow wrapping where needed */
+.grid {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.split {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar {
+  width: 100%;
+  max-width: 100%;
+}
+
+.row {
+  flex-wrap: wrap;
+}
+
+/* allow wrapping where needed */
 
 /* Inputs & buttons (global mobile defaults) */
-input, textarea, select, .btn {
+input,
+textarea,
+select,
+.btn {
   font-size: 16px;
   min-height: 44px;
   padding: 12px 14px;
@@ -144,7 +172,7 @@ header nav.row {
 }
 
 /* 2) Auth area buttons (right side, includes Log out) - lighter pills */
-header .container > .row:last-child .btn {
+header .container>.row:last-child .btn {
   width: auto !important;
   display: inline-flex;
   font-size: 13px !important;
@@ -155,7 +183,7 @@ header .container > .row:last-child .btn {
 }
 
 /* 3) Make Log out the SMALLEST (last button in that group) */
-header .container > .row:last-child .btn:last-child {
+header .container>.row:last-child .btn:last-child {
   font-size: 12px !important;
   padding: 6px 12px !important;
   min-height: 32px !important;
@@ -164,14 +192,31 @@ header .container > .row:last-child .btn:last-child {
 }
 
 /* Cards */
-.card { border-radius: 20px; }
-.aspect { padding-top: 62%; }
-.card .row { gap: 8px; }
-.message { font-size: 15px; max-width: 92%; }
+.card {
+  border-radius: 20px;
+}
+
+.aspect {
+  padding-top: 62%;
+}
+
+.card .row {
+  gap: 8px;
+}
+
+.message {
+  font-size: 15px;
+  max-width: 92%;
+}
 
 /* Search & selects */
-header input { min-width: 140px; }
-select { width: auto; }
+header input {
+  min-width: 140px;
+}
+
+select {
+  width: auto;
+}
 
 /* Lightbox (keep centered/contained on phones) */
 .modal-inner {
@@ -184,6 +229,7 @@ select { width: auto; }
   border-radius: 16px;
   overflow: hidden;
 }
+
 .modal-inner .image-shell {
   max-width: 95vw;
   max-height: 95vh;
@@ -191,6 +237,7 @@ select { width: auto; }
   align-items: center;
   justify-content: center;
 }
+
 .modal-inner img {
   max-width: 95vw;
   max-height: 95vh;
@@ -198,11 +245,19 @@ select { width: auto; }
   height: auto;
   object-fit: contain;
 }
-.thumbs { -webkit-overflow-scrolling: touch; }
-.arrow { padding: 8px 12px; }
+
+.thumbs {
+  -webkit-overflow-scrolling: touch;
+}
+
+.arrow {
+  padding: 8px 12px;
+}
 
 /* Forms */
-textarea { min-height: 100px; }
+textarea {
+  min-height: 100px;
+}
 
 /* Creation shortcuts */
 .mobile-create-card {
@@ -379,10 +434,15 @@ textarea { min-height: 100px; }
 main.container {
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
-label { font-weight: 600; }
+
+label {
+  font-weight: 600;
+}
 
 /* Keep content visible above mobile keyboards */
-main { padding-bottom: 16px; }
+main {
+  padding-bottom: 16px;
+}
 
 /* Nearby filter area tighter on mobile */
 .nearby-filter {
@@ -391,10 +451,12 @@ main { padding-bottom: 16px; }
   gap: 8px;
   margin: 8px 0;
 }
+
 .nearby-filter label {
   font-size: 14px;
   font-weight: 600;
 }
+
 .nearby-filter select {
   font-size: 14px;
   padding: 6px 8px;
@@ -411,11 +473,13 @@ main { padding-bottom: 16px; }
   column-count: 3;
   column-gap: 8px;
 }
+
 #tab-nearby .masonry-item,
 [data-tab="nearby"] .masonry-item {
   break-inside: avoid;
   margin-bottom: 8px;
 }
+
 #tab-nearby .masonry .image-shell,
 [data-tab="nearby"] .masonry .image-shell,
 #tab-nearby .masonry img,
@@ -424,7 +488,7 @@ main { padding-bottom: 16px; }
   height: auto;
   display: block;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
 }
 
@@ -440,29 +504,44 @@ main { padding-bottom: 16px; }
   background: #fff;
   border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   position: relative;
 }
-.modal-inner.listing-modal .card { width: 100%; overflow: hidden; }
+
+.modal-inner.listing-modal .card {
+  width: 100%;
+  overflow: hidden;
+}
+
 .modal-inner.listing-modal .aspect {
   position: relative;
   padding-top: 56%;
   margin-bottom: 12px;
 }
+
 .modal-inner.listing-modal .aspect .image-shell {
   position: absolute;
   inset: 0;
   border-radius: 12px;
   overflow: hidden;
 }
+
 .modal-inner.listing-modal .aspect img {
-  position: absolute; top: 0; left: 0;
-  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
 }
-.modal-inner.listing-modal .card > div:last-child {
-  position: relative; z-index: 10; padding: 12px;
+
+.modal-inner.listing-modal .card>div:last-child {
+  position: relative;
+  z-index: 10;
+  padding: 12px;
 }
 
 /* Hide extra details ONLY in the image grid, not in the modal */
@@ -485,45 +564,69 @@ main { padding-bottom: 16px; }
 }
 
 /* Make Lightbox sit above other modals (Nearby sheet, etc.) */
-.modal.lightbox { z-index: 1000; }
+.modal.lightbox {
+  z-index: 1000;
+}
 
 /* Global loading overlay (mobile also sees it) */
 .global-loader {
-  position: fixed; inset: 0;
-  background: rgba(255,255,255,.6);
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, .6);
   backdrop-filter: blur(2px);
-  display: grid; place-items: center;
+  display: grid;
+  place-items: center;
   z-index: 2000;
   pointer-events: none;
 }
+
 .spinner {
-  width: 36px; height: 36px;
+  width: 36px;
+  height: 36px;
   border: 3px solid #e5e7eb;
   border-top-color: #111;
   border-radius: 50%;
   animation: spin .9s linear infinite;
   margin: 8px auto;
 }
-.loader-text { font-weight: 700; color: #111; }
-@keyframes spin { to { transform: rotate(360deg); } }
+
+.loader-text {
+  font-weight: 700;
+  color: #111;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* Make clickable areas comfy but compact */
 #tab-nearby a,
 [data-tab="nearby"] a {
-  -webkit-tap-highlight-color: rgba(0,0,0,.05);
+  -webkit-tap-highlight-color: rgba(0, 0, 0, .05);
 }
 
 /* ---------- Reusable Masonry (Nearby + Listings) ---------- */
 .masonry {
-  column-count: 3;        /* match Nearby */
-  column-gap: 8px;        /* match Nearby */
+  column-count: 3;
+  /* match Nearby */
+  column-gap: 8px;
+  /* match Nearby */
 }
+
 @media (min-width: 768px) {
-  .masonry { column-count: 3; }
+  .masonry {
+    column-count: 3;
+  }
 }
+
 @media (min-width: 1024px) {
-  .masonry { column-count: 4; }
+  .masonry {
+    column-count: 4;
+  }
 }
+
 .masonry-item {
   break-inside: avoid;
   -webkit-column-break-inside: avoid;
@@ -531,10 +634,259 @@ main { padding-bottom: 16px; }
   margin-bottom: 8px;
   display: block;
 }
+
 .masonry-item .card {
   width: 100%;
-  display: inline-block; /* prevents spanning columns */
+  display: inline-block;
+  /* prevents spanning columns */
 }
+
 .masonry-item .image-shell,
-.masonry-item img { width: 100%; height: auto; display: block; }
-.masonry-item .image-shell { overflow: hidden; }
+.masonry-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.masonry-item .image-shell {
+  overflow: hidden;
+}
+
+/* Protruding Plus Button */
+.mobile-dashboard__plus-container {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* ============================================================
+   NEARBY (MOBILE): masonry style display of just images
+   ============================================================ */
+  #tab-nearby .masonry,
+  [data-tab="nearby"] .masonry {
+    column-count: 3;
+    column-gap: 8px;
+  }
+
+  #tab-nearby .masonry-item,
+  [data-tab="nearby"] .masonry-item {
+    break-inside: avoid;
+    margin-bottom: 8px;
+  }
+
+  #tab-nearby .masonry .image-shell,
+  [data-tab="nearby"] .masonry .image-shell,
+  #tab-nearby .masonry img,
+  [data-tab="nearby"] .masonry img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+  }
+
+  #tab-nearby .masonry .image-shell,
+  [data-tab="nearby"] .masonry .image-shell {
+    overflow: hidden;
+  }
+
+  /* Modal for full listing */
+  .modal-inner.listing-modal {
+    width: 90vw;
+    max-width: 360px;
+    background: #fff;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .modal-inner.listing-modal .card {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .modal-inner.listing-modal .aspect {
+    position: relative;
+    padding-top: 56%;
+    margin-bottom: 12px;
+  }
+
+  .modal-inner.listing-modal .aspect .image-shell {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-inner.listing-modal .aspect img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12px;
+  }
+
+  .modal-inner.listing-modal .card>div:last-child {
+    position: relative;
+    z-index: 10;
+    padding: 12px;
+  }
+
+  /* Hide extra details ONLY in the image grid, not in the modal */
+  #tab-nearby .masonry .title,
+  #tab-nearby .masonry .description,
+  #tab-nearby .masonry .price,
+  #tab-nearby .masonry .distance,
+  [data-tab="nearby"] .masonry .title,
+  [data-tab="nearby"] .masonry .description,
+  [data-tab="nearby"] .masonry .price,
+  [data-tab="nearby"] .masonry .distance {
+    display: none !important;
+  }
+
+  /* Tighten any Nearby filter/header spacing on mobile */
+  #tab-nearby .nearby-filter,
+  [data-tab="nearby"] .nearby-filter {
+    gap: 6px;
+    margin: 6px 0;
+  }
+
+  /* Make Lightbox sit above other modals (Nearby sheet, etc.) */
+  .modal.lightbox {
+    z-index: 1000;
+  }
+
+  /* Global loading overlay (mobile also sees it) */
+  .global-loader {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, .6);
+    backdrop-filter: blur(2px);
+    display: grid;
+    place-items: center;
+    z-index: 2000;
+    pointer-events: none;
+  }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e5e7eb;
+    border-top-color: #111;
+    border-radius: 50%;
+    animation: spin .9s linear infinite;
+    margin: 8px auto;
+  }
+
+  .loader-text {
+    font-weight: 700;
+    color: #111;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Make clickable areas comfy but compact */
+  #tab-nearby a,
+  [data-tab="nearby"] a {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, .05);
+  }
+
+  /* ---------- Reusable Masonry (Nearby + Listings) ---------- */
+  .masonry {
+    column-count: 3;
+    /* match Nearby */
+    column-gap: 8px;
+    /* match Nearby */
+  }
+
+  @media (min-width: 768px) {
+    .masonry {
+      column-count: 3;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .masonry {
+      column-count: 4;
+    }
+  }
+
+  .masonry-item {
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .masonry-item .card {
+    width: 100%;
+    display: inline-block;
+    /* prevents spanning columns */
+  }
+
+  .masonry-item .image-shell,
+  .masonry-item img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .masonry-item .image-shell {
+    overflow: hidden;
+  }
+
+  /* Protruding Plus Button */
+  .mobile-dashboard__plus-container {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: -24px;
+    /* Protrude upwards */
+    z-index: 10;
+  }
+
+  .mobile-dashboard__plus-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: #2563eb;
+    border: 4px solid #fff;
+    /* White border for "cutout" effect */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.1);
+    /* Softer shadow for depth */
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.1s ease;
+  }
+
+  .mobile-dashboard__plus-btn:active {
+    transform: scale(0.95);
+  }
+
+  .mobile-dashboard__plus-btn svg {
+    width: 32px;
+    /* Slightly larger for clarity */
+    height: 32px;
+    margin-top: 2px;
+    /* Move down slightly */
+  }
