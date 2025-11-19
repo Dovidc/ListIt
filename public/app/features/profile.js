@@ -978,6 +978,7 @@
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
+      const premiumFreeForAll = Boolean(user?.payments_disabled);
       const [settingsOpen, setSettingsOpen] = useState(false);
       const [paypalModalOpen, setPaypalModalOpen] = useState(false);
       const [paypalStatusMessage, setPaypalStatusMessage] = useState('');
@@ -1096,7 +1097,6 @@
         }
       }, [user?.id]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
-      const premiumFreeForAll = Boolean(user?.payments_disabled);
       const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
