@@ -1090,12 +1090,15 @@
 
       useEffect(() => {
         if (!user) return;
-        // Only sync from server on initial load, not on every user update
-        // to preserve local edits
-        if ('profile_about' in user && !profileAboutState) {
-          setProfileAbout(user.profile_about || '');
+        // Sync from server when user.profile_about changes
+        if ('profile_about' in user) {
+          const serverValue = user.profile_about || '';
+          // Only update if different to avoid unnecessary re-renders
+          if (profileAboutRef.current !== serverValue) {
+            setProfileAbout(serverValue);
+          }
         }
-      }, [user?.id]);
+      }, [user?.profile_about, setProfileAbout]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
       const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
       const profileSupporter = useMemo(() => {
