@@ -35,7 +35,10 @@ class WorkerService {
     // Worker configuration
     this.maxRetries = 3;
     this.retryDelayMs = 1000;
-    this.processingInterval = 5000; // Process queue every 5 seconds
+    this.maxConcurrency = Math.max(1, Number(config.WORKER_CONCURRENCY || config.WORKER_MAX_CONCURRENCY || 4));
+    this.jobTimeoutMs = Math.max(1000, Number(config.WORKER_JOB_TIMEOUT_MS || 15000));
+    this.processingInterval = Math.max(250, Number(config.WORKER_INTERVAL_MS || 1000)); // tighter loop for bursts
+    this.processing = false;
 
     // Processing loop
     this.processingLoop = null;
@@ -146,6 +149,10 @@ class WorkerService {
     this.jobQueue.sort((a, b) => b.priority - a.priority);
 
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
+    // Kick the processor quickly instead of waiting for the next interval tick
+    this.processQueue().catch(err => {
+      console.error('[Worker] Failed to start queue processor:', err);
+    });
     return jobId;
   }
 
@@ -153,43 +160,75 @@ class WorkerService {
    * Process queued jobs
    */
   async processQueue() {
-    if (this.jobQueue.length === 0) {
-      return;
-    }
-
-    const job = this.jobQueue.shift();
-
-    // Skip if already active
-    if (this.activeJobs.has(job.id)) {
-      this.jobQueue.unshift(job); // Put back in queue
-      return;
-    }
-
-    this.activeJobs.add(job.id);
+    if (this.processing) return;
+    this.processing = true;
 
     try {
-      await this.processJob(job);
+      // Launch jobs up to the configured concurrency
+      while (this.jobQueue.length > 0 && this.activeJobs.size < this.maxConcurrency) {
+        const job = this.jobQueue.shift();
+        if (!job || this.activeJobs.has(job.id)) {
+          continue;
+        }
+        this.activeJobs.add(job.id);
+        this._runJob(job).catch((err) => {
+          console.error(`[Worker] Unhandled job error (${job.id}):`, err?.message || err);
+        });
+      }
+    } finally {
+      this.processing = false;
+    }
+  }
+
+  /**
+   * Run a single job with timeout and retry handling
+   */
+  async _runJob(job) {
+    const timeoutMs = Math.max(500, Number(job.timeoutMs || this.jobTimeoutMs));
+    let timer = null;
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`job_timeout:${job.type}`));
+      }, timeoutMs);
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+
+    try {
+      const result = await Promise.race([
+        this.processJob(job),
+        timeoutPromise
+      ]);
+
       this.completedJobs.set(job.id, {
         status: 'success',
-        completedAt: Date.now()
+        completedAt: Date.now(),
+        result
       });
     } catch (err) {
-      console.error(`[Worker] Job failed: ${job.id}`, err.message);
+      console.error(`[Worker] Job failed: ${job.id}`, err?.message || err);
 
       if (job.retries < job.maxRetries) {
         job.retries++;
         this.jobQueue.push(job);
+        // Keep queue ordered after requeue
+        this.jobQueue.sort((a, b) => b.priority - a.priority);
         console.log(`[Worker] Job requeued: ${job.id} (attempt ${job.retries + 1}/${job.maxRetries + 1})`);
       } else {
         this.completedJobs.set(job.id, {
           status: 'failed',
-          error: err.message,
+          error: err?.message || 'unknown_error',
           completedAt: Date.now()
         });
         console.error(`[Worker] Job failed permanently: ${job.id}`);
       }
     } finally {
+      if (timer) clearTimeout(timer);
       this.activeJobs.delete(job.id);
+      // Continue draining after this job completes
+      this.processQueue().catch((err) => {
+        console.error('[Worker] Failed to continue draining queue:', err?.message || err);
+      });
     }
   }
 

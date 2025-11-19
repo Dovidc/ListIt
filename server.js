@@ -126,33 +126,54 @@ const APP_SETTING_KEYS = {
 };
 
 const SETTINGS_CACHE_TTL_MS = 30_000;
+const OPENAI_TIMEOUT_MS = Math.max(1000, Number(process.env.OPENAI_TIMEOUT_MS || 6000));
 const appSettingsCache = new Map();
 
 let appSettingsSchemaReady = false;
 let appSettingsSchemaPromise = null;
+
+async function assertTableExists(tableName, requiredColumns = []) {
+  const row = await db.prepare(`
+    SELECT 1 AS ok
+      FROM information_schema.tables
+     WHERE table_schema = current_schema()
+       AND table_name = ?
+     LIMIT 1
+  `).get(tableName);
+
+  if (!row) {
+    throw new Error(`missing_table:${tableName} (run migrations)`);
+  }
+
+  if (Array.isArray(requiredColumns) && requiredColumns.length > 0) {
+    const columnRows = await db.prepare(`
+      SELECT column_name
+        FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = ?
+    `).all(tableName);
+    const found = new Set((columnRows || []).map((c) => c.column_name));
+    const missing = requiredColumns.filter((c) => !found.has(c));
+    if (missing.length) {
+      throw new Error(`missing_columns:${tableName}:${missing.join(',')}`);
+    }
+  }
+}
 
 async function ensureAppSettingsSchema() {
   if (appSettingsSchemaReady) return;
   if (appSettingsSchemaPromise) return appSettingsSchemaPromise;
 
   appSettingsSchemaPromise = (async () => {
-    try {
-      await db.exec(`
-        CREATE TABLE IF NOT EXISTS app_settings (
-          key TEXT PRIMARY KEY,
-          value TEXT,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      appSettingsSchemaReady = true;
-    } catch (err) {
-      appSettingsSchemaReady = false;
-      console.error('Failed to ensure app_settings schema:', err);
-      throw err;
-    } finally {
-      appSettingsSchemaPromise = null;
-    }
-  })();
+    await assertTableExists('app_settings', ['key', 'value', 'updated_at']);
+    appSettingsSchemaReady = true;
+  })().catch((err) => {
+    appSettingsSchemaReady = false;
+    console.error('app_settings schema check failed:', err?.message || err);
+    throw err;
+  }).finally(() => {
+    appSettingsSchemaPromise = null;
+  });
 
   return appSettingsSchemaPromise;
 }
@@ -169,6 +190,31 @@ function getOpenAIClient() {
 
   return cachedOpenAIClient;
 
+}
+
+async function withTimeout(task, timeoutMs = OPENAI_TIMEOUT_MS, label = 'task') {
+  const ms = Math.max(100, Number(timeoutMs) || 0);
+  const controller = (typeof AbortController === 'function') ? new AbortController() : null;
+  let timer = null;
+
+  try {
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        if (controller) {
+          try { controller.abort(); } catch { }
+        }
+        reject(new Error(`${label}_timeout`));
+      }, ms);
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+
+    return await Promise.race([
+      task({ signal: controller?.signal }),
+      timeoutPromise
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 const app = express();
@@ -966,31 +1012,11 @@ async function ensureFlaggedAttemptsSchema() {
 
   flaggedSchemaPromise = (async () => {
     try {
-      await db.exec(`
-        CREATE TABLE IF NOT EXISTS flagged_attempts (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
-          listing_title TEXT,
-          details TEXT,
-          flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      try {
-        await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL');
-      } catch { }
-      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN listing_title TEXT'); } catch { }
-      try { await db.exec('ALTER TABLE flagged_attempts ADD COLUMN details TEXT'); } catch { }
-      try {
-        await db.exec('ALTER TABLE flagged_attempts ADD COLUMN flagged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-      } catch { }
-      try {
-        await db.exec('CREATE INDEX IF NOT EXISTS idx_flagged_attempts_flagged_at ON flagged_attempts(flagged_at DESC, id DESC)');
-      } catch { }
+      await assertTableExists('flagged_attempts', ['user_id', 'listing_id', 'listing_title', 'details', 'flagged_at']);
       flaggedSchemaReady = true;
     } catch (err) {
       flaggedSchemaReady = false;
-      console.error('Failed to ensure flagged_attempts schema:', err);
+      console.error('Failed to verify flagged_attempts schema (run migrations):', err?.message || err);
       throw err;
     } finally {
       flaggedSchemaPromise = null;
@@ -1765,13 +1791,15 @@ async function moderateListingContent({ title, description, imageUrls }) {
 
   try {
 
-    moderation = await client.moderations.create({
-
-      model: 'omni-moderation-latest',
-
-      input: entries.map((entry) => entry.value)
-
-    });
+    moderation = await withTimeout(
+      ({ signal }) => client.moderations.create({
+        model: 'omni-moderation-latest',
+        input: entries.map((entry) => entry.value),
+        signal
+      }),
+      OPENAI_TIMEOUT_MS,
+      'openai_moderation'
+    );
 
   } catch (err) {
 
@@ -5754,10 +5782,15 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
       if (moderationInputs.length) {
         try {
-          const moderation = await client.moderations.create({
-            model: 'omni-moderation-latest',
-            input: moderationInputs
-          });
+          const moderation = await withTimeout(
+            ({ signal }) => client.moderations.create({
+              model: 'omni-moderation-latest',
+              input: moderationInputs,
+              signal
+            }),
+            OPENAI_TIMEOUT_MS,
+            'openai_moderation'
+          );
 
           const flagged = [];
           const hintOffset = hint ? 1 : 0;
