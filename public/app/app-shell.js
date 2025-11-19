@@ -166,9 +166,9 @@
       throw new Error('App shell requires an API client.');
     }
 
-    const App = React.memo(function AppComponent(){
+    const App = React.memo(function AppComponent() {
       const { user, setUser, pushMeta } = useAuth();
-      const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
+
       const premiumFreeForAll = Boolean(user?.payments_disabled);
       const hasPremiumAccess = useMemo(() => {
         return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
@@ -237,10 +237,10 @@
           amount: prev.amount ?? SUPPORTER_DEFAULT_AMOUNT,
           currency: prev.currency || SUPPORTER_DEFAULT_CURRENCY,
           selectedTier: 'basic',
-          notice: premiumFreeForAll ? premiumFreeNotice : ''
+          notice: ''
         }));
         setSupporterPromptSeen();
-      }, [setSupporterPromptSeen, premiumFreeForAll, premiumFreeNotice]);
+      }, [setSupporterPromptSeen, premiumFreeForAll]);
 
       const closeSupporterUpsell = useCallback(() => {
         setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false, notice: '' }));
@@ -281,7 +281,7 @@
 
       const handleJoinSupporterProgram = useCallback(async (tier = 'basic') => {
         if (premiumFreeForAll) {
-          setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: premiumFreeNotice }));
+          setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: '' }));
           return;
         }
         setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '', notice: '' }));
@@ -305,12 +305,12 @@
         } catch (err) {
           let message = err?.message || 'Could not start checkout.';
           if (message === 'payments_disabled') {
-            setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: premiumFreeNotice }));
+            setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '', notice: '' }));
             return;
           }
           setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: message }));
         }
-      }, [api, premiumFreeForAll, premiumFreeNotice]);
+      }, [api, premiumFreeForAll]);
 
       const { ads, refreshAds } = useAds();
 
@@ -442,9 +442,9 @@
         AppNav.setTab = setTab;
         AppNav.notifyLocked = showLockedBanner;
         return () => {
-          AppNav.setUser = () => {};
-          AppNav.setTab = () => {};
-          AppNav.notifyLocked = () => {};
+          AppNav.setUser = () => { };
+          AppNav.setTab = () => { };
+          AppNav.notifyLocked = () => { };
         };
       }, [setUser, setTab, showLockedBanner]);
       useEffect(() => {
@@ -636,7 +636,7 @@
         reloadMineOnly();
       }
 
-      async function logoutFromProfile(){
+      async function logoutFromProfile() {
         await removePushSubscription();
         await api.logout();
         setUser(null);
@@ -809,72 +809,72 @@
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
           H(React.Fragment, null,
-        H(Header, { user, setUser, onNav:handleNavigate, active:tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
-        banner && H('div', { className:'global-banner', role:'status' },
-          H('span', { className:'banner-text' }, banner.message),
-          H('button', {
-            type:'button',
-            className:'banner-dismiss',
-            onClick: dismissBanner,
-            'aria-label': 'Dismiss locked account notice'
-          }, 'Dismiss')
-        ),
-        H(GlobalLoader, { active: loadingCount > 0 }),
-        H(SupporterInfoModal, {
-          open: supporterInfoState.open,
-          onClose: handleSupporterInfoClose,
-          username: supporterInfoState.username,
-          since: supporterInfoState.since,
-          isSelf: supporterInfoState.isSelf,
-          onJoin: handleSupporterInfoJoin,
-          paymentsDisabled: premiumFreeForAll
-        }),
-        H(SupporterUpsellModal, {
-          open: supporterUpsellState.open,
-          mode: supporterUpsellState.mode,
-          onClose: closeSupporterUpsell,
-          onJoin: handleJoinSupporterProgram,
-          busy: supporterUpsellState.busy,
-          error: supporterUpsellState.error,
-          amount: supporterUpsellState.amount,
-          currency: supporterUpsellState.currency,
-          premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
-          selectedTier: supporterUpsellState.selectedTier,
-          onTierChange: handleTierChange,
-          paymentsDisabled: premiumFreeForAll,
-          notice: supporterUpsellState.notice
-        }),
+            H(Header, { user, setUser, onNav: handleNavigate, active: tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
+            banner && H('div', { className: 'global-banner', role: 'status' },
+              H('span', { className: 'banner-text' }, banner.message),
+              H('button', {
+                type: 'button',
+                className: 'banner-dismiss',
+                onClick: dismissBanner,
+                'aria-label': 'Dismiss locked account notice'
+              }, 'Dismiss')
+            ),
+            H(GlobalLoader, { active: loadingCount > 0 }),
+            H(SupporterInfoModal, {
+              open: supporterInfoState.open,
+              onClose: handleSupporterInfoClose,
+              username: supporterInfoState.username,
+              since: supporterInfoState.since,
+              isSelf: supporterInfoState.isSelf,
+              onJoin: handleSupporterInfoJoin,
+              paymentsDisabled: premiumFreeForAll
+            }),
+            H(SupporterUpsellModal, {
+              open: supporterUpsellState.open,
+              mode: supporterUpsellState.mode,
+              onClose: closeSupporterUpsell,
+              onJoin: handleJoinSupporterProgram,
+              busy: supporterUpsellState.busy,
+              error: supporterUpsellState.error,
+              amount: supporterUpsellState.amount,
+              currency: supporterUpsellState.currency,
+              premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
+              selectedTier: supporterUpsellState.selectedTier,
+              onTierChange: handleTierChange,
+              paymentsDisabled: premiumFreeForAll,
+              notice: supporterUpsellState.notice
+            }),
 
-        H(SelectBuyerModal, {
-          open: karmaModalOpen,
-          onClose: handleKarmaModalClose,
-          listingId: karmaListingId,
-          onBuyerSelected: handleKarmaBuyerSelected,
-          onSkip: handleKarmaSkip,
-          premiumFreeForAll
-        }),
+            H(SelectBuyerModal, {
+              open: karmaModalOpen,
+              onClose: handleKarmaModalClose,
+              listingId: karmaListingId,
+              onBuyerSelected: handleKarmaBuyerSelected,
+              onSkip: handleKarmaSkip,
+              premiumFreeForAll
+            }),
 
-        H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
-          isEditingScreen
-            ? H(ListingFormModal, {
-                isOpen: editorState.isOpen,
-                draft: editing,
-                onClose: closeEditor,
-                onSaved: async () => {
-                  await refreshListings({ preserveExisting: true });
-                  await reloadMineOnly();
-                },
-                autoListEnabled,
-                aiDescriptionEnabled,
-                autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-                autoInquiryEnabled,
-                backgroundQueueEnabled,
-                enqueueListingJob,
-                initialFiles: initialListingFiles
-              })
-            : (
-                viewingSeller
-                  ? H(SellerProfile, {
+            H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
+              isEditingScreen
+                ? H(ListingFormModal, {
+                  isOpen: editorState.isOpen,
+                  draft: editing,
+                  onClose: closeEditor,
+                  onSaved: async () => {
+                    await refreshListings({ preserveExisting: true });
+                    await reloadMineOnly();
+                  },
+                  autoListEnabled,
+                  aiDescriptionEnabled,
+                  autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+                  autoInquiryEnabled,
+                  backgroundQueueEnabled,
+                  enqueueListingJob,
+                  initialFiles: initialListingFiles
+                })
+                : (
+                  viewingSeller
+                    ? H(SellerProfile, {
                       sellerId: viewingSeller.id,
                       sellerUsername: viewingSeller.username,
                       onBack: handleBackFromSeller,
@@ -883,15 +883,15 @@
                       onAdminDelete: handleAdminDelete,
                       onSupporterClick: handleSupporterBadgeClick
                     })
-                  : H(React.Fragment, null,
-                      tab==='browse' && H(React.Fragment, null,
-                        H('div', { className:'row', style: { justifyContent:'space-between', margin:'12px 0 18px', flexWrap:'wrap' } },
-                          H('div', { className:'row', style:{ gap:10, flexWrap:'wrap' } },
+                    : H(React.Fragment, null,
+                      tab === 'browse' && H(React.Fragment, null,
+                        H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },
+                          H('div', { className: 'row', style: { gap: 10, flexWrap: 'wrap' } },
                             H('input', {
-                              placeholder:'Search title, description, tags...',
-                              value:query,
-                              onChange:e=>setQuery(e.target.value),
-                              style:{ maxWidth:360 }
+                              placeholder: 'Search title, description, tags...',
+                              value: query,
+                              onChange: e => setQuery(e.target.value),
+                              style: { maxWidth: 360 }
                             }),
                             H(CityAutocomplete, {
                               value: locationQuery,
@@ -900,8 +900,8 @@
                               onUseMyLocation: async () => {
                                 try {
                                   if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                                  const { coords } = await new Promise((res, rej)=>
-                                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 })
+                                  const { coords } = await new Promise((res, rej) =>
+                                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
                                   );
                                   const r = await api.reverseGeocode(coords.latitude, coords.longitude);
                                   const city = r?.city || (r?.display || '').split(',')[0];
@@ -909,24 +909,28 @@
                                 } catch { alert('Could not determine your location'); }
                               }
                             }),
-                            H('select', { value:sort, onChange:e=>setSort(e.target.value) },
-                              H('option', { value:'new' }, 'Newest'),
-                              H('option', { value:'price_asc' }, 'Price: Low -> High'),
-                              H('option', { value:'price_desc' }, 'Price: High -> Low'),
-                              H('option', { value:'city' }, 'City (A -> Z)')
+                            H('select', { value: sort, onChange: e => setSort(e.target.value) },
+                              H('option', { value: 'new' }, 'Newest'),
+                              H('option', { value: 'price_asc' }, 'Price: Low -> High'),
+                              H('option', { value: 'price_desc' }, 'Price: High -> Low'),
+                              H('option', { value: 'city' }, 'City (A -> Z)')
                             )
                           ),
-                          !isMobile && H('div', { className:'row', style:{ gap:8 } },
-                            H('button', { className:'btn primary', onClick:()=>{
-                              if(!user){ alert('Log in to create a listing.'); return; }
-                              if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                              openListingEditor({ draft: null, originTab: 'browse' });
-                            } }, 'New listing'),
-                            H('button', { className:'btn', onClick:()=>{
-                              if(!user){ alert('Log in to create listings.'); return; }
-                              if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                              setShowMassList(true);
-                            } }, 'MassList')
+                          !isMobile && H('div', { className: 'row', style: { gap: 8 } },
+                            H('button', {
+                              className: 'btn primary', onClick: () => {
+                                if (!user) { alert('Log in to create a listing.'); return; }
+                                if (user.account_status === 'locked') { showLockedBanner(); return; }
+                                openListingEditor({ draft: null, originTab: 'browse' });
+                              }
+                            }, 'New listing'),
+                            H('button', {
+                              className: 'btn', onClick: () => {
+                                if (!user) { alert('Log in to create listings.'); return; }
+                                if (user.account_status === 'locked') { showLockedBanner(); return; }
+                                setShowMassList(true);
+                              }
+                            }, 'MassList')
                           )
                         ),
 
@@ -1013,13 +1017,13 @@
                           isFetchingListings
                             ? H('span', { className: 'muted' }, 'Loading listings...')
                             : (!hasNext && items.length
-                                ? H('span', { className: 'muted' }, 'No more results')
-                                : null)
+                              ? H('span', { className: 'muted' }, 'No more results')
+                              : null)
                         ),
 
                         H('div', { ref: sentinelRef, style: { width: '100%', height: 1 } }),
 
-                        !items.length && H('p', { className:'muted', style:{ textAlign:'center', margin:'28px 0' } }, 'No listings yet.'),
+                        !items.length && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
 
                         H(ListingModal, {
                           open: !!selectedListing,
@@ -1051,147 +1055,148 @@
                         })
                       ),
 
-                      (tab==='nearby') &&
-                        H(NearbyPanel, {
+                      (tab === 'nearby') &&
+                      H(NearbyPanel, {
+                        user,
+                        mineById,
+                        isMobile,
+                        onEdit: (it) => {
+                          if (user?.account_status === 'locked') { showLockedBanner(); return; }
+                          const rich = mineById[it.id] || it;
+                          openListingEditor({ draft: rich, originTab: 'nearby', reopenListingId: rich?.id });
+                        },
+                        onDelete: async (it) => { if (confirm('Remove this listing? (Your past messages will remain)')) { await api.deleteListing(it.id); await refreshListings(); } },
+                        onMessage: startMessage,
+                        onAdminDelete: handleAdminDelete,
+                        onViewSeller: handleViewSeller,
+                        onToggleSold: toggleSoldWithKarma,
+                        onSupporterClick: handleSupporterBadgeClick,
+                        setTab
+                      }),
+
+                      (tab === 'messages') &&
+                      (user
+                        ? H(MessagesPanel, {
                           user,
-                          mineById,
-                          isMobile,
-                          onEdit:(it)=>{
-                            if(user?.account_status === 'locked'){ showLockedBanner(); return; }
-                            const rich = mineById[it.id] || it;
-                            openListingEditor({ draft: rich, originTab: 'nearby', reopenListingId: rich?.id });
-                          },
-                          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await refreshListings(); } },
-                          onMessage: startMessage,
-                          onAdminDelete: handleAdminDelete,
-                          onViewSeller: handleViewSeller,
-                          onToggleSold: toggleSoldWithKarma,
-                          onSupporterClick: handleSupporterBadgeClick,
-                          setTab
-                        }),
+                          initialActiveId: activeConvoId,
+                          onSeenChange: handleSeen,
+                          onConversationsUpdate: handleConversationsUpdate
+                        })
+                        : H('div', { className: 'muted', style: { padding: '16px 0' } }, 'Please log in to view messages.')
+                      ),
 
-                      (tab==='messages') &&
-                        (user
-                          ? H(MessagesPanel, {
-                              user,
-                              initialActiveId: activeConvoId,
-                              onSeenChange: handleSeen,
-                              onConversationsUpdate: handleConversationsUpdate
-                            })
-                          : H('div', { className:'muted', style:{ padding:'16px 0' } }, 'Please log in to view messages.')
-                        ),
+                      (tab === 'profile') &&
+                      H(ProfilePanel, {
+                        isMobile,
+                        user,
+                        items: mine,
+                        onEnsureCover: ensureCover,
+                        onNewListing: () => {
+                          if (!user) { alert('Log in to create a listing.'); return; }
+                          if (user.account_status === 'locked') { showLockedBanner(); return; }
+                          openListingEditor({ draft: null, originTab: 'profile' });
+                        },
+                        onEdit: (it) => {
+                          if (user?.account_status === 'locked') { showLockedBanner(); return; }
+                          const rich = mineById[it.id] || it;
+                          openListingEditor({ draft: rich, originTab: 'profile', reopenListingId: rich?.id });
+                        },
+                        onDelete: async (it) => { if (confirm('Remove this listing? (Your past messages will remain)')) { await api.deleteListing(it.id); await reloadMineOnly(); await refreshListings(); } },
+                        onLogout: logoutFromProfile,
+                        onAdminDelete: handleAdminDelete,
+                        autoListEnabled,
+                        aiDescriptionEnabled,
+                        setAiDescriptionEnabled,
+                        autoPostNearbyEnabled,
+                        setAutoPostNearbyEnabled,
+                        autoInquiryEnabled,
+                        setAutoInquiryEnabled,
+                        onViewSeller: handleViewSeller,
+                        onToggleSold: toggleSoldWithKarma,
+                        onSupporterClick: handleSupporterBadgeClick,
+                        onJoinSupporterProgram: handleSupporterPromptCta
+                      }),
 
-                      (tab==='profile') &&
-                        H(ProfilePanel, { isMobile,
-                          user,
-                          items: mine,
-                          onEnsureCover: ensureCover,
-                          onNewListing: () => {
-                            if(!user){ alert('Log in to create a listing.'); return; }
-                            if(user.account_status === 'locked'){ showLockedBanner(); return; }
-                            openListingEditor({ draft: null, originTab: 'profile' });
-                          },
-                          onEdit:(it)=>{
-                            if(user?.account_status === 'locked'){ showLockedBanner(); return; }
-                            const rich = mineById[it.id] || it;
-                            openListingEditor({ draft: rich, originTab: 'profile', reopenListingId: rich?.id });
-                          },
-                          onDelete: async(it)=>{ if(confirm('Remove this listing? (Your past messages will remain)')){ await api.deleteListing(it.id); await reloadMineOnly(); await refreshListings(); } },
-                          onLogout: logoutFromProfile,
-                          onAdminDelete: handleAdminDelete,
-                          autoListEnabled,
-                          aiDescriptionEnabled,
-                          setAiDescriptionEnabled,
-                          autoPostNearbyEnabled,
-                          setAutoPostNearbyEnabled,
-                          autoInquiryEnabled,
-                          setAutoInquiryEnabled,
-                          onViewSeller: handleViewSeller,
-                          onToggleSold: toggleSoldWithKarma,
-                          onSupporterClick: handleSupporterBadgeClick,
-                          onJoinSupporterProgram: handleSupporterPromptCta
-                        }),
-
-                      (tab==='admin') &&
-                        (user?.is_admin
-                          ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage, onAdsUpdated: refreshAds })
-                          : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
+                      (tab === 'admin') &&
+                      (user?.is_admin
+                        ? H(AdminDashboard, { onViewSeller: handleViewSeller, onMessageUser: startDirectMessage, onAdsUpdated: refreshAds })
+                        : H('section', { className: 'card', style: { padding: 16 } }, 'Admin access only.'))
                     )
-              )
-        ),
+                )
+            ),
 
-        showMassList && H(MassListModal, {
-          onClose: () => { setShowMassList(false); setInitialMassListFiles([]); },
-          onDone: () => { setInitialMassListFiles([]); },
-          reloadAll: refreshListings,
-          reloadMine: reloadMineOnly,
-          user,
-          onLockedAction: showLockedBanner,
-          autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-          aiDescriptionEnabled,
-          autoInquiryEnabled,
-          backgroundQueueEnabled,
-          enqueueListingJob,
-          initialFiles: initialMassListFiles
-        }),
+            showMassList && H(MassListModal, {
+              onClose: () => { setShowMassList(false); setInitialMassListFiles([]); },
+              onDone: () => { setInitialMassListFiles([]); },
+              reloadAll: refreshListings,
+              reloadMine: reloadMineOnly,
+              user,
+              onLockedAction: showLockedBanner,
+              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+              aiDescriptionEnabled,
+              autoInquiryEnabled,
+              backgroundQueueEnabled,
+              enqueueListingJob,
+              initialFiles: initialMassListFiles
+            }),
 
-        H(AuthModal, {
-          isOpen: authModal.isOpen,
-          onClose: () => setAuthModal({ ...authModal, isOpen: false }),
-          initialMode: authModal.mode,
-          onSuccess: handleAuthSuccess
-        }),
+            H(AuthModal, {
+              isOpen: authModal.isOpen,
+              onClose: () => setAuthModal({ ...authModal, isOpen: false }),
+              initialMode: authModal.mode,
+              onSuccess: handleAuthSuccess
+            }),
 
-        H(ListingQueueToast, null),
+            H(ListingQueueToast, null),
 
-        messageToasts.length > 0 && H('div', {
-          className: 'message-toast-container',
-          'aria-live': 'assertive'
-        },
-          messageToasts.map((toast) => H('div', {
-            key: toast.id,
-            className: 'message-toast',
-            role: 'status',
-            tabIndex: 0,
-            onClick: () => handleToastClick(toast),
-            onKeyDown: (evt) => {
-              if (evt.key === 'Enter' || evt.key === ' ') {
-                evt.preventDefault();
-                handleToastClick(toast);
-              }
-            }
-          },
-            H('div', { className: 'message-toast__title' }, toast.title),
-            H('div', { className: 'message-toast__preview' }, toast.preview)
-          ))
-        ),
-
-        isMobile && !isEditingScreen && H('nav', {
-          className: 'mobile-dashboard',
-          role: 'navigation',
-          'aria-label': 'Primary'
-        },
-          ['browse', 'nearby', 'messages', 'profile'].map((key) => {
-            const label = mobileNavLabels[key];
-            const icon = mobileNavIcons[key];
-            const isActive = tab === key || (key === 'browse' && tab === 'browse');
-            return H('button', {
-              key,
-              type: 'button',
-              className: ['mobile-dashboard__button', isActive ? 'is-active' : ''].filter(Boolean).join(' '),
-              onClick: () => handleMobileNav(key),
-              'aria-current': isActive ? 'page' : undefined,
-              'aria-label': label
+            messageToasts.length > 0 && H('div', {
+              className: 'message-toast-container',
+              'aria-live': 'assertive'
             },
-              H('span', { className: 'mobile-dashboard__icon', 'aria-hidden': 'true' }, icon?.()),
-              H('span', { className: 'mobile-dashboard__label' }, label),
-              (key === 'messages' && unreadCount > 0) && H('span', {
-                className: 'mobile-dashboard__badge',
-                'aria-hidden': 'true'
+              messageToasts.map((toast) => H('div', {
+                key: toast.id,
+                className: 'message-toast',
+                role: 'status',
+                tabIndex: 0,
+                onClick: () => handleToastClick(toast),
+                onKeyDown: (evt) => {
+                  if (evt.key === 'Enter' || evt.key === ' ') {
+                    evt.preventDefault();
+                    handleToastClick(toast);
+                  }
+                }
+              },
+                H('div', { className: 'message-toast__title' }, toast.title),
+                H('div', { className: 'message-toast__preview' }, toast.preview)
+              ))
+            ),
+
+            isMobile && !isEditingScreen && H('nav', {
+              className: 'mobile-dashboard',
+              role: 'navigation',
+              'aria-label': 'Primary'
+            },
+              ['browse', 'nearby', 'messages', 'profile'].map((key) => {
+                const label = mobileNavLabels[key];
+                const icon = mobileNavIcons[key];
+                const isActive = tab === key || (key === 'browse' && tab === 'browse');
+                return H('button', {
+                  key,
+                  type: 'button',
+                  className: ['mobile-dashboard__button', isActive ? 'is-active' : ''].filter(Boolean).join(' '),
+                  onClick: () => handleMobileNav(key),
+                  'aria-current': isActive ? 'page' : undefined,
+                  'aria-label': label
+                },
+                  H('span', { className: 'mobile-dashboard__icon', 'aria-hidden': 'true' }, icon?.()),
+                  H('span', { className: 'mobile-dashboard__label' }, label),
+                  (key === 'messages' && unreadCount > 0) && H('span', {
+                    className: 'mobile-dashboard__badge',
+                    'aria-hidden': 'true'
+                  })
+                );
               })
-            );
-          })
-        )
+            )
           )
         )
       );

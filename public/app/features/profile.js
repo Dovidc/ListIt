@@ -1100,7 +1100,7 @@
         }
       }, [user?.profile_about, setProfileAbout]);
       const [profileAboutStatusMessage, setProfileAboutStatusMessage] = useState('');
-      const premiumFreeNotice = 'Premium perks are currently free for everyone while payments are paused.';
+
       const profileSupporter = useMemo(() => {
         if (!user || !user.supporter_badge) {
           return null;
@@ -1556,19 +1556,7 @@
                 maxWidth: 280
               }
             }, 'Donate once to unlock a dazzling golden badge on every listing you share.'),
-            premiumFreeForAll && H('div', {
-              className: 'muted',
-              style: {
-                fontSize: 12,
-                lineHeight: 1.45,
-                maxWidth: 320,
-                padding: '6px 10px',
-                borderRadius: 10,
-                background: '#eef2ff',
-                color: '#1e3a8a',
-                fontWeight: 600
-              }
-            }, premiumFreeNotice)
+
           )
         ),
       );

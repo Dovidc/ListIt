@@ -196,13 +196,11 @@
             H('h2', { className: 'supporter-modal__title' }, `${username || 'This user'} is a Trovelr Supporter`),
             sinceLabel && H('p', { className: 'supporter-modal__subtitle' }, `Backing Trovelr since ${sinceLabel}`),
             H('p', { className: 'supporter-modal__body' },
-              paymentsDisabled
-                ? 'Premium perks are currently free for everyone while payments are paused.'
-                : isSelf
-                  ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
-                  : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
+              isSelf
+                ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
+                : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
             ),
-            paymentsDisabled && H('div', { className: 'supporter-modal__notice' }, 'Supporter payments are disabled, so premium access is unlocked for the whole community.'),
+
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
                 type: 'button',
@@ -213,21 +211,21 @@
               }, 'Close'),
               isSelf
                 ? H('span', {
-                    className: 'muted',
-                    style: {
-                      fontSize: 13,
-                      fontWeight: 600,
-                      marginTop: 4
-                    }
-                  }, 'Already subscribed')
+                  className: 'muted',
+                  style: {
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginTop: 4
+                  }
+                }, 'Already subscribed')
                 : (!paymentsDisabled && typeof onJoin === 'function') && H('button', {
-                    type: 'button',
-                    className: 'btn primary',
-                    onClick: () => {
-                      onClose?.();
-                      onJoin();
-                    }
-                  }, 'Join the program')
+                  type: 'button',
+                  className: 'btn primary',
+                  onClick: () => {
+                    onClose?.();
+                    onJoin();
+                  }
+                }, 'Join the program')
             )
           )
         ),
@@ -310,50 +308,50 @@
             ),
             isPrompt
               ? H('div', { style: { display: 'grid', gap: 16 } },
-                  H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
-                    'Support Trovelr with a monthly subscription and get exclusive benefits:'
-                  ),
+                H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
+                  'Support Trovelr with a monthly subscription and get exclusive benefits:'
+                ),
+                H('div', {
+                  className: 'tier-selection',
+                  style: { display: 'grid', gap: 12, position: 'relative', zIndex: 1 }
+                },
                   H('div', {
-                    className: 'tier-selection',
-                    style: { display: 'grid', gap: 12, position: 'relative', zIndex: 1 }
+                    className: 'tier-option tier-option--selected',
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: 20,
+                      border: '2px solid',
+                      borderColor: '#a0a0a0',
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, #f5f5f5, #e8e8e8)',
+                      boxShadow: '0 4px 12px rgba(160, 160, 160, 0.2)'
+                    }
                   },
-                    H('div', {
-                      className: 'tier-option tier-option--selected',
+                    H('div', { style: { flex: 1 } },
+                      H('div', { style: { fontWeight: 800, fontSize: 20, marginBottom: 4 } }, `${premiumText}/month`),
+                      H('div', { style: { fontSize: 14, color: '#555', marginBottom: 8 } }, 'Premium platinum badge with mesmerizing shimmer'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Exclusive supporter features'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Cancel anytime from your profile')
+                    ),
+                    H('span', {
                       style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 20,
-                        border: '2px solid',
-                        borderColor: '#a0a0a0',
-                        borderRadius: 12,
-                        background: 'linear-gradient(135deg, #f5f5f5, #e8e8e8)',
-                        boxShadow: '0 4px 12px rgba(160, 160, 160, 0.2)'
+                        background: 'linear-gradient(135deg, #c0c0c0, #909090)',
+                        color: 'white',
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.3)'
                       }
-                    },
-                      H('div', { style: { flex: 1 } },
-                        H('div', { style: { fontWeight: 800, fontSize: 20, marginBottom: 4 } }, `${premiumText}/month`),
-                        H('div', { style: { fontSize: 14, color: '#555', marginBottom: 8 } }, 'Premium platinum badge with mesmerizing shimmer'),
-                        H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Exclusive supporter features'),
-                        H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Cancel anytime from your profile')
-                      ),
-                      H('span', {
-                        style: {
-                          background: 'linear-gradient(135deg, #c0c0c0, #909090)',
-                          color: 'white',
-                          padding: '6px 12px',
-                          borderRadius: 8,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                        }
-                      }, 'PLATINUM')
-                    )
+                    }, 'PLATINUM')
                   )
                 )
+              )
               : H('p', { className: 'supporter-modal__body' },
-                  'Thanks for supporting Trovelr and showing off the most exclusive badge on the platform!'
-                ),
+                'Thanks for supporting Trovelr and showing off the most exclusive badge on the platform!'
+              ),
             effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
             H('div', { className: 'supporter-modal__actions' },
@@ -483,69 +481,69 @@
               ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')
               : buyers.length === 0
                 ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } },
-                    'No one messaged you about this item.'
-                  )
+                  'No one messaged you about this item.'
+                )
                 : H('div', {
-                    className: 'buyer-list',
-                    style: {
-                      display: 'grid',
-                      gap: 12,
-                      maxHeight: 400,
-                      overflowY: 'auto',
-                      marginBottom: 16
-                    }
-                  },
-                    ...buyers.map(buyer =>
-                      H('button', {
-                        key: buyer.id,
-                        type: 'button',
-                        className: 'buyer-item',
-                        onClick: () => handleSelectBuyer(buyer.id),
-                        disabled: selecting || busy,
+                  className: 'buyer-list',
+                  style: {
+                    display: 'grid',
+                    gap: 12,
+                    maxHeight: 400,
+                    overflowY: 'auto',
+                    marginBottom: 16
+                  }
+                },
+                  ...buyers.map(buyer =>
+                    H('button', {
+                      key: buyer.id,
+                      type: 'button',
+                      className: 'buyer-item',
+                      onClick: () => handleSelectBuyer(buyer.id),
+                      disabled: selecting || busy,
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: 12,
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 8,
+                        background: 'white',
+                        cursor: selecting || busy ? 'default' : 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        opacity: selecting || busy ? 0.6 : 1
+                      }
+                    },
+                      H('img', {
+                        src: buyer.profile_picture_url || '/img/default-profile.png',
+                        alt: buyer.username,
                         style: {
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: 12,
-                          border: '1px solid #e5e7eb',
-                          borderRadius: 8,
-                          background: 'white',
-                          cursor: selecting || busy ? 'default' : 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.2s',
-                          opacity: selecting || busy ? 0.6 : 1
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          objectFit: 'cover'
                         }
-                      },
-                        H('img', {
-                          src: buyer.profile_picture_url || '/img/default-profile.png',
-                          alt: buyer.username,
-                          style: {
-                            width: 48,
-                            height: 48,
-                            borderRadius: '50%',
-                            objectFit: 'cover'
-                          }
-                        }),
-                        H('div', { style: { flex: 1 } },
-                          H('div', { style: { fontWeight: 600, marginBottom: 4 } }, buyer.username),
-                          buyer.last_message_at && H('div', {
-                            className: 'muted',
-                            style: { fontSize: 13 }
-                          }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
-                        ),
-                        buyer.supporter_badge === 'trovelr_platinum' && H('span', {
-                          style: {
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: '#999',
-                            background: 'linear-gradient(135deg, #e8e8e8, #c0c0c0)',
-                            padding: '4px 8px',
-                            borderRadius: 4
-                          }
-                        }, 'PREMIUM')
-                      )
+                      }),
+                      H('div', { style: { flex: 1 } },
+                        H('div', { style: { fontWeight: 600, marginBottom: 4 } }, buyer.username),
+                        buyer.last_message_at && H('div', {
+                          className: 'muted',
+                          style: { fontSize: 13 }
+                        }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
+                      ),
+                      buyer.supporter_badge === 'trovelr_platinum' && H('span', {
+                        style: {
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: '#999',
+                          background: 'linear-gradient(135deg, #e8e8e8, #c0c0c0)',
+                          padding: '4px 8px',
+                          borderRadius: 4
+                        }
+                      }, 'PREMIUM')
                     )
-                  ),
+                  )
+                ),
             error && H('div', {
               className: 'supporter-modal__error',
               style: { marginBottom: 12 }
