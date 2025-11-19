@@ -30,18 +30,23 @@ node server-orchestrated.js
 # Can switch to distributed later
 ```
 
-### Option C: Hybrid Deployment (Recommended for Production)
+### Option C: Multi-process Deployment (Recommended for Production)
 ```bash
-# Terminal 1: API + WebSocket
-npm start
+# Shared environment
+export REDIS_URL="redis://localhost:6379"
+export MESSAGE_BUS_NAMESPACE="prod"
 
-# Terminal 2: Worker (separate process)
-ENABLE_HTTP_API=false \
-ENABLE_WEBSOCKET=false \
-npm start
+# Terminal 1: API
+npm run start:api
+
+# Terminal 2: WebSocket
+npm run start:websocket
+
+# Terminal 3: Worker
+npm run start:worker
 
 # Long-running jobs don't block user requests
-# Can scale worker replicas independently
+# Scale API/WS/worker independently
 ```
 
 ## Understanding the Architecture
