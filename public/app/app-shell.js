@@ -798,46 +798,44 @@
           viewBox: '0 0 24 24',
           fill: 'none',
           stroke: 'currentColor',
-          'stroke-width': 1.6,
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round'
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
         },
-          H('rect', { x: 3.5, y: 4, width: 7, height: 6.5, rx: 1.6 }),
-          H('rect', { x: 13.5, y: 4, width: 7, height: 6.5, rx: 1.6 }),
-          H('rect', { x: 3.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 }),
-          H('rect', { x: 13.5, y: 13.5, width: 7, height: 6.5, rx: 1.6 })
+          H('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
+          H('polyline', { points: '9 22 9 12 15 12 15 22' })
         ),
         nearby: () => H('svg', {
           viewBox: '0 0 24 24',
           fill: 'none',
           stroke: 'currentColor',
-          'stroke-width': 1.6,
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round'
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
         },
-          H('path', { d: 'M12 21s-6-5.1-6-10.2C6 6.9 8.7 4 12 4s6 2.9 6 6.8C18 15.9 12 21 12 21z' }),
-          H('circle', { cx: 12, cy: 10.5, r: 2.4 })
+          H('circle', { cx: 12, cy: 12, r: 10 }),
+          H('polygon', { points: '16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76' })
         ),
         messages: () => H('svg', {
           viewBox: '0 0 24 24',
           fill: 'none',
           stroke: 'currentColor',
-          'stroke-width': 1.6,
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round'
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
         },
-          H('path', { d: 'M5 5.8h14a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2H10l-3.6 2.6V15.4H5a2 2 0 0 1-2-2V7.8a2 2 0 0 1 2-2z' })
+          H('path', { d: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z' })
         ),
         profile: () => H('svg', {
           viewBox: '0 0 24 24',
           fill: 'none',
           stroke: 'currentColor',
-          'stroke-width': 1.6,
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round'
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
         },
-          H('circle', { cx: 12, cy: 9, r: 3.2 }),
-          H('path', { d: 'M6.2 18.4a6.3 6.3 0 0 1 11.6 0' })
+          H('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }),
+          H('circle', { cx: 12, cy: 7, r: 4 })
         )
       };
 
@@ -954,12 +952,23 @@
                     : H(React.Fragment, null,
                       tab === 'browse' && H(React.Fragment, null,
                         H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },
-                          H('div', { className: 'row', style: { gap: 10, flexWrap: 'wrap' } },
+                          H('div', {
+                            style: {
+                              display: 'grid',
+                              gridTemplateColumns: isMobile ? '1fr 1fr' : 'minmax(200px, 1.5fr) minmax(140px, 1fr) auto',
+                              gap: 10,
+                              width: isMobile ? '100%' : 'auto',
+                              alignItems: 'center'
+                            }
+                          },
                             H('input', {
-                              placeholder: 'Search title, description, tags...',
+                              placeholder: 'Search...',
                               value: query,
                               onChange: e => setQuery(e.target.value),
-                              style: { maxWidth: 360 }
+                              style: {
+                                gridColumn: isMobile ? '1 / -1' : 'auto',
+                                width: '100%'
+                              }
                             }),
                             H(CityAutocomplete, {
                               value: locationQuery,
@@ -977,11 +986,15 @@
                                 } catch { alert('Could not determine your location'); }
                               }
                             }),
-                            H('select', { value: sort, onChange: e => setSort(e.target.value) },
+                            H('select', {
+                              value: sort,
+                              onChange: e => setSort(e.target.value),
+                              style: { width: '100%' }
+                            },
                               H('option', { value: 'new' }, 'Newest'),
-                              H('option', { value: 'price_asc' }, 'Price: Low -> High'),
-                              H('option', { value: 'price_desc' }, 'Price: High -> Low'),
-                              H('option', { value: 'city' }, 'City (A -> Z)')
+                              H('option', { value: 'price_asc' }, 'Price: Low'),
+                              H('option', { value: 'price_desc' }, 'Price: High'),
+                              H('option', { value: 'city' }, 'City')
                             )
                           ),
                           !isMobile && H('div', { className: 'row', style: { gap: 8 } },
@@ -1238,8 +1251,7 @@
                 onClick: () => handleMobileNav('browse'),
                 'aria-label': 'Home'
               },
-                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.browse()),
-                H('span', { className: 'mobile-dashboard__label' }, 'Home')
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.browse())
               ),
               // Nearby
               H('button', {
@@ -1248,8 +1260,7 @@
                 onClick: () => handleMobileNav('nearby'),
                 'aria-label': 'Nearby'
               },
-                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.nearby()),
-                H('span', { className: 'mobile-dashboard__label' }, 'Nearby')
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.nearby())
               ),
               // Plus Button
               H('div', { className: 'mobile-dashboard__plus-container' },
@@ -1278,7 +1289,6 @@
                 'aria-label': 'Messages'
               },
                 H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.messages()),
-                H('span', { className: 'mobile-dashboard__label' }, 'Messages'),
                 unreadCount > 0 && H('span', { className: 'mobile-dashboard__badge' })
               ),
               // Profile
@@ -1288,8 +1298,7 @@
                 onClick: () => handleMobileNav('profile'),
                 'aria-label': 'Profile'
               },
-                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.profile()),
-                H('span', { className: 'mobile-dashboard__label' }, 'Profile')
+                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.profile())
               )
             )
           )

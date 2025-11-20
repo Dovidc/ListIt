@@ -74,30 +74,43 @@
       function onFocus() { if (list.length) setOpen(true); }
       function onBlur() { setTimeout(() => setOpen(false), 100); }
 
-      return H('div', { ref: boxRef, style: { position:'relative', display:'flex', gap:8 } },
+      return H('div', { ref: boxRef, style: { position: 'relative', display: 'flex', alignItems: 'center', flex: 1 } },
         H('input', {
-          placeholder:'City...',
+          placeholder: 'City...',
           value: value,
           onChange: e => { onChange(e.target.value); setOpen(true); },
           onKeyDown, onFocus, onBlur,
-          style:{ maxWidth:220 }
+          style: { width: '100%', paddingRight: 40 } // Make room for icon
         }),
-        H('button', { type:'button', className:'btn', onClick:onUseMyLocation }, 'Use my location'),
+        H('button', {
+          type: 'button',
+          onClick: onUseMyLocation,
+          title: 'Use my location',
+          style: {
+            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', padding: 4, cursor: 'pointer',
+            color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }
+        },
+          H('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+            H('polygon', { points: '3 11 22 2 13 21 11 13 3 11' })
+          )
+        ),
         open && list.length > 0 && H('div', {
           style: {
-            position:'absolute', top:'100%', left:0, right:0, zIndex: 50,
-            background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, marginTop:6,
-            boxShadow:'0 6px 20px rgba(0,0,0,0.08)', overflow:'hidden'
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginTop: 6,
+            boxShadow: '0 6px 20px rgba(0,0,0,0.08)', overflow: 'hidden'
           }
         },
           ...list.map((s, i) => H('div', {
-            key:s,
-            onMouseEnter:()=>setHover(i),
-            onMouseDown:(e)=>{ e.preventDefault(); pick(s); },
-            style:{
-              padding:'10px 12px',
-              background: i===hover ? '#f3f4f6' : 'transparent',
-              cursor:'pointer'
+            key: s,
+            onMouseEnter: () => setHover(i),
+            onMouseDown: (e) => { e.preventDefault(); pick(s); },
+            style: {
+              padding: '10px 12px',
+              background: i === hover ? '#f3f4f6' : 'transparent',
+              cursor: 'pointer'
             }
           }, s))
         )
@@ -176,7 +189,7 @@
               try {
                 const m = await api.listMine({ silent: true });
                 setMine(asArray(m));
-              } catch {}
+              } catch { }
             } else {
               setMine([]);
             }
@@ -198,7 +211,7 @@
                   }
                 }
               }
-            } catch {}
+            } catch { }
           }
 
           nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
@@ -314,7 +327,7 @@
           try {
             const mineRes = await api.listMine({ silent: true });
             setMine(asArray(mineRes) || []);
-          } catch {}
+          } catch { }
           setSelectedListing(prev => {
             if (prev && prev.id === listing.id) {
               return { ...prev, sold: makeSold ? 1 : 0 };

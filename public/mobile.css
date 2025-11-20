@@ -1,4 +1,4 @@
-/* Ads */
+﻿/* Ads */
 .ad-card {
   grid-template-columns: 1fr;
   padding: 20px;
@@ -648,6 +648,185 @@ main {
   display: block;
 }
 
+[data-tab="nearby"] .masonry {
+  column-count: 3;
+  column-gap: 8px;
+}
+
+#tab-nearby .masonry-item,
+[data-tab="nearby"] .masonry-item {
+  break-inside: avoid;
+  margin-bottom: 8px;
+}
+
+#tab-nearby .masonry .image-shell,
+[data-tab="nearby"] .masonry .image-shell,
+#tab-nearby .masonry img,
+[data-tab="nearby"] .masonry img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+}
+
+#tab-nearby .masonry .image-shell,
+[data-tab="nearby"] .masonry .image-shell {
+  overflow: hidden;
+}
+
+/* Modal for full listing */
+.modal-inner.listing-modal {
+  width: 90vw;
+  max-width: 360px;
+  background: #fff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.modal-inner.listing-modal .card {
+  width: 100%;
+  overflow: hidden;
+}
+
+.modal-inner.listing-modal .aspect {
+  position: relative;
+  padding-top: 56%;
+  margin-bottom: 12px;
+}
+
+.modal-inner.listing-modal .aspect .image-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.modal-inner.listing-modal .aspect img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.modal-inner.listing-modal .card>div:last-child {
+  position: relative;
+  z-index: 10;
+  padding: 12px;
+}
+
+/* Hide extra details ONLY in the image grid, not in the modal */
+#tab-nearby .masonry .title,
+#tab-nearby .masonry .description,
+#tab-nearby .masonry .price,
+#tab-nearby .masonry .distance,
+[data-tab="nearby"] .masonry .title,
+[data-tab="nearby"] .masonry .description,
+[data-tab="nearby"] .masonry .price,
+[data-tab="nearby"] .masonry .distance {
+  display: none !important;
+}
+
+/* Tighten any Nearby filter/header spacing on mobile */
+#tab-nearby .nearby-filter,
+[data-tab="nearby"] .nearby-filter {
+  gap: 6px;
+  margin: 6px 0;
+}
+
+/* Make Lightbox sit above other modals (Nearby sheet, etc.) */
+.modal.lightbox {
+  z-index: 1000;
+}
+
+/* Global loading overlay (mobile also sees it) */
+.global-loader {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, .6);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #111;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+  margin: 8px auto;
+}
+
+.loader-text {
+  font-weight: 700;
+  color: #111;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Make clickable areas comfy but compact */
+#tab-nearby a,
+[data-tab="nearby"] a {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, .05);
+}
+
+/* ---------- Reusable Masonry (Nearby + Listings) ---------- */
+.masonry {
+  column-count: 3;
+  /* match Nearby */
+  column-gap: 8px;
+  /* match Nearby */
+}
+
+@media (min-width: 768px) {
+  .masonry {
+    column-count: 3;
+  }
+}
+
+@media (min-width: 1024px) {
+  .masonry {
+    column-count: 4;
+  }
+}
+
+.masonry-item {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.masonry-item .card {
+  width: 100%;
+  display: inline-block;
+  /* prevents spanning columns */
+}
+
+.masonry-item .image-shell,
+.masonry-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .masonry-item .image-shell {
   overflow: hidden;
 }
@@ -792,101 +971,98 @@ main {
   }
 
   @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    ```css transform: rotate(360deg);
   }
+}
 
-  /* Make clickable areas comfy but compact */
-  #tab-nearby a,
-  [data-tab="nearby"] a {
-    -webkit-tap-highlight-color: rgba(0, 0, 0, .05);
-  }
+/* Make clickable areas comfy but compact */
+#tab-nearby a,
+[data-tab="nearby"] a {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, .05);
+}
 
-  /* ---------- Reusable Masonry (Nearby + Listings) ---------- */
+/* ---------- Reusable Masonry (Nearby + Listings) ---------- */
+.masonry {
+  column-count: 3;
+  /* match Nearby */
+  column-gap: 8px;
+  /* match Nearby */
+}
+
+@media (min-width: 768px) {
   .masonry {
     column-count: 3;
-    /* match Nearby */
-    column-gap: 8px;
-    /* match Nearby */
   }
+}
 
-  @media (min-width: 768px) {
-    .masonry {
-      column-count: 3;
-    }
+@media (min-width: 1024px) {
+  .masonry {
+    column-count: 4;
   }
+}
 
-  @media (min-width: 1024px) {
-    .masonry {
-      column-count: 4;
-    }
-  }
+.masonry-item {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 8px;
+  display: block;
+}
 
-  .masonry-item {
-    break-inside: avoid;
-    -webkit-column-break-inside: avoid;
-    page-break-inside: avoid;
-    margin-bottom: 8px;
-    display: block;
-  }
+.masonry-item .card {
+  width: 100%;
+  display: inline-block;
+  /* prevents spanning columns */
+}
 
-  .masonry-item .card {
-    width: 100%;
-    display: inline-block;
-    /* prevents spanning columns */
-  }
+.masonry-item .image-shell,
+.masonry-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
 
-  .masonry-item .image-shell,
-  .masonry-item img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
+.masonry-item .image-shell {
+  overflow: hidden;
+}
 
-  .masonry-item .image-shell {
-    overflow: hidden;
-  }
 
-  /* Protruding Plus Button */
-  .mobile-dashboard__plus-container {
-    position: relative;
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: -24px;
-    /* Protrude upwards */
-    z-index: 10;
-  }
+/* Protruding Plus Button */
+.mobile-dashboard__plus-container {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -22px; /* Protrude upwards (approx top quarter) */
+  z-index: 10;
+  flex-shrink: 0; /* Prevent squishing */
+}
 
-  .mobile-dashboard__plus-btn {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background-color: #2563eb;
-    border: 4px solid #fff;
-    /* White border for "cutout" effect */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.1);
-    /* Softer shadow for depth */
-    cursor: pointer;
-    padding: 0;
-    transition: transform 0.1s ease;
-  }
+.mobile-dashboard__plus-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: #2563eb;
+  border: 6px solid #fff; /* Thicker white border for cutout effect */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 -6px 12px rgba(0, 0, 0, 0.12); /* Enhanced shadow */
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease;
+  flex-shrink: 0; /* Prevent squishing */
+}
 
-  .mobile-dashboard__plus-btn:active {
-    transform: scale(0.95);
-  }
+.mobile-dashboard__plus-btn:active {
+  transform: scale(0.95);
+}
 
-  .mobile-dashboard__plus-btn svg {
-    width: 32px;
-    /* Slightly larger for clarity */
-    height: 32px;
-    margin-top: 2px;
-    /* Move down slightly */
-  }
+.mobile-dashboard__plus-btn svg {
+  width: 32px;
+  height: 32px;
+  stroke-width: 2.5; /* Slightly bolder icon */
+}

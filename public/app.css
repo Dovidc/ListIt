@@ -1,7 +1,15 @@
 ﻿@keyframes img-shimmer {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .image-skeleton {
@@ -20,7 +28,7 @@
   line-height: 0;
 }
 
-.image-shell > img {
+.image-shell>img {
   display: block;
 }
 
@@ -59,10 +67,15 @@
 }
 
 .brand-title {
-  font-weight: 800;
-  font-size: 1rem;
-  letter-spacing: -0.01em;
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   color: #0f172a;
+  /* Fallback */
 }
 
 .brand-tagline {
@@ -302,20 +315,20 @@
   transition: transform 0.2s ease;
 }
 
-.toggle-input:checked + .toggle-slider {
+.toggle-input:checked+.toggle-slider {
   background: var(--accent);
 }
 
-.toggle-input:checked + .toggle-slider::after {
+.toggle-input:checked+.toggle-slider::after {
   transform: translateX(20px);
 }
 
-.toggle-card[data-disabled="true"] .toggle-input:checked + .toggle-slider {
+.toggle-card[data-disabled="true"] .toggle-input:checked+.toggle-slider {
   background: #9ca3af;
 }
 
 .toggle-card .toggle-slider:focus-visible,
-.toggle-input:focus-visible + .toggle-slider {
+.toggle-input:focus-visible+.toggle-slider {
   outline: 3px solid rgba(37, 99, 235, 0.35);
   outline-offset: 2px;
 }
@@ -419,10 +432,12 @@
   padding: 12px 16px;
   box-shadow: 0 6px 24px rgba(185, 28, 28, 0.12);
 }
+
 .banner-text {
   flex: 1;
   font-weight: 600;
 }
+
 .banner-dismiss {
   background: transparent;
   border: none;
@@ -432,6 +447,7 @@
   padding: 6px 12px;
   border-radius: 6px;
 }
+
 .banner-dismiss:hover {
   background: rgba(185, 28, 28, 0.12);
 }
@@ -449,13 +465,17 @@
   max-height: 90vh;
   overflow: auto;
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .25);
   display: flex;
   flex-direction: column;
 }
 
 /* Make the card behave like a normal sheet inside the modal */
-.modal-inner.listing-modal .card { width: 100%; overflow: hidden; box-shadow: none; }
+.modal-inner.listing-modal .card {
+  width: 100%;
+  overflow: hidden;
+  box-shadow: none;
+}
 
 /* Keep the hero image contained */
 .modal-inner.listing-modal .aspect {
@@ -463,10 +483,12 @@
   padding-top: 56%;
   margin-bottom: 12px;
 }
+
 .modal-inner.listing-modal .aspect .image-shell {
   position: absolute;
   inset: 0;
 }
+
 .modal-inner.listing-modal .aspect img {
   position: absolute;
   inset: 0;
@@ -476,11 +498,12 @@
 }
 
 /* Padding for the text/buttons area */
-.modal-inner.listing-modal .card > div:last-child {
+.modal-inner.listing-modal .card>div:last-child {
   position: relative;
   z-index: 1;
   padding: 16px;
 }
+
 .listing-editor-container {
   max-width: 960px;
   width: 100%;
@@ -744,7 +767,7 @@
   display: block;
   border-radius: 12px;
   background: #000;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
 }
 
 @media (max-width: 640px) {
@@ -787,9 +810,18 @@
   cursor: pointer;
 }
 
-.lightbox-arrow.left { left: 12px; }
-.lightbox-arrow.right { right: 12px; }
-.lightbox-arrow:disabled { opacity: 0.4; cursor: default; }
+.lightbox-arrow.left {
+  left: 12px;
+}
+
+.lightbox-arrow.right {
+  right: 12px;
+}
+
+.lightbox-arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 .lightbox-close {
   position: absolute;
@@ -1025,6 +1057,7 @@
   color: #d1d5db;
   text-align: center;
 }
+
 @media (max-width: 640px) {
   .lightbox-thumbs img {
     width: 56px;
@@ -1153,4 +1186,3 @@
   height: 32px;
   font-size: 14px;
 }
-
