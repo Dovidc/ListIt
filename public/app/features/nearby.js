@@ -110,7 +110,7 @@
     if (typeof providedListingCard !== 'function') {
       try {
         console.warn('Nearby feature is using a fallback listing view because ListingCard component was not provided.');
-      } catch {}
+      } catch { }
     }
 
     const ListingsGrid = typeof providedListingsGrid === 'function'
@@ -120,7 +120,7 @@
     if (typeof providedListingsGrid !== 'function') {
       try {
         console.warn('Nearby feature is using a fallback grid view because ListingsGrid component was not provided.');
-      } catch {}
+      } catch { }
     }
 
     function createFallbackListingCard({
@@ -247,12 +247,12 @@
           ),
           actionButtons.length
             ? createElement('div', {
-                style: {
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 8
-                }
-              }, actionButtons)
+              style: {
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8
+              }
+            }, actionButtons)
             : null
         );
       };
@@ -297,38 +297,38 @@
 
           const handleKeyDown = typeof onSelect === 'function'
             ? (evt) => {
-                if (evt.key === 'Enter' || evt.key === ' ') {
-                  evt.preventDefault();
-                  handleActivate();
-                }
+              if (evt.key === 'Enter' || evt.key === ' ') {
+                evt.preventDefault();
+                handleActivate();
               }
+            }
             : undefined;
 
           const content = cover
             ? createElement('img', {
-                key: 'img',
-                src: cover,
-                alt: item?.title || 'Listing image',
-                style: {
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block'
-                }
-              })
+              key: 'img',
+              src: cover,
+              alt: item?.title || 'Listing image',
+              style: {
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              }
+            })
             : createElement('div', {
-                key: 'img',
-                style: {
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'grid',
-                  placeItems: 'center',
-                  background: '#e5e7eb',
-                  color: '#6b7280',
-                  fontSize: 12,
-                  fontWeight: 600
-                }
-              }, 'No image');
+              key: 'img',
+              style: {
+                position: 'absolute',
+                inset: 0,
+                display: 'grid',
+                placeItems: 'center',
+                background: '#e5e7eb',
+                color: '#6b7280',
+                fontSize: 12,
+                fontWeight: 600
+              }
+            }, 'No image');
 
           return createElement('article', {
             key,
@@ -411,19 +411,60 @@
         }
       }, []);
 
-      const [radius, setRadius] = useState(150);
+      // Load persisted settings from localStorage
+      const getPersistedSettings = () => {
+        try {
+          const saved = localStorage.getItem('listit_nearby_settings');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            return {
+              radius: Number(parsed?.radius) || 150,
+              search: typeof parsed?.search === 'string' ? parsed.search : '',
+              sort: typeof parsed?.sort === 'string' ? parsed.sort : 'dist'
+            };
+          }
+        } catch { }
+        return { radius: 150, search: '', sort: 'dist' };
+      };
+
+      const persistedSettings = getPersistedSettings();
+
+      const [radius, setRadius] = useState(persistedSettings.radius);
       const [items, setItems] = useState([]);
+      const [nextCursor, setNextCursor] = useState(null);
+      const [hasMore, setHasMore] = useState(false);
+      const [isLoadingMore, setIsLoadingMore] = useState(false);
+
       const [busy, setBusy] = useState(false);
       const [error, setError] = useState('');
       const [selected, setSelected] = useState(null);
       const [lastUpdatedLabel, setLastUpdatedLabel] = useState('');
       const [locationLabel, setLocationLabel] = useState(() => storedCoords?.display || '');
-      const [search, setSearch] = useState('');
-      const [sort, setSort] = useState('new');
+      const [search, setSearch] = useState(persistedSettings.search);
+      const [debouncedSearch, setDebouncedSearch] = useState(persistedSettings.search);
+      const [sort, setSort] = useState(persistedSettings.sort);
 
       const coordsRef = useRef(storedCoords ? { lat: storedCoords.lat, lon: storedCoords.lon } : null);
       const coordsTsRef = useRef(storedCoords?.ts || 0);
       const loadTokenRef = useRef(0);
+      const sentinelRef = useRef(null);
+
+      // Debounce search
+      useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(search), 500);
+        return () => clearTimeout(timer);
+      }, [search]);
+
+      // Persist settings to localStorage whenever they change
+      useEffect(() => {
+        try {
+          localStorage.setItem('listit_nearby_settings', JSON.stringify({
+            radius,
+            search,
+            sort
+          }));
+        } catch { }
+      }, [radius, search, sort]);
 
       const normalizeNearbyItems = useCallback((input) => {
         const list = asArray(input);
@@ -436,70 +477,7 @@
         });
       }, [selectPrimaryListingImage, asArray]);
 
-      const filteredItems = useMemo(() => {
-        const list = Array.isArray(items) ? items.slice() : [];
-        const query = search.trim().toLowerCase();
-
-        let working = list;
-        if (query) {
-          working = list.filter((item) => {
-            const baseValues = [
-              item?.title,
-              item?.description,
-              item?.location,
-              item?.owner_username
-            ]
-              .filter(Boolean)
-              .map((value) => String(value).toLowerCase());
-
-            const tagValues = [];
-            if (Array.isArray(item?.tags)) {
-              for (const tag of item.tags) {
-                if (tag) tagValues.push(String(tag).toLowerCase());
-              }
-            } else if (item?.tags) {
-              tagValues.push(String(item.tags).toLowerCase());
-            }
-
-            const haystack = baseValues.concat(tagValues).join(' ');
-            return haystack.includes(query);
-          });
-        }
-
-        const parseDate = (value) => {
-          if (!value) return 0;
-          const ts = new Date(value).getTime();
-          return Number.isFinite(ts) ? ts : 0;
-        };
-
-        const parsePrice = (item) => {
-          const val = Number(item?.price);
-          return Number.isFinite(val) ? val : 0;
-        };
-
-        const sorted = [...working];
-        sorted.sort((a, b) => {
-          if (sort === 'price_asc') {
-            const diff = parsePrice(a) - parsePrice(b);
-            if (diff !== 0) return diff;
-          } else if (sort === 'price_desc') {
-            const diff = parsePrice(b) - parsePrice(a);
-            if (diff !== 0) return diff;
-          } else {
-            const diff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
-            if (diff !== 0) return diff;
-          }
-
-          const createdDiff = parseDate(b?.created_at || b?.updated_at) - parseDate(a?.created_at || a?.updated_at);
-          if (createdDiff !== 0) return createdDiff;
-          return Number(b?.id || 0) - Number(a?.id || 0);
-        });
-
-        return sorted;
-      }, [items, search, sort]);
-
-      const hasItems = filteredItems.length > 0;
-      const hasBaseItems = Array.isArray(items) && items.length > 0;
+      const hasItems = items.length > 0;
 
       const handleSelectListing = useCallback((evt, item) => {
         if (!item) return;
@@ -527,18 +505,23 @@
               display: info.display || '',
               ts: coordsTsRef.current
             }));
-          } catch {}
+          } catch { }
           return coords;
         } catch (err) {
           if (!force && coordsRef.current) return coordsRef.current;
           throw err;
         }
-      }, []);
+      }, [fetchCoordsAndReverse]);
 
-      const loadNearby = useCallback(async (forceLocation = false) => {
+      const loadNearby = useCallback(async (forceLocation = false, isLoadMore = false) => {
+        if (isLoadMore && !nextCursor) return;
+        if (isLoadMore && (busy || isLoadingMore)) return;
+
         const token = ++loadTokenRef.current;
-        setBusy(true);
-        setError('');
+        if (isLoadMore) setIsLoadingMore(true);
+        else setBusy(true);
+
+        if (!isLoadMore) setError('');
 
         try {
           const coords = await ensureCoords(forceLocation);
@@ -546,13 +529,32 @@
             throw new Error('location_unavailable');
           }
 
-          const response = await api.listNearby(coords.lat, coords.lon, radius, { silent: true });
+          const cursorToUse = isLoadMore ? nextCursor : null;
+          const response = await api.listNearby(coords.lat, coords.lon, radius, {
+            silent: true,
+            limit: 50,
+            cursor: cursorToUse,
+            q: debouncedSearch,
+            sort: sort
+          });
+
           if (loadTokenRef.current !== token) return;
 
-          const rows = response?.rows ?? response?.items ?? response;
+          const rows = response?.items || [];
           const normalized = normalizeNearbyItems(rows);
-          setItems(normalized);
-          setLastUpdatedLabel(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+          if (isLoadMore) {
+            setItems(prev => [...prev, ...normalized]);
+          } else {
+            setItems(normalized);
+          }
+
+          setNextCursor(response?.next_cursor || null);
+          setHasMore(!!response?.has_more);
+
+          if (!isLoadMore) {
+            setLastUpdatedLabel(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          }
         } catch (err) {
           if (loadTokenRef.current !== token) return;
           console.error('Nearby load failed:', err);
@@ -571,22 +573,42 @@
           } else if (typeof errMessage === 'string' && errMessage && errMessage !== 'request_failed') {
             message = errMessage;
           }
-          setItems([]);
-          setLastUpdatedLabel('');
-          setError(message);
+
+          if (!isLoadMore) {
+            setItems([]);
+            setLastUpdatedLabel('');
+            setError(message);
+          }
         } finally {
           if (loadTokenRef.current === token) {
             setBusy(false);
+            setIsLoadingMore(false);
           }
         }
-      }, [api, ensureCoords, normalizeNearbyItems, radius]);
+      }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore]);
 
+      // Infinite scroll observer
       useEffect(() => {
-        loadNearby(false);
+        if (!sentinelRef.current) return;
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && hasMore && !busy && !isLoadingMore) {
+            loadNearby(false, true);
+          }
+        }, { rootMargin: '400px' });
+        observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+      }, [hasMore, busy, isLoadingMore, loadNearby]);
+
+      // Initial load and reload on filter change
+      useEffect(() => {
+        setItems([]);
+        setNextCursor(null);
+        setHasMore(false);
+        loadNearby(false, false);
         return () => {
           loadTokenRef.current += 1;
         };
-      }, [loadNearby]);
+      }, [radius, debouncedSearch, sort]);
 
       useEffect(() => {
         if (!selected) return;
@@ -612,7 +634,7 @@
       }, [items, selected]);
 
       const handleReload = useCallback(() => {
-        loadNearby(true);
+        loadNearby(true, false);
       }, [loadNearby]);
 
       const handleEdit = useCallback((listing) => {
@@ -622,57 +644,71 @@
       }, [onEdit, setTab]);
 
       return H('div', { id: 'tab-nearby' },
-        H('section', { className: 'card', style: { padding: 12, margin: '12px 0 16px' } },
-          H('div', { className: 'row nearby-filter', style: { gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
-            H('input', {
-              type: 'search',
-              placeholder: 'Search nearby listings…',
-              value: search,
-              onChange: (e) => setSearch(e.target.value),
-              disabled: busy,
-              style: { flex: '1 1 220px', minWidth: 180 }
-            }),
+        H('section', { className: 'card', style: { padding: 8, margin: '8px 0 12px' } },
+          // Row 1: Search input (full width)
+          H('input', {
+            type: 'search',
+            placeholder: 'Search nearby listings…',
+            value: search,
+            onChange: (e) => setSearch(e.target.value),
+            disabled: busy && !isLoadingMore,
+            style: { width: '100%', marginBottom: 8, fontSize: 14, padding: '8px 12px', minHeight: 38 }
+          }),
+          // Row 2: Compact controls
+          H('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
             H('select', {
               value: sort,
               onChange: (e) => setSort(e.target.value),
-              disabled: busy,
-              style: { width: 'auto' }
+              disabled: busy && !isLoadingMore,
+              style: { flex: '1 1 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
             },
+              H('option', { value: 'dist' }, 'Distance'),
               H('option', { value: 'new' }, 'Newest'),
-              H('option', { value: 'price_asc' }, 'Price: Low → High'),
-              H('option', { value: 'price_desc' }, 'Price: High → Low')
+              H('option', { value: 'price_asc' }, 'Low→High'),
+              H('option', { value: 'price_desc' }, 'High→Low')
             ),
-            H('label', { htmlFor: 'nearby-radius' }, 'Filter radius:'),
             H('select', {
               id: 'nearby-radius',
               value: radius,
               onChange: (e) => setRadius(Number(e.target.value)),
-              disabled: busy,
-              style: { width: 'auto' }
+              disabled: busy && !isLoadingMore,
+              style: { flex: '0 0 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
             },
               RADIUS_OPTIONS.map((opt) => H('option', { key: opt.value, value: opt.value }, opt.label))
             ),
-            H('button', { className: 'btn', onClick: handleReload, disabled: busy }, busy ? 'Refreshing…' : 'Reload'),
-            lastUpdatedLabel && H('span', { className: 'muted', style: { marginLeft: 'auto', fontSize: 11 } }, `Updated ${lastUpdatedLabel}`)
+            H('button', {
+              className: 'btn',
+              onClick: handleReload,
+              disabled: busy && !isLoadingMore,
+              style: { flex: '0 0 auto', fontSize: 13, padding: '6px 12px', minHeight: 36 }
+            }, (busy && !isLoadingMore) ? '⟳' : '⟳')
           ),
-          locationLabel && H('div', { className: 'muted', style: { fontSize: 12, marginTop: 6 } }, locationLabel)
+          // Row 3: Location and timestamp (compact)
+          H('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 11, color: '#6b7280' } },
+            locationLabel && H('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, locationLabel),
+            lastUpdatedLabel && H('span', { style: { flex: '0 0 auto', marginLeft: 8 } }, lastUpdatedLabel)
+          )
         ),
 
         error && H('div', { className: 'muted', style: { color: '#b91c1c', marginTop: 8, fontSize: 12 } }, error),
 
         H(ListingsGrid, {
           className: 'nearby-grid',
-          items: filteredItems,
+          items: items,
           isMobile: !!isMobile,
           onSelect: handleSelectListing,
-          onSupporterClick
+          onSupporterClick,
+          enableVirtualization: true
         }),
 
-        (!hasItems && hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
+        H('div', { ref: sentinelRef, style: { height: 20, marginBottom: 20 } }),
+        isLoadingMore && H('p', { className: 'muted', style: { textAlign: 'center' } }, 'Loading more...'),
 
-        (!hasBaseItems && !busy && !error) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings found in this radius.'),
+        (!hasItems && !busy && !error && debouncedSearch) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
 
-        busy && H('p', { className: 'muted', style: { padding: '12px 0' } }, 'Loading nearby listings…'),
+        (!hasItems && !busy && !error && !debouncedSearch) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings found in this radius.'),
+
+        (busy && !isLoadingMore) && H('p', { className: 'muted', style: { padding: '12px 0' } }, 'Loading nearby listings…'),
 
         selected && H('div', {
           className: 'modal open',
@@ -695,14 +731,6 @@
               viewContext: 'nearby'
             })
           )
-        ),
-
-        H('div', { style: { marginTop: 12 } },
-          H('button', {
-            type: 'button',
-            className: 'btn',
-            onClick: () => setTab('browse')
-          }, 'Back to listings')
         )
       );
     });

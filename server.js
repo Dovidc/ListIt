@@ -632,7 +632,7 @@ function quantizeCoord(value, precision) {
 
 }
 
-function makeNearbyCacheKey(lat, lon, radius) {
+function makeNearbyCacheKey(lat, lon, radius, limit = 50, offset = 0, q = '', sort = 'dist') {
 
   const precision = 5000; // ~22m increments
 
@@ -642,7 +642,7 @@ function makeNearbyCacheKey(lat, lon, radius) {
 
   const radiusBucket = Math.max(1, Math.round(radius / 25));
 
-  return `${latKey}|${lonKey}|${radiusBucket}`;
+  return `${latKey}|${lonKey}|${radiusBucket}|${limit}|${offset}|${q}|${sort}`;
 
 }
 
@@ -5219,7 +5219,26 @@ app.get('/api/listings/nearby', async (req, res) => {
 
 
 
-    const cacheKey = makeNearbyCacheKey(lat0, lon0, radius);
+    const limitParam = Number(req.query.limit);
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(200, limitParam)) : Math.min(NEARBY_RESULT_LIMIT, 200);
+
+    let offset = 0;
+    if (req.query.cursor) {
+      try {
+        const decoded = Buffer.from(req.query.cursor, 'base64').toString('utf8');
+        const parsed = Number(decoded);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          offset = parsed;
+        }
+      } catch (e) {
+        // ignore invalid cursor
+      }
+    }
+
+    const q = (req.query.q || '').trim();
+    const sort = (req.query.sort || 'dist').trim();
+
+    const cacheKey = makeNearbyCacheKey(lat0, lon0, radius, limit, offset, q, sort);
 
     const cached = await getNearbyCache(cacheKey);
 
@@ -5231,11 +5250,22 @@ app.get('/api/listings/nearby', async (req, res) => {
 
     }
 
-
-
-    const limit = Math.min(NEARBY_RESULT_LIMIT, 200);
+    const fetchLimit = limit + 1;
     let rows = null;
     let usedPostGIS = false;
+
+    // Prepare search
+    const searchTokens = tokenizeSearchInput(q);
+    const searchParams = {};
+    const searchWhere = [];
+    applyListingSearchTokens(searchWhere, searchParams, searchTokens, 'l');
+    const searchSql = searchWhere.length ? 'AND ' + searchWhere.join(' AND ') : '';
+
+    // Prepare sort
+    let orderBy = 'ORDER BY distance_m ASC, l.id DESC';
+    if (sort === 'new') orderBy = 'ORDER BY l.created_at DESC, l.id DESC';
+    else if (sort === 'price_asc') orderBy = 'ORDER BY l.price ASC, l.id DESC';
+    else if (sort === 'price_desc') orderBy = 'ORDER BY l.price DESC, l.id DESC';
 
     if (GEO_FEATURES.postgisNearby) {
       try {
@@ -5278,10 +5308,11 @@ app.get('/api/listings/nearby', async (req, res) => {
                    ST_SetSRID(ST_MakePoint(@lon0, @lat0), 4326)::geography,
                    @radius
                  )
-           ORDER BY distance_m ASC, l.id DESC
-           LIMIT @limit
+             ${searchSql}
+           ${orderBy}
+           LIMIT @fetchLimit OFFSET @offset
         `;
-        rows = await db.prepare(sqlPostgis).all({ lat0, lon0, radius, limit });
+        rows = await db.prepare(sqlPostgis).all({ lat0, lon0, radius, fetchLimit, offset, ...searchParams });
         usedPostGIS = true;
       } catch (err) {
         console.warn('[postgis] nearby query failed, reverting to fallback:', err);
@@ -5345,8 +5376,9 @@ app.get('/api/listings/nearby', async (req, res) => {
            AND l.lat BETWEEN @minLat AND @maxLat
            AND l.lon BETWEEN @minLon AND @maxLon
            AND ${distanceExpr} <= @radius
-         ORDER BY distance_m ASC, l.id DESC
-         LIMIT @limit
+           ${searchSql}
+         ${orderBy}
+         LIMIT @fetchLimit OFFSET @offset
       `;
 
       rows = await db.prepare(sqlFallback).all({
@@ -5360,13 +5392,19 @@ app.get('/api/listings/nearby', async (req, res) => {
         maxLat,
         minLon,
         maxLon,
-        limit
+        fetchLimit,
+        offset,
+        ...searchParams
       });
     }
 
 
 
-    const out = rows.map((row) => {
+    const has_more = rows.length > limit;
+    const items = has_more ? rows.slice(0, limit) : rows;
+    const next_cursor = has_more ? Buffer.from(String(offset + limit)).toString('base64') : null;
+
+    const outItems = items.map((row) => {
 
       const distance = Number.isFinite(row.distance_m) ? Math.round(row.distance_m) : null;
       const tags = row?.tags ? String(row.tags).split(',').filter(Boolean) : [];
@@ -5385,13 +5423,17 @@ app.get('/api/listings/nearby', async (req, res) => {
 
     });
 
+    const response = {
+      items: outItems,
+      next_cursor,
+      has_more
+    };
 
-
-    await setNearbyCache(cacheKey, out);
+    await setNearbyCache(cacheKey, response);
 
     res.set('X-Nearby-Cache', 'MISS');
 
-    return res.json(out);
+    return res.json(response);
 
   } catch (e) {
 

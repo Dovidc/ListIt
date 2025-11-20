@@ -345,9 +345,20 @@
 
     const reverseGeocode = (lat, lon, meta) => request(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
 
-    const listNearby = (lat, lon, radiusMeters = 150, meta) => {
-      const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radiusMeters)}`;
-      return request(url, { method: 'GET' }, meta);
+    const listNearby = (lat, lon, radiusMeters = 150, options = {}) => {
+      const params = new URLSearchParams();
+      params.set('lat', String(lat));
+      params.set('lon', String(lon));
+      params.set('radius_m', String(radiusMeters));
+
+      if (options.limit) params.set('limit', String(options.limit));
+      if (options.cursor) params.set('cursor', String(options.cursor));
+      if (options.q) params.set('q', String(options.q));
+      if (options.sort) params.set('sort', String(options.sort));
+
+      const query = params.toString();
+      const url = '/api/listings/nearby' + (query ? `?${query}` : '');
+      return request(url, { method: 'GET' }, options);
     };
 
     const reportSeller = (payload, meta) => request('/api/reports', {
