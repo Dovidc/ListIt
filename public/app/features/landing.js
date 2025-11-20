@@ -12,22 +12,44 @@
         if (!React) throw new Error('Landing feature requires React.');
 
         const ICONS = [
+            // Car (Sedan)
+            'M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2 M2 17h2 M7 17h10 M14 17h2 M12 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4 M5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+
             // Camera
-            'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
-            // Shopping Bag
-            'M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0',
-            // Tag
-            'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z M7 7h.01',
-            // Map Pin
-            'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
-            // Heart
-            'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
-            // Star
-            'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
-            // Gift
-            'M20 12v10H4V12 M2 7h20v5H2z M12 22V7 M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z',
+            'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2v11z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+
+            // Chair (Armchair)
+            'M19 9V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v3 M3 16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H7v-2a2 2 0 0 0-4 0v5Z M5 18v2 M19 18v2',
+
+            // Couch (Sofa)
+            'M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3 M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H6v-2a2 2 0 0 0-4 0Z M4 18v2 M20 18v2',
+
+            // Beaker (Flask)
+            'M10 2v7.31l-4.89 9.89a2 2 0 0 0 1.79 2.8H17.1a2 2 0 0 0 1.79-2.8L14 9.31V2 M8 14h8 M9 2h6',
+
+            // Bench
+            'M15 13v5 M9 13v5 M4 13h16L18 6H6l-2 7z M4 13v5 M20 13v5',
+
             // Watch
-            'M12 9v3l2 2 M18 13a6 6 0 1 1-12 0 6 6 0 0 1 12 0z M16.5 17.5l1.5 1.5 M7.5 6.5L6 5'
+            'M12 22c4.97 0 9-4.03 9-9s-4.03-9-9-9-9 4.03-9 9 4.03 9 9 9z M12 6v6l4 2',
+
+            // Laptop
+            'M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16',
+
+            // Shovel
+            'M2 22l10-10 M13 11l3-3a2 2 0 0 1 2.8 2.8l-3 3 M17 7l2-2',
+
+            // Jacket (Shirt)
+            'M20.38 3.4a2 2 0 0 0-1.2-1.2a2 2 0 0 0-1.44.26L12 6L6.26 2.46A2 2 0 0 0 4.82 2.2a2 2 0 0 0-1.2 1.2a2 2 0 0 0 .24 1.5L6 8v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8l2.14-3.1a2 2 0 0 0 .24-1.5z',
+
+            // TV
+            'M20 4h-5.5l2-2 M9.5 2l2 2 M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+
+            // Shoes (Sneaker)
+            'M16 2l-2 6H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6l-2-6h-2z',
+
+            // Headphones
+            'M3 18v-6a9 9 0 0 1 18 0v6 M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z'
         ];
 
         function AnimatedBackground() {
@@ -76,7 +98,7 @@
                         height: 52,
                         fill: 'none',
                         stroke: '#1f2937',
-                        strokeWidth: 1.5,
+                        strokeWidth: 2,
                         strokeLinecap: 'round',
                         strokeLinejoin: 'round'
                     }, H('path', { d: path })))
@@ -280,21 +302,17 @@
                             marginBottom: '32px'
                         }
                     },
-                        H('div', {
+                        H('img', {
+                            src: '/android-chrome-512x512.png',
                             style: {
                                 width: 72,
                                 height: 72,
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                                 borderRadius: 18,
                                 marginBottom: 20,
-                                display: 'grid',
-                                placeItems: 'center',
-                                color: '#fff',
-                                fontSize: 36,
-                                fontWeight: 800,
+                                objectFit: 'cover',
                                 boxShadow: '0 10px 25px -5px rgba(102, 126, 234, 0.4)'
                             }
-                        }, 'T'),
+                        }),
                         H('h1', {
                             style: {
                                 fontSize: '30px',
@@ -307,14 +325,7 @@
                                 backgroundClip: 'text'
                             }
                         }, 'Trovelr'),
-                        H('p', {
-                            style: {
-                                fontSize: '15px',
-                                color: '#64748b',
-                                margin: 0,
-                                lineHeight: 1.6
-                            }
-                        }, 'The premium marketplace for unique finds.')
+
                     ),
 
                     H('div', null,
@@ -327,7 +338,7 @@
                                 color: '#1f2937'
                             }
                         },
-                            mode === 'login' ? 'Welcome back' :
+                            mode === 'login' ? null :
                                 mode === 'register' ? 'Create account' :
                                     mode === 'verify' ? 'Verify email' :
                                         'Reset password'
