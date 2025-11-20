@@ -184,7 +184,7 @@
         ? baseImages.length
         : (Number.isFinite(Number(baseImages)) ? Number(baseImages) : 0);
       const minCount = baseCount + 1;
-      fetchListingImagesCached(listingId, { minCount }).catch(() => {});
+      fetchListingImagesCached(listingId, { minCount }).catch(() => { });
     }
 
     async function uploadOneImage(listingId, file) {

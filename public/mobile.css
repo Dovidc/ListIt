@@ -1027,6 +1027,34 @@ main {
 }
 
 
+/* Fixed Mobile Dashboard */
+.mobile-dashboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 8px 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  height: 64px;
+  /* Explicit height for padding calc */
+  box-sizing: content-box;
+  /* To include padding-bottom in height if needed, but standard box-sizing is border-box usually. Let's stick to standard flex layout */
+}
+
+/* Add padding to body so content isn't hidden behind nav */
+body {
+  padding-bottom: 90px !important;
+  /* 64px + padding + safe area approx */
+}
+
 /* Protruding Plus Button */
 .mobile-dashboard__plus-container {
   position: relative;
@@ -1035,9 +1063,11 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -22px; /* Protrude upwards (approx top quarter) */
+  margin-top: -22px;
+  /* Protrude upwards (approx top quarter) */
   z-index: 10;
-  flex-shrink: 0; /* Prevent squishing */
+  flex-shrink: 0;
+  /* Prevent squishing */
 }
 
 .mobile-dashboard__plus-btn {
@@ -1045,16 +1075,19 @@ main {
   height: 64px;
   border-radius: 50%;
   background-color: #2563eb;
-  border: 6px solid #fff; /* Thicker white border for cutout effect */
+  border: 6px solid #fff;
+  /* Thicker white border for cutout effect */
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: 0 -6px 12px rgba(0, 0, 0, 0.12); /* Enhanced shadow */
+  box-shadow: 0 -6px 12px rgba(0, 0, 0, 0.12);
+  /* Enhanced shadow */
   cursor: pointer;
   padding: 0;
   transition: transform 0.1s ease;
-  flex-shrink: 0; /* Prevent squishing */
+  flex-shrink: 0;
+  /* Prevent squishing */
 }
 
 .mobile-dashboard__plus-btn:active {
@@ -1064,5 +1097,6 @@ main {
 .mobile-dashboard__plus-btn svg {
   width: 32px;
   height: 32px;
-  stroke-width: 2.5; /* Slightly bolder icon */
+  stroke-width: 2.5;
+  /* Slightly bolder icon */
 }

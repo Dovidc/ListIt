@@ -174,25 +174,25 @@
       }
       function removeAt(i) {
         const next = [...files];
-        const [removed] = next.splice(i,1);
+        const [removed] = next.splice(i, 1);
         if (removed) clearDraftCacheForFile(removed);
         onChange(next);
       }
 
       return H('div', null,
-        H('div', { className:'row' },
-        H('input', { type:'file', accept:'image/*', multiple:true, ref, onChange: pick }),
-        H('span', { className:'muted' }, `${(files||[]).length} file(s)`)
-      ),
-      H('div', { className:'row', style:{ flexWrap:'wrap', gap:8, marginTop:8 } },
-        ...previews.map(({ url }, i)=> H('div', { key:i, style:{ position:'relative' } },
-          H(ImageWithSkeleton, {
-            src: url,
-            style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' }
-          }),
-          H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
-        ))
-      )
+        H('div', { className: 'row' },
+          H('input', { type: 'file', accept: 'image/*', multiple: true, ref, onChange: pick }),
+          H('span', { className: 'muted' }, `${(files || []).length} file(s)`)
+        ),
+        H('div', { className: 'row', style: { flexWrap: 'wrap', gap: 8, marginTop: 8 } },
+          ...previews.map(({ url }, i) => H('div', { key: i, style: { position: 'relative' } },
+            H(ImageWithSkeleton, {
+              src: url,
+              style: { width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid #ddd' }
+            }),
+            H('button', { className: 'btn danger', type: 'button', style: { position: 'absolute', top: 4, right: 4, padding: '4px 8px' }, onClick: () => removeAt(i) }, 'x')
+          ))
+        )
       );
     }
 
@@ -383,7 +383,7 @@
       }, [draft?.id, autoListEnabled, autoInquiryEnabled]);
 
       // UPDATED: AI analysis that works with both new files and S3 URLs
-      async function runAI(){
+      async function runAI() {
         setAiErr('');
         setAiBusy(true);
         try {
@@ -402,7 +402,7 @@
           }
 
           if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
-           for (const url of existingUrls) {
+            for (const url of existingUrls) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               if (typeof url === 'string' && url.trim()) {
                 sources.push(url);
@@ -478,9 +478,9 @@
           try {
             const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
             if (aiSources.length) {
-              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent:true }) || {};
+              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
             }
-          } catch (_) {}
+          } catch (_) { }
 
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
@@ -523,7 +523,7 @@
                 latAuto = c.lat;
                 lonAuto = c.lon;
               }
-            } catch (_) {}
+            } catch (_) { }
           }
 
           if (!locAuto) {
@@ -585,7 +585,7 @@
 
       // UPDATED: Submit function that handles image changes properly
       // Update the submit function (remove the duplicate and fix it):
-      async function submit(e){
+      async function submit(e) {
         e.preventDefault();
         try {
           const totalImages = existingUrls.length + files.length;
@@ -681,31 +681,31 @@
       const showInquiryText = !!inquiryEnabled;
       const formattedPrice = isFree ? price(0) : price(Number(priceVal));
 
-      return H('form', { onSubmit: submit, className:'row', style:{flexDirection:'column', gap:12, position:'relative'}},
+      return H('form', { onSubmit: submit, className: 'row', style: { flexDirection: 'column', gap: 12, position: 'relative' } },
 
         // Auto-list overlay while it works
         autoBusy && H('div', {
-          style:{
-            position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
-            display:'grid', placeItems:'center', zIndex:5, borderRadius:12
+          style: {
+            position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.85)',
+            display: 'grid', placeItems: 'center', zIndex: 5, borderRadius: 12
           }
-        }, H('div', null, H('div', {className:'spinner'}), H('div', {style:{marginTop:6, fontWeight:700}}, 'Auto-listing...'))),
+        }, H('div', null, H('div', { className: 'spinner' }), H('div', { style: { marginTop: 6, fontWeight: 700 } }, 'Auto-listing...'))),
 
         // New uploads (go to S3)
-        H(MultiFilePicker, { files, onChange:setFiles }),
+        H(MultiFilePicker, { files, onChange: setFiles }),
 
         // UPDATED: Existing images with delete capability
         (existingUrls.length > 0) && H('div', null,
-          H('div', { className:'muted', style:{ marginBottom:8 } }, 'Existing images:'),
-          H('div', { className:'row', style:{ gap:8, flexWrap:'wrap' } },
+          H('div', { className: 'muted', style: { marginBottom: 8 } }, 'Existing images:'),
+          H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
             ...existingUrls.map((src, i) =>
-              H('div', { key:i, style:{ position:'relative' } },
-                H(ImageWithSkeleton, { src, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #ddd' } }),
+              H('div', { key: i, style: { position: 'relative' } },
+                H(ImageWithSkeleton, { src, style: { width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid #ddd' } }),
                 H('button', {
-                  className:'btn danger',
-                  type:'button',
-                  style:{ position:'absolute', top:4, right:4, padding:'4px 8px' },
-                  onClick:() => {
+                  className: 'btn danger',
+                  type: 'button',
+                  style: { position: 'absolute', top: 4, right: 4, padding: '4px 8px' },
+                  onClick: () => {
                     const next = [...existingUrls];
                     next.splice(i, 1);
                     setExistingUrls(next);
@@ -716,98 +716,98 @@
           )
         ),
 
-        H('div', { className:'row', style:{ gap:8 } },
-          H('button', { type:'button', className:`btn ${aiBusy?'':'primary'}`, disabled:aiBusy, onClick:runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
-          aiErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, aiErr),
-          H('span', { className:'muted' }, 'Only images are required. AI can suggest title/tags/price.')
+        H('div', { className: 'row', style: { gap: 8 } },
+          H('button', { type: 'button', className: `btn ${aiBusy ? '' : 'primary'}`, disabled: aiBusy, onClick: runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
+          aiErr && H('span', { className: 'muted', style: { color: '#b91c1c' } }, aiErr),
+          H('span', { className: 'muted' }, 'Only images are required. AI can suggest title/tags/price.')
         ),
 
         H('label', null, 'Title (optional)'),
-        H('input', { value:title, maxLength:80, onChange:e=>setTitle(e.target.value), placeholder:'Optional' }),
+        H('input', { value: title, maxLength: 80, onChange: e => setTitle(e.target.value), placeholder: 'Optional' }),
 
         H('label', null, 'Description (optional)'),
-        H('textarea', { value:description, maxLength:400, onChange:e=>setDescription(e.target.value), placeholder:'Optional' }),
+        H('textarea', { value: description, maxLength: 400, onChange: e => setDescription(e.target.value), placeholder: 'Optional' }),
 
         H('label', null, 'Location (required)'),
-        H('div', { className:'row', style:{ gap:8 } },
-          H('input', { value:location, maxLength:80, onChange:e=>setLocation(e.target.value), placeholder:'Required (City, State)' }),
-          H('button', { type:'button', className:'btn', onClick:useMyLocation, disabled:geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
-          geoErr && H('span', { className:'muted', style:{ color:'#b91c1c' } }, geoErr)
+        H('div', { className: 'row', style: { gap: 8 } },
+          H('input', { value: location, maxLength: 80, onChange: e => setLocation(e.target.value), placeholder: 'Required (City, State)' }),
+          H('button', { type: 'button', className: 'btn', onClick: useMyLocation, disabled: geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
+          geoErr && H('span', { className: 'muted', style: { color: '#b91c1c' } }, geoErr)
         ),
 
         isMobile && H('label', {
-          className:'toggle-card',
-          style:{ marginTop:4, gap:8, alignItems:'flex-start' }
+          className: 'toggle-card',
+          style: { marginTop: 4, gap: 8, alignItems: 'flex-start' }
         },
           H('input', {
-            type:'checkbox',
-            className:'toggle-input',
-            checked:enableNearby,
-            onChange:e=>{
+            type: 'checkbox',
+            className: 'toggle-input',
+            checked: enableNearby,
+            onChange: e => {
               const checked = e.target.checked;
               setEnableNearby(checked);
               if (checked && !hasFixedGps) useMyLocation();
             }
           }),
-          H('span', { className:'toggle-slider', 'aria-hidden': true }),
-          H('div', { className:'toggle-copy' },
-            H('div', { style:{ fontWeight:700 } }, 'Enable Nearby searches'),
-            H('div', { className:'muted', style:{ fontSize:12 } }, 'Shows distance in feet/miles to buyers.')
+          H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+          H('div', { className: 'toggle-copy' },
+            H('div', { style: { fontWeight: 700 } }, 'Enable Nearby searches'),
+            H('div', { className: 'muted', style: { fontSize: 12 } }, 'Shows distance in feet/miles to buyers.')
           )
         ),
-        (enableNearby && hasFixedGps) && H('span', { className:'muted', style:{ marginTop:4 } }, 'Nearby GPS fixed at creation; cannot change.'),
+        (enableNearby && hasFixedGps) && H('span', { className: 'muted', style: { marginTop: 4 } }, 'Nearby GPS fixed at creation; cannot change.'),
 
         H('label', null, 'Price (optional)'),
-        H('div', { className:'row', style:{ alignItems:'center', gap:12, flexWrap:'wrap' } },
-          H('div', { className:'row', style:{ alignItems:'center', gap:8 } },
+        H('div', { className: 'row', style: { alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
+          H('div', { className: 'row', style: { alignItems: 'center', gap: 8 } },
             H('input', {
-              value:priceVal,
-              inputMode:'decimal',
-              onChange:e=>setPriceVal(e.target.value.replace(/[^0-9.]/g,'')),
-              placeholder:'Leave empty for $0.00'
+              value: priceVal,
+              inputMode: 'decimal',
+              onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
+              placeholder: 'Leave empty for $0.00'
             }),
             showInquiryText
-              ? H('span', { className:'inquiry-badge' }, 'Seller wants an offer')
+              ? H('span', { className: 'inquiry-badge' }, 'Seller wants an offer')
               : H('span', {
-                  className:'muted',
-                  style:{ fontWeight:700, color: isFree ? '#16a34a' : '#6b7280' }
-                }, formattedPrice)
+                className: 'muted',
+                style: { fontWeight: 700, color: isFree ? '#16a34a' : '#6b7280' }
+              }, formattedPrice)
           ),
-          H('div', { className:'row', style:{ alignItems:'center', gap:6 } },
-            H('label', { className:'toggle-card', style:{ padding:'6px 10px' } },
+          H('div', { className: 'row', style: { alignItems: 'center', gap: 6 } },
+            H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
               H('input', {
-                type:'checkbox',
-                className:'toggle-input',
-                checked:showInquiryText,
-                onChange:e=>setInquiryEnabled(e.target.checked)
+                type: 'checkbox',
+                className: 'toggle-input',
+                checked: showInquiryText,
+                onChange: e => setInquiryEnabled(e.target.checked)
               }),
-              H('span', { className:'toggle-slider', 'aria-hidden': true }),
-              H('div', { className:'toggle-copy' },
-                H('div', { style:{ fontWeight:700 } }, 'Offer Message'),
-                H('div', { className:'muted', style:{ fontSize:12 } }, 'show offer message')
+              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+              H('div', { className: 'toggle-copy' },
+                H('div', { style: { fontWeight: 700 } }, 'Offer Message'),
+                H('div', { className: 'muted', style: { fontSize: 12 } }, 'show offer message')
               )
             ),
             H('button', {
-              type:'button',
-              onClick:(e)=>{ e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
-              title:'Inquiry mode info',
-              style:{
-                width:24, height:24, lineHeight:'22px',
-                borderRadius:12, border:'1px solid #e5e7eb', background:'#fff', cursor:'pointer'
+              type: 'button',
+              onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
+              title: 'Inquiry mode info',
+              style: {
+                width: 24, height: 24, lineHeight: '22px',
+                borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
               }
             }, '?')
           )
         ),
 
-        H('div', { className:'card', style:{ padding:12, background:'#fafafa' } },
-          H('div', { style:{ fontWeight:600, marginBottom:6 } }, 'Search tags (private, optional)'),
-          H('div', { className:'muted', style:{ marginBottom:6 } }, 'Not shown publicly; help others find your item. Example:"car, suv, 4x4".'),
-          H('input', { placeholder:'e.g. car, suv, 4x4', value:tags, onChange:e=>setTags(e.target.value) })
+        H('div', { className: 'card', style: { padding: 12, background: '#fafafa' } },
+          H('div', { style: { fontWeight: 600, marginBottom: 6 } }, 'Search tags (private, optional)'),
+          H('div', { className: 'muted', style: { marginBottom: 6 } }, 'Not shown publicly; help others find your item. Example:"car, suv, 4x4".'),
+          H('input', { placeholder: 'e.g. car, suv, 4x4', value: tags, onChange: e => setTags(e.target.value) })
         ),
 
-        H('div', { className:'row' },
-          H('button', { className:'btn primary', type:'submit', disabled:autoBusy }, draft ? 'Save changes' : 'Create listing'),
-          H('button', { className:'btn', type:'button', onClick:onCancel, disabled:autoBusy }, 'Cancel')
+        H('div', { className: 'row' },
+          H('button', { className: 'btn primary', type: 'submit', disabled: autoBusy }, draft ? 'Save changes' : 'Create listing'),
+          H('button', { className: 'btn', type: 'button', onClick: onCancel, disabled: autoBusy }, 'Cancel')
         ),
         showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) })
       );
@@ -833,7 +833,7 @@
         if (fileRef.current) fileRef.current.value = '';
       }, [initialFiles]);
 
-      function pick(e){
+      function pick(e) {
         const MAX_EACH_MB = 20;
         const selected = Array.from(e.target.files || []);
         const next = [...files];
@@ -845,9 +845,9 @@
         setFiles(next);
         if (fileRef.current) fileRef.current.value = '';
       }
-      function removeAt(i){
-        const next=[...files];
-        const [removed] = next.splice(i,1);
+      function removeAt(i) {
+        const next = [...files];
+        const [removed] = next.splice(i, 1);
         if (removed) clearDraftCacheForFile(removed);
         setFiles(next);
       }
@@ -859,17 +859,17 @@
 
         const updateProgress = trackProgress
           ? (nextDone, nextFailed) => setProgress({ done: nextDone, total, failed: nextFailed })
-          : () => {};
+          : () => { };
 
         updateProgress(0, 0);
 
-        let sharedNearby = { ok:false, lat:null, lon:null, display:'' };
+        let sharedNearby = { ok: false, lat: null, lon: null, display: '' };
         if (autoPostNearbyEnabled) {
           try {
             const c = await fetchCoordsAndReverseInternal();
-            sharedNearby = { ok:true, lat:c.lat, lon:c.lon, display:c.display };
+            sharedNearby = { ok: true, lat: c.lat, lon: c.lon, display: c.display };
           } catch (_) {
-            sharedNearby = { ok:false, lat:null, lon:null, display:'' };
+            sharedNearby = { ok: false, lat: null, lon: null, display: '' };
           }
         }
 
@@ -895,7 +895,7 @@
             let ai = {};
             let aiDescription = '';
             try {
-              ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent:true }) || {};
+              ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent: true }) || {};
             } catch (_) {
               /* ignore AI failure; fallback below */
             }
@@ -941,13 +941,13 @@
 
         await Promise.allSettled(jobs);
 
-        try { await reloadMine(); } catch {}
-        try { await reloadAll({ preserveExisting: true }); } catch {}
+        try { await reloadMine(); } catch { }
+        try { await reloadAll({ preserveExisting: true }); } catch { }
 
         return { total, created: total - failedCount, failed: failedCount };
       };
 
-      async function runMassList(){
+      async function runMassList() {
         if (!user) { alert('Log in to create listings.'); return; }
         if (user.account_status === 'locked') { onLockedAction?.(); return; }
         if (!files.length) { alert('Pick at least one image.'); return; }
@@ -985,45 +985,45 @@
         }
       }
 
-      const modal = H('div', { className:'modal open', onClick:(e)=>{ if(e.target.classList.contains('modal')) onClose(); } },
-        H('div', { className:'modal-inner', style:{ width:'min(680px, 92vw)', background:'#fff', borderRadius:24, overflow:'hidden' } },
-          H('button', { className:'close', onClick:onClose }, 'x'),
-          H('div', { style:{ padding:16 } },
-            H('div', { style:{ fontWeight:800, fontSize:18, marginBottom:6 } }, 'MassList'),
-            H('div', { className:'muted', style:{ marginBottom:12 } }, 'Pick multiple photos from your gallery. We will create one listing per photo using AI for title, tags, and price (you can edit later).'),
+      const modal = H('div', { className: 'modal open', onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); } },
+        H('div', { className: 'modal-inner', style: { width: 'min(680px, 92vw)', background: '#fff', borderRadius: 24, overflow: 'hidden' } },
+          H('button', { className: 'close', onClick: onClose }, 'x'),
+          H('div', { style: { padding: 16 } },
+            H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'MassList'),
+            H('div', { className: 'muted', style: { marginBottom: 12 } }, 'Pick multiple photos from your gallery. We will create one listing per photo using AI for title, tags, and price (you can edit later).'),
 
-            H('div', { className:'row', style:{ gap:8, alignItems:'center' } },
-              H('input', { type:'file', accept:'image/*', multiple:true, ref:fileRef, onChange: pick }),
-              H('span', { className:'muted' }, `${files.length} selected`)
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
+              H('input', { type: 'file', accept: 'image/*', multiple: true, ref: fileRef, onChange: pick }),
+              H('span', { className: 'muted' }, `${files.length} selected`)
             ),
 
-            filePreviews.length > 0 && H('div', { className:'row', style:{ gap:8, flexWrap:'wrap', marginTop:12 } },
-              ...filePreviews.map(({ url },i) =>
-                H('div', { key:i, style:{ position:'relative' } },
-                  H(ImageWithSkeleton, { src: url, style:{ width:96, height:96, objectFit:'cover', borderRadius:12, border:'1px solid #e5e7eb' }, loading:'lazy', decoding:'async' }),
-                  H('button', { className:'btn danger', type:'button', style:{ position:'absolute', top:4, right:4, padding:'4px 8px' }, onClick:()=>removeAt(i) }, 'x')
+            filePreviews.length > 0 && H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', marginTop: 12 } },
+              ...filePreviews.map(({ url }, i) =>
+                H('div', { key: i, style: { position: 'relative' } },
+                  H(ImageWithSkeleton, { src: url, style: { width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid #e5e7eb' }, loading: 'lazy', decoding: 'async' }),
+                  H('button', { className: 'btn danger', type: 'button', style: { position: 'absolute', top: 4, right: 4, padding: '4px 8px' }, onClick: () => removeAt(i) }, 'x')
                 )
               )
             ),
 
-            H('div', { className:'row', style:{ marginTop:16 } },
-              H('button', { className:'btn', onClick:onClose, disabled:busy }, 'Cancel'),
-              H('button', { className:`btn primary`, onClick:runMassList, disabled:busy || files.length===0 }, busy ? 'Working...' : 'Confirm MassList')
+            H('div', { className: 'row', style: { marginTop: 16 } },
+              H('button', { className: 'btn', onClick: onClose, disabled: busy }, 'Cancel'),
+              H('button', { className: `btn primary`, onClick: runMassList, disabled: busy || files.length === 0 }, busy ? 'Working...' : 'Confirm MassList')
             )
           ),
 
           // Progress overlay
           busy && H('div', {
-            style:{
-              position:'absolute', inset:0, background:'rgba(255,255,255,0.85)',
-              display:'grid', placeItems:'center', zIndex:10, textAlign:'center', padding:'16px'
+            style: {
+              position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.85)',
+              display: 'grid', placeItems: 'center', zIndex: 10, textAlign: 'center', padding: '16px'
             }
           },
             H('div', null,
-              H('div', { className:'spinner' }),
-              H('div', { style:{ fontWeight:800, marginTop:6 } }, 'MassList in progress...'),
-              H('div', { className:'muted', style:{ marginTop:4 } }, `${progress.done}/${progress.total} completed`),
-              progress.failed>0 && H('div', { className:'muted', style:{ marginTop:2, color:'#b91c1c' } }, `${progress.failed} failed`)
+              H('div', { className: 'spinner' }),
+              H('div', { style: { fontWeight: 800, marginTop: 6 } }, 'MassList in progress...'),
+              H('div', { className: 'muted', style: { marginTop: 4 } }, `${progress.done}/${progress.total} completed`),
+              progress.failed > 0 && H('div', { className: 'muted', style: { marginTop: 2, color: '#b91c1c' } }, `${progress.failed} failed`)
             )
           )
         )
@@ -1273,7 +1273,7 @@
 
       const handleBackdropClick = React.useCallback((evt) => {
         if (evt.target.classList.contains('lightbox-backdrop') ||
-            evt.target.classList.contains('lightbox-overlay')) {
+          evt.target.classList.contains('lightbox-overlay')) {
           onClose?.();
         }
       }, [onClose]);
@@ -1286,43 +1286,43 @@
 
       const imageContent = len
         ? H('div', { className: 'lightbox-main' },
-            H(ResponsiveImage, {
-              src: currentSrc,
-              alt: `Listing image ${safeIndex + 1}`,
-              widths: [480, 720, 1080, 1440],
-              sizes: '100vw',
-              loading: 'eager',
-              fetchPriority: 'high',
-              className: 'lightbox-img',
-              onLoad: handleStageSettled,
-              onError: handleStageSettled,
-              style: { opacity: stageLoaded ? 1 : 0, transition: 'opacity 180ms ease' }
-            })
-          )
+          H(ResponsiveImage, {
+            src: currentSrc,
+            alt: `Listing image ${safeIndex + 1}`,
+            widths: [480, 720, 1080, 1440],
+            sizes: '100vw',
+            loading: 'eager',
+            fetchPriority: 'high',
+            className: 'lightbox-img',
+            onLoad: handleStageSettled,
+            onError: handleStageSettled,
+            style: { opacity: stageLoaded ? 1 : 0, transition: 'opacity 180ms ease' }
+          })
+        )
         : H('div', { className: 'lightbox-main' },
-            H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available')
-          );
+          H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available')
+        );
 
       const thumbsContent = len
         ? H('div', { className: 'lightbox-thumbs' },
-            ...list.map((img, i) => H(ImageWithSkeleton, {
-              key: String(i),
-              src: img,
-              alt: `Thumbnail ${i + 1}`,
-              className: i === safeIndex ? 'active' : '',
-              onClick: () => onIndex?.(i)
-            }))
-          )
+          ...list.map((img, i) => H(ImageWithSkeleton, {
+            key: String(i),
+            src: img,
+            alt: `Thumbnail ${i + 1}`,
+            className: i === safeIndex ? 'active' : '',
+            onClick: () => onIndex?.(i)
+          }))
+        )
         : (loading
-            ? H('div', { className: 'lightbox-thumbs loading', 'aria-hidden': true },
-                ...Array.from({ length: 4 }).map((_, i) =>
-                  H('div', { key: `s-${i}`, className: 'lightbox-thumb-skeleton' })
-                )
-              )
-            : H('div', { className: 'lightbox-thumbs empty' },
-                H('span', null, 'No photos yet')
-              )
-          );
+          ? H('div', { className: 'lightbox-thumbs loading', 'aria-hidden': true },
+            ...Array.from({ length: 4 }).map((_, i) =>
+              H('div', { key: `s-${i}`, className: 'lightbox-thumb-skeleton' })
+            )
+          )
+          : H('div', { className: 'lightbox-thumbs empty' },
+            H('span', null, 'No photos yet')
+          )
+        );
 
       const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
         H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, '×'),
@@ -1608,22 +1608,22 @@
 
         const sellerNode = onViewSeller
           ? H('button', {
-              onClick: (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleShowProfilePreview(item.user_id);
-              },
-              style: {
-                background: 'none',
-                border: 'none',
-                color: '#111',
-                fontWeight: 600,
-                textDecoration: 'underline',
-                cursor: 'pointer',
-                padding: 0,
-                font: 'inherit'
-              }
-            }, item.owner_username)
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleShowProfilePreview(item.user_id);
+            },
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#111',
+              fontWeight: 600,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              padding: 0,
+              font: 'inherit'
+            }
+          }, item.owner_username)
           : H('span', { style: { fontWeight: 600, color: '#111' } }, item.owner_username);
 
         if (!supporterData || viewContext === 'grid') {
@@ -1673,25 +1673,25 @@
         },
           coverSrc
             ? H(ResponsiveImage, {
-                src: coverSrc,
-                alt: item.title || 'Listing image',
-                style: { width: '100%', height: '100%', objectFit: 'cover' },
-                sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
-                loading: isModalView ? 'eager' : 'lazy',
-                fetchPriority: isModalView ? 'high' : 'auto',
-                onClick: openGalleryFromEvent
-              })
+              src: coverSrc,
+              alt: item.title || 'Listing image',
+              style: { width: '100%', height: '100%', objectFit: 'cover' },
+              sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 90vw',
+              loading: isModalView ? 'eager' : 'lazy',
+              fetchPriority: isModalView ? 'high' : 'auto',
+              onClick: openGalleryFromEvent
+            })
             : H('div', {
-                style: {
-                  width: '100%',
-                  height: '100%',
-                  background: '#f3f4f6',
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: '#6b7280',
-                  fontWeight: 600
-                }
-              }, 'No image'),
+              style: {
+                width: '100%',
+                height: '100%',
+                background: '#f3f4f6',
+                display: 'grid',
+                placeItems: 'center',
+                color: '#6b7280',
+                fontWeight: 600
+              }
+            }, 'No image'),
           item.sold ? H('div', {
             style: {
               position: 'absolute',
@@ -1750,7 +1750,7 @@
           H('div', { className: 'muted' }, item.location || 'No location'),
 
           (showDistance && derivedMeters != null) &&
-            H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
+          H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
 
           H('div', { className: 'muted' },
             'Seller: ',
@@ -1823,10 +1823,10 @@
       const sellerJoinedText = sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
       const sellerSupporter = sellerInfo.supporter_badge
         ? {
-            username: sellerInfo.username,
-            since: sellerInfo.supporter_since,
-            badge: sellerInfo.supporter_badge
-          }
+          username: sellerInfo.username,
+          since: sellerInfo.supporter_since,
+          badge: sellerInfo.supporter_badge
+        }
         : null;
       const avatarBorderColor = sellerInfo.profile_avatar_border_color || '#ffffff';
       const avatarBorderStyle = sellerInfo.profile_avatar_border_style === 'dashed' ? 'dashed' : 'solid';
@@ -1971,25 +1971,25 @@
                 },
                   bgImageUrl
                     ? H(ImageWithSkeleton, {
-                        key: bgImageUrl,
-                        src: bgImageUrl,
-                        alt: `${username} banner`,
-                        style: {
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover'
-                        }
-                      })
+                      key: bgImageUrl,
+                      src: bgImageUrl,
+                      alt: `${username} banner`,
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }
+                    })
                     : H('div', {
-                        style: {
-                          width: '100%',
-                          height: '100%',
-                          display: 'grid',
-                          placeItems: 'center',
-                          fontSize: 48,
-                          color: 'rgba(248, 250, 252, 0.5)'
-                        }
-                      }, '🖼️'),
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: 48,
+                        color: 'rgba(248, 250, 252, 0.5)'
+                      }
+                    }, '🖼️'),
                   H('div', {
                     style: {
                       position: 'absolute',
@@ -2014,21 +2014,21 @@
                 },
                   avatarUrl
                     ? H('img', {
-                        src: avatarUrl,
-                        alt: `${username} avatar`,
-                        style: { width: '100%', height: '100%', objectFit: 'cover' }
-                      })
+                      src: avatarUrl,
+                      alt: `${username} avatar`,
+                      style: { width: '100%', height: '100%', objectFit: 'cover' }
+                    })
                     : H('span', {
-                        style: {
-                          width: '100%',
-                          height: '100%',
-                          display: 'grid',
-                          placeItems: 'center',
-                          fontSize: 36,
-                          fontWeight: 800,
-                          color: '#e2e8f0'
-                        }
-                      }, initials)
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: 36,
+                        fontWeight: 800,
+                        color: '#e2e8f0'
+                      }
+                    }, initials)
                 )
               ),
               H('div', {
@@ -2413,7 +2413,7 @@
             if (Array.isArray(arr) && arr.length) {
               listingImageCache.set(item.id, arr);
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }, []);
 
@@ -2426,34 +2426,34 @@
 
       const modalContent = selectedListing
         ? H('div', {
-            className: 'modal open',
-            onClick: (evt) => {
-              if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
-                setSelectedListing(null);
-              }
+          className: 'modal open',
+          onClick: (evt) => {
+            if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+              setSelectedListing(null);
             }
-          },
-            H('div', { className: 'modal-inner listing-modal' },
-              H('button', { className: 'close', onClick: () => setSelectedListing(null) }, 'x'),
-              H(ListingCard, {
-                item: selectedListing,
-                user,
-                canEdit: false,
-                onMessage: (listing) => {
-                  setSelectedListing(null);
-                  onMessage?.(listing);
-                },
-                onAdminDelete: (id) => {
-                  handleAdminDeleteInternal(id);
-                  setSelectedListing(null);
-                },
-                showDistance: false,
-                onViewSeller: null,
-                onSupporterClick,
-                viewContext: 'modal'
-              })
-            )
+          }
+        },
+          H('div', { className: 'modal-inner listing-modal' },
+            H('button', { className: 'close', onClick: () => setSelectedListing(null) }, 'x'),
+            H(ListingCard, {
+              item: selectedListing,
+              user,
+              canEdit: false,
+              onMessage: (listing) => {
+                setSelectedListing(null);
+                onMessage?.(listing);
+              },
+              onAdminDelete: (id) => {
+                handleAdminDeleteInternal(id);
+                setSelectedListing(null);
+              },
+              showDistance: false,
+              onViewSeller: null,
+              onSupporterClick,
+              viewContext: 'modal'
+            })
           )
+        )
         : null;
 
       if (loading) {
@@ -2479,10 +2479,10 @@
       const sellerSupporterSince = sellerInfo?.supporter_since || null;
       const sellerSupporter = sellerInfo?.supporter_badge
         ? {
-            username: sellerLabel,
-            since: sellerSupporterSince,
-            badge: sellerInfo.supporter_badge
-          }
+          username: sellerLabel,
+          since: sellerSupporterSince,
+          badge: sellerInfo.supporter_badge
+        }
         : null;
 
       const sellerBgImageUrl = (sellerInfo && sellerInfo.profile_bg_image_url) || '';
@@ -2517,11 +2517,11 @@
           },
             (sellerInfo?.profile_picture_url && sellerInfo.profile_picture_url.trim())
               ? H('img', {
-                  src: sellerInfo.profile_picture_url,
-                  alt: 'Seller profile picture',
-                  style: { width: '100%', height: '100%', objectFit: 'cover' },
-                  onError: (e) => { e.target.style.display = 'none'; }
-                })
+                src: sellerInfo.profile_picture_url,
+                alt: 'Seller profile picture',
+                style: { width: '100%', height: '100%', objectFit: 'cover' },
+                onError: (e) => { e.target.style.display = 'none'; }
+              })
               : (sellerLabel.charAt(0).toUpperCase())
           ),
           H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
@@ -2575,19 +2575,19 @@
       },
         trimmedSellerBgImageUrl
           ? H('img', {
-              key: trimmedSellerBgImageUrl,
-              src: trimmedSellerBgImageUrl,
-              alt: 'Seller profile banner',
-              loading: 'lazy',
-              decoding: 'async',
-              style: {
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
-              }
-            })
+            key: trimmedSellerBgImageUrl,
+            src: trimmedSellerBgImageUrl,
+            alt: 'Seller profile banner',
+            loading: 'lazy',
+            decoding: 'async',
+            style: {
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover'
+            }
+          })
           : null,
         H('div', {
           style: {
@@ -2625,17 +2625,17 @@
 
         shownListings.length === 0
           ? H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } },
-              tab === 'sold' ? 'No sold listings yet.' : 'No listings from this seller.')
+            tab === 'sold' ? 'No sold listings yet.' : 'No listings from this seller.')
           : (ListingsGrid
-              ? H(ListingsGrid, {
-                  items: shownListings,
-                  onEnsureCover: ensureCover,
-                  onSelect: (evt, item) => handleListingSelected(item),
-                  onSupporterClick,
-                  columns: gridColumns
-                })
-              : H('div', { style: { padding: 16, textAlign: 'center' } }, 'Grid component not available')
-            ),
+            ? H(ListingsGrid, {
+              items: shownListings,
+              onEnsureCover: ensureCover,
+              onSelect: (evt, item) => handleListingSelected(item),
+              onSupporterClick,
+              columns: gridColumns
+            })
+            : H('div', { style: { padding: 16, textAlign: 'center' } }, 'Grid component not available')
+          ),
 
         modalContent
       );
