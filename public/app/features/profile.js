@@ -1495,7 +1495,10 @@
         H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
           H('div', {
             className: 'profile-avatar',
-            onClick: handleOpenProfilePictureModal,
+            onClick: (e) => {
+              e.stopPropagation();
+              handleOpenProfilePictureModal();
+            },
             style: {
               cursor: 'pointer',
               borderColor: avatarBorderColorValue,
@@ -1615,12 +1618,14 @@
       const profileSections = [
         H('section', {
           className: 'card',
+          onClick: () => setProfileCustomizationModalOpen(true),
           style: {
             padding: hasBgImage ? 0 : 16,
             margin: '12px 0 16px',
             overflow: hasBgImage ? 'hidden' : undefined,
             background: hasBgImage ? '#020617' : undefined,
-            color: hasBgImage ? '#f8fafc' : undefined
+            color: hasBgImage ? '#f8fafc' : undefined,
+            cursor: 'pointer'
           }
         }, profileHeader),
 
@@ -1635,16 +1640,7 @@
             H(SettingsIcon, null),
             H('span', { style: visuallyHidden }, 'Manage payment preset')
           ),
-          H('button', {
-            className: 'btn',
-            type: 'button',
-            onClick: () => setProfileCustomizationModalOpen(true),
-            title: 'Customize profile display',
-            style: iconButtonStyle
-          },
-            H('span', null, '🎨'),
-            H('span', { style: visuallyHidden }, 'Customize profile')
-          ),
+
           H('button', {
             className: 'btn',
             type: 'button',

@@ -121,6 +121,12 @@
     }
     const { AuthProvider, useAuth, AuthModal } = authFeatureFactory({ api, ReactDOM: runtimeReactDOM });
 
+    const landingFeatureFactory = bundles?.features?.landing?.createLandingFeature;
+    if (typeof landingFeatureFactory !== 'function') {
+      throw new Error('Landing feature bundle failed to load.');
+    }
+    const { LandingPage } = landingFeatureFactory({ api, React: runtimeReact });
+
     const uploadsFeatureFactory = bundles?.features?.uploads?.createUploadsFeature;
     if (typeof uploadsFeatureFactory !== 'function') {
       throw new Error('Uploads feature bundle failed to load.');
@@ -485,6 +491,7 @@
       AppNav,
       features: {
         auth: { AuthProvider, useAuth, AuthModal },
+        landing: { LandingPage },
         listings: { useListingsFeature, CityAutocomplete, useListingModal },
         messageCenter: { useMessageCenter },
         messages: { MessagesPanel, useMessageActions },

@@ -982,6 +982,7 @@
   <script src="/app/components/listings.js?v=supporter-badges-1" defer></script>
   <script src="/app/components/profile-picture-upload.js?v=3" defer></script>
   <script src="/app/features/auth.js?v=better-auth-errors-1" defer></script>
+  <script src="/app/features/landing.js?v=modular-landing-1" defer></script>
   <script src="/app/features/listings.js?v=profile-covers-1" defer></script>
   <script src="/app/features/listing-forms.js?v=modular-listing-forms-1" defer></script>
   <script src="/app/features/app-view.js?v=modular-app-view-1" defer></script>
@@ -1006,24 +1007,208 @@
   <script src="/app/contexts/listing-queue.js?v=modular-contexts-1" defer></script>
   <script src="/app/contexts/notifications.js?v=modular-contexts-1" defer></script>
   <script src="/app/bootstrap/app-nav.js?v=modular-bootstrap-1" defer></script>
-  <script src="/app/bootstrap/location.js?v=modular-bootstrap-1" defer></script>
-  <script src="/app/bootstrap/browser-app.js?v=supporter-badges-1" defer></script>
-  <script src="/app/app-shell.js?v=supporter-badges-1" defer></script>
-  <script src="/app.js?v=modular-browser-app-2" defer></script>
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+  z-index: 2;
+  }
 
-  <!-- Auto-resize textareas (nice-to-have) -->
+  .supporter-modal__close:hover {
+  background: rgba(253, 230, 138, 0.95);
+  color: #78350f;
+  transform: scale(1.05);
+  }
+
+  .supporter-modal__badge {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+  }
+
+  .supporter-modal__title {
+  position: relative;
+  z-index: 1;
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: #111827;
+  }
+
+  .supporter-modal__subtitle {
+  position: relative;
+  z-index: 1;
+  color: #6b7280;
+  margin-bottom: 14px;
+  font-weight: 500;
+  }
+
+  .supporter-modal__body {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 22px;
+  line-height: 1.55;
+  color: #374151;
+  font-size: 0.95rem;
+  }
+
+  .supporter-modal__actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  }
+
+  .supporter-modal__actions .btn {
+  min-width: 140px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  }
+
+  .supporter-modal__error {
+  position: relative;
+  z-index: 1;
+  background: rgba(254, 226, 226, 0.95);
+  color: #991b1b;
+  padding: 12px 16px;
+  border-radius: 16px;
+  margin-bottom: 18px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.35);
+  }
+
+  .supporter-modal__notice {
+  position: relative;
+  z-index: 1;
+  background: rgba(219, 234, 254, 0.95);
+  color: #1d4ed8;
+  padding: 12px 16px;
+  border-radius: 16px;
+  margin-bottom: 18px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.35);
+  }
+
+  .supporter-modal__card--wide .supporter-modal__body {
+  font-size: 1rem;
+  }
+
+  @media (max-width: 640px) {
+  .supporter-modal__card {
+  padding: 28px 20px;
+  }
+
+  .supporter-modal__title {
+  font-size: 1.4rem;
+  }
+  }
+  </style>
+
+  <!-- 🔗 Global overrides (desktop + mobile).
+         Put AFTER the base <style> so it can override where needed. -->
+  <link rel="stylesheet" href="/app.css?v=profile-picture-feature-1" />
+
   <script>
-    function autosize(el) {
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 240) + 'px';
-    }
-    document.addEventListener('input', (e) => {
-      if (e.target && e.target.tagName === 'TEXTAREA') autosize(e.target);
-    });
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('textarea').forEach(autosize);
-    });
+    (function () {
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) return;
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+
+      if (!isIOS && !isCoarsePointer) return;
+
+      const baseContent = 'width=device-width, initial-scale=1, viewport-fit=cover';
+      const lockedContent = `${baseContent}, maximum-scale=1`;
+
+      const applyLockedViewport = () => viewport.setAttribute('content', lockedContent);
+      const restoreViewport = () => viewport.setAttribute('content', baseContent);
+
+      const shouldLock = (element) =>
+        element instanceof HTMLElement && element.matches('input, textarea, select');
+
+      window.addEventListener(
+        'focusin',
+        (event) => {
+          if (!shouldLock(event.target)) return;
+          applyLockedViewport();
+        },
+        { passive: true }
+      );
+
+      window.addEventListener(
+        'focusout',
+        (event) => {
+          if (!shouldLock(event.target)) return;
+          restoreViewport();
+        },
+        { passive: true }
+      );
+
+      document.addEventListener('gesturestart', restoreViewport, { passive: true });
+    })();
   </script>
-</body>
+
+  <!-- Mobile-only overrides (kept after app.css) -->
+  <link rel="stylesheet" href="/mobile.css?v=nearby-dropdown-1" media="screen and (max-width: 720px)" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <!-- React 18 (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- App -->
+    <script src="/assets/listit-core.js?v=shared-core-1" defer></script>
+    <script src="/app/components/media.js?v=modular-media-1" defer></script>
+    <script src="/app/components/ads.js?v=modular-ads-1" defer></script>
+    <script src="/app/components/grid.js?v=supporter-badges-1" defer></script>
+    <script src="/app/components/layout.js?v=modular-layout-1" defer></script>
+    <script src="/app/components/supporter.js?v=supporter-badges-1" defer></script>
+    <script src="/app/components/listings.js?v=supporter-badges-1" defer></script>
+    <script src="/app/components/profile-picture-upload.js?v=3" defer></script>
+    <script src="/app/features/auth.js?v=better-auth-errors-1" defer></script>
+    <script src="/app/features/landing.js?v=modular-landing-1" defer></script>
+    <script src="/app/features/listings.js?v=profile-covers-1" defer></script>
+    <script src="/app/features/listing-forms.js?v=modular-listing-forms-1" defer></script>
+    <script src="/app/features/app-view.js?v=modular-app-view-1" defer></script>
+    <script src="/app/features/uploads/utils.js?v=modular-uploads-2" defer></script>
+    <script src="/app/features/uploads/service.js?v=modular-uploads-2" defer></script>
+    <script src="/app/features/uploads/hooks.js?v=modular-uploads-2" defer></script>
+    <script src="/app/features/uploads.js?v=modular-uploads-2" defer></script>
+    <script src="/app/features/notifications.js?v=modular-notifications-1" defer></script>
+    <script src="/app/features/preferences.js?v=modular-preferences-1" defer></script>
+    <script src="/app/features/profile.js?v=supporter-badges-1" defer></script>
+    <script src="/app/features/nearby.js?v=modular-nearby-2" defer></script>
+    <script src="/app/features/message-center.js?v=modular-message-center-2" defer></script>
+    <script src="/app/features/messages.js?v=modular-messages-pfp-1" defer></script>
+    <script src="/app/features/push.js?v=modular-push-1" defer></script>
+    <script src="/app/features/ads.js?v=ad-debug-1" defer></script>
+    <script src="/app/features/admin/state.js?v=modular-admin-2" defer></script>
+    <script src="/app/features/admin/components.js?v=modular-admin-2" defer></script>
+    <script src="/app/features/admin.js?v=modular-admin-1" defer></script>
+    <script type="module" src="/app/features/listing-queue.js?v=modular-listing-queue-2" defer></script>
+    <script src="/app/helpers.js?v=modular-helpers-1" defer></script>
+    <script src="/app/contexts/listings.js?v=modular-contexts-1" defer></script>
+    <script src="/app/contexts/listing-queue.js?v=modular-contexts-1" defer></script>
+    <script src="/app/contexts/notifications.js?v=modular-contexts-1" defer></script>
+    <script src="/app/bootstrap/app-nav.js?v=modular-bootstrap-1" defer></script>
+    <script src="/app/bootstrap/location.js?v=modular-bootstrap-1" defer></script>
+    <script src="/app/bootstrap/browser-app.js?v=supporter-badges-1" defer></script>
+    <script src="/app/app-shell.js?v=supporter-badges-1" defer></script>
+    <script src="/app.js?v=modular-browser-app-2" defer></script>
+
+    <!-- Auto-resize textareas (nice-to-have) -->
+    <script src="/app/autosize.js" defer></script>
+  </body>
 
 </html>

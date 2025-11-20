@@ -13,8 +13,8 @@
   function normalizePushMeta(value) {
     const source = value && typeof value === 'object'
       ? (value.push_meta && typeof value.push_meta === 'object'
-          ? value.push_meta
-          : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
+        ? value.push_meta
+        : (value.pushMeta && typeof value.pushMeta === 'object' ? value.pushMeta : null))
       : null;
     const available = !!source?.available;
     const vapid = typeof source?.vapid_public_key === 'string'
@@ -38,6 +38,7 @@
 
     function AuthProvider({ children }) {
       const [user, setUserState] = useState(null);
+      const [loading, setLoading] = useState(true);
       const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
 
       const setUser = useCallback((next) => {
@@ -55,6 +56,8 @@
           } catch {
             if (!alive) return;
             setUser(null);
+          } finally {
+            if (alive) setLoading(false);
           }
         })();
         return () => {
@@ -65,8 +68,9 @@
       const value = useMemo(() => ({
         user,
         setUser,
-        pushMeta
-      }), [user, setUser, pushMeta]);
+        pushMeta,
+        loading
+      }), [user, setUser, pushMeta, loading]);
 
       return H(AuthContext.Provider, { value }, children);
     }

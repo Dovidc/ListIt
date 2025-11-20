@@ -84,6 +84,8 @@
       AuthModal
     } = auth;
 
+    const { LandingPage } = features?.landing || {};
+
     const {
       useListingsFeature,
       CityAutocomplete,
@@ -167,7 +169,7 @@
     }
 
     const App = React.memo(function AppComponent() {
-      const { user, setUser, pushMeta } = useAuth();
+      const { user, setUser, pushMeta, loading: loadingUser } = useAuth();
 
       const premiumFreeForAll = Boolean(user?.payments_disabled);
       const hasPremiumAccess = useMemo(() => {
@@ -871,6 +873,15 @@
         messages: 'Messages',
         profile: 'Profile'
       };
+
+      // Show Landing Page for unauthenticated mobile users
+      if (isMobile && !user && !loadingUser) {
+        return H(LandingPage, {
+          onLogin: (loggedInUser) => {
+            setUser(loggedInUser);
+          }
+        });
+      }
 
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
