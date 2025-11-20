@@ -1135,8 +1135,8 @@
             ),
 
             showMassList && H(MassListModal, {
-              onClose: () => { setShowMassList(false); setInitialMassListFiles([]); },
-              onDone: () => { setInitialMassListFiles([]); },
+              onClose: () => { setShowMassList(false); setInitialMassListFiles([]); setMobileCreateMode('list'); },
+              onDone: () => { setInitialMassListFiles([]); setMobileCreateMode('list'); },
               reloadAll: refreshListings,
               reloadMine: reloadMineOnly,
               user,
