@@ -93,15 +93,21 @@
       onError,
       style,
       disableSkeleton = false,
+      width,
       ...imgProps
     }) {
       const [loaded, setLoaded] = useState(false);
       const [failed, setFailed] = useState(false);
 
+      const optimizedSrc = useMemo(() => {
+        if (!imgProps.src) return imgProps.src;
+        return width ? buildSizedUrl(imgProps.src, width) : imgProps.src;
+      }, [imgProps.src, width]);
+
       useEffect(() => {
         setLoaded(false);
         setFailed(false);
-      }, [imgProps.src]);
+      }, [optimizedSrc]);
 
       const handleLoad = useCallback((event) => {
         setLoaded(true);
@@ -113,7 +119,7 @@
         if (typeof onError === 'function') onError(event);
       }, [onError]);
 
-      const showSkeleton = !disableSkeleton && !!imgProps.src && !loaded && !failed;
+      const showSkeleton = !disableSkeleton && !!optimizedSrc && !loaded && !failed;
 
       const computedWrapperStyle = useMemo(() => {
         const base = { lineHeight: 0, ...wrapperStyle };
@@ -158,7 +164,7 @@
         : 'image-shell';
 
       return H('span', { className: wrapperClass, style: computedWrapperStyle },
-        H('img', { ...imgProps, className, style, onLoad: handleLoad, onError: handleError }),
+        H('img', { ...imgProps, src: optimizedSrc, width, className, style, onLoad: handleLoad, onError: handleError }),
         showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
       );
     }
@@ -206,8 +212,8 @@
     }
 
     function Lightbox({ open, images, fallback, index, onClose, onIndex, loading = false }) {
-      const esc = (e)=> { if(e.key==='Escape') onClose(); };
-      useEffect(()=>{ if(open){ window.addEventListener('keydown', esc); return ()=> window.removeEventListener('keydown', esc); }}, [open, onClose]);
+      const esc = (e) => { if (e.key === 'Escape') onClose(); };
+      useEffect(() => { if (open) { window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc); } }, [open, onClose]);
 
       const display = Array.isArray(images) && images.length ? images : (Array.isArray(fallback) ? fallback : []);
       const len = display.length;
@@ -221,46 +227,46 @@
 
       const mainContent = len
         ? H('div', { className: 'lightbox-main' },
-            H(ResponsiveImage, {
-              src: display[safeIndex] || display[0],
-              alt: 'Image ' + (safeIndex + 1),
-              widths: [480, 720, 1080, 1440],
-              sizes: '100vw',
-              loading: 'eager',
-              fetchPriority: 'high',
-              className: 'lightbox-img'
-            })
-          )
+          H(ResponsiveImage, {
+            src: display[safeIndex] || display[0],
+            alt: 'Image ' + (safeIndex + 1),
+            widths: [480, 720, 1080, 1440],
+            sizes: '100vw',
+            loading: 'eager',
+            fetchPriority: 'high',
+            className: 'lightbox-img'
+          })
+        )
         : H('div', {
-            className: 'lightbox-empty'
-          }, loading ? 'Loading images...' : 'No images available');
+          className: 'lightbox-empty'
+        }, loading ? 'Loading images...' : 'No images available');
 
       const thumbs = len && typeof onIndex === 'function'
-        ? H('div', { className:'lightbox-thumbs' },
-            ...display.map((img, i) => H(ImageWithSkeleton, {
-              key:i,
-              src:img,
-              className: i===safeIndex ? 'active' : '',
-              onClick:()=>onIndex(i)
-            }))
-          )
+        ? H('div', { className: 'lightbox-thumbs' },
+          ...display.map((img, i) => H(ImageWithSkeleton, {
+            key: i,
+            src: img,
+            className: i === safeIndex ? 'active' : '',
+            onClick: () => onIndex(i)
+          }))
+        )
         : null;
 
       if (!open) return null;
 
       const modal = H('div', {
         className: 'lightbox-overlay',
-        onClick:(e)=>{ if (e.target === e.currentTarget) onClose(); }
+        onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
       },
-        H('div', { className:'lightbox-content', role:'dialog', 'aria-modal': true },
-          H('button', { className:'lightbox-close', onClick:onClose, 'aria-label':'Close image' }, 'X'),
-          H('div', { className:'lightbox-stage' },
-            canNavigate ? H('button', { className:'lightbox-arrow left', onClick:()=>onIndex((safeIndex-1+len)%len), 'aria-label':'Previous image' }, '<') : null,
+        H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
+          H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close image' }, 'X'),
+          H('div', { className: 'lightbox-stage' },
+            canNavigate ? H('button', { className: 'lightbox-arrow left', onClick: () => onIndex((safeIndex - 1 + len) % len), 'aria-label': 'Previous image' }, '<') : null,
             mainContent,
-            canNavigate ? H('button', { className:'lightbox-arrow right', onClick:()=>onIndex((safeIndex+1)%len), 'aria-label':'Next image' }, '>') : null
+            canNavigate ? H('button', { className: 'lightbox-arrow right', onClick: () => onIndex((safeIndex + 1) % len), 'aria-label': 'Next image' }, '>') : null
           ),
           thumbs,
-          loading && len ? H('div', { className:'lightbox-info' }, 'Loading...') : null
+          loading && len ? H('div', { className: 'lightbox-info' }, 'Loading...') : null
         )
       );
 
