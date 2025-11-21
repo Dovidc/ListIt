@@ -149,8 +149,7 @@
                 height: '100%',
                 objectFit: 'cover',
                 display: 'block'
-              },
-              disableSkeleton: true
+              }
             })
             : H('div', {
               style: {

@@ -466,14 +466,25 @@
         } catch { }
       }, [radius, search, sort]);
 
+      // Use refs for mutable state to avoid recreating observer
+      const stateRef = useRef({ hasMore, busy, isLoadingMore });
+      useEffect(() => {
+        stateRef.current = { hasMore, busy, isLoadingMore };
+      }, [hasMore, busy, isLoadingMore]);
+
+      // Optimize normalization to avoid creating new objects if possible
       const normalizeNearbyItems = useCallback((input) => {
         const list = asArray(input);
+        // Mutate in place if needed, or just return if already normalized
+        // But to be safe and avoid prop churn, we try to keep references stable
         return list.map((item) => {
+          if (item.__cover) return item; // Already normalized
           const cover = selectPrimaryListingImage?.(item) || item?.thumb_url || item?.image_data || '';
           if (cover) {
+            // We must create a new object to add the property, but we can try to be stable
             return { ...item, __cover: cover };
           }
-          return { ...item };
+          return item;
         });
       }, [selectPrimaryListingImage, asArray]);
 
@@ -544,7 +555,11 @@
           const normalized = normalizeNearbyItems(rows);
 
           if (isLoadMore) {
-            setItems(prev => [...prev, ...normalized]);
+            setItems(prev => {
+              const combined = [...prev, ...normalized];
+              // Keep only last 200 items to prevent memory issues on mobile
+              return combined.length > 200 ? combined.slice(-200) : combined;
+            });
           } else {
             setItems(normalized);
           }
@@ -587,17 +602,18 @@
         }
       }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore]);
 
-      // Infinite scroll observer
+      // Infinite scroll observer - Refactored to avoid churn
       useEffect(() => {
         if (!sentinelRef.current) return;
         const observer = new IntersectionObserver((entries) => {
+          const { hasMore, busy, isLoadingMore } = stateRef.current;
           if (entries[0].isIntersecting && hasMore && !busy && !isLoadingMore) {
             loadNearby(false, true);
           }
-        }, { rootMargin: '400px' });
+        }, { rootMargin: '200px' }); // Reduced margin from 400px to 200px
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
-      }, [hasMore, busy, isLoadingMore, loadNearby]);
+      }, [loadNearby]); // Only depend on loadNearby
 
       // Initial load and reload on filter change
       useEffect(() => {
