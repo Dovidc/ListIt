@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
   bundledWebRuntime: false,
   server: {
-    androidScheme: 'https',
+    url: 'https://trovelr.com',
   },
 };
 

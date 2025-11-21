@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Trovelr</string>
+	<string>Trovelr</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,6 +22,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Trovelr needs access to your camera to take photos for your listings.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Trovelr uses your location to show nearby listings and auto-fill your location.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Trovelr saves photos of your listings to your library if you choose to.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Trovelr needs access to your photo library so you can upload listing photos.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
