@@ -72,7 +72,7 @@
       }, children);
     });
 
-    const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect, onSupporterClick }) {
+    const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect, onSupporterClick, isMobile }) {
       const ref = useRef(null);
 
       useEffect(() => {
@@ -88,28 +88,28 @@
             }
             observer.disconnect();
           }
-        }, { rootMargin: '800px 0px' });
+        }, { rootMargin: isMobile ? '400px 0px' : '800px 0px' });
 
         observer.observe(el);
         return () => observer.disconnect();
-      }, [item?.id, item?.__cover, onEnsureCover]);
+      }, [item?.id, item?.__cover, onEnsureCover, isMobile]);
 
       const src = item?.__cover;
       const isClickable = typeof onSelect === 'function';
 
       const handleSelect = isClickable
         ? (evt) => {
-            onSelect(evt, item, src);
-          }
+          onSelect(evt, item, src);
+        }
         : undefined;
 
       const handleKeyDown = isClickable
         ? (evt) => {
-            if (evt.key === 'Enter' || evt.key === ' ') {
-              evt.preventDefault();
-              onSelect(evt, item, src);
-            }
+          if (evt.key === 'Enter' || evt.key === ' ') {
+            evt.preventDefault();
+            onSelect(evt, item, src);
           }
+        }
         : undefined;
 
       const supporterData = item?.owner_supporter_badge ? {
@@ -135,34 +135,36 @@
         H('div', { style: { position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#f3f4f6', overflow: 'hidden' } },
           src
             ? H(ImageWithSkeleton, {
-                src,
-                alt: item?.title || 'Item',
-                loading: 'lazy',
-                decoding: 'async',
-                fetchPriority: 'low',
-                style: {
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block'
-                },
-                disableSkeleton: true
-              })
+              src,
+              alt: item?.title || 'Item',
+              loading: 'lazy',
+              decoding: 'async',
+              fetchPriority: 'low',
+              width: 300,
+              height: 300,
+              style: {
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              },
+              disableSkeleton: true
+            })
             : H('div', {
-                style: {
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'grid',
-                  placeItems: 'center',
-                  padding: 12,
-                  textAlign: 'center',
-                  color: '#6b7280',
-                  fontWeight: 600,
-                  fontSize: 12
-                }
-              }, 'No image')
+              style: {
+                position: 'absolute',
+                inset: 0,
+                display: 'grid',
+                placeItems: 'center',
+                padding: 12,
+                textAlign: 'center',
+                color: '#6b7280',
+                fontWeight: 600,
+                fontSize: 12
+              }
+            }, 'No image')
         )
       );
     });
@@ -180,25 +182,20 @@
       className,
       style
     }) {
-      console.log('ListingsGrid received - items:', items?.length, 'ads:', ads, 'ads length:', ads?.length);
-
       const normalizedAds = useMemo(() => {
         if (!Array.isArray(ads) || !ads.length) {
-          console.log('No ads to normalize');
           return [];
         }
         const normalized = ads.map((ad) => ({
           ...ad,
           position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
         }));
-        console.log('Normalized ads:', normalized);
         return normalized;
       }, [ads]);
 
       const entries = useMemo(() => {
         const base = (items || []).map((it) => ({ type: 'listing', data: it }));
         if (!normalizedAds.length) {
-          console.log('Entries: no ads, returning', base.length, 'listings');
           return base;
         }
         const result = [...base];
@@ -210,15 +207,11 @@
           if (timeA !== timeB) return timeB.localeCompare(timeA);
           return Number(b.id || 0) - Number(a.id || 0);
         });
-        console.log('Sorted ads:', sortedAds);
         sortedAds.forEach((ad) => {
           const pos = Number.isFinite(ad.position) ? ad.position : 0;
           const idx = Math.min(Math.max(pos, 0), result.length);
-          console.log('Inserting ad at position:', pos, 'index:', idx, 'ad:', ad);
           result.splice(idx, 0, { type: 'ad', data: ad });
         });
-        console.log('Final entries:', result.length, 'total (listings + ads)');
-        console.log('Entries breakdown:', result.filter(e => e.type === 'listing').length, 'listings,', result.filter(e => e.type === 'ad').length, 'ads');
         return result;
       }, [items, normalizedAds]);
 
@@ -242,18 +235,18 @@
         });
       }, [entries, virtualizationAvailable]);
 
-      const shouldVirtualize = virtualizationAvailable && entries.length >= 120;
-      const virtualizationEstimate = isMobile ? 210 : 240;
+      const shouldVirtualize = virtualizationAvailable && entries.length >= 30;
+      const virtualizationEstimate = isMobile ? 180 : 240;
       const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({
-            containerRef,
-            items: virtualItems,
-            columnCount: cols,
-            columnGap: resolvedGap,
-            estimateHeight: virtualizationEstimate,
-            overscanVH: 2,
-            active: shouldVirtualize
-          })
+          containerRef,
+          items: virtualItems,
+          columnCount: cols,
+          columnGap: resolvedGap,
+          estimateHeight: virtualizationEstimate,
+          overscanVH: isMobile ? 1 : 2,
+          active: shouldVirtualize
+        })
         : null;
       const fallbackHeight = entries.length && cols > 0
         ? Math.max(0, (Math.ceil(entries.length / cols) * (virtualizationEstimate + resolvedGap)) - resolvedGap)
@@ -319,7 +312,8 @@
                 item: entry.data,
                 onEnsureCover,
                 onSelect,
-                onSupporterClick
+                onSupporterClick,
+                isMobile
               })
             );
           })
@@ -342,7 +336,8 @@
             item: data,
             onEnsureCover,
             onSelect,
-            onSupporterClick
+            onSupporterClick,
+            isMobile
           });
         })
       );
