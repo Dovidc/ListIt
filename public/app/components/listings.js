@@ -1348,7 +1348,7 @@
       );
     }
 
-    function ListingCard({
+    const ListingCard = React.memo(function ListingCard({
       item,
       canEdit,
       onEdit,
@@ -1678,6 +1678,7 @@
               style: { width: '100%', height: '100%', objectFit: 'cover' },
               sizes: '(min-width: 1024px) 280px, (min-width: 640px) 45vw, 33vw',
               loading: isModalView ? 'eager' : 'lazy',
+              decoding: 'async',
               fetchPriority: isModalView ? 'high' : 'auto',
               onClick: openGalleryFromEvent
             })
@@ -1791,7 +1792,23 @@
           loading: galleryLoading
         })
       );
-    }
+    }, (prev, next) => {
+      if (prev.item === next.item) return true;
+      if (!prev.item || !next.item) return false;
+      return (
+        prev.item.id === next.item.id &&
+        prev.item.updated_at === next.item.updated_at &&
+        prev.item.sold === next.item.sold &&
+        prev.item.price === next.item.price &&
+        prev.item.title === next.item.title &&
+        prev.item.description === next.item.description &&
+        prev.item.__cover === next.item.__cover &&
+        prev.item.inquiry_enabled === next.item.inquiry_enabled &&
+        prev.showDistance === next.showDistance &&
+        prev.canEdit === next.canEdit &&
+        prev.user?.id === next.user?.id
+      );
+    });
 
     const formatElapsedSince = (input) => {
       if (!input) return null;

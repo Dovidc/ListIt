@@ -375,6 +375,19 @@
           : []
     );
 
+    const pageSize = 75;
+
+    function selectPrimaryListingImage(listing, fallback) {
+      if (!listing) return fallback || null;
+      if (listing.thumb_url) return listing.thumb_url;
+      if (listing.image_data) return listing.image_data;
+      if (Array.isArray(listing.images) && listing.images.length > 0) {
+        const first = listing.images[0];
+        return (typeof first === 'string' ? first : first?.url) || fallback;
+      }
+      return fallback || null;
+    }
+
     function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5, active = true }) {
       const scrollY = useWindowScrollY();
       const containerW = useElementWidth(containerRef, active);
@@ -455,6 +468,8 @@
       pageTop,
       normalizeListingsResponse,
       asArray,
+      pageSize,
+      selectPrimaryListingImage,
       useVirtualMasonry
     };
   }

@@ -166,6 +166,14 @@
             }, 'No image')
         )
       );
+    }, (prev, next) => {
+      if (prev.item === next.item) return true;
+      if (!prev.item || !next.item) return false;
+      return (
+        prev.item.id === next.item.id &&
+        prev.item.__cover === next.item.__cover &&
+        prev.isMobile === next.isMobile
+      );
     });
 
     const ListingsGrid = React.memo(function ListingsGrid({
