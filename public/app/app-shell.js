@@ -1034,7 +1034,8 @@
                           isMobile,
                           onEnsureCover: ensureCover,
                           onSelect: handleListingTileEvent,
-                          onSupporterClick: handleSupporterBadgeClick
+                          onSupporterClick: handleSupporterBadgeClick,
+                          enableVirtualization: true
                         }),
 
                         H('div', {

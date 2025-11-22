@@ -415,7 +415,7 @@
         const top = (scrollY - cTop) - over;
         const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
         return { top, bottom };
-      }, [containerRef, scrollY, overscanVH]);
+      }, [containerRef, scrollY, overscanVH, containerW]);
 
       const visible = useMemo(() => {
         const out = [];

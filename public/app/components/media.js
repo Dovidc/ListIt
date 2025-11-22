@@ -11,7 +11,8 @@
       useState,
       useEffect,
       useMemo,
-      useCallback
+      useCallback,
+      useRef
     } = React;
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
@@ -98,6 +99,7 @@
     }) {
       const [loaded, setLoaded] = useState(false);
       const [failed, setFailed] = useState(false);
+      const imgRef = useRef(null);
 
       const optimizedSrc = useMemo(() => {
         if (!imgProps.src) return imgProps.src;
@@ -107,6 +109,18 @@
       useEffect(() => {
         setLoaded(false);
         setFailed(false);
+      }, [optimizedSrc]);
+
+      // Fix for Safari/Cached images: check if image is already complete
+      useEffect(() => {
+        if (imgRef.current && imgRef.current.complete) {
+          if (imgRef.current.naturalWidth === 0) {
+            // It's complete but broken
+            setFailed(true);
+          } else {
+            setLoaded(true);
+          }
+        }
       }, [optimizedSrc]);
 
       const handleLoad = useCallback((event) => {
@@ -163,8 +177,25 @@
         ? `image-shell ${wrapperClassName}`
         : 'image-shell';
 
+      if (failed) {
+        return H('span', { className: wrapperClass, style: computedWrapperStyle },
+          H('div', {
+            style: {
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#f3f4f6',
+              color: '#9ca3af',
+              fontSize: '24px'
+            }
+          }, '!')
+        );
+      }
+
       return H('span', { className: wrapperClass, style: computedWrapperStyle },
-        H('img', { ...imgProps, src: optimizedSrc, width, className, style, onLoad: handleLoad, onError: handleError }),
+        H('img', { ...imgProps, ref: imgRef, src: optimizedSrc, width, className, style, onLoad: handleLoad, onError: handleError }),
         showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
       );
     }

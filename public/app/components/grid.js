@@ -234,7 +234,7 @@
         });
       }, [entries, virtualizationAvailable]);
 
-      const shouldVirtualize = virtualizationAvailable && entries.length >= 30;
+      const shouldVirtualize = virtualizationAvailable && entries.length >= 10;
       const virtualizationEstimate = isMobile ? 180 : 240;
       const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({
