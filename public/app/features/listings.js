@@ -130,6 +130,7 @@
       const [showMassList, setShowMassList] = useState(false);
       const [cityOptions, setCityOptions] = useState([]);
       const [coverById, setCoverById] = useState(() => (Object.create(null)));
+      const [error, setError] = useState(null);
 
       const sentinelRef = useRef(null);
       const loadingListingsRef = useRef(false);
@@ -138,6 +139,7 @@
 
       const useIsMounted = helpers?.useIsMounted;
       const isMounted = useIsMounted ? useIsMounted() : (() => true);
+      const safeTrim = helpers?.safeTrim || ((s) => (typeof s === 'string' ? s.trim() : ''));
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
@@ -164,10 +166,15 @@
         const req = ++reloadReqRef.current;
         loadingListingsRef.current = true;
         setIsFetchingListings(true);
+        setError(null);
+
         try {
+          const q = safeTrim(debouncedQuery);
+          const loc = safeTrim(debouncedLocation);
+
           const res = await api.listAll({
-            q: debouncedQuery.trim() || '',
-            loc: debouncedLocation.trim() || '',
+            q,
+            loc,
             cursor,
             limit: pageSize,
             sort
@@ -232,6 +239,7 @@
         } catch (e) {
           if (req === reloadReqRef.current && isMounted()) {
             console.error('load listings failed', e);
+            setError(e.message || 'Failed to load listings');
             if (replace || cursor == null) setAll([]);
             setHasNext(false);
             if (cursor == null && !user) setMine([]);
@@ -242,7 +250,7 @@
             setIsFetchingListings(false);
           }
         }
-      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray]);
+      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray, safeTrim]);
 
       useEffect(() => {
         nextCursorRef.current = null;
@@ -286,7 +294,7 @@
 
       useEffect(() => {
         let alive = true;
-        const term = locationQuery.split(',')[0].trim();
+        const term = safeTrim(locationQuery.split(',')[0]);
         const timer = setTimeout(async () => {
           try {
             const res = await api.searchCities(term);
@@ -387,7 +395,8 @@
         toggleSold,
         cityOptions,
         items,
-        ensureCover
+        ensureCover,
+        error
       };
     }
 

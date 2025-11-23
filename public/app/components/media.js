@@ -18,6 +18,7 @@
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
     const RESPONSIVE_WIDTHS = [320, 480, 640, 960, 1280];
+    const PLACEHOLDER_SRC = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmM2Y0ZjYiLz48L3N2Zz4=';
 
     const SENSITIVE_IMAGE_QUERY_KEYS = new Set([
       'signature',
@@ -229,14 +230,15 @@
       skeletonStyle,
       ...imgProps
     }) {
-      const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof src === 'string' && !src.startsWith('data:') && !src.startsWith('blob:');
+      const safeSrc = src || PLACEHOLDER_SRC;
+      const hasResponsive = Array.isArray(widths) && widths.length > 0 && typeof safeSrc === 'string' && !safeSrc.startsWith('data:') && !safeSrc.startsWith('blob:');
       const srcSet = hasResponsive
-        ? widths.map((w) => `${buildSizedUrl(src, w)} ${w}w`).join(', ')
+        ? widths.map((w) => `${buildSizedUrl(safeSrc, w)} ${w}w`).join(', ')
         : undefined;
-      const defaultSrc = hasResponsive ? buildSizedUrl(src, widths[widths.length - 1]) : src;
+      const defaultSrc = hasResponsive ? buildSizedUrl(safeSrc, widths[widths.length - 1]) : safeSrc;
 
       return H(ImageWithSkeleton, {
-        src: defaultSrc || src,
+        src: defaultSrc,
         srcSet,
         sizes: srcSet ? sizes : undefined,
         alt,

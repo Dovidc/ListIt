@@ -145,10 +145,16 @@
       }, [loadTopReports, topDays, topMin]);
 
       const fetchSearch = useCallback(async (term) => {
+        const q = (term || '').trim();
+        if (!q) {
+          setSearchResults([]);
+          setSearchError('');
+          return;
+        }
         setSearchLoading(true);
         setSearchError('');
         try {
-          const results = await api.adminSearchUsers({ q: term, limit: 25 });
+          const results = await api.adminSearchUsers({ q, limit: 25 });
           setSearchResults(Array.isArray(results) ? results : []);
         } catch (err) {
           setSearchError(err.message || 'Search failed');
@@ -160,7 +166,7 @@
 
       useEffect(() => {
         if (searchTimer.current) clearTimeout(searchTimer.current);
-        const term = searchTerm.trim();
+        const term = (searchTerm || '').trim();
         if (!term) {
           setSearchResults([]);
           setSearchError('');
