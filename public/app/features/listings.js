@@ -242,9 +242,11 @@
 
       useEffect(() => {
         nextCursorRef.current = null;
-        setAll([]);
-        setCoverById(Object.create(null));
-        setHasNext(false);
+        // Do NOT clear listings here. Keeping them visible prevents layout collapse/crash
+        // while the new data is being fetched.
+        // setAll([]); 
+        // setCoverById(Object.create(null));
+        // setHasNext(false);
         loadListings({ cursor: null, replace: true });
       }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
 
@@ -314,7 +316,7 @@
       }, [coverById, api]);
 
       const items = useMemo(() => {
-        return (all || []).map(it => {
+        return (all || []).filter(it => it && it.id).map(it => {
           const cached = coverById[it.id];
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';
@@ -324,7 +326,7 @@
       }, [all, coverById, selectPrimaryListingImage]);
 
       const mineWithCovers = useMemo(() => {
-        return (mine || []).map(it => {
+        return (mine || []).filter(it => it && it.id).map(it => {
           const cached = coverById[it.id];
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';

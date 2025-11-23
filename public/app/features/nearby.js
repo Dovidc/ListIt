@@ -524,6 +524,8 @@
         }
       }, [fetchCoordsAndReverse]);
 
+      const isMounted = helpers.useIsMounted ? helpers.useIsMounted() : (() => true);
+
       const loadNearby = useCallback(async (forceLocation = false, isLoadMore = false) => {
         if (isLoadMore && !nextCursor) return;
         if (isLoadMore && (busy || isLoadingMore)) return;
@@ -550,6 +552,7 @@
           });
 
           if (loadTokenRef.current !== token) return;
+          if (!isMounted()) return;
 
           const rows = response?.items || [];
           const normalized = normalizeNearbyItems(rows);
@@ -581,6 +584,7 @@
           }
         } catch (err) {
           if (loadTokenRef.current !== token) return;
+          if (!isMounted()) return;
           console.error('Nearby load failed:', err);
           let message = 'Could not load nearby listings.';
           const errMessage = err?.message || '';
@@ -604,12 +608,12 @@
             setError(message);
           }
         } finally {
-          if (loadTokenRef.current === token) {
+          if (loadTokenRef.current === token && isMounted()) {
             setBusy(false);
             setIsLoadingMore(false);
           }
         }
-      }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore]);
+      }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore, isMounted]);
 
       // Infinite scroll observer - Refactored to avoid churn
       useEffect(() => {

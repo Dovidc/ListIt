@@ -388,6 +388,15 @@
       return fallback || null;
     }
 
+    function useIsMounted() {
+      const mounted = useRef(false);
+      useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+      }, []);
+      return useCallback(() => mounted.current, []);
+    }
+
     function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1, active = true }) {
       const scrollY = useWindowScrollY();
       const containerW = useElementWidth(containerRef, active);
@@ -410,7 +419,7 @@
         const cols = Math.max(1, columnCount || 1);
         const gap = columnGap;
         const w = Math.max(1, containerW);
-        const colW = (w - gap * (cols - 1)) / cols;
+        const colW = Math.max(0, (w - gap * (cols - 1)) / cols);
 
         const colHeights = new Array(cols).fill(0);
         const pos = new Array(items.length);
@@ -479,7 +488,8 @@
       asArray,
       pageSize,
       selectPrimaryListingImage,
-      useVirtualMasonry
+      useVirtualMasonry,
+      useIsMounted
     };
   }
 
