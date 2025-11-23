@@ -389,6 +389,12 @@
     }
 
     function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1, active = true }) {
+      const safeItems = Array.isArray(items) ? items : [];
+      const safeColumns = Math.max(1, Number.isFinite(columnCount) ? columnCount : 1);
+      const safeGap = Number.isFinite(columnGap) && columnGap >= 0 ? columnGap : 12;
+      const safeEstimate = Number.isFinite(estimateHeight) && estimateHeight > 0 ? estimateHeight : 260;
+      const safeOverscan = Number.isFinite(overscanVH) && overscanVH >= 0 ? overscanVH : 1;
+
       const scrollY = useWindowScrollY();
       const containerW = useElementWidth(containerRef, active);
 
@@ -399,53 +405,69 @@
       }, []);
 
       const layout = useMemo(() => {
-        const cols = Math.max(1, columnCount || 1);
-        const gap = columnGap;
-        const w = Math.max(1, containerW);
-        const colW = (w - gap * (cols - 1)) / cols;
+        try {
+          const cols = safeColumns;
+          const gap = safeGap;
+          const w = Math.max(1, containerW || 0);
+          const colW = Math.max(1, (w - gap * (cols - 1)) / cols);
 
-        const colHeights = new Array(cols).fill(0);
-        const pos = new Array(items.length);
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          const h = heightMap[it.id] || estimateHeight;
-          let targetCol = 0;
-          for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
-          const top = colHeights[targetCol];
-          const left = (colW + gap) * targetCol;
-          colHeights[targetCol] = top + h + gap;
-          pos[i] = { top, left, width: colW, height: h };
+          const colHeights = new Array(cols).fill(0);
+          const pos = new Array(safeItems.length);
+          for (let i = 0; i < safeItems.length; i++) {
+            const it = safeItems[i];
+            const h = heightMap[it?.id] || safeEstimate;
+            let targetCol = 0;
+            for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;
+            const top = colHeights[targetCol];
+            const left = (colW + gap) * targetCol;
+            colHeights[targetCol] = top + h + gap;
+            pos[i] = { top, left, width: colW, height: h };
+          }
+          const containerHeight = Math.max(...colHeights, 0);
+          return { positions: pos, containerHeight, colWidth: colW, gap, error: null };
+        } catch (error) {
+          console.error('Virtual masonry layout failed', error);
+          return { positions: [], containerHeight: 0, colWidth: 0, gap: safeGap, error };
         }
-        const containerHeight = Math.max(...colHeights, 0);
-        return { positions: pos, containerHeight, colWidth: colW, gap };
-      }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
+      }, [safeItems, heightMap, containerW, safeColumns, safeGap, safeEstimate]);
 
       const viewport = useMemo(() => {
-        const el = containerRef.current;
-        if (!el) return { top: 0, bottom: 0 };
-        const cTop = pageTop(el);
-        const over = (window.innerHeight || 0) * overscanVH;
-        const top = (scrollY - cTop) - over;
-        const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
-        return { top, bottom };
-      }, [containerRef, scrollY, overscanVH, containerW]); // containerW dependency ensures viewport updates on resize
+        try {
+          const el = containerRef.current;
+          if (!el || !active) return { top: 0, bottom: 0 };
+          const cTop = pageTop(el);
+          const over = (window.innerHeight || 0) * safeOverscan;
+          const top = (scrollY - cTop) - over;
+          const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
+          return { top, bottom };
+        } catch (error) {
+          console.error('Virtual masonry viewport calc failed', error);
+          return { top: 0, bottom: 0, error };
+        }
+      }, [containerRef, scrollY, safeOverscan, containerW, active]); // containerW dependency ensures viewport updates on resize
 
       const visible = useMemo(() => {
-        const out = [];
-        const { positions } = layout;
-        if (!positions || positions.length === 0) return out;
-        for (let i = 0; i < positions.length; i++) {
-          const p = positions[i];
-          if (!p) continue;
-          const pBottom = p.top + p.height;
-          if (pBottom >= viewport.top && p.top <= viewport.bottom) {
-            out.push({ index: i, item: items[i], pos: p });
+        try {
+          const out = [];
+          const { positions } = layout;
+          if (!positions || positions.length === 0) return out;
+          for (let i = 0; i < positions.length; i++) {
+            const p = positions[i];
+            if (!p) continue;
+            const pBottom = p.top + p.height;
+            if (pBottom >= viewport.top && p.top <= viewport.bottom) {
+              out.push({ index: i, item: safeItems[i], pos: p });
+            }
           }
+          return out;
+        } catch (error) {
+          console.error('Virtual masonry visibility calc failed', error);
+          return [];
         }
-        return out;
-      }, [items, layout, viewport]);
+      }, [safeItems, layout, viewport]);
 
-      return { ...layout, visible, registerHeight };
+      const aggregatedError = layout?.error || viewport?.error || null;
+      return { ...layout, visible, registerHeight, error: aggregatedError };
     }
 
     return {
