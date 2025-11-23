@@ -388,7 +388,7 @@
       return fallback || null;
     }
 
-    function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1.5, active = true }) {
+    function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1, active = true }) {
       const scrollY = useWindowScrollY();
       const containerW = useElementWidth(containerRef, active);
 
@@ -428,7 +428,7 @@
         const top = (scrollY - cTop) - over;
         const bottom = (scrollY - cTop) + (window.innerHeight || 0) + over;
         return { top, bottom };
-      }, [containerRef, scrollY, overscanVH, containerW]);
+      }, [containerRef, scrollY, overscanVH, containerW]); // containerW dependency ensures viewport updates on resize
 
       const visible = useMemo(() => {
         const out = [];

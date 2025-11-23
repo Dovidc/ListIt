@@ -137,9 +137,9 @@
             ? H(ImageWithSkeleton, {
               src,
               alt: item?.title || 'Item',
-              loading: 'lazy',
+              loading: 'eager',
               decoding: 'async',
-              fetchPriority: 'low',
+              fetchPriority: 'auto',
               width: 300,
               height: 300,
               style: {
@@ -251,7 +251,7 @@
           columnCount: cols,
           columnGap: resolvedGap,
           estimateHeight: virtualizationEstimate,
-          overscanVH: isMobile ? 1 : 2,
+          overscanVH: 4,
           active: shouldVirtualize
         })
         : null;

@@ -136,7 +136,7 @@
       const showSkeleton = !disableSkeleton && !!optimizedSrc && !loaded && !failed;
 
       const computedWrapperStyle = useMemo(() => {
-        const base = { lineHeight: 0, ...wrapperStyle };
+        const base = { lineHeight: 0, contentVisibility: 'auto', containIntrinsicSize: '300px', ...wrapperStyle };
         const pos = style?.position;
 
         if (pos === 'absolute' || pos === 'fixed' || pos === 'sticky') {
