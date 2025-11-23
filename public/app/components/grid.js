@@ -20,6 +20,12 @@
     const { useEffect, useMemo, useRef } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    const isFreePrice = (text) => {
+      if (typeof text !== 'string') return false;
+      const trimmed = text.trim().toLowerCase();
+      return trimmed === 'free' || trimmed === '$0' || trimmed === '$0.00' || trimmed === '$0.0';
+    };
+
     const VirtualEntry = React.memo(function VirtualEntry({ id, style, children, onHeightChange }) {
       const ref = useRef(null);
       const lastHeightRef = useRef(null);
@@ -97,6 +103,13 @@
       const src = item?.__cover;
       const isClickable = typeof onSelect === 'function';
 
+      const priceText = Number.isFinite(Number(item?.price))
+        ? `$${Number(item.price).toFixed(0)}`
+        : (item?.price_text || 'View');
+      const locationText = item?.city || item?.location || item?.loc || '';
+      const title = (item?.title || '').trim() || 'Untitled listing';
+      const isSold = !!item?.sold;
+
       const handleSelect = isClickable
         ? (evt) => {
           onSelect(evt, item, src);
@@ -137,9 +150,9 @@
             ? H(ImageWithSkeleton, {
               src,
               alt: item?.title || 'Item',
-              loading: 'eager',
+              loading: 'lazy',
               decoding: 'async',
-              fetchPriority: 'auto',
+              fetchPriority: isMobile ? 'low' : 'auto',
               width: 300,
               height: 300,
               style: {
@@ -163,7 +176,20 @@
                 fontWeight: 600,
                 fontSize: 12
               }
-            }, 'No image')
+            }, 'No image'),
+          isSold && H('div', { className: 'listing-tile-tag sold' }, 'Sold'),
+          H('div', { className: 'listing-tile-meta' },
+            H('div', { className: 'listing-tile-title', title }, title),
+            H('div', { className: 'listing-tile-sub' }, locationText || 'Tap to view'),
+            H('div', { className: 'listing-tile-price-row' },
+              H('span', { className: `listing-tile-price${isFreePrice(priceText) ? ' free' : ''}` }, priceText),
+              supporterData && H('button', {
+                type: 'button',
+                className: 'listing-tile-supporter',
+                onClick: (evt) => { evt.stopPropagation(); onSupporterClick?.(supporterData); }
+              }, H(SupporterBadge, { size: 'xs', since: supporterData.since }))
+            )
+          )
         )
       );
     }, (prev, next) => {
@@ -222,11 +248,11 @@
         return result;
       }, [items, normalizedAds]);
 
-      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
+      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 2 : 4);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
       const containerRef = useRef(null);
-      const virtualizationAvailable = enableVirtualization && hasVirtualMasonry;
+      const virtualizationAvailable = enableVirtualization && hasVirtualMasonry && !isMobile;
       const [virtualizationHealthy, setVirtualizationHealthy] = React.useState(true);
 
       const virtualItems = useMemo(() => {
