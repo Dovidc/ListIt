@@ -84,6 +84,14 @@
       }
     }
 
+    const isIOSWebView = (() => {
+      if (typeof navigator === 'undefined') return false;
+      const ua = navigator.userAgent || '';
+      const isIOS = /(iPad|iPhone|iPod)/i.test(ua);
+      const isWebView = typeof window !== 'undefined' && !!window.webkit?.messageHandlers;
+      return isIOS && isWebView;
+    })();
+
     function ImageWithSkeleton({
       className,
       wrapperClassName,
@@ -136,7 +144,11 @@
       const showSkeleton = !disableSkeleton && !!optimizedSrc && !loaded && !failed;
 
       const computedWrapperStyle = useMemo(() => {
-        const base = { lineHeight: 0, contentVisibility: 'auto', containIntrinsicSize: '300px', ...wrapperStyle };
+        const base = { lineHeight: 0, ...wrapperStyle };
+        if (!isIOSWebView) {
+          base.contentVisibility = 'auto';
+          base.containIntrinsicSize = '300px';
+        }
         const pos = style?.position;
 
         if (pos === 'absolute' || pos === 'fixed' || pos === 'sticky') {
@@ -195,7 +207,7 @@
       }
 
       return H('span', { className: wrapperClass, style: computedWrapperStyle },
-        H('img', { ...imgProps, ref: imgRef, src: optimizedSrc, width, className, style, onLoad: handleLoad, onError: handleError }),
+        H('img', { ...imgProps, loading: imgProps.loading || 'lazy', ref: imgRef, src: optimizedSrc, width, className, style, onLoad: handleLoad, onError: handleError }),
         showSkeleton ? H('div', { className: skeletonClassName, style: computedSkeletonStyle, 'aria-hidden': true }) : null
       );
     }
