@@ -131,10 +131,50 @@
       const [cityOptions, setCityOptions] = useState([]);
       const [coverById, setCoverById] = useState(() => (Object.create(null)));
 
+      const coverOrderRef = useRef([]);
+
       const sentinelRef = useRef(null);
       const loadingListingsRef = useRef(false);
       const nextCursorRef = useRef(null);
       const reloadReqRef = useRef(0);
+
+      const COVER_CACHE_LIMIT = 300;
+      const INITIAL_COVER_PREFETCH = 16;
+      const PAGED_COVER_PREFETCH = 8;
+
+      const upsertCovers = useCallback((patch) => {
+        if (!patch || typeof patch !== 'object') return;
+        const entries = Object.entries(patch);
+        if (!entries.length) return;
+
+        setCoverById((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          const order = Array.isArray(coverOrderRef.current) ? [...coverOrderRef.current] : [];
+
+          entries.forEach(([key, value]) => {
+            const id = String(key);
+            if (next[id] !== value) {
+              next[id] = value;
+              changed = true;
+            }
+            const existingIdx = order.indexOf(id);
+            if (existingIdx !== -1) order.splice(existingIdx, 1);
+            order.push(id);
+          });
+
+          while (order.length > COVER_CACHE_LIMIT) {
+            const victim = order.shift();
+            if (victim != null) {
+              delete next[victim];
+              changed = true;
+            }
+          }
+
+          coverOrderRef.current = order;
+          return changed ? next : prev;
+        });
+      }, []);
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
@@ -197,7 +237,8 @@
 
           if (newRows.length) {
             try {
-              const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
+              const prefetchLimit = cursor == null ? INITIAL_COVER_PREFETCH : PAGED_COVER_PREFETCH;
+              const ids = newRows.slice(0, prefetchLimit).map(r => r.id).filter(id => id != null);
               if (ids.length) {
                 const covers = await api.getCoversBatch(ids, { silent: true });
                 if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
@@ -206,9 +247,7 @@
                     if (!r || r.id == null) return;
                     if (r.image_data) patch[r.id] = { url: r.image_data };
                   });
-                  if (Object.keys(patch).length) {
-                    setCoverById(prev => ({ ...prev, ...patch }));
-                  }
+                  upsertCovers(patch);
                 }
               }
             } catch { }
@@ -228,7 +267,7 @@
             setIsFetchingListings(false);
           }
         }
-      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray]);
+      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray, upsertCovers]);
 
       useEffect(() => {
         nextCursorRef.current = null;
@@ -295,11 +334,11 @@
               ? { url: arr[0], w: null, h: null }
               : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
           }
-          setCoverById((prev) => ({ ...prev, [id]: obj }));
+          upsertCovers({ [id]: obj });
         } catch {
-          setCoverById((prev) => ({ ...prev, [id]: null }));
+          upsertCovers({ [id]: null });
         }
-      }, [coverById, api]);
+      }, [coverById, api, upsertCovers]);
 
       const items = useMemo(() => {
         return (all || []).map(it => {
