@@ -416,6 +416,7 @@
         const pos = new Array(items.length);
         for (let i = 0; i < items.length; i++) {
           const it = items[i];
+          if (!it) continue; // Safety check
           const h = heightMap[it.id] || estimateHeight;
           let targetCol = 0;
           for (let c = 1; c < cols; c++) if (colHeights[c] < colHeights[targetCol]) targetCol = c;

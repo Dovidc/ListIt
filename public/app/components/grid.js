@@ -35,7 +35,7 @@
         const emitHeight = () => {
           if (!ref.current) return;
           const rect = ref.current.getBoundingClientRect();
-          const height = rect.height;
+          const height = Math.round(rect.height); // Round to avoid sub-pixel loops
           if (!Number.isFinite(height) || height <= 0) return;
           if (lastHeightRef.current === height) return;
           lastHeightRef.current = height;
@@ -299,6 +299,7 @@
 
         return H('section', { ref: containerRef, className, style: virtualStyle },
           itemsToRender.map(({ item, pos }) => {
+            if (!item) return null; // Safety check
             const entry = item?.entry;
             if (!entry) return null;
             const position = pos || {};
