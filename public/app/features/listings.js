@@ -143,6 +143,9 @@
       const isMounted = useIsMounted ? useIsMounted() : (() => true);
       const safeTrim = helpers?.safeTrim || defaultSafeTrim;
 
+      const userRef = useRef(user);
+      useEffect(() => { userRef.current = user; }, [user]);
+
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
         const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -165,6 +168,7 @@
       }, [api, user, asArray]);
 
       const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
+        const user = userRef.current;
         const req = ++reloadReqRef.current;
         loadingListingsRef.current = true;
         setIsFetchingListings(true);
@@ -252,7 +256,7 @@
             setIsFetchingListings(false);
           }
         }
-      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray, safeTrim]);
+      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, asArray, safeTrim]);
 
       useEffect(() => {
         nextCursorRef.current = null;
