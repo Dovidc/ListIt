@@ -176,19 +176,19 @@
                 fontWeight: 600,
                 fontSize: 12
               }
-            }, 'No image'),
+            }, 'No image')
+        ),
+        H('div', { className: 'listing-tile-meta' },
           isSold && H('div', { className: 'listing-tile-tag sold' }, 'Sold'),
-          H('div', { className: 'listing-tile-meta' },
-            H('div', { className: 'listing-tile-title', title }, title),
-            H('div', { className: 'listing-tile-sub' }, locationText || 'Tap to view'),
-            H('div', { className: 'listing-tile-price-row' },
-              H('span', { className: `listing-tile-price${isFreePrice(priceText) ? ' free' : ''}` }, priceText),
-              supporterData && H('button', {
-                type: 'button',
-                className: 'listing-tile-supporter',
-                onClick: (evt) => { evt.stopPropagation(); onSupporterClick?.(supporterData); }
-              }, H(SupporterBadge, { size: 'xs', since: supporterData.since }))
-            )
+          H('div', { className: 'listing-tile-title', title }, title),
+          H('div', { className: 'listing-tile-sub' }, locationText || 'Tap to view'),
+          H('div', { className: 'listing-tile-price-row' },
+            H('span', { className: `listing-tile-price${isFreePrice(priceText) ? ' free' : ''}` }, priceText),
+            supporterData && H('button', {
+              type: 'button',
+              className: 'listing-tile-supporter',
+              onClick: (evt) => { evt.stopPropagation(); onSupporterClick?.(supporterData); }
+            }, H(SupporterBadge, { size: 'xs', since: supporterData.since }))
           )
         )
       );
@@ -248,7 +248,7 @@
         return result;
       }, [items, normalizedAds]);
 
-      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 2 : 4);
+      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
       const containerRef = useRef(null);
