@@ -227,6 +227,7 @@
 
       const containerRef = useRef(null);
       const virtualizationAvailable = enableVirtualization && hasVirtualMasonry;
+      const [virtualizationHealthy, setVirtualizationHealthy] = React.useState(true);
 
       const virtualItems = useMemo(() => {
         if (!virtualizationAvailable) return [];
@@ -242,7 +243,7 @@
         });
       }, [entries, virtualizationAvailable]);
 
-      const shouldVirtualize = virtualizationAvailable && entries.length >= 10;
+      const candidateForVirtualization = virtualizationAvailable && entries.length >= 10;
       const virtualizationEstimate = isMobile ? 180 : 240;
       const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({
@@ -252,9 +253,18 @@
           columnGap: resolvedGap,
           estimateHeight: virtualizationEstimate,
           overscanVH: 4,
-          active: shouldVirtualize
+          active: candidateForVirtualization && virtualizationHealthy
         })
         : null;
+
+      useEffect(() => {
+        if (virtualizationState?.error && virtualizationHealthy) {
+          console.error('Disabling grid virtualization after error', virtualizationState.error);
+          setVirtualizationHealthy(false);
+        }
+      }, [virtualizationState?.error, virtualizationHealthy]);
+
+      const shouldVirtualize = candidateForVirtualization && virtualizationHealthy && virtualizationState && !virtualizationState.error;
       const fallbackHeight = entries.length && cols > 0
         ? Math.max(0, (Math.ceil(entries.length / cols) * (virtualizationEstimate + resolvedGap)) - resolvedGap)
         : 0;
