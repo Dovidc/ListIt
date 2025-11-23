@@ -26,6 +26,8 @@
   const SUPPORTER_DEFAULT_AMOUNT = 300;
   const SUPPORTER_PREMIUM_AMOUNT = 199;
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
+  const LAST_ACTIVE_TS_KEY = 'listit_last_active_ts';
+  const REVISIT_THRESHOLD_MS = 15 * 60 * 1000;
 
   function createEditorState(overrides = {}) {
     return { ...EDITOR_DEFAULT_STATE, ...overrides };
@@ -195,6 +197,9 @@
       const [mobileCreateMode, setMobileCreateMode] = useState('list');
       const [initialListingFiles, setInitialListingFiles] = useState([]);
       const [initialMassListFiles, setInitialMassListFiles] = useState([]);
+      const [showRevisitScreen, setShowRevisitScreen] = useState(false);
+      const [revisitBusy, setRevisitBusy] = useState(false);
+      const lastActiveRef = useRef(Date.now());
       const galleryInputRef = useRef(null);
       const cameraInputRef = useRef(null);
       const {
@@ -246,6 +251,52 @@
         prevTabRef.current = tab;
       }, [tab]);
 
+      const markLastActive = useCallback(() => {
+        const ts = Date.now();
+        lastActiveRef.current = ts;
+        if (typeof window === 'undefined') return;
+        try {
+          window.localStorage?.setItem(LAST_ACTIVE_TS_KEY, String(ts));
+        } catch {
+          // Best-effort tracking only
+        }
+      }, []);
+
+      const evaluateRevisitScreen = useCallback(() => {
+        if (typeof document === 'undefined') return;
+        if (document.visibilityState === 'hidden') {
+          markLastActive();
+          return;
+        }
+        const now = Date.now();
+        let last = lastActiveRef.current;
+        if (typeof window !== 'undefined') {
+          try {
+            const stored = Number(window.localStorage?.getItem(LAST_ACTIVE_TS_KEY));
+            if (Number.isFinite(stored)) last = stored;
+          } catch {
+            // ignore parse errors
+          }
+        }
+        if (now - last >= REVISIT_THRESHOLD_MS) {
+          setShowRevisitScreen(true);
+        } else {
+          markLastActive();
+        }
+      }, [markLastActive]);
+
+      useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        markLastActive();
+        const handleVisibility = () => evaluateRevisitScreen();
+        window.addEventListener('focus', handleVisibility);
+        window.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+          window.removeEventListener('focus', handleVisibility);
+          window.removeEventListener('visibilitychange', handleVisibility);
+        };
+      }, [evaluateRevisitScreen, markLastActive]);
+
       const setSupporterPromptSeen = useCallback(() => {
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
@@ -255,6 +306,25 @@
           // Ignore storage failures
         }
       }, []);
+
+      const handleRevisitResume = useCallback(async () => {
+        setRevisitBusy(true);
+        try {
+          await refreshListings({ preserveExisting: false });
+          await reloadMineOnly();
+          markLastActive();
+        } catch (err) {
+          console.error('Failed to refresh after returning to the app', err);
+        } finally {
+          setShowRevisitScreen(false);
+          setRevisitBusy(false);
+        }
+      }, [markLastActive, refreshListings, reloadMineOnly]);
+
+      const handleRevisitSkip = useCallback(() => {
+        markLastActive();
+        setShowRevisitScreen(false);
+      }, [markLastActive]);
 
       const showSupporterPrompt = useCallback(() => {
         setSupporterUpsellState((prev) => ({
@@ -897,6 +967,52 @@
               }, 'Dismiss')
             ),
             H(GlobalLoader, { active: loadingCount > 0 }),
+            showRevisitScreen && H('div', {
+              className: 'revisit-overlay',
+              style: {
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(255,255,255,0.96)',
+                zIndex: 4000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20
+              }
+            },
+              H('div', {
+                className: 'card',
+                role: 'dialog',
+                'aria-modal': true,
+                style: {
+                  maxWidth: 420,
+                  width: '100%',
+                  padding: 24,
+                  borderRadius: 14,
+                  boxShadow: '0 16px 36px rgba(0,0,0,0.12)'
+                }
+              },
+                H('h3', { style: { marginTop: 0, marginBottom: 10 } }, 'Welcome back'),
+                H('p', { className: 'muted', style: { marginTop: 0, marginBottom: 18 } },
+                  'We paused the feed while you were away. Refresh to pick up where you left off.'
+                ),
+                H('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+                  H('button', {
+                    className: 'btn primary',
+                    type: 'button',
+                    onClick: handleRevisitResume,
+                    disabled: revisitBusy,
+                    style: { flex: 1, minWidth: 160, justifyContent: 'center' }
+                  }, revisitBusy ? 'Refreshing…' : 'Resume browsing'),
+                  H('button', {
+                    className: 'btn',
+                    type: 'button',
+                    onClick: handleRevisitSkip,
+                    style: { flex: 1, minWidth: 120, justifyContent: 'center' }
+                  }, 'Skip refresh')
+                )
+              )
+            ),
             H(SupporterInfoModal, {
               open: supporterInfoState.open,
               onClose: handleSupporterInfoClose,

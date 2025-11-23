@@ -117,12 +117,26 @@
       );
     }
 
+    const SORT_STORAGE_KEY = 'listit_sort_order';
+    const VALID_SORTS = ['new', 'price_asc', 'price_desc', 'city'];
+
+    function readInitialSort() {
+      if (typeof window === 'undefined') return 'new';
+      try {
+        const stored = window.localStorage?.getItem(SORT_STORAGE_KEY);
+        if (typeof stored === 'string' && VALID_SORTS.includes(stored)) {
+          return stored;
+        }
+      } catch { /* ignore storage errors */ }
+      return 'new';
+    }
+
     function useListingsFeature({ user, currentTab }) {
       const [all, setAll] = useState([]);
       const [mine, setMine] = useState([]);
       const [query, setQuery] = useState('');
       const [locationQuery, setLocationQuery] = useState('');
-      const [sort, setSort] = useState('new');
+      const [sort, setSortState] = useState(() => readInitialSort());
       const [hasNext, setHasNext] = useState(false);
       const [isFetchingListings, setIsFetchingListings] = useState(false);
       const [selectedListing, setSelectedListing] = useState(null);
@@ -135,6 +149,17 @@
       const loadingListingsRef = useRef(false);
       const nextCursorRef = useRef(null);
       const reloadReqRef = useRef(0);
+
+      const setSort = useCallback((nextSort) => {
+        const safeSort = VALID_SORTS.includes(nextSort) ? nextSort : 'new';
+        setSortState(safeSort);
+        if (typeof window === 'undefined') return;
+        try {
+          window.localStorage?.setItem(SORT_STORAGE_KEY, safeSort);
+        } catch {
+          // Ignore storage failures to keep sorting responsive
+        }
+      }, []);
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
