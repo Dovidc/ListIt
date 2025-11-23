@@ -557,8 +557,17 @@
           if (isLoadMore) {
             setItems(prev => {
               const combined = [...prev, ...normalized];
+              // Deduplicate by ID
+              const seen = new Set();
+              const unique = [];
+              for (const item of combined) {
+                const id = item.id || item.uuid;
+                if (id && seen.has(id)) continue;
+                if (id) seen.add(id);
+                unique.push(item);
+              }
               // Keep only last 200 items to prevent memory issues on mobile
-              return combined.length > 200 ? combined.slice(-200) : combined;
+              return unique.length > 200 ? unique.slice(-200) : unique;
             });
           } else {
             setItems(normalized);
@@ -694,6 +703,7 @@
             ),
             H('button', {
               className: 'btn',
+              type: 'button',
               onClick: handleReload,
               disabled: busy && !isLoadingMore,
               style: { flex: '0 0 auto', fontSize: 13, padding: '6px 12px', minHeight: 36 }

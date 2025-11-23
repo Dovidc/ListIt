@@ -181,7 +181,17 @@
             if (!prev || !prev.length) return newRows;
             const existing = new Set(prev.map(r => r.id));
             const appended = newRows.filter(r => !existing.has(r.id));
-            return appended.length ? [...prev, ...appended] : prev;
+
+            // Double-check for duplicates in the final array just in case
+            const combined = appended.length ? [...prev, ...appended] : prev;
+            const seen = new Set();
+            const unique = [];
+            for (const item of combined) {
+              if (seen.has(item.id)) continue;
+              seen.add(item.id);
+              unique.push(item);
+            }
+            return unique;
           });
 
           if (cursor == null) {
@@ -233,6 +243,7 @@
       useEffect(() => {
         nextCursorRef.current = null;
         setAll([]);
+        setCoverById(Object.create(null));
         setHasNext(false);
         loadListings({ cursor: null, replace: true });
       }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
@@ -241,6 +252,7 @@
         nextCursorRef.current = null;
         if (!preserveExisting) {
           setAll([]);
+          setCoverById(Object.create(null));
           setHasNext(false);
         }
         await loadListings({ cursor: null, replace: true });

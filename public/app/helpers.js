@@ -393,6 +393,14 @@
       const containerW = useElementWidth(containerRef, active);
 
       const [heightMap, setHeightMap] = useState(() => Object.create(null));
+
+      // Reset height map when items are cleared (e.g. sorting change)
+      useEffect(() => {
+        if (items.length === 0) {
+          setHeightMap(Object.create(null));
+        }
+      }, [items]);
+
       const registerHeight = useCallback((id, h) => {
         if (!id || !Number.isFinite(h) || h <= 0) return;
         setHeightMap((m) => (m[id] === h ? m : { ...m, [id]: h }));
