@@ -1100,3 +1100,22 @@ body {
   stroke-width: 2.5;
   /* Slightly bolder icon */
 }
+
+/* Browse filters and quick actions */
+.mobile-filter-card {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  border-radius: 16px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+}
+
+.mobile-filter-grid {
+  grid-template-columns: 1fr;
+}
+
+.mobile-filter-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

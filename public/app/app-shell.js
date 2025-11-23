@@ -685,6 +685,16 @@
         return true;
       }
 
+      const handleStartNewListing = useCallback(() => {
+        if (!ensureCanCreate()) return;
+        openListingEditor({ draft: null, originTab: tab || 'browse' });
+      }, [ensureCanCreate, openListingEditor, tab]);
+
+      const handleStartMassList = useCallback(() => {
+        if (!ensureCanCreate()) return;
+        setShowMassList(true);
+      }, [ensureCanCreate, setShowMassList]);
+
       const handleMobileCaptureClick = useCallback((kind) => {
         if (!isMobile) return;
         if (!ensureCanCreate()) return;
@@ -962,13 +972,29 @@
                     })
                     : H(React.Fragment, null,
                       tab === 'browse' && H(React.Fragment, null,
-                        H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },
-                          H('div', {
+                        (() => {
+                          const createButtons = [
+                            H('button', {
+                              key: 'new',
+                              className: 'btn primary',
+                              style: isMobile ? { width: '100%' } : undefined,
+                              onClick: handleStartNewListing
+                            }, 'New listing'),
+                            H('button', {
+                              key: 'mass',
+                              className: 'btn',
+                              style: isMobile ? { width: '100%' } : undefined,
+                              onClick: handleStartMassList
+                            }, 'MassList')
+                          ];
+
+                          const filterInputs = H('div', {
+                            className: isMobile ? 'mobile-filter-grid' : undefined,
                             style: {
                               display: 'grid',
-                              gridTemplateColumns: isMobile ? '1fr 1fr' : 'minmax(200px, 1.5fr) minmax(140px, 1fr) auto',
+                              gridTemplateColumns: isMobile ? '1fr' : 'minmax(200px, 1.5fr) minmax(140px, 1fr) auto',
                               gap: 10,
-                              width: isMobile ? '100%' : 'auto',
+                              width: '100%',
                               alignItems: 'center'
                             }
                           },
@@ -976,10 +1002,7 @@
                               placeholder: 'Search...',
                               value: query,
                               onChange: e => setQuery(e.target.value),
-                              style: {
-                                gridColumn: isMobile ? '1 / -1' : 'auto',
-                                width: '100%'
-                              }
+                              style: { width: '100%' }
                             }),
                             H(CityAutocomplete, {
                               value: locationQuery,
@@ -1007,24 +1030,18 @@
                               H('option', { value: 'price_desc' }, 'Price: High'),
                               H('option', { value: 'city' }, 'City')
                             )
-                          ),
-                          !isMobile && H('div', { className: 'row', style: { gap: 8 } },
-                            H('button', {
-                              className: 'btn primary', onClick: () => {
-                                if (!user) { alert('Log in to create a listing.'); return; }
-                                if (user.account_status === 'locked') { showLockedBanner(); return; }
-                                openListingEditor({ draft: null, originTab: 'browse' });
-                              }
-                            }, 'New listing'),
-                            H('button', {
-                              className: 'btn', onClick: () => {
-                                if (!user) { alert('Log in to create listings.'); return; }
-                                if (user.account_status === 'locked') { showLockedBanner(); return; }
-                                setShowMassList(true);
-                              }
-                            }, 'MassList')
-                          )
-                        ),
+                          );
+
+                          return isMobile
+                            ? H('div', { className: 'card mobile-filter-card', style: { margin: '8px 0 14px', display: 'grid', gap: 12 } },
+                              filterInputs,
+                              H('div', { className: 'mobile-filter-actions' }, ...createButtons)
+                            )
+                            : H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },
+                              filterInputs,
+                              H('div', { className: 'row', style: { gap: 8 } }, ...createButtons)
+                            );
+                        })(),
 
 
 

@@ -415,11 +415,20 @@
     function useListingModal({ setSelectedListing }) {
       const openListingModal = useCallback((listing, coverSrc) => {
         if (typeof setSelectedListing !== 'function') return;
-        const { payload, images } = prepareListingForModal(listing, coverSrc);
-        if (!payload) return;
-        setSelectedListing(payload);
-        if (listing?.id) {
-          warmListingImages(listing.id, images);
+        if (!listing || typeof listing !== 'object') {
+          console.warn('Cannot open listing without data', listing);
+          return;
+        }
+
+        try {
+          const { payload, images } = prepareListingForModal(listing, coverSrc);
+          if (!payload) return;
+          setSelectedListing(payload);
+          if (listing?.id) {
+            warmListingImages(listing.id, images);
+          }
+        } catch (err) {
+          console.error('Failed to open listing modal', err);
         }
       }, [setSelectedListing]);
 
