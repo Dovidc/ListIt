@@ -117,6 +117,8 @@
       );
     }
 
+    const defaultSafeTrim = (s) => (typeof s === 'string' ? s.trim() : '');
+
     function useListingsFeature({ user, currentTab }) {
       const [all, setAll] = useState([]);
       const [mine, setMine] = useState([]);
@@ -139,7 +141,7 @@
 
       const useIsMounted = helpers?.useIsMounted;
       const isMounted = useIsMounted ? useIsMounted() : (() => true);
-      const safeTrim = helpers?.safeTrim || ((s) => (typeof s === 'string' ? s.trim() : ''));
+      const safeTrim = helpers?.safeTrim || defaultSafeTrim;
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {

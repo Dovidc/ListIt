@@ -34,6 +34,10 @@
       return `listit_seen_${userId || 'anon'}`;
     }
 
+    function safeTrim(s) {
+      return typeof s === 'string' ? s.trim() : '';
+    }
+
     function loadSeen(userId) {
       try {
         return JSON.parse(localStorage.getItem(seenKey(userId)) || '{}');
@@ -470,6 +474,7 @@
     return {
       H,
       isMobileDevice,
+      safeTrim,
       seenKey,
       loadSeen,
       saveSeen,
