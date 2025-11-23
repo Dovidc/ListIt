@@ -439,7 +439,11 @@
             throw new Error(result.error || 'Failed to award karma');
           }
 
-          onBuyerSelected?.(result);
+          // Explicitly close after successful selection
+          if (onBuyerSelected) {
+            onBuyerSelected(result);
+          }
+          onClose?.();
         } catch (err) {
           console.error('Award karma error:', err);
           setSelecting(false);

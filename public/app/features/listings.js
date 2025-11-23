@@ -136,6 +136,9 @@
       const nextCursorRef = useRef(null);
       const reloadReqRef = useRef(0);
 
+      const useIsMounted = helpers?.useIsMounted;
+      const isMounted = useIsMounted ? useIsMounted() : (() => true);
+
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
         const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -171,6 +174,7 @@
           });
 
           if (req !== reloadReqRef.current) return;
+          if (!isMounted()) return;
 
           const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
           const newRows = rows || [];
@@ -198,7 +202,7 @@
             if (user) {
               try {
                 const m = await api.listMine({ silent: true });
-                setMine(asArray(m));
+                if (isMounted()) setMine(asArray(m));
               } catch { }
             } else {
               setMine([]);
@@ -210,7 +214,7 @@
               const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
               if (ids.length) {
                 const covers = await api.getCoversBatch(ids, { silent: true });
-                if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
+                if (req === reloadReqRef.current && Array.isArray(covers) && covers.length && isMounted()) {
                   const patch = {};
                   covers.forEach(r => {
                     if (!r || r.id == null) return;
@@ -226,7 +230,7 @@
 
           nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
         } catch (e) {
-          if (req === reloadReqRef.current) {
+          if (req === reloadReqRef.current && isMounted()) {
             console.error('load listings failed', e);
             if (replace || cursor == null) setAll([]);
             setHasNext(false);

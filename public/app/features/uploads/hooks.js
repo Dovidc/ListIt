@@ -16,7 +16,17 @@
           return undefined;
         }
 
-        const entries = list.map((file) => ({ file, url: URL.createObjectURL(file) }));
+        const entries = [];
+        for (const file of list) {
+          if (!file || typeof file !== 'object') continue;
+          try {
+            const url = URL.createObjectURL(file);
+            entries.push({ file, url });
+          } catch (err) {
+            console.warn('Failed to create object URL for file:', file, err);
+          }
+        }
+
         setPreviews(entries);
 
         return () => {

@@ -454,10 +454,11 @@
         if (!positions || positions.length === 0) return out;
         for (let i = 0; i < positions.length; i++) {
           const p = positions[i];
-          if (!p) continue;
+          const it = items[i];
+          if (!p || !it) continue;
           const pBottom = p.top + p.height;
           if (pBottom >= viewport.top && p.top <= viewport.bottom) {
-            out.push({ index: i, item: items[i], pos: p });
+            out.push({ index: i, item: it, pos: p });
           }
         }
         return out;

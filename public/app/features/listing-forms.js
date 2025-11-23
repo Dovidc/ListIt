@@ -310,6 +310,7 @@
         const selected = Array.from(e.target.files || []);
         const next = [...files];
         for (const f of selected) {
+          if (!f || typeof f !== 'object') continue;
           if (f.size > MAX_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_MB}MB`); continue; }
           if (!f.type.startsWith('image/')) { alert('Only images are allowed'); continue; }
           next.push(f);
@@ -454,7 +455,7 @@
             if (aiSources.length) {
               ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
             }
-          } catch (_) {}
+          } catch (_) { }
 
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
@@ -496,7 +497,7 @@
                 latAuto = c.lat;
                 lonAuto = c.lon;
               }
-            } catch (_) {}
+            } catch (_) { }
           }
 
           if (!locAuto) {
