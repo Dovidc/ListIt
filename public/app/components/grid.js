@@ -77,7 +77,14 @@
 
       useEffect(() => {
         const el = ref.current;
-        if (!el || !item?.id) return;
+        if (!el || !item?.id) return undefined;
+
+        if (typeof IntersectionObserver !== 'function') {
+          if (!item.__cover && typeof onEnsureCover === 'function') {
+            onEnsureCover(item.id);
+          }
+          return undefined;
+        }
 
         const observer = new IntersectionObserver((entries) => {
           if (!Array.isArray(entries)) return;
