@@ -103,11 +103,14 @@
       style,
       disableSkeleton = false,
       width,
+      maxRetries = 2,
       ...imgProps
     }) {
       const [loaded, setLoaded] = useState(false);
       const [failed, setFailed] = useState(false);
+      const [retryCount, setRetryCount] = useState(0);
       const imgRef = useRef(null);
+      const retryTimerRef = useRef(null);
 
       const optimizedSrc = useMemo(() => {
         if (!imgProps.src) return imgProps.src;
@@ -117,6 +120,11 @@
       useEffect(() => {
         setLoaded(false);
         setFailed(false);
+        setRetryCount(0);
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
       }, [optimizedSrc]);
 
       // Fix for Safari/Cached images: check if image is already complete
@@ -133,13 +141,35 @@
 
       const handleLoad = useCallback((event) => {
         setLoaded(true);
+        setFailed(false);
         if (typeof onLoad === 'function') onLoad(event);
       }, [onLoad]);
 
       const handleError = useCallback((event) => {
-        setFailed(true);
-        if (typeof onError === 'function') onError(event);
-      }, [onError]);
+        if (retryCount < maxRetries) {
+          // Retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+          retryTimerRef.current = setTimeout(() => {
+            setRetryCount(c => c + 1);
+            // Force reload by clearing and resetting src
+            if (imgRef.current) {
+              const src = imgRef.current.src;
+              imgRef.current.src = '';
+              imgRef.current.src = src;
+            }
+          }, delay);
+        } else {
+          setFailed(true);
+          if (typeof onError === 'function') onError(event);
+        }
+      }, [onError, retryCount, maxRetries]);
+
+      // Cleanup retry timer on unmount
+      useEffect(() => {
+        return () => {
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        };
+      }, []);
 
       const showSkeleton = !disableSkeleton && !!optimizedSrc && !loaded && !failed;
 

@@ -30,6 +30,48 @@
       return false;
     }
 
+    // Simple LRU cache implementation for cover images
+    function createLRUCache(maxSize = 200) {
+      const cache = new Map();
+      return {
+        get(key) {
+          if (!cache.has(key)) return undefined;
+          const value = cache.get(key);
+          // Move to end (most recently used)
+          cache.delete(key);
+          cache.set(key, value);
+          return value;
+        },
+        set(key, value) {
+          if (cache.has(key)) {
+            cache.delete(key);
+          } else if (cache.size >= maxSize) {
+            // Delete oldest (first) entry
+            const firstKey = cache.keys().next().value;
+            cache.delete(firstKey);
+          }
+          cache.set(key, value);
+        },
+        has(key) {
+          return cache.has(key);
+        },
+        delete(key) {
+          return cache.delete(key);
+        },
+        clear() {
+          cache.clear();
+        },
+        size() {
+          return cache.size;
+        },
+        toObject() {
+          const obj = Object.create(null);
+          for (const [k, v] of cache) obj[k] = v;
+          return obj;
+        }
+      };
+    }
+
     function seenKey(userId) {
       return `listit_seen_${userId || 'anon'}`;
     }
@@ -399,7 +441,7 @@
         if (items.length === 0) {
           setHeightMap(Object.create(null));
         }
-      }, [items]);
+      }, [items.length]);
 
       const registerHeight = useCallback((id, h) => {
         if (!id || !Number.isFinite(h) || h <= 0) return;
@@ -478,7 +520,8 @@
       asArray,
       pageSize,
       selectPrimaryListingImage,
-      useVirtualMasonry
+      useVirtualMasonry,
+      createLRUCache
     };
   }
 

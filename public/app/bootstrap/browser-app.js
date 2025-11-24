@@ -59,7 +59,8 @@
       pageTop,
       normalizeListingsResponse,
       asArray,
-      useVirtualMasonry
+      useVirtualMasonry,
+      createLRUCache
     } = helpersFactory({ React: runtimeReact });
 
     const resolveApiBaseUrl = () => {
@@ -212,6 +213,7 @@
         normalizeListingsResponse,
         asArray,
         selectPrimaryListingImage,
+        createLRUCache,
         pageSize: PAGE_SIZE
       },
       uploads: {

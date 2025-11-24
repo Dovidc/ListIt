@@ -23,42 +23,46 @@
     const VirtualEntry = React.memo(function VirtualEntry({ id, style, children, onHeightChange }) {
       const ref = useRef(null);
       const lastHeightRef = useRef(null);
+      const debounceTimerRef = useRef(null);
 
       useEffect(() => {
         if (typeof onHeightChange !== 'function') return undefined;
         const el = ref.current;
         if (!el) return undefined;
 
-        let frame = null;
         let resizeObserver = null;
 
         const emitHeight = () => {
           if (!ref.current) return;
-          const rect = ref.current.getBoundingClientRect();
-          const height = rect.height;
+          const height = ref.current.offsetHeight;
           if (!Number.isFinite(height) || height <= 0) return;
           if (lastHeightRef.current === height) return;
           lastHeightRef.current = height;
           onHeightChange(id, height);
         };
 
+        // Debounced version for resize events
+        const debouncedEmit = () => {
+          if (debounceTimerRef.current) return;
+          debounceTimerRef.current = setTimeout(() => {
+            debounceTimerRef.current = null;
+            emitHeight();
+          }, 50);
+        };
+
+        // Emit immediately on mount
         emitHeight();
 
         if (typeof ResizeObserver === 'function') {
-          resizeObserver = new ResizeObserver(() => emitHeight());
+          resizeObserver = new ResizeObserver(debouncedEmit);
           resizeObserver.observe(el);
-        } else {
-          const loop = () => {
-            emitHeight();
-            frame = window.requestAnimationFrame(loop);
-          };
-          frame = window.requestAnimationFrame(loop);
         }
+        // Removed requestAnimationFrame fallback - not needed for modern browsers
 
         return () => {
+          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
           lastHeightRef.current = null;
           if (resizeObserver) resizeObserver.disconnect();
-          if (frame != null) window.cancelAnimationFrame(frame);
         };
       }, [id, onHeightChange]);
 
@@ -144,9 +148,9 @@
             ? H(ImageWithSkeleton, {
               src,
               alt: item?.title || 'Item',
-              loading: 'eager',
+              loading: 'lazy',
               decoding: 'async',
-              fetchPriority: 'auto',
+              fetchPriority: 'low',
               width: 300,
               height: 300,
               style: {
@@ -249,7 +253,9 @@
         });
       }, [entries, virtualizationAvailable]);
 
-      const shouldVirtualize = virtualizationAvailable && entries.length >= 10;
+      // Lower threshold for mobile to improve initial render performance
+      const virtualizationThreshold = isMobile ? 6 : 8;
+      const shouldVirtualize = virtualizationAvailable && entries.length >= virtualizationThreshold;
       const virtualizationEstimate = isMobile ? 180 : 240;
       const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({

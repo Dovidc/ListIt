@@ -19,6 +19,7 @@
     const normalizeListingsResponse = helpers?.normalizeListingsResponse;
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
+    const createLRUCache = helpers?.createLRUCache;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
 
     if (typeof normalizeListingsResponse !== 'function') {
@@ -129,12 +130,24 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
       const [cityOptions, setCityOptions] = useState([]);
-      const [coverById, setCoverById] = useState(() => (Object.create(null)));
+
+      // Use LRU cache for covers to prevent unbounded memory growth
+      const coverCacheRef = useRef(null);
+      if (!coverCacheRef.current && typeof createLRUCache === 'function') {
+        coverCacheRef.current = createLRUCache(200);
+      }
+      const [coverVersion, setCoverVersion] = useState(0);
+      const bumpCoverVersion = useCallback(() => setCoverVersion(v => v + 1), []);
 
       const sentinelRef = useRef(null);
       const loadingListingsRef = useRef(false);
       const nextCursorRef = useRef(null);
       const reloadReqRef = useRef(0);
+      const loadListingsRef = useRef(null);
+
+      // Batching for cover image requests
+      const pendingCoverIdsRef = useRef(new Set());
+      const coverBatchTimerRef = useRef(null);
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
@@ -211,14 +224,15 @@
               if (ids.length) {
                 const covers = await api.getCoversBatch(ids, { silent: true });
                 if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
-                  const patch = {};
+                  let hasNewCovers = false;
                   covers.forEach(r => {
                     if (!r || r.id == null) return;
-                    if (r.image_data) patch[r.id] = { url: r.image_data };
+                    if (r.image_data) {
+                      coverCacheRef.current?.set(r.id, { url: r.image_data });
+                      hasNewCovers = true;
+                    }
                   });
-                  if (Object.keys(patch).length) {
-                    setCoverById(prev => ({ ...prev, ...patch }));
-                  }
+                  if (hasNewCovers) bumpCoverVersion();
                 }
               }
             } catch { }
@@ -240,23 +254,28 @@
         }
       }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray]);
 
+      // Keep ref updated so effect can call latest version without re-triggering
+      loadListingsRef.current = loadListings;
+
       useEffect(() => {
         nextCursorRef.current = null;
         setAll([]);
-        setCoverById(Object.create(null));
+        coverCacheRef.current?.clear();
+        bumpCoverVersion();
         setHasNext(false);
-        loadListings({ cursor: null, replace: true });
-      }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
+        loadListingsRef.current?.({ cursor: null, replace: true });
+      }, [user?.id, debouncedQuery, debouncedLocation, sort, bumpCoverVersion]);
 
       const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
         nextCursorRef.current = null;
         if (!preserveExisting) {
           setAll([]);
-          setCoverById(Object.create(null));
+          coverCacheRef.current?.clear();
+          bumpCoverVersion();
           setHasNext(false);
         }
         await loadListings({ cursor: null, replace: true });
-      }, [loadListings]);
+      }, [loadListings, bumpCoverVersion]);
 
       useEffect(() => {
         if (currentTab !== 'browse') return;
@@ -266,13 +285,13 @@
         const observer = new IntersectionObserver(entries => {
           const entry = entries[0];
           if (!entry || !entry.isIntersecting) return;
-          if (!hasNext || loadingListingsRef.current) return;
+          if (loadingListingsRef.current) return;
           if (!nextCursorRef.current) return;
-          loadListings({ cursor: nextCursorRef.current, replace: false });
+          loadListingsRef.current?.({ cursor: nextCursorRef.current, replace: false });
         }, { rootMargin: '200px' });
         observer.observe(el);
         return () => observer.disconnect();
-      }, [currentTab, hasNext, loadListings]);
+      }, [currentTab]);
 
       useEffect(() => {
         if (currentTab === 'profile') reloadMineOnly();
@@ -296,42 +315,68 @@
         };
       }, [locationQuery, api]);
 
-      const ensureCover = useCallback(async (id) => {
-        if (id == null) return;
-        if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
+      // Flush pending cover requests as a batch
+      const flushCoverBatch = useCallback(async () => {
+        const ids = Array.from(pendingCoverIdsRef.current);
+        pendingCoverIdsRef.current.clear();
+        if (!ids.length) return;
+
         try {
-          const arr = await api.getListingImages(id, { silent: true });
-          let obj = null;
-          if (Array.isArray(arr) && arr.length) {
-            obj = typeof arr[0] === 'string'
-              ? { url: arr[0], w: null, h: null }
-              : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+          const covers = await api.getCoversBatch(ids, { silent: true });
+          if (Array.isArray(covers) && covers.length) {
+            let hasUpdates = false;
+            covers.forEach(r => {
+              if (!r || r.id == null) return;
+              if (r.image_data) {
+                coverCacheRef.current?.set(r.id, { url: r.image_data });
+                hasUpdates = true;
+              }
+            });
+            if (hasUpdates) bumpCoverVersion();
           }
-          setCoverById((prev) => ({ ...prev, [id]: obj }));
         } catch {
-          setCoverById((prev) => ({ ...prev, [id]: null }));
+          // Silently fail - images will show placeholder
         }
-      }, [coverById, api]);
+      }, [api, bumpCoverVersion]);
+
+      const ensureCover = useCallback((id) => {
+        if (id == null) return;
+        if (coverCacheRef.current?.has(id)) return;
+        // Mark as pending to prevent duplicate fetches
+        coverCacheRef.current?.set(id, null);
+        pendingCoverIdsRef.current.add(id);
+
+        // Debounce batch fetch - collect requests for 100ms then fetch all at once
+        if (coverBatchTimerRef.current) clearTimeout(coverBatchTimerRef.current);
+        coverBatchTimerRef.current = setTimeout(() => {
+          coverBatchTimerRef.current = null;
+          flushCoverBatch();
+        }, 100);
+      }, [flushCoverBatch]);
 
       const items = useMemo(() => {
+        // coverVersion dependency ensures re-computation when covers update
+        void coverVersion;
         return (all || []).map(it => {
-          const cached = coverById[it.id];
+          const cached = coverCacheRef.current?.get(it.id);
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';
           const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
           return { ...it, __cover: url, __ar: ar };
         });
-      }, [all, coverById, selectPrimaryListingImage]);
+      }, [all, coverVersion, selectPrimaryListingImage]);
 
       const mineWithCovers = useMemo(() => {
+        // coverVersion dependency ensures re-computation when covers update
+        void coverVersion;
         return (mine || []).map(it => {
-          const cached = coverById[it.id];
+          const cached = coverCacheRef.current?.get(it.id);
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';
           const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
           return { ...it, __cover: url, __ar: ar };
         });
-      }, [mine, coverById, selectPrimaryListingImage]);
+      }, [mine, coverVersion, selectPrimaryListingImage]);
 
       const toggleSold = useCallback(async (listing, makeSold) => {
         try {
