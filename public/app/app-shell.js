@@ -345,10 +345,6 @@
 
       const listings = useListingsFeature({ user, currentTab: tab });
       const {
-        listings: all,
-        setListings: setAll,
-        mine,
-        setMine,
         query,
         setQuery,
         locationQuery,
@@ -358,19 +354,22 @@
         hasNext,
         isFetchingListings,
         sentinelRef,
-        selectedListing,
-        setSelectedListing,
-        editing,
-        setEditing,
-        showMassList,
-        setShowMassList,
         reloadMineOnly,
         refreshListings,
         toggleSold,
         cityOptions,
         items,
+        mine,
         ensureCover
       } = listings;
+
+      // UI state - managed locally in app-shell, not in the listings hook
+      const [selectedListing, setSelectedListing] = useState(null);
+      const [editing, setEditing] = useState(null);
+      const [showMassList, setShowMassList] = useState(false);
+
+      // Backward compatibility aliases
+      const all = items;
 
       // Karma modal state
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
@@ -450,8 +449,8 @@
       const { removePushSubscription } = usePushNotifications({ user, pushMeta });
 
       const { handleAdminDeleteAll, handleAdminDelete } = useAdminListingActions({
-        setAllListings: setAll,
-        setMineListings: setMine
+        refreshListings,
+        reloadMineOnly
       });
 
       const { openListingModal, handleListingTileEvent } = useListingModal({

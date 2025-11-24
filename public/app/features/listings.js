@@ -6,22 +6,18 @@
     if (!api) {
       throw new Error('Listings feature requires an API client.');
     }
-    const {
-      useState,
-      useEffect,
-      useMemo,
-      useRef,
-      useCallback
-    } = React;
 
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    // Extract helpers
     const normalizeListingsResponse = helpers?.normalizeListingsResponse;
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
     const createLRUCache = helpers?.createLRUCache;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
 
+    // Validate required helpers
     if (typeof normalizeListingsResponse !== 'function') {
       throw new Error('Listings feature requires normalizeListingsResponse helper.');
     }
@@ -41,6 +37,354 @@
       throw new Error('Listings feature requires warmListingImages helper.');
     }
 
+    // ============================================================
+    // HOOK: useDebounce
+    // Simple debounce hook for search inputs
+    // ============================================================
+    function useDebounce(value, delay) {
+      const [debouncedValue, setDebouncedValue] = useState(value);
+
+      useEffect(() => {
+        const timer = setTimeout(() => setDebouncedValue(value), delay);
+        return () => clearTimeout(timer);
+      }, [value, delay]);
+
+      return debouncedValue;
+    }
+
+    // ============================================================
+    // HOOK: useCoverCache
+    // Manages cover image caching with LRU eviction and batched fetching
+    // ============================================================
+    function useCoverCache() {
+      const cacheRef = useRef(null);
+      if (!cacheRef.current && typeof createLRUCache === 'function') {
+        cacheRef.current = createLRUCache(200);
+      }
+
+      const [version, setVersion] = useState(0);
+      const bumpVersion = useCallback(() => setVersion(v => v + 1), []);
+
+      const pendingIdsRef = useRef(new Set());
+      const batchTimerRef = useRef(null);
+      const flushRef = useRef(null);
+
+      // Flush pending requests as batches
+      const flush = useCallback(async () => {
+        const allIds = Array.from(pendingIdsRef.current);
+        pendingIdsRef.current.clear();
+        if (!allIds.length) return;
+
+        const maxBatchSize = 12;
+        const ids = allIds.slice(0, maxBatchSize);
+
+        // Re-queue remaining for next batch
+        if (allIds.length > maxBatchSize) {
+          allIds.slice(maxBatchSize).forEach(id => pendingIdsRef.current.add(id));
+          batchTimerRef.current = setTimeout(() => {
+            batchTimerRef.current = null;
+            flushRef.current?.();
+          }, 200);
+        }
+
+        try {
+          const covers = await api.getCoversBatch(ids, { silent: true });
+          if (Array.isArray(covers) && covers.length) {
+            let hasUpdates = false;
+            for (const r of covers) {
+              if (r?.id != null && r.image_data) {
+                cacheRef.current?.set(r.id, { url: r.image_data });
+                hasUpdates = true;
+              }
+            }
+            if (hasUpdates) bumpVersion();
+          }
+        } catch {
+          // Silent fail - images show placeholder
+        }
+      }, [bumpVersion]);
+
+      // Keep ref updated for recursive calls
+      flushRef.current = flush;
+
+      const ensureCover = useCallback((id) => {
+        if (id == null) return;
+        if (cacheRef.current?.has(id)) return;
+
+        // Mark pending to prevent duplicates
+        cacheRef.current?.set(id, null);
+        pendingIdsRef.current.add(id);
+
+        // Debounce batch fetch
+        if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
+        batchTimerRef.current = setTimeout(() => {
+          batchTimerRef.current = null;
+          flushRef.current?.();
+        }, 150);
+      }, []);
+
+      const getCover = useCallback((id) => {
+        return cacheRef.current?.get(id) ?? null;
+      }, []);
+
+      const setCover = useCallback((id, data) => {
+        cacheRef.current?.set(id, data);
+        bumpVersion();
+      }, [bumpVersion]);
+
+      const setCovers = useCallback((entries) => {
+        let hasUpdates = false;
+        for (const [id, data] of entries) {
+          cacheRef.current?.set(id, data);
+          hasUpdates = true;
+        }
+        if (hasUpdates) bumpVersion();
+      }, [bumpVersion]);
+
+      const clear = useCallback(() => {
+        cacheRef.current?.clear();
+        pendingIdsRef.current.clear();
+        if (batchTimerRef.current) {
+          clearTimeout(batchTimerRef.current);
+          batchTimerRef.current = null;
+        }
+        bumpVersion();
+      }, [bumpVersion]);
+
+      return { getCover, setCover, setCovers, ensureCover, clear, version };
+    }
+
+    // ============================================================
+    // HOOK: useListingsPagination
+    // Handles fetching listings with cursor-based pagination
+    // ============================================================
+    function useListingsPagination({ query, location, sort, onCoversLoaded }) {
+      const [listings, setListings] = useState([]);
+      const [hasMore, setHasMore] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+
+      const cursorRef = useRef(null);
+      const requestIdRef = useRef(0);
+      const isLoadingRef = useRef(false);
+
+      const fetchPage = useCallback(async (cursor, replace) => {
+        const reqId = ++requestIdRef.current;
+        isLoadingRef.current = true;
+        setIsLoading(true);
+
+        try {
+          const res = await api.listAll({
+            q: query?.trim() || '',
+            loc: location?.trim() || '',
+            cursor,
+            limit: pageSize,
+            sort: sort || 'new'
+          });
+
+          // Stale request check
+          if (reqId !== requestIdRef.current) return;
+
+          const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
+          const newRows = rows || [];
+
+          setHasMore(!!hasNext);
+          cursorRef.current = hasNext ? (nextCursor ?? null) : null;
+
+          setListings(prev => {
+            if (replace || cursor == null) return newRows;
+            if (!prev?.length) return newRows;
+
+            // Deduplicate
+            const existingIds = new Set(prev.map(r => r.id));
+            const toAppend = newRows.filter(r => !existingIds.has(r.id));
+            return toAppend.length ? [...prev, ...toAppend] : prev;
+          });
+
+          // Fetch covers for new listings
+          if (newRows.length && typeof onCoversLoaded === 'function') {
+            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
+            if (ids.length) {
+              try {
+                const covers = await api.getCoversBatch(ids, { silent: true });
+                if (reqId === requestIdRef.current && Array.isArray(covers)) {
+                  const entries = covers
+                    .filter(r => r?.id != null && r.image_data)
+                    .map(r => [r.id, { url: r.image_data }]);
+                  if (entries.length) onCoversLoaded(entries);
+                }
+              } catch { }
+            }
+          }
+        } catch (e) {
+          if (reqId === requestIdRef.current) {
+            console.error('Failed to load listings:', e);
+            if (replace || cursor == null) setListings([]);
+            setHasMore(false);
+          }
+        } finally {
+          if (reqId === requestIdRef.current) {
+            isLoadingRef.current = false;
+            setIsLoading(false);
+          }
+        }
+      }, [query, location, sort, onCoversLoaded]);
+
+      const loadInitial = useCallback(() => {
+        cursorRef.current = null;
+        setListings([]);
+        setHasMore(false);
+        fetchPage(null, true);
+      }, [fetchPage]);
+
+      const loadMore = useCallback(() => {
+        if (isLoadingRef.current || !cursorRef.current) return;
+        fetchPage(cursorRef.current, false);
+      }, [fetchPage]);
+
+      const refresh = useCallback(async (preserveExisting = false) => {
+        cursorRef.current = null;
+        if (!preserveExisting) {
+          setListings([]);
+          setHasMore(false);
+        }
+        await fetchPage(null, true);
+      }, [fetchPage]);
+
+      // Expose loading ref for external checks
+      const getIsLoading = useCallback(() => isLoadingRef.current, []);
+      const getCursor = useCallback(() => cursorRef.current, []);
+
+      return {
+        listings,
+        hasMore,
+        isLoading,
+        loadInitial,
+        loadMore,
+        refresh,
+        setListings,
+        getIsLoading,
+        getCursor
+      };
+    }
+
+    // ============================================================
+    // HOOK: useMyListings
+    // Manages the current user's own listings
+    // ============================================================
+    function useMyListings(user) {
+      const [listings, setListings] = useState([]);
+
+      const refresh = useCallback(async () => {
+        if (!user) {
+          setListings([]);
+          return;
+        }
+        try {
+          const res = await api.listMine();
+          setListings(asArray(res) || []);
+        } catch {
+          setListings([]);
+        }
+      }, [user]);
+
+      const refreshSilent = useCallback(async () => {
+        if (!user) {
+          setListings([]);
+          return;
+        }
+        try {
+          const res = await api.listMine({ silent: true });
+          setListings(asArray(res) || []);
+        } catch { }
+      }, [user]);
+
+      return { listings, setListings, refresh, refreshSilent };
+    }
+
+    // ============================================================
+    // HOOK: useCitySearch
+    // Handles city autocomplete search
+    // ============================================================
+    function useCitySearch(locationQuery) {
+      const [options, setOptions] = useState([]);
+
+      useEffect(() => {
+        const term = (locationQuery || '').split(',')[0].trim();
+        if (!term) {
+          setOptions([]);
+          return;
+        }
+
+        let alive = true;
+        const timer = setTimeout(async () => {
+          try {
+            const res = await api.searchCities(term);
+            if (alive) setOptions(Array.isArray(res) ? res : []);
+          } catch {
+            if (alive) setOptions([]);
+          }
+        }, 500);
+
+        return () => {
+          alive = false;
+          clearTimeout(timer);
+        };
+      }, [locationQuery]);
+
+      return options;
+    }
+
+    // ============================================================
+    // HOOK: useInfiniteScroll
+    // Observes sentinel element for infinite scroll
+    // ============================================================
+    function useInfiniteScroll({ enabled, onLoadMore, getIsLoading, getCursor }) {
+      const sentinelRef = useRef(null);
+
+      useEffect(() => {
+        if (!enabled) return;
+        if (typeof IntersectionObserver === 'undefined') return;
+
+        const el = sentinelRef.current;
+        if (!el) return;
+
+        const observer = new IntersectionObserver(entries => {
+          const entry = entries[0];
+          if (!entry?.isIntersecting) return;
+          if (getIsLoading()) return;
+          if (!getCursor()) return;
+          onLoadMore();
+        }, { rootMargin: '200px' });
+
+        observer.observe(el);
+        return () => observer.disconnect();
+      }, [enabled, onLoadMore, getIsLoading, getCursor]);
+
+      return sentinelRef;
+    }
+
+    // ============================================================
+    // HELPER: addCoversToListings
+    // Enriches listings with cover image data
+    // ============================================================
+    function addCoversToListings(listings, getCover) {
+      return (listings || []).map(item => {
+        const cached = getCover(item.id);
+        const inlineUrl = cached?.url || selectPrimaryListingImage(
+          item,
+          item?.image_data || item?.thumb_url || (Array.isArray(item?.images) ? item.images[0] : null)
+        );
+        return {
+          ...item,
+          __cover: inlineUrl || '',
+          __ar: (cached?.w && cached?.h) ? (cached.w / cached.h) : 1
+        };
+      });
+    }
+
+    // ============================================================
+    // COMPONENT: CityAutocomplete
+    // ============================================================
     function CityAutocomplete({ value, onChange, options, onUseMyLocation }) {
       const [open, setOpen] = useState(false);
       const [hover, setHover] = useState(0);
@@ -53,35 +397,50 @@
         return opts.filter(c => c.toLowerCase().includes(v)).slice(0, 8);
       }, [value, options]);
 
-      function pick(s) {
+      const pick = useCallback((s) => {
         onChange(s);
         setOpen(false);
         setHover(0);
-        setTimeout(() => boxRef.current && boxRef.current.querySelector('input')?.focus(), 0);
-      }
+        setTimeout(() => boxRef.current?.querySelector('input')?.focus(), 0);
+      }, [onChange]);
 
-      function onKeyDown(e) {
+      const onKeyDown = useCallback((e) => {
         if (!open && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) {
           setOpen(true);
           return;
         }
         if (!open) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); setHover(h => Math.min(h + 1, list.length - 1)); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setHover(h => Math.max(h - 1, 0)); }
-        else if (e.key === 'Enter') { e.preventDefault(); if (list[hover]) pick(list[hover]); }
-        else if (e.key === 'Escape') { setOpen(false); }
-      }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setHover(h => Math.min(h + 1, list.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setHover(h => Math.max(h - 1, 0));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (list[hover]) pick(list[hover]);
+        } else if (e.key === 'Escape') {
+          setOpen(false);
+        }
+      }, [open, list, hover, pick]);
 
-      function onFocus() { if (list.length) setOpen(true); }
-      function onBlur() { setTimeout(() => setOpen(false), 100); }
+      const onFocus = useCallback(() => {
+        if (list.length) setOpen(true);
+      }, [list.length]);
+
+      const onBlur = useCallback(() => {
+        setTimeout(() => setOpen(false), 100);
+      }, []);
 
       return H('div', { ref: boxRef, style: { position: 'relative', display: 'flex', alignItems: 'center', flex: 1 } },
         H('input', {
           placeholder: 'City...',
           value: value,
           onChange: e => { onChange(e.target.value); setOpen(true); },
-          onKeyDown, onFocus, onBlur,
-          style: { width: '100%', paddingRight: 40 } // Make room for icon
+          onKeyDown,
+          onFocus,
+          onBlur,
+          style: { width: '100%', paddingRight: 40 }
         }),
         H('button', {
           type: 'button',
@@ -118,318 +477,143 @@
       );
     }
 
+    // ============================================================
+    // MAIN HOOK: useListingsFeature
+    // Composes all the smaller hooks together
+    // ============================================================
     function useListingsFeature({ user, currentTab }) {
-      const [all, setAll] = useState([]);
-      const [mine, setMine] = useState([]);
+      // Search state
       const [query, setQuery] = useState('');
       const [locationQuery, setLocationQuery] = useState('');
       const [sort, setSort] = useState('new');
-      const [hasNext, setHasNext] = useState(false);
-      const [isFetchingListings, setIsFetchingListings] = useState(false);
-      const [selectedListing, setSelectedListing] = useState(null);
-      const [editing, setEditing] = useState(null);
-      const [showMassList, setShowMassList] = useState(false);
-      const [cityOptions, setCityOptions] = useState([]);
 
-      // Use LRU cache for covers to prevent unbounded memory growth
-      const coverCacheRef = useRef(null);
-      if (!coverCacheRef.current && typeof createLRUCache === 'function') {
-        coverCacheRef.current = createLRUCache(200);
-      }
-      const [coverVersion, setCoverVersion] = useState(0);
-      const bumpCoverVersion = useCallback(() => setCoverVersion(v => v + 1), []);
+      // Debounced search values
+      const debouncedQuery = useDebounce(query, 250);
+      const debouncedLocation = useDebounce(locationQuery, 500);
 
-      const sentinelRef = useRef(null);
-      const loadingListingsRef = useRef(false);
-      const nextCursorRef = useRef(null);
-      const reloadReqRef = useRef(0);
-      const loadListingsRef = useRef(null);
+      // Cover cache
+      const coverCache = useCoverCache();
 
-      // Batching for cover image requests
-      const pendingCoverIdsRef = useRef(new Set());
-      const coverBatchTimerRef = useRef(null);
+      // Pagination
+      const pagination = useListingsPagination({
+        query: debouncedQuery,
+        location: debouncedLocation,
+        sort,
+        onCoversLoaded: coverCache.setCovers
+      });
 
-      const [debouncedQuery, setDebouncedQuery] = useState('');
+      // User's own listings
+      const myListings = useMyListings(user);
+
+      // City autocomplete
+      const cityOptions = useCitySearch(locationQuery);
+
+      // Infinite scroll
+      const sentinelRef = useInfiniteScroll({
+        enabled: currentTab === 'browse',
+        onLoadMore: pagination.loadMore,
+        getIsLoading: pagination.getIsLoading,
+        getCursor: pagination.getCursor
+      });
+
+      // Load listings when search params change
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       useEffect(() => {
-        const timer = setTimeout(() => setDebouncedQuery(query), 250);
-        return () => clearTimeout(timer);
-      }, [query]);
+        coverCache.clear();
+        pagination.loadInitial();
+      }, [user?.id, debouncedQuery, debouncedLocation, sort]);
 
-      const [debouncedLocation, setDebouncedLocation] = useState('');
+      // Load user's listings when switching to profile tab
       useEffect(() => {
-        const timer = setTimeout(() => setDebouncedLocation(locationQuery), 500);
-        return () => clearTimeout(timer);
-      }, [locationQuery]);
-
-      const reloadMineOnly = useCallback(async () => {
-        if (!user) {
-          setMine([]);
-          return;
+        if (currentTab === 'profile') {
+          myListings.refresh();
         }
-        const m = await api.listMine();
-        setMine(asArray(m) || []);
-      }, [api, user, asArray]);
+      }, [currentTab, myListings.refresh]);
 
-      const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
-        const req = ++reloadReqRef.current;
-        loadingListingsRef.current = true;
-        setIsFetchingListings(true);
-        try {
-          const res = await api.listAll({
-            q: debouncedQuery.trim() || '',
-            loc: debouncedLocation.trim() || '',
-            cursor,
-            limit: pageSize,
-            sort
-          });
-
-          if (req !== reloadReqRef.current) return;
-
-          const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
-          const newRows = rows || [];
-          setHasNext(!!hasNext);
-
-          setAll(prev => {
-            if (replace || cursor == null) return newRows;
-            if (!prev || !prev.length) return newRows;
-            const existing = new Set(prev.map(r => r.id));
-            const appended = newRows.filter(r => !existing.has(r.id));
-
-            // Double-check for duplicates in the final array just in case
-            const combined = appended.length ? [...prev, ...appended] : prev;
-            const seen = new Set();
-            const unique = [];
-            for (const item of combined) {
-              if (seen.has(item.id)) continue;
-              seen.add(item.id);
-              unique.push(item);
-            }
-            return unique;
-          });
-
-          if (cursor == null) {
-            if (user) {
-              try {
-                const m = await api.listMine({ silent: true });
-                setMine(asArray(m));
-              } catch { }
-            } else {
-              setMine([]);
-            }
-          }
-
-          if (newRows.length) {
-            try {
-              const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
-              if (ids.length) {
-                const covers = await api.getCoversBatch(ids, { silent: true });
-                if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
-                  let hasNewCovers = false;
-                  covers.forEach(r => {
-                    if (!r || r.id == null) return;
-                    if (r.image_data) {
-                      coverCacheRef.current?.set(r.id, { url: r.image_data });
-                      hasNewCovers = true;
-                    }
-                  });
-                  if (hasNewCovers) bumpCoverVersion();
-                }
-              }
-            } catch { }
-          }
-
-          nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
-        } catch (e) {
-          if (req === reloadReqRef.current) {
-            console.error('load listings failed', e);
-            if (replace || cursor == null) setAll([]);
-            setHasNext(false);
-            if (cursor == null && !user) setMine([]);
-          }
-        } finally {
-          if (req === reloadReqRef.current) {
-            loadingListingsRef.current = false;
-            setIsFetchingListings(false);
-          }
+      // Also fetch user's listings on initial load
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      useEffect(() => {
+        if (user) {
+          myListings.refreshSilent();
         }
-      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray]);
+      }, [user?.id]);
 
-      // Keep ref updated so effect can call latest version without re-triggering
-      loadListingsRef.current = loadListings;
-
-      useEffect(() => {
-        nextCursorRef.current = null;
-        setAll([]);
-        coverCacheRef.current?.clear();
-        bumpCoverVersion();
-        setHasNext(false);
-        loadListingsRef.current?.({ cursor: null, replace: true });
-      }, [user?.id, debouncedQuery, debouncedLocation, sort, bumpCoverVersion]);
-
-      const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
-        nextCursorRef.current = null;
-        if (!preserveExisting) {
-          setAll([]);
-          coverCacheRef.current?.clear();
-          bumpCoverVersion();
-          setHasNext(false);
-        }
-        await loadListings({ cursor: null, replace: true });
-      }, [loadListings, bumpCoverVersion]);
-
-      useEffect(() => {
-        if (currentTab !== 'browse') return;
-        if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
-        const el = sentinelRef.current;
-        if (!el) return;
-        const observer = new IntersectionObserver(entries => {
-          const entry = entries[0];
-          if (!entry || !entry.isIntersecting) return;
-          if (loadingListingsRef.current) return;
-          if (!nextCursorRef.current) return;
-          loadListingsRef.current?.({ cursor: nextCursorRef.current, replace: false });
-        }, { rootMargin: '200px' });
-        observer.observe(el);
-        return () => observer.disconnect();
-      }, [currentTab]);
-
-      useEffect(() => {
-        if (currentTab === 'profile') reloadMineOnly();
-      }, [currentTab, reloadMineOnly]);
-
-      useEffect(() => {
-        let alive = true;
-        const term = locationQuery.split(',')[0].trim();
-        const timer = setTimeout(async () => {
-          try {
-            const res = await api.searchCities(term);
-            if (!alive) return;
-            setCityOptions(Array.isArray(res) ? res : []);
-          } catch {
-            if (alive) setCityOptions([]);
-          }
-        }, 2000);
-        return () => {
-          alive = false;
-          clearTimeout(timer);
-        };
-      }, [locationQuery, api]);
-
-      // Flush pending cover requests as a batch
-      const flushCoverBatch = useCallback(async () => {
-        const ids = Array.from(pendingCoverIdsRef.current);
-        pendingCoverIdsRef.current.clear();
-        if (!ids.length) return;
-
-        try {
-          const covers = await api.getCoversBatch(ids, { silent: true });
-          if (Array.isArray(covers) && covers.length) {
-            let hasUpdates = false;
-            covers.forEach(r => {
-              if (!r || r.id == null) return;
-              if (r.image_data) {
-                coverCacheRef.current?.set(r.id, { url: r.image_data });
-                hasUpdates = true;
-              }
-            });
-            if (hasUpdates) bumpCoverVersion();
-          }
-        } catch {
-          // Silently fail - images will show placeholder
-        }
-      }, [api, bumpCoverVersion]);
-
-      const ensureCover = useCallback((id) => {
-        if (id == null) return;
-        if (coverCacheRef.current?.has(id)) return;
-        // Mark as pending to prevent duplicate fetches
-        coverCacheRef.current?.set(id, null);
-        pendingCoverIdsRef.current.add(id);
-
-        // Debounce batch fetch - collect requests for 100ms then fetch all at once
-        if (coverBatchTimerRef.current) clearTimeout(coverBatchTimerRef.current);
-        coverBatchTimerRef.current = setTimeout(() => {
-          coverBatchTimerRef.current = null;
-          flushCoverBatch();
-        }, 100);
-      }, [flushCoverBatch]);
-
+      // Enrich listings with covers
       const items = useMemo(() => {
-        // coverVersion dependency ensures re-computation when covers update
-        void coverVersion;
-        return (all || []).map(it => {
-          const cached = coverCacheRef.current?.get(it.id);
-          const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
-          const url = inline || '';
-          const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
-          return { ...it, __cover: url, __ar: ar };
-        });
-      }, [all, coverVersion, selectPrimaryListingImage]);
+        // Include version to trigger re-computation when covers update
+        void coverCache.version;
+        return addCoversToListings(pagination.listings, coverCache.getCover);
+      }, [pagination.listings, coverCache.version, coverCache.getCover]);
 
-      const mineWithCovers = useMemo(() => {
-        // coverVersion dependency ensures re-computation when covers update
-        void coverVersion;
-        return (mine || []).map(it => {
-          const cached = coverCacheRef.current?.get(it.id);
-          const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
-          const url = inline || '';
-          const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
-          return { ...it, __cover: url, __ar: ar };
-        });
-      }, [mine, coverVersion, selectPrimaryListingImage]);
+      const mine = useMemo(() => {
+        void coverCache.version;
+        return addCoversToListings(myListings.listings, coverCache.getCover);
+      }, [myListings.listings, coverCache.version, coverCache.getCover]);
+
+      // Actions
+      const refreshListings = useCallback(async (options = {}) => {
+        if (!options.preserveExisting) {
+          coverCache.clear();
+        }
+        await pagination.refresh(options.preserveExisting);
+      }, [pagination.refresh, coverCache.clear]);
 
       const toggleSold = useCallback(async (listing, makeSold) => {
         try {
           await api.markListingSold(listing.id, makeSold);
-          try {
-            const mineRes = await api.listMine({ silent: true });
-            setMine(asArray(mineRes) || []);
-          } catch { }
-          setSelectedListing(prev => {
-            if (prev && prev.id === listing.id) {
-              return { ...prev, sold: makeSold ? 1 : 0 };
-            }
-            return prev;
-          });
+
+          // Optimistic update for "mine"
+          myListings.setListings(prev =>
+            prev.map(it => it.id === listing.id ? { ...it, sold: makeSold ? 1 : 0 } : it)
+          );
+
+          // Remove from "all" if marked sold
           if (makeSold) {
-            setAll(prev => Array.isArray(prev) ? prev.filter(it => it.id !== listing.id) : prev);
+            pagination.setListings(prev =>
+              Array.isArray(prev) ? prev.filter(it => it.id !== listing.id) : prev
+            );
           }
-          await refreshListings();
+
+          // Refresh in background
+          myListings.refreshSilent();
         } catch (e) {
-          console.error('toggle sold failed', e);
-          alert('Failed to update sold status. Please try again.');
+          console.error('Failed to toggle sold status:', e);
+          // Revert on error
+          myListings.refreshSilent();
+          throw e;
         }
-      }, [api, refreshListings, asArray]);
+      }, [myListings, pagination]);
 
       return {
-        listings: all,
-        setListings: setAll,
-        mine: mineWithCovers,
-        setMine,
+        // Search
         query,
         setQuery,
         locationQuery,
         setLocationQuery,
         sort,
         setSort,
-        hasNext,
-        isFetchingListings,
-        sentinelRef,
-        selectedListing,
-        setSelectedListing,
-        editing,
-        setEditing,
-        showMassList,
-        setShowMassList,
-        reloadMineOnly,
-        refreshListings,
-        toggleSold,
         cityOptions,
+
+        // Listings data
         items,
-        ensureCover
+        mine,
+        hasNext: pagination.hasMore,
+        isFetchingListings: pagination.isLoading,
+
+        // Actions
+        refreshListings,
+        reloadMineOnly: myListings.refresh,
+        toggleSold,
+        ensureCover: coverCache.ensureCover,
+
+        // Refs
+        sentinelRef
       };
     }
 
+    // ============================================================
+    // HOOK: useListingModal
+    // ============================================================
     function useListingModal({ setSelectedListing }) {
       const openListingModal = useCallback((listing, coverSrc) => {
         if (typeof setSelectedListing !== 'function') return;
@@ -442,31 +626,32 @@
       }, [setSelectedListing]);
 
       const handleListingTileEvent = useCallback((evt, listing, coverSrc) => {
-        if (evt && typeof evt.preventDefault === 'function') {
-          evt.preventDefault();
-        }
-        if (evt && typeof evt.stopPropagation === 'function') {
-          evt.stopPropagation();
-        }
+        evt?.preventDefault?.();
+        evt?.stopPropagation?.();
         openListingModal(listing, coverSrc);
       }, [openListingModal]);
 
-      return {
-        openListingModal,
-        handleListingTileEvent
-      };
+      return { openListingModal, handleListingTileEvent };
     }
 
+    // ============================================================
+    // EXPORTS
+    // ============================================================
     return {
       useListingsFeature,
+      useListingModal,
       CityAutocomplete,
-      useListingModal
+      // Export individual hooks for flexibility
+      useDebounce,
+      useCoverCache,
+      useListingsPagination,
+      useMyListings,
+      useCitySearch,
+      useInfiniteScroll
     };
   }
 
   window.ListItApp = window.ListItApp || {};
   window.ListItApp.features = window.ListItApp.features || {};
-  window.ListItApp.features.listings = {
-    createListingsFeature
-  };
+  window.ListItApp.features.listings = { createListingsFeature };
 })();

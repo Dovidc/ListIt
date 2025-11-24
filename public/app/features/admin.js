@@ -724,28 +724,28 @@
       );
     }
 
-    function useAdminListingActions({ setAllListings, setMineListings }) {
-      const toArray = (value) => Array.isArray(value) ? value : [];
-
+    function useAdminListingActions({ refreshListings, reloadMineOnly }) {
       const handleAdminDeleteAll = useCallback(async () => {
         await api.adminDeleteAll();
-        if (typeof setAllListings === 'function') {
-          setAllListings([]);
+        // Refresh listings to reflect the deletion
+        if (typeof refreshListings === 'function') {
+          await refreshListings();
         }
-        if (typeof setMineListings === 'function') {
-          setMineListings([]);
+        if (typeof reloadMineOnly === 'function') {
+          await reloadMineOnly();
         }
-      }, [api, setAllListings, setMineListings]);
+      }, [refreshListings, reloadMineOnly]);
 
-      const handleAdminDelete = useCallback((listingId) => {
+      const handleAdminDelete = useCallback(async (listingId) => {
         if (!listingId) return;
-        if (typeof setAllListings === 'function') {
-          setAllListings((prev) => toArray(prev).filter((item) => item.id !== listingId));
+        // After admin delete, refresh to get updated list
+        if (typeof refreshListings === 'function') {
+          await refreshListings({ preserveExisting: true });
         }
-        if (typeof setMineListings === 'function') {
-          setMineListings((prev) => toArray(prev).filter((item) => item.id !== listingId));
+        if (typeof reloadMineOnly === 'function') {
+          await reloadMineOnly();
         }
-      }, [setAllListings, setMineListings]);
+      }, [refreshListings, reloadMineOnly]);
 
       return {
         handleAdminDeleteAll,

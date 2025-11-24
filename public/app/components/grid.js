@@ -77,34 +77,8 @@
       }, children);
     });
 
-    const GridTile = React.memo(function GridTile({ item, onEnsureCover, onSelect, onSupporterClick, isMobile }) {
+    const GridTile = React.memo(function GridTile({ item, onSelect, onSupporterClick, isMobile }) {
       const ref = useRef(null);
-
-      useEffect(() => {
-        const el = ref.current;
-        if (!el || !item?.id) return undefined;
-
-        if (typeof IntersectionObserver !== 'function') {
-          if (!item.__cover && typeof onEnsureCover === 'function') {
-            onEnsureCover(item.id);
-          }
-          return undefined;
-        }
-
-        const observer = new IntersectionObserver((entries) => {
-          if (!Array.isArray(entries)) return;
-          const intersecting = entries.some((entry) => entry.isIntersecting);
-          if (intersecting) {
-            if (!item.__cover && typeof onEnsureCover === 'function') {
-              onEnsureCover(item.id);
-            }
-            observer.disconnect();
-          }
-        }, { rootMargin: isMobile ? '400px 0px' : '800px 0px' });
-
-        observer.observe(el);
-        return () => observer.disconnect();
-      }, [item?.id, item?.__cover, onEnsureCover, isMobile]);
 
       const src = item?.__cover;
       const isClickable = typeof onSelect === 'function';
@@ -133,6 +107,7 @@
       return H('div', {
         ref,
         className: 'card',
+        'data-listing-id': item?.id,
         style: {
           padding: 0,
           overflow: 'hidden',
@@ -238,7 +213,44 @@
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
       const containerRef = useRef(null);
+      const observedIdsRef = useRef(new Set());
       const virtualizationAvailable = enableVirtualization && hasVirtualMasonry;
+
+      // Single shared IntersectionObserver for all tiles - much more efficient than per-tile observers
+      useEffect(() => {
+        if (typeof IntersectionObserver !== 'function') return;
+        if (typeof onEnsureCover !== 'function') return;
+
+        const rootMargin = isMobile ? '100px 0px' : '200px 0px';
+
+        const observer = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const id = entry.target.dataset?.listingId;
+            if (!id) continue;
+            // Only call once per ID
+            if (observedIdsRef.current.has(id)) continue;
+            observedIdsRef.current.add(id);
+            onEnsureCover(id);
+          }
+        }, { rootMargin });
+
+        // Observe all listing tiles in the container
+        const container = containerRef.current;
+        if (container) {
+          const tiles = container.querySelectorAll('[data-listing-id]');
+          tiles.forEach(tile => observer.observe(tile));
+        }
+
+        return () => observer.disconnect();
+      }, [items, onEnsureCover, isMobile]);
+
+      // Reset observed IDs when items change significantly (new search/filter)
+      useEffect(() => {
+        if (items.length === 0) {
+          observedIdsRef.current.clear();
+        }
+      }, [items.length]);
 
       const virtualItems = useMemo(() => {
         if (!virtualizationAvailable) return [];
@@ -339,7 +351,6 @@
             return H(VirtualEntry, commonProps,
               H(GridTile, {
                 item: entry.data,
-                onEnsureCover,
                 onSelect,
                 onSupporterClick,
                 isMobile
@@ -363,7 +374,6 @@
           return H(GridTile, {
             key,
             item: data,
-            onEnsureCover,
             onSelect,
             onSupporterClick,
             isMobile
