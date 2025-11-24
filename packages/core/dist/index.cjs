@@ -37,10 +37,13 @@ function createApiClient(options = {}) {
     if (!silent) onRequestStart?.();
 
     try {
-      const requestInit = { credentials: 'include', ...init };
-      if (meta.priority) {
-        requestInit.priority = meta.priority;
-      }
+    const requestInit = { credentials: 'include', ...init };
+    if (meta.priority) {
+      requestInit.priority = meta.priority;
+    }
+    if (meta.signal) {
+      requestInit.signal = meta.signal;
+    }
 
       const response = await fetchLike(resolveUrl(path), requestInit);
 

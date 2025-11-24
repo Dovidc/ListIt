@@ -1,5 +1,5 @@
 (() => {
-  function createHelpers({ React }) {
+  function createHelpers({ React, pageSize: pageSizeOverride }) {
     if (!React || typeof React.useState !== 'function') {
       throw new Error('Helpers require React.');
     }
@@ -339,7 +339,13 @@
       return r.top + (window.scrollY || 0);
     }
 
-    function normalizeListingsResponse(res, limit = 75) {
+    const DEFAULT_PAGE_SIZE = 32;
+
+    const pageSize = Number.isFinite(pageSizeOverride)
+      ? Math.max(1, pageSizeOverride)
+      : DEFAULT_PAGE_SIZE;
+
+    function normalizeListingsResponse(res, limit = pageSize) {
       let rows = [];
       if (Array.isArray(res)) rows = res;
       else if (res && typeof res === 'object') {
@@ -374,8 +380,6 @@
           ? normalizeListingsResponse(x).rows
           : []
     );
-
-    const pageSize = 75;
 
     function selectPrimaryListingImage(listing, fallback) {
       if (!listing) return fallback || null;

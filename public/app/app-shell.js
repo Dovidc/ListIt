@@ -357,6 +357,7 @@
         setSort,
         hasNext,
         isFetchingListings,
+        listingsNotice,
         sentinelRef,
         selectedListing,
         setSelectedListing,
@@ -1026,7 +1027,16 @@
                           )
                         ),
 
-
+                        listingsNotice && H('div', {
+                          className: 'card',
+                          role: 'status',
+                          style: {
+                            margin: '8px 0',
+                            border: '1px solid #f59e0b',
+                            background: '#fffbeb',
+                            color: '#92400e'
+                          }
+                        }, listingsNotice),
 
                         H(ListingsGrid, {
                           items,

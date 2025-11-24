@@ -27,7 +27,7 @@
     const price = (n) => formatCurrency(n ?? 0);
     const fmtDistance = (m) => formatDistance(m);
     const haversineMeters = (...args) => coreHaversineMeters(...args);
-    const PAGE_SIZE = 75;
+    const PAGE_SIZE = 32;
 
     const appNavFactory = bundles?.bootstrap?.createAppNav;
     if (typeof appNavFactory !== 'function') {
@@ -59,8 +59,9 @@
       pageTop,
       normalizeListingsResponse,
       asArray,
+      pageSize,
       useVirtualMasonry
-    } = helpersFactory({ React: runtimeReact });
+    } = helpersFactory({ React: runtimeReact, pageSize: PAGE_SIZE });
 
     const resolveApiBaseUrl = () => {
       if (typeof window === 'undefined') return '';
@@ -212,7 +213,7 @@
         normalizeListingsResponse,
         asArray,
         selectPrimaryListingImage,
-        pageSize: PAGE_SIZE
+        pageSize
       },
       uploads: {
         prepareListingForModal,

@@ -19,7 +19,7 @@
     const normalizeListingsResponse = helpers?.normalizeListingsResponse;
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
-    const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
+    const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 32;
 
     if (typeof normalizeListingsResponse !== 'function') {
       throw new Error('Listings feature requires normalizeListingsResponse helper.');
@@ -135,6 +135,8 @@
       const loadingListingsRef = useRef(false);
       const nextCursorRef = useRef(null);
       const reloadReqRef = useRef(0);
+      const listingsAbortRef = useRef(null);
+      const coversAbortRef = useRef(null);
 
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
@@ -148,6 +150,13 @@
         return () => clearTimeout(timer);
       }, [locationQuery]);
 
+      useEffect(() => () => {
+        if (listingsAbortRef.current) listingsAbortRef.current.abort();
+        if (coversAbortRef.current) coversAbortRef.current.abort();
+      }, []);
+
+      const [listingsNotice, setListingsNotice] = useState('');
+
       const reloadMineOnly = useCallback(async () => {
         if (!user) {
           setMine([]);
@@ -159,8 +168,13 @@
 
       const loadListings = useCallback(async ({ cursor = null, replace = false } = {}) => {
         const req = ++reloadReqRef.current;
+        if (listingsAbortRef.current) listingsAbortRef.current.abort();
+        if (coversAbortRef.current) coversAbortRef.current.abort();
+        const controller = new AbortController();
+        listingsAbortRef.current = controller;
         loadingListingsRef.current = true;
         setIsFetchingListings(true);
+        setListingsNotice('');
         try {
           const res = await api.listAll({
             q: debouncedQuery.trim() || '',
@@ -168,7 +182,7 @@
             cursor,
             limit: pageSize,
             sort
-          });
+          }, { signal: controller.signal });
 
           if (req !== reloadReqRef.current) return;
 
@@ -209,19 +223,33 @@
             try {
               const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
               if (ids.length) {
-                const covers = await api.getCoversBatch(ids, { silent: true });
-                if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
-                  const patch = {};
-                  covers.forEach(r => {
-                    if (!r || r.id == null) return;
-                    if (r.image_data) patch[r.id] = { url: r.image_data };
-                  });
-                  if (Object.keys(patch).length) {
-                    setCoverById(prev => ({ ...prev, ...patch }));
+                const coversController = new AbortController();
+                coversAbortRef.current = coversController;
+                try {
+                  const covers = await api.getCoversBatch(ids, { silent: true, signal: coversController.signal });
+                  if (req === reloadReqRef.current && Array.isArray(covers) && covers.length) {
+                    const patch = {};
+                    covers.forEach(r => {
+                      if (!r || r.id == null) return;
+                      if (r.image_data) patch[r.id] = { url: r.image_data };
+                    });
+                    if (Object.keys(patch).length) {
+                      setCoverById(prev => ({ ...prev, ...patch }));
+                    }
                   }
+                } catch (err) {
+                  if (req === reloadReqRef.current) {
+                    if (err?.name === 'AbortError') {
+                      setListingsNotice('Image previews were interrupted. Try again if thumbnails are missing.');
+                    } else {
+                      setListingsNotice('Could not load preview images. Please retry.');
+                    }
+                  }
+                } finally {
+                  if (coversAbortRef.current === coversController) coversAbortRef.current = null;
                 }
               }
-            } catch { }
+            }
           }
 
           nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
@@ -231,11 +259,17 @@
             if (replace || cursor == null) setAll([]);
             setHasNext(false);
             if (cursor == null && !user) setMine([]);
+            if (e?.name === 'AbortError') {
+              setListingsNotice('Listings request was interrupted. Please retry.');
+            } else {
+              setListingsNotice('Could not load listings. Please try again.');
+            }
           }
         } finally {
           if (req === reloadReqRef.current) {
             loadingListingsRef.current = false;
             setIsFetchingListings(false);
+            if (listingsAbortRef.current === controller) listingsAbortRef.current = null;
           }
         }
       }, [api, debouncedQuery, debouncedLocation, pageSize, sort, user, asArray]);
@@ -369,6 +403,7 @@
         setSort,
         hasNext,
         isFetchingListings,
+        listingsNotice,
         sentinelRef,
         selectedListing,
         setSelectedListing,
