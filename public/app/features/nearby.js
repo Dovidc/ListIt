@@ -722,9 +722,7 @@
           className: 'nearby-grid',
           items: items,
           isMobile: !!isMobile,
-          onSelect: handleSelectListing,
-          onSupporterClick,
-          enableVirtualization: true
+          onSelect: handleSelectListing
         }),
 
         H('div', { ref: sentinelRef, style: { height: 20, marginBottom: 20 } }),

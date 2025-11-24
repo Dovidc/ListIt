@@ -51,15 +51,9 @@
       serializePushSubscription,
       createConcurrencyLimiter,
       getUserCoordsOnce,
-      interleaveByColumns,
-      useColumnCount,
-      useElementWidth,
-      useWindowScrollY,
       useBodyScrollLock,
-      pageTop,
       normalizeListingsResponse,
       asArray,
-      useVirtualMasonry,
       createLRUCache
     } = helpersFactory({ React: runtimeReact });
 
@@ -181,10 +175,7 @@
 
     const { ListingsGrid } = gridComponentsFactory({
       React: runtimeReact,
-      components: { ImageWithSkeleton, AdTile, SupporterBadge },
-      helpers: {
-        useVirtualMasonry
-      }
+      components: { ImageWithSkeleton, AdTile, SupporterBadge }
     });
 
     const layoutComponentsFactory = bundles?.components?.layout?.createLayoutComponents;
@@ -561,14 +552,9 @@
         arrayBufferToBase64Url,
         createConcurrencyLimiter,
         getUserCoordsOnce,
-        interleaveByColumns,
-        useColumnCount,
-        useElementWidth,
-        useWindowScrollY,
         useBodyScrollLock,
-        pageTop,
         normalizeListingsResponse,
-        useVirtualMasonry
+        createLRUCache
       },
       uploads: {
         dedupeImageUrls,

@@ -1032,9 +1032,7 @@
                           ads,
                           isMobile,
                           onEnsureCover: ensureCover,
-                          onSelect: handleListingTileEvent,
-                          onSupporterClick: handleSupporterBadgeClick,
-                          enableVirtualization: true
+                          onSelect: handleListingTileEvent
                         }),
 
                         H('div', {
