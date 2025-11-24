@@ -20,6 +20,7 @@
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
+    const effectivePageSize = Math.max(24, Math.min(pageSize, 50));
 
     if (typeof normalizeListingsResponse !== 'function') {
       throw new Error('Listings feature requires normalizeListingsResponse helper.');
@@ -120,6 +121,8 @@
     const defaultSafeTrim = (s) => (typeof s === 'string' ? s.trim() : '');
 
     function useListingsFeature({ user, currentTab }) {
+      const normalizeIdKey = (value) => (value == null ? value : String(value));
+
       const [all, setAll] = useState([]);
       const [mine, setMine] = useState([]);
       const [query, setQuery] = useState('');
@@ -131,7 +134,10 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
       const [cityOptions, setCityOptions] = useState([]);
-      const [coverById, setCoverById] = useState(() => (Object.create(null)));
+      const coverCacheRef = useRef(new Map());
+      const coverScopeRef = useRef('');
+      const [coverVersion, setCoverVersion] = useState(0);
+      const pendingCoverFetchRef = useRef(new Set());
       const [error, setError] = useState(null);
 
       const sentinelRef = useRef(null);
@@ -158,6 +164,36 @@
         return () => clearTimeout(timer);
       }, [locationQuery]);
 
+      const bumpCoverVersion = useCallback(() => setCoverVersion((v) => v + 1), []);
+
+      const resetCoverCache = useCallback((scope) => {
+        coverScopeRef.current = scope;
+        coverCacheRef.current = new Map();
+        bumpCoverVersion();
+      }, [bumpCoverVersion]);
+
+      const writeCoverCache = useCallback((patch) => {
+        if (!patch || typeof patch !== 'object') return;
+        const next = new Map(coverCacheRef.current);
+        Object.entries(patch).forEach(([id, value]) => {
+          if (id == null) return;
+          const numericId = Number(id);
+          if (!Number.isFinite(numericId)) return;
+          next.delete(numericId);
+          next.set(numericId, value);
+        });
+
+        // Enforce an upper bound to avoid unbounded memory growth during rapid searches
+        const COVER_CACHE_LIMIT = 180;
+        while (next.size > COVER_CACHE_LIMIT) {
+          const oldestKey = next.keys().next().value;
+          next.delete(oldestKey);
+        }
+
+        coverCacheRef.current = next;
+        bumpCoverVersion();
+      }, [bumpCoverVersion]);
+
       const reloadMineOnly = useCallback(async () => {
         if (!user) {
           setMine([]);
@@ -182,14 +218,14 @@
             q,
             loc,
             cursor,
-            limit: pageSize,
+            limit: effectivePageSize,
             sort
           });
 
           if (req !== reloadReqRef.current) return;
           if (!isMounted()) return;
 
-          const { rows, hasNext: rawHasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
+          const { rows, hasNext: rawHasNext, nextCursor } = normalizeListingsResponse(res, effectivePageSize);
           const newRows = rows || [];
           // Defensive: if no rows returned, assume no next page to prevent infinite loop
           const hasNext = newRows.length > 0 && !!rawHasNext;
@@ -198,16 +234,17 @@
           setAll(prev => {
             if (replace || cursor == null) return newRows;
             if (!prev || !prev.length) return newRows;
-            const existing = new Set(prev.map(r => r.id));
-            const appended = newRows.filter(r => !existing.has(r.id));
+            const existing = new Set(prev.map(r => normalizeIdKey(r.id)));
+            const appended = newRows.filter(r => !existing.has(normalizeIdKey(r.id)));
 
             // Double-check for duplicates in the final array just in case
             const combined = appended.length ? [...prev, ...appended] : prev;
             const seen = new Set();
             const unique = [];
             for (const item of combined) {
-              if (seen.has(item.id)) continue;
-              seen.add(item.id);
+              const idKey = normalizeIdKey(item.id);
+              if (seen.has(idKey)) continue;
+              seen.add(idKey);
               unique.push(item);
             }
             return unique;
@@ -236,7 +273,7 @@
                     if (r.image_data) patch[r.id] = { url: r.image_data };
                   });
                   if (Object.keys(patch).length) {
-                    setCoverById(prev => ({ ...prev, ...patch }));
+                    writeCoverCache(patch);
                   }
                 }
               }
@@ -258,27 +295,24 @@
             setIsFetchingListings(false);
           }
         }
-      }, [api, debouncedQuery, debouncedLocation, pageSize, sort, asArray, safeTrim]);
+      }, [api, debouncedQuery, debouncedLocation, effectivePageSize, sort, asArray, safeTrim]);
 
       useEffect(() => {
+        const scope = `${safeTrim(debouncedQuery)}|${safeTrim(debouncedLocation)}|${sort}`;
         nextCursorRef.current = null;
-        // Do NOT clear listings here. Keeping them visible prevents layout collapse/crash
-        // while the new data is being fetched.
-        // setAll([]); 
-        // setCoverById(Object.create(null));
-        // setHasNext(false);
+        resetCoverCache(scope);
         loadListings({ cursor: null, replace: true });
-      }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings]);
+      }, [user?.id, debouncedQuery, debouncedLocation, sort, loadListings, resetCoverCache, safeTrim]);
 
       const refreshListings = useCallback(async ({ preserveExisting = false } = {}) => {
         nextCursorRef.current = null;
         if (!preserveExisting) {
           setAll([]);
-          setCoverById(Object.create(null));
+          resetCoverCache(`${safeTrim(debouncedQuery)}|${safeTrim(debouncedLocation)}|${sort}`);
           setHasNext(false);
         }
         await loadListings({ cursor: null, replace: true });
-      }, [loadListings]);
+      }, [loadListings, resetCoverCache, safeTrim, debouncedQuery, debouncedLocation, sort]);
 
       useEffect(() => {
         if (currentTab !== 'browse') return;
@@ -319,8 +353,12 @@
       }, [locationQuery, api]);
 
       const ensureCover = useCallback(async (id) => {
-        if (id == null) return;
-        if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
+        const numericId = Number(id);
+        const key = Number.isFinite(numericId) ? numericId : id;
+        if (key == null) return;
+        if (coverCacheRef.current.has(key)) return;
+        if (pendingCoverFetchRef.current.has(key)) return;
+        pendingCoverFetchRef.current.add(key);
         try {
           const arr = await api.getListingImages(id, { silent: true });
           let obj = null;
@@ -329,31 +367,35 @@
               ? { url: arr[0], w: null, h: null }
               : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
           }
-          setCoverById((prev) => ({ ...prev, [id]: obj }));
+          writeCoverCache({ [key]: obj });
         } catch {
-          setCoverById((prev) => ({ ...prev, [id]: null }));
+          writeCoverCache({ [key]: null });
+        } finally {
+          pendingCoverFetchRef.current.delete(key);
         }
-      }, [coverById, api]);
+      }, [api, writeCoverCache]);
 
       const items = useMemo(() => {
         return (all || []).filter(it => it && it.id).map(it => {
-          const cached = coverById[it.id];
+          const cacheKey = Number.isFinite(Number(it.id)) ? Number(it.id) : it.id;
+          const cached = coverCacheRef.current.get(cacheKey);
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';
           const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
           return { ...it, __cover: url, __ar: ar };
         });
-      }, [all, coverById, selectPrimaryListingImage]);
+      }, [all, coverVersion, selectPrimaryListingImage]);
 
       const mineWithCovers = useMemo(() => {
         return (mine || []).filter(it => it && it.id).map(it => {
-          const cached = coverById[it.id];
+          const cacheKey = Number.isFinite(Number(it.id)) ? Number(it.id) : it.id;
+          const cached = coverCacheRef.current.get(cacheKey);
           const inline = cached?.url || selectPrimaryListingImage(it, it?.image_data || it?.thumb_url || (Array.isArray(it?.images) ? it.images[0] : null));
           const url = inline || '';
           const ar = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
           return { ...it, __cover: url, __ar: ar };
         });
-      }, [mine, coverById, selectPrimaryListingImage]);
+      }, [mine, coverVersion, selectPrimaryListingImage]);
 
       const toggleSold = useCallback(async (listing, makeSold) => {
         try {
