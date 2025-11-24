@@ -144,6 +144,7 @@
     const gridComponents = components?.grid || {};
     const listingComponents = components?.listing || {};
     const supporterComponents = components?.supporter || {};
+    const errorBoundaryComponents = components?.errorBoundary || {};
 
     const { Header, GlobalLoader } = layoutComponents;
     const { ListingsGrid } = gridComponents;
@@ -153,6 +154,7 @@
       SellerProfile
     } = listingComponents;
     const { SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponents;
+    const { GlobalErrorBoundary } = errorBoundaryComponents;
 
     assertFunction(Header, 'components.layout.Header');
     assertFunction(GlobalLoader, 'components.layout.GlobalLoader');
@@ -161,7 +163,10 @@
     assertFunction(ListingModal, 'components.listing.ListingModal');
     assertFunction(SellerProfile, 'components.listing.SellerProfile');
     assertFunction(SupporterInfoModal, 'components.supporter.SupporterInfoModal');
+    assertFunction(SupporterInfoModal, 'components.supporter.SupporterInfoModal');
     assertFunction(SupporterUpsellModal, 'components.supporter.SupporterUpsellModal');
+    // GlobalErrorBoundary is optional but recommended
+
 
 
     if (!api) {
@@ -237,9 +242,10 @@
       }, [tab, handleTabChange]);
 
       // Restore scroll position when returning to browse
-      React.useLayoutEffect(() => {
+      useEffect(() => {
         if (tab === 'browse' && prevTabRef.current !== 'browse') {
-          window.scrollTo(0, browseScrollPos.current);
+          // Small timeout to allow layout to settle
+          setTimeout(() => window.scrollTo(0, browseScrollPos.current), 0);
         } else if (tab !== 'browse') {
           window.scrollTo(0, 0);
         }
@@ -1318,19 +1324,26 @@
       );
     });
 
+    const WrappedApp = GlobalErrorBoundary
+      ? (props) => H(GlobalErrorBoundary, null, H(App, props))
+      : App;
+
     function Root() {
       return H(AuthProvider, null,
         H(ListingQueueProvider, null,
-          H(App)
+          H(WrappedApp)
         )
       );
     }
 
-    return { App, Root };
+    return {
+      App: WrappedApp,
+      Root,
+      createEditorState
+    };
   }
 
   window.ListItApp = window.ListItApp || {};
   window.ListItApp.app = window.ListItApp.app || {};
   window.ListItApp.app.createAppShell = createAppShell;
 })();
-

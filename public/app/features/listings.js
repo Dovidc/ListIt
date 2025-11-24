@@ -189,9 +189,11 @@
           if (req !== reloadReqRef.current) return;
           if (!isMounted()) return;
 
-          const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
+          const { rows, hasNext: rawHasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
           const newRows = rows || [];
-          setHasNext(!!hasNext);
+          // Defensive: if no rows returned, assume no next page to prevent infinite loop
+          const hasNext = newRows.length > 0 && !!rawHasNext;
+          setHasNext(hasNext);
 
           setAll(prev => {
             if (replace || cursor == null) return newRows;

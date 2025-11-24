@@ -527,6 +527,7 @@
       const isMounted = helpers.useIsMounted ? helpers.useIsMounted() : (() => true);
 
       const loadNearby = useCallback(async (forceLocation = false, isLoadMore = false) => {
+        if (!isMounted()) return;
         if (isLoadMore && !nextCursor) return;
         if (isLoadMore && (busy || isLoadingMore)) return;
 
@@ -541,6 +542,9 @@
           if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
             throw new Error('location_unavailable');
           }
+
+          if (loadTokenRef.current !== token) return;
+          if (!isMounted()) return;
 
           const cursorToUse = isLoadMore ? nextCursor : null;
           const response = await api.listNearby(coords.lat, coords.lon, radius, {

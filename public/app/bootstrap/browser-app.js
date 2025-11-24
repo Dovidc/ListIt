@@ -178,6 +178,12 @@
       ReactDOM: runtimeReactDOM
     });
 
+    const errorBoundaryComponentsFactory = bundles?.components?.errorBoundary?.createErrorBoundary;
+    // Optional: don't throw if missing, just warn or ignore
+    const { GlobalErrorBoundary } = (typeof errorBoundaryComponentsFactory === 'function')
+      ? errorBoundaryComponentsFactory({ React: runtimeReact })
+      : {};
+
     const { ListingsGrid } = gridComponentsFactory({
       React: runtimeReact,
       components: { ImageWithSkeleton, AdTile, SupporterBadge },
@@ -517,7 +523,8 @@
           ListingModal,
           SellerProfile
         },
-        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal }
+        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal },
+        errorBoundary: { GlobalErrorBoundary }
       },
       uploads: {
         prepareListingForModal,
