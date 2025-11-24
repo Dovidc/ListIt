@@ -337,18 +337,28 @@
       return 0;
     };
 
+    // Detect iOS for scroll throttling
+    const isIOS = typeof navigator !== 'undefined' && /(iPad|iPhone|iPod)/i.test(navigator.userAgent);
+
     function useWindowScrollY() {
       const [y, setY] = useState(readWindowScrollY());
       useEffect(() => {
         let ticking = false;
+        let lastUpdate = 0;
+        // Throttle more aggressively on iOS to prevent crashes
+        const minInterval = isIOS ? 100 : 16;
+
         const onScroll = () => {
-          if (!ticking) {
-            window.requestAnimationFrame(() => {
-              setY(readWindowScrollY());
-              ticking = false;
-            });
-            ticking = true;
-          }
+          if (ticking) return;
+          const now = Date.now();
+          if (now - lastUpdate < minInterval) return;
+
+          ticking = true;
+          window.requestAnimationFrame(() => {
+            setY(readWindowScrollY());
+            lastUpdate = Date.now();
+            ticking = false;
+          });
         };
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
@@ -434,21 +444,45 @@
       const scrollY = useWindowScrollY();
       const containerW = useElementWidth(containerRef, active);
 
-      const [heightMap, setHeightMap] = useState(() => Object.create(null));
+      const heightMapRef = useRef(Object.create(null));
+      const [heightMapVersion, setHeightMapVersion] = useState(0);
 
       // Reset height map when items are cleared (e.g. sorting change)
       useEffect(() => {
         if (items.length === 0) {
-          setHeightMap(Object.create(null));
+          heightMapRef.current = Object.create(null);
+          setHeightMapVersion(v => v + 1);
         }
       }, [items.length]);
 
+      // Prune heights for items no longer in the list (limit memory)
+      useEffect(() => {
+        const currentIds = new Set(items.map(it => it.id));
+        const heightKeys = Object.keys(heightMapRef.current);
+        // Only prune if we have significantly more heights than items
+        if (heightKeys.length > items.length + 50) {
+          let pruned = false;
+          for (const key of heightKeys) {
+            if (!currentIds.has(key)) {
+              delete heightMapRef.current[key];
+              pruned = true;
+            }
+          }
+          if (pruned) setHeightMapVersion(v => v + 1);
+        }
+      }, [items]);
+
       const registerHeight = useCallback((id, h) => {
         if (!id || !Number.isFinite(h) || h <= 0) return;
-        setHeightMap((m) => (m[id] === h ? m : { ...m, [id]: h }));
+        if (heightMapRef.current[id] === h) return;
+        heightMapRef.current[id] = h;
+        setHeightMapVersion(v => v + 1);
       }, []);
 
       const layout = useMemo(() => {
+        // heightMapVersion triggers recalc when heights change
+        void heightMapVersion;
+        const heightMap = heightMapRef.current;
         const cols = Math.max(1, columnCount || 1);
         const gap = columnGap;
         const w = Math.max(1, containerW);
@@ -468,7 +502,7 @@
         }
         const containerHeight = Math.max(...colHeights, 0);
         return { positions: pos, containerHeight, colWidth: colW, gap };
-      }, [items, heightMap, containerW, columnCount, columnGap, estimateHeight]);
+      }, [items, heightMapVersion, containerW, columnCount, columnGap, estimateHeight]);
 
       const viewport = useMemo(() => {
         const el = containerRef.current;

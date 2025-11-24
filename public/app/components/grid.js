@@ -71,6 +71,7 @@
         style: {
           position: 'absolute',
           boxSizing: 'border-box',
+          contain: 'layout style paint',
           ...style
         }
       }, children);
@@ -257,6 +258,8 @@
       const virtualizationThreshold = isMobile ? 6 : 8;
       const shouldVirtualize = virtualizationAvailable && entries.length >= virtualizationThreshold;
       const virtualizationEstimate = isMobile ? 180 : 240;
+      // Reduce overscan on mobile to prevent memory issues on iOS Safari
+      const overscan = isMobile ? 1.5 : 2.5;
       const virtualizationState = virtualizationAvailable
         ? useVirtualMasonry({
           containerRef,
@@ -264,7 +267,7 @@
           columnCount: cols,
           columnGap: resolvedGap,
           estimateHeight: virtualizationEstimate,
-          overscanVH: 4,
+          overscanVH: overscan,
           active: shouldVirtualize
         })
         : null;
@@ -295,7 +298,13 @@
 
         const estimatedHeight = containerHeight > 0 ? containerHeight : fallbackHeight;
         const minHeight = containerHeight > 0 ? containerHeight : fallbackHeight;
-        const virtualStyle = { ...baseStyle, position: 'relative' };
+        const virtualStyle = {
+          ...baseStyle,
+          position: 'relative',
+          // CSS containment for better scroll performance on iOS
+          contain: 'layout style',
+          willChange: 'contents'
+        };
         if (baseStyle.height == null) {
           virtualStyle.height = estimatedHeight;
         }
