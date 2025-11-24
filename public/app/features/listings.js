@@ -152,6 +152,11 @@
       const userRef = useRef(user);
       useEffect(() => { userRef.current = user; }, [user]);
 
+      const isActiveRequest = useCallback(
+        (requestId) => requestId === reloadReqRef.current && isMounted(),
+        [isMounted]
+      );
+
       const [debouncedQuery, setDebouncedQuery] = useState('');
       useEffect(() => {
         const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -222,51 +227,54 @@
             sort
           });
 
-          if (req !== reloadReqRef.current) return;
-          if (!isMounted()) return;
-
           const { rows, hasNext: rawHasNext, nextCursor } = normalizeListingsResponse(res, effectivePageSize);
           const newRows = rows || [];
           // Defensive: if no rows returned, assume no next page to prevent infinite loop
           const hasNext = newRows.length > 0 && !!rawHasNext;
-          setHasNext(hasNext);
+          const shouldUseResponse = isActiveRequest(req);
 
-          setAll(prev => {
-            if (replace || cursor == null) return newRows;
-            if (!prev || !prev.length) return newRows;
-            const existing = new Set(prev.map(r => normalizeIdKey(r.id)));
-            const appended = newRows.filter(r => !existing.has(normalizeIdKey(r.id)));
+          if (shouldUseResponse) {
+            setHasNext(hasNext);
 
-            // Double-check for duplicates in the final array just in case
-            const combined = appended.length ? [...prev, ...appended] : prev;
-            const seen = new Set();
-            const unique = [];
-            for (const item of combined) {
-              const idKey = normalizeIdKey(item.id);
-              if (seen.has(idKey)) continue;
-              seen.add(idKey);
-              unique.push(item);
+            setAll(prev => {
+              if (replace || cursor == null) return newRows;
+              if (!prev || !prev.length) return newRows;
+              const existing = new Set(prev.map(r => normalizeIdKey(r.id)));
+              const appended = newRows.filter(r => !existing.has(normalizeIdKey(r.id)));
+
+              // Double-check for duplicates in the final array just in case
+              const combined = appended.length ? [...prev, ...appended] : prev;
+              const seen = new Set();
+              const unique = [];
+              for (const item of combined) {
+                const idKey = normalizeIdKey(item.id);
+                if (seen.has(idKey)) continue;
+                seen.add(idKey);
+                unique.push(item);
+              }
+              return unique;
+            });
+
+            if (cursor == null) {
+              if (user) {
+                try {
+                  const m = await api.listMine({ silent: true });
+                  if (isMounted()) setMine(asArray(m));
+                } catch { }
+              } else {
+                setMine([]);
+              }
             }
-            return unique;
-          });
 
-          if (cursor == null) {
-            if (user) {
-              try {
-                const m = await api.listMine({ silent: true });
-                if (isMounted()) setMine(asArray(m));
-              } catch { }
-            } else {
-              setMine([]);
-            }
+            nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
           }
 
-          if (newRows.length) {
+          if (shouldUseResponse && newRows.length) {
             try {
               const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
               if (ids.length) {
                 const covers = await api.getCoversBatch(ids, { silent: true });
-                if (req === reloadReqRef.current && Array.isArray(covers) && covers.length && isMounted()) {
+                if (isActiveRequest(req) && Array.isArray(covers) && covers.length && isMounted()) {
                   const patch = {};
                   covers.forEach(r => {
                     if (!r || r.id == null) return;
@@ -279,10 +287,8 @@
               }
             } catch { }
           }
-
-          nextCursorRef.current = hasNext ? (nextCursor ?? null) : null;
         } catch (e) {
-          if (req === reloadReqRef.current && isMounted()) {
+          if (isActiveRequest(req)) {
             console.error('load listings failed', e);
             setError(e.message || 'Failed to load listings');
             if (replace || cursor == null) setAll([]);
@@ -292,10 +298,10 @@
         } finally {
           if (req === reloadReqRef.current) {
             loadingListingsRef.current = false;
-            setIsFetchingListings(false);
+            if (isMounted()) setIsFetchingListings(false);
           }
         }
-      }, [api, debouncedQuery, debouncedLocation, effectivePageSize, sort, asArray, safeTrim]);
+      }, [api, debouncedQuery, debouncedLocation, effectivePageSize, sort, asArray, safeTrim, isActiveRequest]);
 
       useEffect(() => {
         const scope = `${safeTrim(debouncedQuery)}|${safeTrim(debouncedLocation)}|${sort}`;
