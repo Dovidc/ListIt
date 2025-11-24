@@ -366,6 +366,102 @@
       return y;
     }
 
+    // Instagram-style scroll state hook with velocity detection
+    function useScrollState() {
+      const [state, setState] = useState({
+        scrollY: readWindowScrollY(),
+        isScrollingFast: false,
+        direction: 0 // -1 = up, 0 = none, 1 = down
+      });
+
+      const lastScrollY = useRef(readWindowScrollY());
+      const lastTime = useRef(Date.now());
+      const velocityHistory = useRef([]);
+      const rafId = useRef(null);
+      const updateTimeout = useRef(null);
+
+      useEffect(() => {
+        const VELOCITY_THRESHOLD = isIOS ? 1500 : 2000; // pixels per second
+        const HISTORY_SIZE = 3;
+        const UPDATE_INTERVAL = isIOS ? 80 : 32;
+
+        const calculateVelocity = () => {
+          if (velocityHistory.current.length < 2) return 0;
+          const sum = velocityHistory.current.reduce((a, b) => a + b, 0);
+          return sum / velocityHistory.current.length;
+        };
+
+        const scheduleUpdate = () => {
+          if (updateTimeout.current) return;
+          updateTimeout.current = setTimeout(() => {
+            updateTimeout.current = null;
+            const velocity = calculateVelocity();
+            const isScrollingFast = Math.abs(velocity) > VELOCITY_THRESHOLD;
+            const currentY = readWindowScrollY();
+
+            setState({
+              scrollY: currentY,
+              isScrollingFast,
+              direction: velocity > 50 ? 1 : velocity < -50 ? -1 : 0
+            });
+          }, UPDATE_INTERVAL);
+        };
+
+        const onScroll = () => {
+          if (rafId.current) return;
+
+          rafId.current = requestAnimationFrame(() => {
+            rafId.current = null;
+            const now = Date.now();
+            const currentY = readWindowScrollY();
+            const deltaY = currentY - lastScrollY.current;
+            const deltaT = Math.max(1, now - lastTime.current);
+            const velocity = (deltaY / deltaT) * 1000; // pixels per second
+
+            velocityHistory.current.push(velocity);
+            if (velocityHistory.current.length > HISTORY_SIZE) {
+              velocityHistory.current.shift();
+            }
+
+            lastScrollY.current = currentY;
+            lastTime.current = now;
+
+            scheduleUpdate();
+          });
+        };
+
+        // When scroll stops, reset fast scrolling state
+        let scrollEndTimer = null;
+        const onScrollEnd = () => {
+          if (scrollEndTimer) clearTimeout(scrollEndTimer);
+          scrollEndTimer = setTimeout(() => {
+            velocityHistory.current = [];
+            setState(prev => ({
+              ...prev,
+              scrollY: readWindowScrollY(),
+              isScrollingFast: false,
+              direction: 0
+            }));
+          }, 150);
+        };
+
+        const handleScroll = () => {
+          onScroll();
+          onScrollEnd();
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+          window.removeEventListener('scroll', handleScroll);
+          if (rafId.current) cancelAnimationFrame(rafId.current);
+          if (updateTimeout.current) clearTimeout(updateTimeout.current);
+          if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        };
+      }, []);
+
+      return state;
+    }
+
     function useBodyScrollLock(active) {
       useEffect(() => {
         if (!active) return undefined;
@@ -441,16 +537,24 @@
     }
 
     function useVirtualMasonry({ containerRef, items, columnCount, columnGap = 12, estimateHeight = 260, overscanVH = 1, active = true }) {
-      const scrollY = useWindowScrollY();
+      // Use scroll state with velocity detection
+      const scrollState = useScrollState();
+      const { scrollY, isScrollingFast } = scrollState;
       const containerW = useElementWidth(containerRef, active);
 
       const heightMapRef = useRef(Object.create(null));
       const [heightMapVersion, setHeightMapVersion] = useState(0);
+      const pendingHeightsRef = useRef({});
+      const flushTimerRef = useRef(null);
+
+      // Cache last visible items to return during fast scroll
+      const lastVisibleRef = useRef([]);
 
       // Reset height map when items are cleared (e.g. sorting change)
       useEffect(() => {
         if (items.length === 0) {
           heightMapRef.current = Object.create(null);
+          pendingHeightsRef.current = {};
           setHeightMapVersion(v => v + 1);
         }
       }, [items.length]);
@@ -472,11 +576,52 @@
         }
       }, [items]);
 
+      // Batched height registration - collect heights and flush periodically
+      const flushHeights = useCallback(() => {
+        const pending = pendingHeightsRef.current;
+        const keys = Object.keys(pending);
+        if (keys.length === 0) return;
+
+        let hasChanges = false;
+        for (const id of keys) {
+          const h = pending[id];
+          if (heightMapRef.current[id] !== h) {
+            heightMapRef.current[id] = h;
+            hasChanges = true;
+          }
+        }
+        pendingHeightsRef.current = {};
+
+        if (hasChanges) {
+          setHeightMapVersion(v => v + 1);
+        }
+      }, []);
+
       const registerHeight = useCallback((id, h) => {
         if (!id || !Number.isFinite(h) || h <= 0) return;
         if (heightMapRef.current[id] === h) return;
-        heightMapRef.current[id] = h;
-        setHeightMapVersion(v => v + 1);
+
+        // During fast scroll, don't register heights at all
+        // This prevents re-renders while scrolling fast
+        if (isScrollingFast) return;
+
+        // Batch heights and flush every 100ms
+        pendingHeightsRef.current[id] = h;
+        if (!flushTimerRef.current) {
+          flushTimerRef.current = setTimeout(() => {
+            flushTimerRef.current = null;
+            flushHeights();
+          }, 100);
+        }
+      }, [isScrollingFast, flushHeights]);
+
+      // Cleanup flush timer
+      useEffect(() => {
+        return () => {
+          if (flushTimerRef.current) {
+            clearTimeout(flushTimerRef.current);
+          }
+        };
       }, []);
 
       const layout = useMemo(() => {
@@ -515,9 +660,16 @@
       }, [containerRef, scrollY, overscanVH, containerW]); // containerW dependency ensures viewport updates on resize
 
       const visible = useMemo(() => {
+        // During fast scroll, return last known visible items
+        // This prevents expensive recalculations while scrolling fast
+        if (isScrollingFast && lastVisibleRef.current.length > 0) {
+          return lastVisibleRef.current;
+        }
+
         const out = [];
         const { positions } = layout;
         if (!positions || positions.length === 0) return out;
+
         for (let i = 0; i < positions.length; i++) {
           const p = positions[i];
           if (!p) continue;
@@ -526,10 +678,13 @@
             out.push({ index: i, item: items[i], pos: p });
           }
         }
-        return out;
-      }, [items, layout, viewport]);
 
-      return { ...layout, visible, registerHeight };
+        // Cache for fast scroll
+        lastVisibleRef.current = out;
+        return out;
+      }, [items, layout, viewport, isScrollingFast]);
+
+      return { ...layout, visible, registerHeight, isScrollingFast };
     }
 
     return {

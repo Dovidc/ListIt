@@ -301,7 +301,8 @@
           positions = [],
           containerHeight = 0,
           registerHeight,
-          colWidth
+          colWidth,
+          isScrollingFast = false
         } = virtualizationState;
 
         const itemsToRender = visible.length
@@ -330,14 +331,33 @@
             if (!entry) return null;
             const position = pos || {};
             const width = position.width ?? colWidth ?? '100%';
+            const itemHeight = position.height ?? virtualizationEstimate;
+            const commonStyle = {
+              top: position.top ?? 0,
+              left: position.left ?? 0,
+              width
+            };
+
+            // Instagram-style: render lightweight placeholders during fast scroll
+            // This prevents expensive image renders and DOM operations while scrolling fast
+            if (isScrollingFast) {
+              return H('div', {
+                key: item.id,
+                style: {
+                  position: 'absolute',
+                  boxSizing: 'border-box',
+                  ...commonStyle,
+                  height: itemHeight,
+                  background: '#f3f4f6',
+                  borderRadius: 8
+                }
+              });
+            }
+
             const commonProps = {
               key: item.id,
               id: item.id,
-              style: {
-                top: position.top ?? 0,
-                left: position.left ?? 0,
-                width
-              },
+              style: commonStyle,
               onHeightChange: registerHeight
             };
 
