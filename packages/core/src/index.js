@@ -41,6 +41,9 @@ export function createApiClient(options = {}) {
       if (meta.priority) {
         requestInit.priority = meta.priority;
       }
+      if (meta.signal) {
+        requestInit.signal = meta.signal;
+      }
 
       const response = await fetchLike(resolveUrl(path), requestInit);
 
