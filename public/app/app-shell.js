@@ -402,6 +402,8 @@
           await toggleSold?.(listing, true);
         }
         setKarmaListingId(null);
+        // Close the listing modal after marking as sold
+        setSelectedListing(null);
       }, [karmaListingId, mine, all, toggleSold]);
 
       const handleKarmaModalClose = useCallback(() => {
@@ -418,6 +420,8 @@
           await toggleSold?.(listing, true);
         }
         setKarmaListingId(null);
+        // Close the listing modal after marking as sold
+        setSelectedListing(null);
       }, [karmaListingId, mine, all, toggleSold]);
 
       const {

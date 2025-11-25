@@ -395,10 +395,12 @@
       useEffect(() => {
         if (!open || !listingId) {
           setBuyers([]);
+          setSelecting(false);
           return;
         }
 
         setLoading(true);
+        setSelecting(false);
         fetch(`/api/listings/${listingId}/potential-buyers`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
@@ -439,6 +441,7 @@
             throw new Error(result.error || 'Failed to award karma');
           }
 
+          setSelecting(false);
           onBuyerSelected?.(result);
         } catch (err) {
           console.error('Award karma error:', err);
