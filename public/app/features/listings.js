@@ -188,19 +188,26 @@
           if (typeof getUserCoordsOnce === 'function') {
             try {
               const coords = await getUserCoordsOnce();
+              console.log('[fetchPage] getUserCoordsOnce returned:', coords);
               if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
                 params.lat = coords.lat;
                 params.lon = coords.lon;
               }
             } catch (e) {
+              console.warn('[fetchPage] getUserCoordsOnce error:', e);
               // Only warn if sorting by nearest (it's expected to work then)
               if (sort === 'nearest') {
                 console.warn('Could not get user coordinates for nearest sort:', e);
               }
             }
+          } else {
+            console.warn('[fetchPage] getUserCoordsOnce is not available');
           }
 
+          console.log('[fetchPage] API params:', JSON.stringify(params));
           const res = await api.listAll(params);
+          const firstItem = res?.items?.[0] || res?.rows?.[0] || (Array.isArray(res) ? res[0] : null);
+          console.log('[fetchPage] API response sample:', firstItem ? { id: firstItem.id, distance_m: firstItem.distance_m, lat: firstItem.lat, lon: firstItem.lon } : 'no items');
 
           // Stale request check
           if (reqId !== requestIdRef.current) return;

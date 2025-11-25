@@ -214,6 +214,8 @@
       let limit = 75;
       let sort = 'new';
       let cursor = null;
+      let lat = null;
+      let lon = null;
       let metaArg = meta;
 
       if (a && typeof a === 'object' && !Array.isArray(a)) {
@@ -224,6 +226,8 @@
         limit = Number(params.limit) || 75;
         sort = typeof params.sort === 'string' ? params.sort : 'new';
         cursor = params.cursor != null ? params.cursor : null;
+        lat = Number.isFinite(params.lat) ? params.lat : null;
+        lon = Number.isFinite(params.lon) ? params.lon : null;
         metaArg = b || meta;
       } else {
         q = typeof a === 'string' ? a : '';
@@ -238,6 +242,8 @@
       else params.set('page', String(page));
       params.set('limit', String(limit));
       params.set('sort', sort);
+      if (lat != null) params.set('lat', String(lat));
+      if (lon != null) params.set('lon', String(lon));
       const query = params.toString();
       const url = '/api/listings' + (query ? `?${query}` : '');
       return request(url, { method: 'GET' }, metaArg);
