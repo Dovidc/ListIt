@@ -32,6 +32,7 @@
     // ============================================================
     // HOOK: useVirtualGrid
     // Virtualizes a grid of items based on window scroll
+    // Optimized with throttling to prevent crashes during rapid scroll
     // ============================================================
     function useVirtualGrid({
       totalItems,
@@ -43,20 +44,36 @@
     }) {
       const [scrollTop, setScrollTop] = useState(0);
       const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+      const lastUpdateRef = useRef(0);
+      const pendingUpdateRef = useRef(null);
+      const throttleMs = 16; // ~60fps max update rate
 
       useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        let ticking = false;
+        const updateScrollTop = (value) => {
+          const now = Date.now();
+          const timeSinceLastUpdate = now - lastUpdateRef.current;
+
+          if (timeSinceLastUpdate >= throttleMs) {
+            // Update immediately
+            lastUpdateRef.current = now;
+            setScrollTop(value);
+          } else {
+            // Schedule update for later
+            if (pendingUpdateRef.current) {
+              cancelAnimationFrame(pendingUpdateRef.current);
+            }
+            pendingUpdateRef.current = requestAnimationFrame(() => {
+              lastUpdateRef.current = Date.now();
+              setScrollTop(window.scrollY);
+              pendingUpdateRef.current = null;
+            });
+          }
+        };
 
         const onScroll = () => {
-          if (!ticking) {
-            window.requestAnimationFrame(() => {
-              setScrollTop(window.scrollY);
-              ticking = false;
-            });
-            ticking = true;
-          }
+          updateScrollTop(window.scrollY);
         };
 
         const onResize = () => {
@@ -67,11 +84,14 @@
         window.addEventListener('resize', onResize, { passive: true });
 
         // Initial check
-        onScroll();
+        setScrollTop(window.scrollY);
 
         return () => {
           window.removeEventListener('scroll', onScroll);
           window.removeEventListener('resize', onResize);
+          if (pendingUpdateRef.current) {
+            cancelAnimationFrame(pendingUpdateRef.current);
+          }
         };
       }, []);
 
@@ -378,7 +398,7 @@
           : []
     );
 
-    const pageSize = 75;
+    const pageSize = 20;
 
     function selectPrimaryListingImage(listing, fallback) {
       if (!listing) return fallback || null;

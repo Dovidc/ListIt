@@ -336,10 +336,13 @@
 
     // ============================================================
     // HOOK: useInfiniteScroll
-    // Observes sentinel element for infinite scroll
+    // Observes sentinel element for infinite scroll with throttling
+    // Instagram-style: triggers early but throttles to prevent rapid calls
     // ============================================================
     function useInfiniteScroll({ enabled, onLoadMore, getIsLoading, getCursor }) {
       const sentinelRef = useRef(null);
+      const lastLoadTimeRef = useRef(0);
+      const throttleMs = 500; // Minimum time between load attempts
 
       useEffect(() => {
         if (!enabled) return;
@@ -353,8 +356,14 @@
           if (!entry?.isIntersecting) return;
           if (getIsLoading()) return;
           if (!getCursor()) return;
+
+          // Throttle rapid scroll triggers
+          const now = Date.now();
+          if (now - lastLoadTimeRef.current < throttleMs) return;
+          lastLoadTimeRef.current = now;
+
           onLoadMore();
-        }, { rootMargin: '200px' });
+        }, { rootMargin: '400px' }); // Trigger earlier (400px) for smoother experience
 
         observer.observe(el);
         return () => observer.disconnect();

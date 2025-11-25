@@ -11,7 +11,8 @@
       "Bash(node tests/service-decomposition.test.js:*)",
       "Bash(node -e:*)",
       "Bash(git commit:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(copy:*)"
     ],
     "deny": [],
     "ask": []

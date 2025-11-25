@@ -1032,10 +1032,14 @@
                           ads,
                           isMobile,
                           onEnsureCover: ensureCover,
-                          onSelect: handleListingTileEvent
+                          onSelect: handleListingTileEvent,
+                          isLoading: isFetchingListings,
+                          hasMore: hasNext,
+                          sentinelRef
                         }),
 
-                        H('div', {
+                        // "No more results" message shown below grid
+                        !isFetchingListings && !hasNext && items.length > 0 && H('div', {
                           style: {
                             display: 'flex',
                             justifyContent: 'center',
@@ -1043,14 +1047,8 @@
                             minHeight: 40
                           }
                         },
-                          isFetchingListings
-                            ? H('div', { className: 'spinner', style: { margin: '0 auto' } })
-                            : (!hasNext && items.length
-                              ? H('span', { className: 'muted' }, 'No more results')
-                              : null)
+                          H('span', { className: 'muted' }, 'No more results')
                         ),
-
-                        H('div', { ref: sentinelRef, style: { width: '100%', height: 1 } }),
 
                         !items.length && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
 

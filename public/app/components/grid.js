@@ -100,7 +100,7 @@
 
     // Simple CSS grid - no virtualization, no absolute positioning
     // Let the browser handle scrolling naturally
-    // Virtualized Grid
+    // Virtualized Grid with Instagram-style loading
     const ListingsGrid = React.memo(function ListingsGrid({
       items = [],
       ads = [],
@@ -110,7 +110,10 @@
       columns,
       gap = 12,
       className,
-      style
+      style,
+      isLoading = false,
+      hasMore = false,
+      sentinelRef
     }) {
       // Merge items and ads
       const entries = useMemo(() => {
@@ -217,13 +220,17 @@
         }
       }, [startIndex, endIndex, entries, onEnsureCover]);
 
+      // Calculate loading indicator height
+      const loaderHeight = 60;
+      const extraHeight = (isLoading || hasMore) ? loaderHeight : 0;
+
       return H('section', {
         ref: containerRef,
         className,
         style: {
           ...(style || {}),
           position: 'relative',
-          height: `${totalHeight}px`,
+          height: `${totalHeight + extraHeight}px`,
           overflow: 'hidden' // Ensure no overflow issues
         }
       },
@@ -242,6 +249,35 @@
               isMobile
             })
           );
+        }),
+        // Loading indicator at bottom of grid (Instagram-style)
+        (isLoading || hasMore) && H('div', {
+          style: {
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: `${loaderHeight}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          isLoading
+            ? H('div', { className: 'spinner' })
+            : null
+        ),
+        // Sentinel for infinite scroll - placed at very bottom
+        sentinelRef && H('div', {
+          ref: sentinelRef,
+          style: {
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: 1,
+            pointerEvents: 'none'
+          }
         })
       );
     });
