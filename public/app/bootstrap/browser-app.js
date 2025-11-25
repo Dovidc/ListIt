@@ -493,7 +493,6 @@
         messages: { MessagesPanel, useMessageActions },
         admin: { AdminDashboard, useAdminListingActions },
         profile: { ProfilePanel },
-        nearby: { NearbyPanel },
         listingForms: { ListingFormModal },
         preferences: { useAppPreferences },
         push: { usePushNotifications },

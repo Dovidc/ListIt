@@ -168,7 +168,6 @@
           ),
           H('nav', { className: 'row' },
             navButton('browse', 'Listings', () => onNav('browse')),
-            isMobile && navButton('nearby', 'Nearby', () => onNav('nearby')),
             messagesBtn,
             navButton('profile', profileButtonLabel, () => onNav('profile'), null, { title: 'Profile & settings' }),
             user?.is_admin && navButton('admin', 'Admin', () => onNav('admin'))

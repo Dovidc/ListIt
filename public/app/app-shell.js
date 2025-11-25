@@ -71,7 +71,6 @@
     const messagesFeature = features?.messages || {};
     const adminFeature = features?.admin || {};
     const profileFeature = features?.profile || {};
-    const nearbyFeature = features?.nearby || {};
     const listingFormsFeature = features?.listingForms || {};
     const preferencesFeature = features?.preferences || {};
     const pushFeature = features?.push || {};
@@ -96,7 +95,6 @@
     const { MessagesPanel, useMessageActions } = messagesFeature;
     const { AdminDashboard, useAdminListingActions } = adminFeature;
     const { ProfilePanel } = profileFeature;
-    const { NearbyPanel } = nearbyFeature;
     const { ListingFormModal } = listingFormsFeature;
     const { useAppPreferences } = preferencesFeature;
     const { usePushNotifications } = pushFeature;
@@ -115,7 +113,6 @@
     assertFunction(AdminDashboard, 'features.admin.AdminDashboard');
     assertFunction(useAdminListingActions, 'features.admin.useAdminListingActions');
     assertFunction(ProfilePanel, 'features.profile.ProfilePanel');
-    assertFunction(NearbyPanel, 'features.nearby.NearbyPanel');
     assertFunction(ListingFormModal, 'features.listingForms.ListingFormModal');
     assertFunction(useAppPreferences, 'features.preferences.useAppPreferences');
     assertFunction(usePushNotifications, 'features.push.usePushNotifications');
@@ -806,17 +803,6 @@
           H('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
           H('polyline', { points: '9 22 9 12 15 12 15 22' })
         ),
-        nearby: () => H('svg', {
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round'
-        },
-          H('circle', { cx: 12, cy: 12, r: 10 }),
-          H('polygon', { points: '16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76' })
-        ),
         messages: () => H('svg', {
           viewBox: '0 0 24 24',
           fill: 'none',
@@ -1002,6 +988,7 @@
                               style: { width: '100%' }
                             },
                               H('option', { value: 'new' }, 'Newest'),
+                              H('option', { value: 'nearest' }, 'Nearest'),
                               H('option', { value: 'price_asc' }, 'Price: Low'),
                               H('option', { value: 'price_desc' }, 'Price: High'),
                               H('option', { value: 'city' }, 'City')
@@ -1074,32 +1061,13 @@
                             },
                             onMessage: startMessage,
                             onAdminDelete: handleAdminDelete,
-                            showDistance: false,
+                            showDistance: sort === 'nearest',
                             onViewSeller: handleViewSeller,
                             onToggleSold: mineById[selectedListing?.id] ? toggleSoldWithKarma : undefined,
                             onSupporterClick: handleSupporterBadgeClick
                           }
                         })
                       ),
-
-                      (tab === 'nearby') &&
-                      H(NearbyPanel, {
-                        user,
-                        mineById,
-                        isMobile,
-                        onEdit: (it) => {
-                          if (user?.account_status === 'locked') { showLockedBanner(); return; }
-                          const rich = mineById[it.id] || it;
-                          openListingEditor({ draft: rich, originTab: 'nearby', reopenListingId: rich?.id });
-                        },
-                        onDelete: async (it) => { if (confirm('Remove this listing? (Your past messages will remain)')) { await api.deleteListing(it.id); await refreshListings(); } },
-                        onMessage: startMessage,
-                        onAdminDelete: handleAdminDelete,
-                        onViewSeller: handleViewSeller,
-                        onToggleSold: toggleSoldWithKarma,
-                        onSupporterClick: handleSupporterBadgeClick,
-                        setTab: onTabChange
-                      }),
 
                       (tab === 'messages') &&
                       (user
@@ -1259,15 +1227,6 @@
                 'aria-label': 'Home'
               },
                 H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.browse())
-              ),
-              // Nearby
-              H('button', {
-                type: 'button',
-                className: ['mobile-dashboard__button', tab === 'nearby' ? 'is-active' : ''].filter(Boolean).join(' '),
-                onClick: () => handleMobileNav('nearby'),
-                'aria-label': 'Nearby'
-              },
-                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.nearby())
               ),
               // Plus Button
               H('div', { className: 'mobile-dashboard__plus-container' },
