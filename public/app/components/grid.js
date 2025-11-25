@@ -1,5 +1,5 @@
 (() => {
-  function createGridComponents({ React, components = {} } = {}) {
+  function createGridComponents({ React, components = {}, helpers = {} } = {}) {
     if (!React || typeof React.createElement !== 'function') {
       throw new Error('Grid components require React.');
     }
@@ -10,8 +10,9 @@
     }
 
     const AdTile = typeof components.AdTile === 'function' ? components.AdTile : null;
+    const { useVirtualGrid } = helpers;
 
-    const { useMemo } = React;
+    const { useMemo, useState, useRef, useLayoutEffect, useEffect } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
     // Simple grid tile - no observers, no refs, just render
@@ -99,6 +100,7 @@
 
     // Simple CSS grid - no virtualization, no absolute positioning
     // Let the browser handle scrolling naturally
+    // Virtualized Grid
     const ListingsGrid = React.memo(function ListingsGrid({
       items = [],
       ads = [],
@@ -139,35 +141,95 @@
         return result;
       }, [items, ads]);
 
+      const containerRef = useRef(null);
+      const [containerWidth, setContainerWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1000);
+
+      useLayoutEffect(() => {
+        if (!containerRef.current) return;
+        // Simple ResizeObserver
+        const ro = new ResizeObserver(entries => {
+          for (const entry of entries) {
+            if (entry.contentRect.width > 0) {
+              setContainerWidth(entry.contentRect.width);
+            }
+          }
+        });
+        ro.observe(containerRef.current);
+        return () => ro.disconnect();
+      }, []);
+
       const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
-      const gridStyle = {
-        ...(style || {}),
-        display: 'grid',
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gap: resolvedGap
-      };
+      // Calculate item dimensions (1:1 aspect ratio)
+      const itemWidth = containerWidth > 0
+        ? (containerWidth - (cols - 1) * resolvedGap) / cols
+        : 0;
 
-      return H('section', { className, style: gridStyle },
-        entries.map((entry, index) => {
-          if (entry.type === 'ad') {
+      // Use virtualization hook
+      const {
+        startIndex,
+        endIndex,
+        totalHeight
+      } = useVirtualGrid({
+        totalItems: entries.length,
+        columnCount: cols,
+        itemHeight: itemWidth,
+        gap: resolvedGap,
+        buffer: 6 // slightly larger buffer for smoother scrolling
+      });
+
+      // Generate visible items
+      const visibleItems = [];
+      for (let i = startIndex; i < endIndex; i++) {
+        const entry = entries[i];
+        if (!entry) continue;
+
+        const rowIndex = Math.floor(i / cols);
+        const colIndex = i % cols;
+
+        const top = rowIndex * (itemWidth + resolvedGap);
+        const left = colIndex * (itemWidth + resolvedGap);
+
+        visibleItems.push({
+          ...entry,
+          key: entry.type === 'ad' ? `ad-${entry.data?.id || i}` : `listing-${entry.data?.id || i}`,
+          style: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${itemWidth}px`,
+            height: `${itemWidth}px`,
+            transform: `translate3d(${left}px, ${top}px, 0)`
+          }
+        });
+      }
+
+      return H('section', {
+        ref: containerRef,
+        className,
+        style: {
+          ...(style || {}),
+          position: 'relative',
+          height: `${totalHeight}px`,
+          overflow: 'hidden' // Ensure no overflow issues
+        }
+      },
+        visibleItems.map(({ type, data, key, style }) => {
+          if (type === 'ad') {
             if (!AdTile) return null;
-            const id = entry.data?.id;
-            const key = id != null ? `ad-${id}` : `ad-${index}`;
-            return H(AdTile, { key, ad: entry.data, cols });
+            return H('div', { key, style },
+              H(AdTile, { ad: data, cols })
+            );
           }
 
-          const data = entry.data;
-          const id = data?.id;
-          const key = id != null ? `listing-${id}` : `listing-${index}`;
-
-          return H(GridTile, {
-            key,
-            item: data,
-            onSelect,
-            isMobile
-          });
+          return H('div', { key, style },
+            H(GridTile, {
+              item: data,
+              onSelect,
+              isMobile
+            })
+          );
         })
       );
     });

@@ -54,7 +54,8 @@
       useBodyScrollLock,
       normalizeListingsResponse,
       asArray,
-      createLRUCache
+      createLRUCache,
+      useVirtualGrid
     } = helpersFactory({ React: runtimeReact });
 
     const resolveApiBaseUrl = () => {
@@ -175,7 +176,8 @@
 
     const { ListingsGrid } = gridComponentsFactory({
       React: runtimeReact,
-      components: { ImageWithSkeleton, AdTile, SupporterBadge }
+      components: { ImageWithSkeleton, AdTile, SupporterBadge },
+      helpers: { useVirtualGrid }
     });
 
     const layoutComponentsFactory = bundles?.components?.layout?.createLayoutComponents;

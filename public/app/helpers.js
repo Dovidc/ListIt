@@ -29,6 +29,91 @@
       return false;
     }
 
+    // ============================================================
+    // HOOK: useVirtualGrid
+    // Virtualizes a grid of items based on window scroll
+    // ============================================================
+    function useVirtualGrid({
+      totalItems,
+      columnCount,
+      itemHeight,
+      gap = 0,
+      buffer = 4,
+      headerHeight = 0
+    }) {
+      const [scrollTop, setScrollTop] = useState(0);
+      const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+
+      useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        let ticking = false;
+
+        const onScroll = () => {
+          if (!ticking) {
+            window.requestAnimationFrame(() => {
+              setScrollTop(window.scrollY);
+              ticking = false;
+            });
+            ticking = true;
+          }
+        };
+
+        const onResize = () => {
+          setViewportHeight(window.innerHeight);
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', onResize, { passive: true });
+
+        // Initial check
+        onScroll();
+
+        return () => {
+          window.removeEventListener('scroll', onScroll);
+          window.removeEventListener('resize', onResize);
+        };
+      }, []);
+
+      // Calculate grid dimensions
+      const safeCols = Math.max(1, Math.floor(columnCount));
+      const rowCount = Math.ceil(totalItems / safeCols);
+      const totalHeight = rowCount * itemHeight + (rowCount > 0 ? (rowCount - 1) * gap : 0);
+
+      // Calculate visible range
+      // We assume the grid starts at some offset, but for simplicity in this app
+      // (where the grid is the main content), we can just use scrollY relative to the document.
+      // Ideally we'd subtract the grid's offsetTop, but that requires a ref and measurement.
+      // For now, we'll assume the grid is roughly at the top or we just render extra buffer.
+      // To be safer, we can accept a 'headerHeight' or just over-buffer.
+
+      // Let's try to be robust: render from (scrollTop - buffer) to (scrollTop + viewport + buffer)
+      // We map this to rows.
+
+      // Effective top relative to grid:
+      // If the grid is further down, scrollTop might be less than gridTop.
+      // But usually we care when scrollTop > gridTop.
+      // Let's assume the grid starts after 'headerHeight'.
+      const relativeScrollTop = Math.max(0, scrollTop - headerHeight);
+
+      const rowStart = Math.floor(relativeScrollTop / (itemHeight + gap));
+      const rowEnd = Math.ceil((relativeScrollTop + viewportHeight) / (itemHeight + gap));
+
+      const visibleRowStart = Math.max(0, rowStart - buffer);
+      const visibleRowEnd = Math.min(rowCount, rowEnd + buffer);
+
+      const startIndex = visibleRowStart * safeCols;
+      const endIndex = Math.min(totalItems, visibleRowEnd * safeCols);
+
+      return {
+        startIndex,
+        endIndex,
+        totalHeight,
+        visibleRowStart,
+        visibleRowEnd
+      };
+    }
+
     // Simple LRU cache implementation for cover images
     function createLRUCache(maxSize = 200) {
       const cache = new Map();
@@ -323,7 +408,8 @@
       asArray,
       pageSize,
       selectPrimaryListingImage,
-      createLRUCache
+      createLRUCache,
+      useVirtualGrid
     };
   }
 

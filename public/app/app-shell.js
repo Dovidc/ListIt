@@ -1044,7 +1044,7 @@
                           }
                         },
                           isFetchingListings
-                            ? H('span', { className: 'muted' }, 'Loading listings...')
+                            ? H('div', { className: 'spinner', style: { margin: '0 auto' } })
                             : (!hasNext && items.length
                               ? H('span', { className: 'muted' }, 'No more results')
                               : null)
