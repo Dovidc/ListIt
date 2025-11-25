@@ -616,12 +616,19 @@
             basePayload.inquiry_enabled = inquiryEnabled ? 1 : 0;
           }
 
-          if (enableNearby && !hasFixedGps) {
-            basePayload.lat = lat;
-            basePayload.lon = lon;
+          if (enableNearby) {
+            // For new listings or if user clicked "use my location", use current lat/lon
+            // For edits with existing coords (hasFixedGps), send the draft's coords
+            if (hasFixedGps) {
+              basePayload.lat = draft?.lat;
+              basePayload.lon = draft?.lon;
+            } else {
+              basePayload.lat = lat;
+              basePayload.lon = lon;
+            }
           }
 
-          if (basePayload.enable_nearby && !hasFixedGps && (basePayload.lat == null || basePayload.lon == null)) {
+          if (basePayload.enable_nearby && (basePayload.lat == null || basePayload.lon == null)) {
             alert('Enable Nearby requires using your location.');
             return;
           }

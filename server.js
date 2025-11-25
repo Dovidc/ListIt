@@ -3774,13 +3774,16 @@ app.get('/api/listings', async (req, res) => {
       case 'nearest':
         if (hasUserCoords) {
           // Haversine distance calculation
+          // 500 feet = 152.4 meters
+          const maxDistanceMeters = 152.4;
           const earthRadius = 6371000;
           const deg2rad = Math.PI / 180;
           distanceParams = {
             userLat,
             userLon,
             deg2rad,
-            earthRadius
+            earthRadius,
+            maxDistanceMeters
           };
           distanceSelect = `,
             (2 * @earthRadius * ASIN(SQRT(
@@ -3978,27 +3981,34 @@ app.get('/api/listings', async (req, res) => {
 
 
 
-      let sql = `
-
-        SELECT ${fields}${distanceSelect}
-
-        FROM listings l
-
-        JOIN users u ON u.id = l.user_id
-
-        ${whereSQL}
-
-        ${orderSQL}
-
-        LIMIT @lim
-
-      `;
-
-
-
+      let sql;
       const queryParams = { ...params, ...locParams, ...distanceParams, lim };
 
-      if (!isCursorById) {
+      if (isNearestSort && hasUserCoords) {
+        // Wrap in subquery to filter by distance (500 feet = 152.4 meters)
+        sql = `
+          SELECT * FROM (
+            SELECT ${fields}${distanceSelect}
+            FROM listings l
+            JOIN users u ON u.id = l.user_id
+            ${whereSQL}
+          ) AS sub
+          WHERE distance_m <= @maxDistanceMeters
+          ${orderSQL}
+          LIMIT @lim
+        `;
+      } else {
+        sql = `
+          SELECT ${fields}${distanceSelect}
+          FROM listings l
+          JOIN users u ON u.id = l.user_id
+          ${whereSQL}
+          ${orderSQL}
+          LIMIT @lim
+        `;
+      }
+
+      if (!isCursorById && !isNearestSort) {
 
         sql += ' OFFSET @off';
 
@@ -5056,12 +5066,20 @@ app.put(
 
       if (typeof req.body.enable_nearby !== 'undefined') {
         if (req.body.enable_nearby) {
-          // Turning ON nearby - set coordinates if provided
-          newLat = Number(req.body.lat);
-          newLon = Number(req.body.lon);
-          if (!Number.isFinite(newLat)) newLat = null;
-          if (!Number.isFinite(newLon)) newLon = null;
-          shouldUpdateCoords = true;
+          // Turning ON or keeping ON nearby
+          const providedLat = Number(req.body.lat);
+          const providedLon = Number(req.body.lon);
+          if (Number.isFinite(providedLat) && Number.isFinite(providedLon)) {
+            // New coordinates provided - use them
+            newLat = providedLat;
+            newLon = providedLon;
+            shouldUpdateCoords = true;
+          } else if (existing.lat == null || existing.lon == null) {
+            // No existing coords and none provided - this is an error state
+            // but we'll let the frontend handle validation
+            shouldUpdateCoords = false;
+          }
+          // If existing coords exist and none provided, keep existing (don't update coords)
         } else {
           // Turning OFF nearby - clear coordinates
           newLat = null;
