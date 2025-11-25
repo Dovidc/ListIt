@@ -15,10 +15,21 @@
     const { useMemo, useState, useRef, useLayoutEffect, useEffect } = React;
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    // Format distance for display
+    const formatDistanceBadge = (meters) => {
+      if (!Number.isFinite(meters) || meters < 0) return null;
+      const feet = meters * 3.28084;
+      if (feet < 1000) return `${Math.round(feet)} ft`;
+      const miles = feet / 5280;
+      return `${miles.toFixed(1)} mi`;
+    };
+
     // Simple grid tile - no observers, no refs, just render
     const GridTile = React.memo(function GridTile({ item, onSelect, isMobile }) {
       const src = item?.__cover;
       const isClickable = typeof onSelect === 'function';
+      const hasDistance = Number.isFinite(item?.distance_m);
+      const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
 
       const handleClick = isClickable
         ? (evt) => onSelect(evt, item, src)
@@ -86,7 +97,22 @@
                 fontWeight: 600,
                 fontSize: 12
               }
-            }, 'No image')
+            }, 'No image'),
+          // Distance badge - green indicator for nearby listings
+          distanceLabel && H('div', {
+            style: {
+              position: 'absolute',
+              bottom: 6,
+              left: 6,
+              background: '#059669',
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: 4,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+            }
+          }, distanceLabel)
         )
       );
     }, (prev, next) => {
@@ -94,7 +120,8 @@
       if (!prev.item || !next.item) return false;
       return (
         prev.item.id === next.item.id &&
-        prev.item.__cover === next.item.__cover
+        prev.item.__cover === next.item.__cover &&
+        prev.item.distance_m === next.item.distance_m
       );
     });
 

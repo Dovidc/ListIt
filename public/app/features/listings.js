@@ -183,8 +183,9 @@
             sort: sort || 'new'
           };
 
-          // For 'nearest' sort, get user coordinates
-          if (sort === 'nearest' && typeof getUserCoordsOnce === 'function') {
+          // Always try to get user coordinates for distance calculation
+          // This allows distance badges to show on listings with enable_nearby regardless of sort
+          if (typeof getUserCoordsOnce === 'function') {
             try {
               const coords = await getUserCoordsOnce();
               if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
@@ -192,7 +193,10 @@
                 params.lon = coords.lon;
               }
             } catch (e) {
-              console.warn('Could not get user coordinates for nearest sort:', e);
+              // Only warn if sorting by nearest (it's expected to work then)
+              if (sort === 'nearest') {
+                console.warn('Could not get user coordinates for nearest sort:', e);
+              }
             }
           }
 

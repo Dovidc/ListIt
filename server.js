@@ -3661,11 +3661,16 @@ app.get('/api/listings', async (req, res) => {
     const sort = String(req.query.sort || 'new').toLowerCase();
     const isCursorById = sort === 'new';
 
-    // For 'nearest' sort, get user coordinates
+    // Get user coordinates for distance calculation
     const userLat = Number(req.query.lat);
     const userLon = Number(req.query.lon);
     const hasUserCoords = Number.isFinite(userLat) && Number.isFinite(userLon);
     const isNearestSort = sort === 'nearest';
+
+    // Distance calculation params (used for any sort when coords are available)
+    const earthRadius = 6371000;
+    const deg2rad = Math.PI / 180;
+    const maxDistanceMeters = 152.4; // 500 feet
 
 
 
@@ -3751,6 +3756,29 @@ app.get('/api/listings', async (req, res) => {
     let distanceSelect = '';
     let distanceParams = {};
 
+    // Always include distance calculation when user coords are available
+    // This allows distance badges to show on listings with enable_nearby regardless of sort
+    if (hasUserCoords) {
+      distanceParams = {
+        userLat,
+        userLon,
+        deg2rad,
+        earthRadius,
+        maxDistanceMeters
+      };
+      // Calculate distance for listings that have lat/lon (enable_nearby)
+      // Use CASE to only calculate when listing has coordinates
+      distanceSelect = `,
+        CASE WHEN l.lat IS NOT NULL AND l.lon IS NOT NULL THEN
+          (2 * @earthRadius * ASIN(SQRT(
+            POWER(SIN(((@deg2rad * (l.lat - @userLat)) / 2)), 2) +
+            COS(@userLat * @deg2rad) * COS(l.lat * @deg2rad) *
+            POWER(SIN(((@deg2rad * (l.lon - @userLon)) / 2)), 2)
+          )))
+        ELSE NULL END AS distance_m,
+        l.lat, l.lon`;
+    }
+
     switch (sort) {
 
       case 'price_asc':
@@ -3773,25 +3801,6 @@ app.get('/api/listings', async (req, res) => {
 
       case 'nearest':
         if (hasUserCoords) {
-          // Haversine distance calculation
-          // 500 feet = 152.4 meters
-          const maxDistanceMeters = 152.4;
-          const earthRadius = 6371000;
-          const deg2rad = Math.PI / 180;
-          distanceParams = {
-            userLat,
-            userLon,
-            deg2rad,
-            earthRadius,
-            maxDistanceMeters
-          };
-          distanceSelect = `,
-            (2 * @earthRadius * ASIN(SQRT(
-              POWER(SIN(((@deg2rad * (l.lat - @userLat)) / 2)), 2) +
-              COS(@userLat * @deg2rad) * COS(l.lat * @deg2rad) *
-              POWER(SIN(((@deg2rad * (l.lon - @userLon)) / 2)), 2)
-            ))) AS distance_m,
-            l.lat, l.lon`;
           orderSQL = 'ORDER BY distance_m ASC, l.id DESC';
         }
         break;
