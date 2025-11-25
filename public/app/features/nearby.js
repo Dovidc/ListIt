@@ -25,6 +25,10 @@
 
     const providedListingCard = components?.ListingCard;
     const providedListingsGrid = components?.ListingsGrid;
+    const providedListingModal = components?.ListingModal;
+
+    // Page size for Instagram-style loading
+    const NEARBY_PAGE_SIZE = 20;
 
     const {
       useState,
@@ -543,7 +547,7 @@
           const cursorToUse = isLoadMore ? nextCursor : null;
           const response = await api.listNearby(coords.lat, coords.lon, radius, {
             silent: true,
-            limit: 50,
+            limit: NEARBY_PAGE_SIZE,
             cursor: cursorToUse,
             q: debouncedSearch,
             sort: sort
@@ -611,15 +615,24 @@
         }
       }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore]);
 
-      // Infinite scroll observer - Refactored to avoid churn
+      // Infinite scroll observer with throttling (Instagram-style)
+      const lastLoadTimeRef = useRef(0);
+      const throttleMs = 500;
+
       useEffect(() => {
         if (!sentinelRef.current) return;
         const observer = new IntersectionObserver((entries) => {
           const { hasMore, busy, isLoadingMore } = stateRef.current;
-          if (entries[0].isIntersecting && hasMore && !busy && !isLoadingMore) {
-            loadNearby(false, true);
-          }
-        }, { rootMargin: '200px' }); // Reduced margin from 400px to 200px
+          if (!entries[0].isIntersecting) return;
+          if (!hasMore || busy || isLoadingMore) return;
+
+          // Throttle rapid scroll triggers
+          const now = Date.now();
+          if (now - lastLoadTimeRef.current < throttleMs) return;
+          lastLoadTimeRef.current = now;
+
+          loadNearby(false, true);
+        }, { rootMargin: '400px' }); // Trigger earlier for smoother experience
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
       }, [loadNearby]); // Only depend on loadNearby
@@ -718,15 +731,28 @@
 
         error && H('div', { className: 'muted', style: { color: '#b91c1c', marginTop: 8, fontSize: 12 } }, error),
 
+        // Use ListingsGrid with Instagram-style loading props
         H(ListingsGrid, {
           className: 'nearby-grid',
           items: items,
           isMobile: !!isMobile,
-          onSelect: handleSelectListing
+          onSelect: handleSelectListing,
+          isLoading: isLoadingMore,
+          hasMore: hasMore,
+          sentinelRef: sentinelRef
         }),
 
-        H('div', { ref: sentinelRef, style: { height: 20, marginBottom: 20 } }),
-        isLoadingMore && H('p', { className: 'muted', style: { textAlign: 'center' } }, 'Loading more...'),
+        // "No more results" message shown below grid
+        !isLoadingMore && !hasMore && hasItems && H('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '16px 0',
+            minHeight: 40
+          }
+        },
+          H('span', { className: 'muted' }, 'No more results')
+        ),
 
         (!hasItems && !busy && !error && debouncedSearch) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
 
@@ -734,28 +760,47 @@
 
         (busy && !isLoadingMore) && H('p', { className: 'muted', style: { padding: '12px 0' } }, 'Loading nearby listings…'),
 
-        selected && H('div', {
-          className: 'modal open',
-          onClick: (e) => { if (e.target && e.target.classList && e.target.classList.contains('modal')) setSelected(null); }
-        },
-          H('div', { className: 'modal-inner listing-modal' },
-            H('button', { className: 'close', onClick: () => setSelected(null) }, 'x'),
-            H(ListingCard, {
+        // Use ListingModal (same as main listing view) if available, fallback to inline modal
+        providedListingModal
+          ? H(providedListingModal, {
+              open: !!selected,
               item: selected,
-              user,
-              canEdit: !!mineById[selected?.id],
-              onEdit: handleEdit,
-              onDelete,
-              onMessage,
-              onAdminDelete,
-              onViewSeller,
-              onToggleSold,
-              showDistance: true,
-              onSupporterClick,
-              viewContext: 'nearby'
+              onClose: () => setSelected(null),
+              cardProps: {
+                user,
+                canEdit: !!mineById[selected?.id],
+                onEdit: handleEdit,
+                onDelete,
+                onMessage,
+                onAdminDelete,
+                onViewSeller,
+                onToggleSold,
+                showDistance: true,
+                onSupporterClick
+              }
             })
-          )
-        )
+          : (selected && H('div', {
+              className: 'modal open',
+              onClick: (e) => { if (e.target && e.target.classList && e.target.classList.contains('modal')) setSelected(null); }
+            },
+              H('div', { className: 'modal-inner listing-modal' },
+                H('button', { className: 'close', onClick: () => setSelected(null) }, 'x'),
+                H(ListingCard, {
+                  item: selected,
+                  user,
+                  canEdit: !!mineById[selected?.id],
+                  onEdit: handleEdit,
+                  onDelete,
+                  onMessage,
+                  onAdminDelete,
+                  onViewSeller,
+                  onToggleSold,
+                  showDistance: true,
+                  onSupporterClick,
+                  viewContext: 'nearby'
+                })
+              )
+            ))
       );
     });
 

@@ -461,7 +461,8 @@
       },
       components: {
         ListingCard,
-        ListingsGrid
+        ListingsGrid,
+        ListingModal
       }
     });
 
