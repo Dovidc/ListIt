@@ -3643,11 +3643,14 @@ app.post('/api/push/ios/subscribe', auth, async (req, res) => {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const platform = typeof req.body?.platform === 'string' ? req.body.platform.trim() : 'ios';
 
+    console.log('[ios-push] Token registration request:', { userId: req.user.id, platform, tokenLength: token.length, tokenPrefix: token.substring(0, 20) });
+
     if (!token) {
       return res.status(400).json({ error: 'invalid_token' });
     }
 
     await iosPushService.saveIosToken(req.user.id, token, platform);
+    console.log('[ios-push] Token saved successfully for user:', req.user.id);
     return res.json({ ok: true });
   } catch (e) {
     console.error('iOS push subscribe failed:', e);

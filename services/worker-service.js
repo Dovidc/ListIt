@@ -349,14 +349,20 @@ class WorkerService {
    * Handle chat message events for push notifications
    */
   async handleMessageSent(event) {
+    console.log('[Worker] handleMessageSent called:', { recipientId: event?.recipientId, senderId: event?.senderId });
+
     if (!event || !event.recipientId) {
+      console.log('[Worker] No recipientId, skipping push');
       return;
     }
 
     const payload = this.buildMessagePushPayload(event);
     if (!payload) {
+      console.log('[Worker] buildMessagePushPayload returned null');
       return;
     }
+
+    console.log('[Worker] Enqueueing push job for user:', event.recipientId);
 
     await this.enqueueJob({
       type: 'send_push',
@@ -457,6 +463,8 @@ class WorkerService {
    * Send push notification (web + iOS/Android native)
    */
   async sendPushNotification(payload) {
+    console.log('[Worker] sendPushNotification called:', { userId: payload?.userId, hasNotification: !!payload?.notification });
+
     if (!payload || !payload.userId || !payload.notification) return;
 
     // Send web push
@@ -473,6 +481,8 @@ class WorkerService {
     }
 
     // Send iOS/Android native push
+    console.log('[Worker] Checking iOS push service:', { hasService: !!this.iosPushService, hasMethod: typeof this.iosPushService?.sendIosPushToUser === 'function' });
+
     if (this.iosPushService && typeof this.iosPushService.sendIosPushToUser === 'function') {
       try {
         const notification = payload.notification;
@@ -483,6 +493,7 @@ class WorkerService {
           conversationId: notification.conversation_id,
           senderId: notification.sender_id
         };
+        console.log('[Worker] Calling sendIosPushToUser:', { userId: payload.userId, iosPayload });
         await this.iosPushService.sendIosPushToUser(payload.userId, iosPayload);
       } catch (err) {
         console.warn('[Worker] iOS push failed:', err?.message || err);
