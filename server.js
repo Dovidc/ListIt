@@ -3661,6 +3661,12 @@ app.get('/api/listings', async (req, res) => {
     const sort = String(req.query.sort || 'new').toLowerCase();
     const isCursorById = sort === 'new';
 
+    // For 'nearest' sort, get user coordinates
+    const userLat = Number(req.query.lat);
+    const userLon = Number(req.query.lon);
+    const hasUserCoords = Number.isFinite(userLat) && Number.isFinite(userLon);
+    const isNearestSort = sort === 'nearest';
+
 
 
     const limitParam = Number(req.query.limit);
@@ -3742,6 +3748,8 @@ app.get('/api/listings', async (req, res) => {
 
 
     let orderSQL = 'ORDER BY l.id DESC';
+    let distanceSelect = '';
+    let distanceParams = {};
 
     switch (sort) {
 
@@ -3761,6 +3769,28 @@ app.get('/api/listings', async (req, res) => {
 
         orderSQL = 'ORDER BY LOWER(l.location) ASC, l.id DESC';
 
+        break;
+
+      case 'nearest':
+        if (hasUserCoords) {
+          // Haversine distance calculation
+          const earthRadius = 6371000;
+          const deg2rad = Math.PI / 180;
+          distanceParams = {
+            userLat,
+            userLon,
+            deg2rad,
+            earthRadius
+          };
+          distanceSelect = `,
+            (2 * @earthRadius * ASIN(SQRT(
+              POWER(SIN(((@deg2rad * (l.lat - @userLat)) / 2)), 2) +
+              COS(@userLat * @deg2rad) * COS(l.lat * @deg2rad) *
+              POWER(SIN(((@deg2rad * (l.lon - @userLon)) / 2)), 2)
+            ))) AS distance_m,
+            l.lat, l.lon`;
+          orderSQL = 'ORDER BY distance_m ASC, l.id DESC';
+        }
         break;
 
     }
@@ -3899,7 +3929,12 @@ app.get('/api/listings', async (req, res) => {
 
       const params = {};
 
-
+      // For 'nearest' sort, only show listings that have coordinates
+      if (isNearestSort && hasUserCoords) {
+        where.push('l.lat IS NOT NULL');
+        where.push('l.lon IS NOT NULL');
+        where.push('l.enable_nearby = 1');
+      }
 
       if (hasSearch) {
 
@@ -3945,7 +3980,7 @@ app.get('/api/listings', async (req, res) => {
 
       let sql = `
 
-        SELECT ${fields}
+        SELECT ${fields}${distanceSelect}
 
         FROM listings l
 
@@ -3961,7 +3996,7 @@ app.get('/api/listings', async (req, res) => {
 
 
 
-      const queryParams = { ...params, ...locParams, lim };
+      const queryParams = { ...params, ...locParams, ...distanceParams, lim };
 
       if (!isCursorById) {
 
@@ -4471,17 +4506,17 @@ app.post(
 
 
 
-      let lat = Number(req.body.lat);
-
-      let lon = Number(req.body.lon);
-
-      if (!Number.isFinite(lat)) lat = null;
-
-      if (!Number.isFinite(lon)) lon = null;
-
-
-
       const enNearby = enable_nearby ? 1 : 0;
+
+      // Only store lat/lon if enable_nearby is ON
+      let lat = null;
+      let lon = null;
+      if (enNearby) {
+        lat = Number(req.body.lat);
+        lon = Number(req.body.lon);
+        if (!Number.isFinite(lat)) lat = null;
+        if (!Number.isFinite(lon)) lon = null;
+      }
       const inquiryEnabled = inquiry_enabled ? 1 : 0;
 
 
@@ -5015,27 +5050,33 @@ app.put(
 
 
 
+      // Handle lat/lon based on enable_nearby setting
       let newLat = null, newLon = null;
+      let shouldUpdateCoords = false;
 
-      if (existing.lat == null && req.body.enable_nearby) {
-
-        newLat = Number(req.body.lat);
-
-        newLon = Number(req.body.lon);
-
-        if (!Number.isFinite(newLat)) newLat = null;
-
-        if (!Number.isFinite(newLon)) newLon = null;
-
+      if (typeof req.body.enable_nearby !== 'undefined') {
+        if (req.body.enable_nearby) {
+          // Turning ON nearby - set coordinates if provided
+          newLat = Number(req.body.lat);
+          newLon = Number(req.body.lon);
+          if (!Number.isFinite(newLat)) newLat = null;
+          if (!Number.isFinite(newLon)) newLon = null;
+          shouldUpdateCoords = true;
+        } else {
+          // Turning OFF nearby - clear coordinates
+          newLat = null;
+          newLon = null;
+          shouldUpdateCoords = true;
+        }
       }
 
-
-
-      await db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=COALESCE(?, lat), lon=COALESCE(?, lon) WHERE id=?')
-
-        .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
-
-
+      if (shouldUpdateCoords) {
+        await db.prepare('UPDATE listings SET title=?, description=?, location=?, price=?, lat=?, lon=? WHERE id=?')
+          .run(newTitle, newDesc, newLoc, newPrice, newLat, newLon, id);
+      } else {
+        await db.prepare('UPDATE listings SET title=?, description=?, location=?, price=? WHERE id=?')
+          .run(newTitle, newDesc, newLoc, newPrice, id);
+      }
 
       if (typeof tags !== 'undefined') {
 
@@ -5044,8 +5085,6 @@ app.put(
         await db.prepare('UPDATE listings SET tags=? WHERE id=?').run(tagStr, id);
 
       }
-
-
 
       if (typeof req.body.enable_nearby !== 'undefined') {
 

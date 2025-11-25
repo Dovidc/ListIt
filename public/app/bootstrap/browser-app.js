@@ -207,6 +207,7 @@
         asArray,
         selectPrimaryListingImage,
         createLRUCache,
+        getUserCoordsOnce,
         pageSize: PAGE_SIZE
       },
       uploads: {

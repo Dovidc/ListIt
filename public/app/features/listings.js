@@ -15,6 +15,7 @@
     const asArray = helpers?.asArray;
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
     const createLRUCache = helpers?.createLRUCache;
+    const getUserCoordsOnce = helpers?.getUserCoordsOnce;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
 
     // Validate required helpers
@@ -173,13 +174,29 @@
         setIsLoading(true);
 
         try {
-          const res = await api.listAll({
+          // Build base params
+          const params = {
             q: query?.trim() || '',
             loc: location?.trim() || '',
             cursor,
             limit: pageSize,
             sort: sort || 'new'
-          });
+          };
+
+          // For 'nearest' sort, get user coordinates
+          if (sort === 'nearest' && typeof getUserCoordsOnce === 'function') {
+            try {
+              const coords = await getUserCoordsOnce();
+              if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+                params.lat = coords.lat;
+                params.lon = coords.lon;
+              }
+            } catch (e) {
+              console.warn('Could not get user coordinates for nearest sort:', e);
+            }
+          }
+
+          const res = await api.listAll(params);
 
           // Stale request check
           if (reqId !== requestIdRef.current) return;
