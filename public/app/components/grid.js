@@ -205,6 +205,18 @@
         });
       }
 
+      // Trigger cover loading for visible items
+      useEffect(() => {
+        if (typeof onEnsureCover !== 'function') return;
+
+        for (let i = startIndex; i < endIndex; i++) {
+          const entry = entries[i];
+          if (entry && entry.type === 'listing' && entry.data?.id) {
+            onEnsureCover(entry.data.id);
+          }
+        }
+      }, [startIndex, endIndex, entries, onEnsureCover]);
+
       return H('section', {
         ref: containerRef,
         className,
