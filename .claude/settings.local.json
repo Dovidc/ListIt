@@ -12,7 +12,11 @@
       "Bash(node -e:*)",
       "Bash(git commit:*)",
       "Bash(git show:*)",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(npx cap sync ios)",
+      "Bash(npx knex:*)"
     ],
     "deny": [],
     "ask": []

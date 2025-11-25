@@ -22,9 +22,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.882.0",
-    "@capacitor/core": "^6.1.2",
     "@aws-sdk/s3-request-presigner": "^3.882.0",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/push-notifications": "^6.0.4",
     "@sendgrid/mail": "^8.1.2",
+    "apn": "^2.2.0",
     "bcryptjs": "^3.0.2",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.7",
@@ -32,20 +34,21 @@
     "express": "^5.1.0",
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.2",
     "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
     "knex": "^3.1.0",
     "openai": "^5.16.0",
     "pg": "^8.16.3",
+    "stripe": "^16.6.0",
     "web-push": "^3.6.7",
-    "ws": "^8.18.3",
-    "stripe": "^16.6.0"
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
     "@capacitor/ios": "^6.1.2",
     "cross-env": "^10.0.0",
     "jest": "^30.1.1",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "typescript": "^5.9.3"
   }
 }

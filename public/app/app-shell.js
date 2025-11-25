@@ -27,6 +27,9 @@
   const SUPPORTER_PREMIUM_AMOUNT = 199;
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
 
+  // Resume overlay: show after 60 seconds of background inactivity (matches geolocation staleness)
+  const RESUME_INACTIVITY_THRESHOLD_MS = 60 * 1000;
+
   function createEditorState(overrides = {}) {
     return { ...EDITOR_DEFAULT_STATE, ...overrides };
   }
@@ -142,7 +145,7 @@
     const listingComponents = components?.listing || {};
     const supporterComponents = components?.supporter || {};
 
-    const { Header, GlobalLoader } = layoutComponents;
+    const { Header, GlobalLoader, ResumeOverlay } = layoutComponents;
     const { ListingsGrid } = gridComponents;
     const {
       MassListModal,
@@ -224,6 +227,10 @@
       // Scroll preservation
       const browseScrollPos = useRef(0);
       const prevTabRef = useRef(tab);
+
+      // Resume overlay state - tracks when app went to background and shows refresh screen
+      const [isResuming, setIsResuming] = useState(false);
+      const backgroundTimestampRef = useRef(null);
 
       // Wrapper for tab changes to save scroll position
       const onTabChange = useCallback((newTab) => {
@@ -480,6 +487,78 @@
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
       }, []);
+
+      // Background/foreground detection - show resume overlay after extended inactivity
+      useEffect(() => {
+        if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+        const handleVisibilityChange = async () => {
+          if (document.hidden) {
+            // App going to background - record timestamp
+            backgroundTimestampRef.current = Date.now();
+          } else {
+            // App coming to foreground
+            const backgroundTime = backgroundTimestampRef.current;
+            backgroundTimestampRef.current = null;
+
+            if (backgroundTime && (Date.now() - backgroundTime) >= RESUME_INACTIVITY_THRESHOLD_MS) {
+              // Was in background for a while - show overlay and refresh
+              const overlayStartTime = Date.now();
+              setIsResuming(true);
+              try {
+                await refreshListings();
+                await reloadMineOnly();
+              } catch (err) {
+                console.error('Error refreshing on resume:', err);
+              } finally {
+                // Ensure overlay shows for at least 3 seconds
+                const elapsed = Date.now() - overlayStartTime;
+                const remainingTime = Math.max(0, 3000 - elapsed);
+                setTimeout(() => setIsResuming(false), remainingTime);
+              }
+            }
+          }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Also try Capacitor App plugin if available (for native mobile)
+        let capacitorUnlisten = null;
+        if (window.Capacitor?.Plugins?.App) {
+          const App = window.Capacitor.Plugins.App;
+          App.addListener?.('appStateChange', async (state) => {
+            if (!state.isActive) {
+              backgroundTimestampRef.current = Date.now();
+            } else {
+              const backgroundTime = backgroundTimestampRef.current;
+              backgroundTimestampRef.current = null;
+
+              if (backgroundTime && (Date.now() - backgroundTime) >= RESUME_INACTIVITY_THRESHOLD_MS) {
+                const overlayStartTime = Date.now();
+                setIsResuming(true);
+                try {
+                  await refreshListings();
+                  await reloadMineOnly();
+                } catch (err) {
+                  console.error('Error refreshing on resume:', err);
+                } finally {
+                  // Ensure overlay shows for at least 3 seconds
+                  const elapsed = Date.now() - overlayStartTime;
+                  const remainingTime = Math.max(0, 3000 - elapsed);
+                  setTimeout(() => setIsResuming(false), remainingTime);
+                }
+              }
+            }
+          }).then(handle => { capacitorUnlisten = handle; }).catch(() => {});
+        }
+
+        return () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          if (capacitorUnlisten?.remove) {
+            capacitorUnlisten.remove();
+          }
+        };
+      }, [refreshListings, reloadMineOnly]);
 
       useEffect(() => {
         if (supporterQueryHandledRef.current) return;
@@ -886,6 +965,7 @@
               }, 'Dismiss')
             ),
             H(GlobalLoader, { active: loadingCount > 0 }),
+            H(ResumeOverlay, { active: isResuming }),
             H(SupporterInfoModal, {
               open: supporterInfoState.open,
               onClose: handleSupporterInfoClose,

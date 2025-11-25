@@ -335,7 +335,11 @@
       coordsPromise = new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
           (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-          () => resolve(null),
+          () => {
+            // Reset promise on failure so it can retry next time
+            coordsPromise = null;
+            resolve(null);
+          },
           { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
         );
       });

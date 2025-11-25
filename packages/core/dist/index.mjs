@@ -152,6 +152,25 @@ export function createApiClient(options = {}) {
     }, meta);
   };
 
+  // iOS/Android native push (APNs/FCM)
+  const pushSubscribeIos = (payload, meta) => {
+    if (!payload?.token) return Promise.resolve(null);
+    return request('/api/push/ios/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }, meta);
+  };
+
+  const pushUnsubscribeIos = (payload, meta) => {
+    if (!payload?.token) return Promise.resolve(null);
+    return request('/api/push/ios/unsubscribe', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }, meta);
+  };
+
   const updatePaypalEmail = (paypalEmail, meta) => request('/api/me/paypal', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -200,6 +219,8 @@ export function createApiClient(options = {}) {
     let limit = 75;
     let sort = 'new';
     let cursor = null;
+    let lat = null;
+    let lon = null;
     let metaArg = meta;
 
     if (a && typeof a === 'object' && !Array.isArray(a)) {
@@ -210,6 +231,8 @@ export function createApiClient(options = {}) {
       limit = Number(params.limit) || 75;
       sort = typeof params.sort === 'string' ? params.sort : 'new';
       cursor = params.cursor != null ? params.cursor : null;
+      lat = Number.isFinite(params.lat) ? params.lat : null;
+      lon = Number.isFinite(params.lon) ? params.lon : null;
       metaArg = b || meta;
     } else {
       q = typeof a === 'string' ? a : '';
@@ -224,6 +247,10 @@ export function createApiClient(options = {}) {
     else params.set('page', String(page));
     params.set('limit', String(limit));
     params.set('sort', sort);
+    if (lat !== null && lon !== null) {
+      params.set('lat', String(lat));
+      params.set('lon', String(lon));
+    }
     const query = params.toString();
     const url = '/api/listings' + (query ? `?${query}` : '');
     return request(url, { method: 'GET' }, metaArg);
@@ -435,6 +462,8 @@ export function createApiClient(options = {}) {
     logout,
     pushSubscribe,
     pushUnsubscribe,
+    pushSubscribeIos,
+    pushUnsubscribeIos,
     updatePaypalEmail,
 
     updateLocationPreset,

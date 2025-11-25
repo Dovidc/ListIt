@@ -3635,7 +3635,41 @@ app.delete('/api/push/unsubscribe', auth, async (req, res) => {
   }
 });
 
+// iOS/Android native push (APNs/FCM)
+const iosPushService = require('./lib/ios-push-service');
 
+app.post('/api/push/ios/subscribe', auth, async (req, res) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.trim() : 'ios';
+
+    if (!token) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
+    await iosPushService.saveIosToken(req.user.id, token, platform);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('iOS push subscribe failed:', e);
+    return res.status(500).json({ error: 'ios_push_subscribe_failed' });
+  }
+});
+
+app.delete('/api/push/ios/unsubscribe', auth, async (req, res) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+
+    if (!token) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
+    await iosPushService.deleteIosToken(req.user.id, token);
+    return res.status(204).end();
+  } catch (e) {
+    console.error('iOS push unsubscribe failed:', e);
+    return res.status(500).json({ error: 'ios_push_unsubscribe_failed' });
+  }
+});
 
 
 /* ------------------------------------------------------------------ */
@@ -3726,7 +3760,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.inquiry_enabled, l.sold,
+      l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold,
 
       u.username AS owner_username,
 

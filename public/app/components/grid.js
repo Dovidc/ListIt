@@ -19,6 +19,8 @@
     const formatDistanceBadge = (meters) => {
       if (!Number.isFinite(meters) || meters < 0) return null;
       const feet = meters * 3.28084;
+      // Don't show distance badge if > 600 feet away
+      if (feet > 600) return null;
       if (feet < 1000) return `${Math.round(feet)} ft`;
       const miles = feet / 5280;
       return `${miles.toFixed(1)} mi`;

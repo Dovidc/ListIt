@@ -184,7 +184,7 @@
     if (typeof layoutComponentsFactory !== 'function') {
       throw new Error('Layout components bundle failed to load.');
     }
-    const { Header, GlobalLoader } = layoutComponentsFactory({ React: runtimeReact });
+    const { Header, GlobalLoader, ResumeOverlay } = layoutComponentsFactory({ React: runtimeReact });
 
     const appViewFeatureFactory = bundles?.features?.appView?.createAppViewFeature;
     if (typeof appViewFeatureFactory !== 'function') {
@@ -506,7 +506,7 @@
         listingQueue: { ListingQueueProvider, ListingQueueToast, useListingQueueState }
       },
       components: {
-        layout: { Header, GlobalLoader },
+        layout: { Header, GlobalLoader, ResumeOverlay },
         grid: { ListingsGrid },
         listing: {
           MassListModal,

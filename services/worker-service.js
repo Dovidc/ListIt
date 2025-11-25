@@ -18,6 +18,7 @@ const {
 } = require('../lib/supporter-config');
 const defaultMailService = require('../mail-service');
 const pushServiceModule = require('../lib/push-service');
+const iosPushServiceModule = require('../lib/ios-push-service');
 
 function nowIso() {
   return new Date().toISOString();
@@ -50,6 +51,7 @@ class WorkerService {
     this.stripe = null;
     this.mailService = defaultMailService;
     this.pushService = pushServiceModule;
+    this.iosPushService = iosPushServiceModule;
 
     // Bind methods
     this.start = this.start.bind(this);
@@ -390,14 +392,36 @@ class WorkerService {
   }
 
   /**
-   * Notify users about nearby listings
+   * Notify users about nearby listings (web + iOS/Android native)
    */
   async notifyNearbyListing(listing) {
-    if (!this.pushService || typeof this.pushService.notifyNearbyListing !== 'function') {
-      throw new Error('Push service not available');
-    }
     if (!listing) return;
-    await this.pushService.notifyNearbyListing(listing);
+
+    // Send web push
+    if (this.pushService && typeof this.pushService.notifyNearbyListing === 'function') {
+      try {
+        await this.pushService.notifyNearbyListing(listing);
+      } catch (err) {
+        console.warn('[Worker] Web nearby push failed:', err?.message || err);
+      }
+    }
+
+    // Send iOS/Android native push
+    if (this.iosPushService && typeof this.iosPushService.broadcastIosPush === 'function') {
+      try {
+        const iosPayload = {
+          type: 'nearby_listing',
+          listingId: listing.id,
+          title: listing.title,
+          price: listing.price
+        };
+        await this.iosPushService.broadcastIosPush(iosPayload, {
+          excludeUserId: listing.user_id
+        });
+      } catch (err) {
+        console.warn('[Worker] iOS nearby push failed:', err?.message || err);
+      }
+    }
   }
 
   /**
@@ -430,20 +454,40 @@ class WorkerService {
   }
 
   /**
-   * Send push notification
+   * Send push notification (web + iOS/Android native)
    */
   async sendPushNotification(payload) {
-    if (!this.pushService || typeof this.pushService.sendPushToUser !== 'function') {
-      throw new Error('Push service not available');
-    }
-
     if (!payload || !payload.userId || !payload.notification) return;
 
-    await this.pushService.sendPushToUser(
-      payload.userId,
-      payload.notification,
-      payload.options || {}
-    );
+    // Send web push
+    if (this.pushService && typeof this.pushService.sendPushToUser === 'function') {
+      try {
+        await this.pushService.sendPushToUser(
+          payload.userId,
+          payload.notification,
+          payload.options || {}
+        );
+      } catch (err) {
+        console.warn('[Worker] Web push failed:', err?.message || err);
+      }
+    }
+
+    // Send iOS/Android native push
+    if (this.iosPushService && typeof this.iosPushService.sendIosPushToUser === 'function') {
+      try {
+        const notification = payload.notification;
+        const iosPayload = {
+          type: 'message',
+          senderName: notification.sender_name || notification.sender_username,
+          body: notification.body,
+          conversationId: notification.conversation_id,
+          senderId: notification.sender_id
+        };
+        await this.iosPushService.sendIosPushToUser(payload.userId, iosPayload);
+      } catch (err) {
+        console.warn('[Worker] iOS push failed:', err?.message || err);
+      }
+    }
   }
 
   /**
@@ -610,7 +654,7 @@ class WorkerService {
   /**
    * Inject external dependencies
    */
-  setDependencies({ stripe, mailService, pushService } = {}) {
+  setDependencies({ stripe, mailService, pushService, iosPushService } = {}) {
     if (stripe) {
       this.stripe = stripe;
     }
@@ -619,6 +663,9 @@ class WorkerService {
     }
     if (pushService) {
       this.pushService = pushService;
+    }
+    if (iosPushService) {
+      this.iosPushService = iosPushService;
     }
   }
 

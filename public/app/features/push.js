@@ -18,10 +18,49 @@
       throw new Error('Push feature requires helpers.base64UrlToUint8Array.');
     }
 
-    function usePushNotifications({ user, pushMeta }) {
-      const pushSetupRef = useRef({ userId: null, permission: null });
+    // Check if running in native iOS/Android via Capacitor
+    function isNativeCapacitor() {
+      const platform = window.Capacitor?.getPlatform?.();
+      return platform === 'ios' || platform === 'android';
+    }
 
+    // Get Capacitor PushNotifications plugin
+    function getCapacitorPush() {
+      return window.Capacitor?.Plugins?.PushNotifications;
+    }
+
+    function usePushNotifications({ user, pushMeta }) {
+      const pushSetupRef = useRef({ userId: null, permission: null, platform: null });
+      const listenersRef = useRef([]);
+
+      // Remove push subscription (works for both web and native)
       const removePushSubscription = useCallback(async () => {
+        // Native iOS/Android
+        if (isNativeCapacitor()) {
+          const PushNotifications = getCapacitorPush();
+          if (!PushNotifications) return;
+          try {
+            // Tell server to remove this device's token
+            const lastToken = pushSetupRef.current.token;
+            if (lastToken) {
+              try {
+                await api.pushUnsubscribeIos?.({ token: lastToken }, { silent: true });
+              } catch (err) {
+                console.warn('iOS push unsubscribe request failed:', err);
+              }
+            }
+            // Remove listeners
+            for (const listener of listenersRef.current) {
+              if (listener?.remove) await listener.remove();
+            }
+            listenersRef.current = [];
+          } catch (err) {
+            console.warn('Native push cleanup failed:', err);
+          }
+          return;
+        }
+
+        // Web push
         if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
         try {
@@ -47,7 +86,109 @@
         }
       }, [api, serializePushSubscription]);
 
+      // Native iOS/Android push setup
       useEffect(() => {
+        if (!isNativeCapacitor()) return;
+        if (!user?.id) return;
+
+        const PushNotifications = getCapacitorPush();
+        if (!PushNotifications) {
+          console.warn('PushNotifications plugin not available');
+          return;
+        }
+
+        let aborted = false;
+
+        async function setupNativePush() {
+          try {
+            // Check/request permissions
+            let permStatus = await PushNotifications.checkPermissions();
+
+            if (permStatus.receive === 'prompt') {
+              permStatus = await PushNotifications.requestPermissions();
+            }
+
+            if (permStatus.receive !== 'granted') {
+              console.log('Push permission not granted:', permStatus.receive);
+              pushSetupRef.current = { userId: user.id, permission: permStatus.receive, platform: 'native' };
+              return;
+            }
+
+            // Register with APNs/FCM
+            await PushNotifications.register();
+
+            // Listen for registration success
+            const registrationListener = await PushNotifications.addListener('registration', async (token) => {
+              if (aborted) return;
+              console.log('Push registration success, token:', token.value?.substring(0, 20) + '...');
+
+              pushSetupRef.current = {
+                userId: user.id,
+                permission: 'granted',
+                platform: 'native',
+                token: token.value
+              };
+
+              // Send token to server
+              try {
+                await api.pushSubscribeIos?.({
+                  token: token.value,
+                  platform: window.Capacitor?.getPlatform?.() || 'ios'
+                }, { silent: true });
+              } catch (err) {
+                console.warn('Failed to register iOS token with server:', err);
+              }
+            });
+            listenersRef.current.push(registrationListener);
+
+            // Listen for registration errors
+            const errorListener = await PushNotifications.addListener('registrationError', (error) => {
+              console.error('Push registration failed:', error);
+              pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'native' };
+            });
+            listenersRef.current.push(errorListener);
+
+            // Listen for push notifications received while app is open
+            const receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              console.log('Push received in foreground:', notification);
+              // Could show an in-app toast here
+            });
+            listenersRef.current.push(receivedListener);
+
+            // Listen for notification taps
+            const actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              console.log('Push notification tapped:', action);
+              // Could navigate to relevant screen here
+              const data = action.notification?.data;
+              if (data?.conversation_id) {
+                // Navigate to messages
+                window.ListItApp?.AppNav?.setTab?.('messages');
+              }
+            });
+            listenersRef.current.push(actionListener);
+
+          } catch (err) {
+            console.error('Native push setup failed:', err);
+            pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'native' };
+          }
+        }
+
+        setupNativePush();
+
+        return () => {
+          aborted = true;
+          // Clean up listeners on unmount
+          for (const listener of listenersRef.current) {
+            if (listener?.remove) listener.remove();
+          }
+          listenersRef.current = [];
+        };
+      }, [user?.id, api]);
+
+      // Web push setup (existing logic)
+      useEffect(() => {
+        if (isNativeCapacitor()) return; // Skip web push on native
+
         let aborted = false;
 
         async function setupPushNotifications() {
@@ -67,7 +208,7 @@
           }
 
           if (currentPermission === 'denied') {
-            pushSetupRef.current = { userId: user.id, permission: 'denied' };
+            pushSetupRef.current = { userId: user.id, permission: 'denied', platform: 'web' };
             return;
           }
 
@@ -82,19 +223,19 @@
                 permission = await Notification.requestPermission();
               } catch (err) {
                 console.warn('Notification permission request failed:', err);
-                pushSetupRef.current = { userId: user.id, permission: 'error' };
+                pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'web' };
                 return;
               }
             }
 
             if (permission !== 'granted') {
-              pushSetupRef.current = { userId: user.id, permission };
+              pushSetupRef.current = { userId: user.id, permission, platform: 'web' };
               return;
             }
 
             const applicationServerKey = base64UrlToUint8Array(vapidKey);
             if (!applicationServerKey) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
+              pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'web' };
               return;
             }
 
@@ -107,21 +248,21 @@
             }
 
             if (!subscription) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
+              pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'web' };
               return;
             }
 
             const serialized = serializePushSubscription(subscription);
             if (!serialized) {
-              pushSetupRef.current = { userId: user.id, permission: 'error' };
+              pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'web' };
               return;
             }
 
             await api.pushSubscribe(serialized, { silent: true });
-            pushSetupRef.current = { userId: user.id, permission: 'granted' };
+            pushSetupRef.current = { userId: user.id, permission: 'granted', platform: 'web' };
           } catch (err) {
             console.warn('Push setup failed:', err);
-            pushSetupRef.current = { userId: user.id, permission: 'error' };
+            pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'web' };
           }
         }
 

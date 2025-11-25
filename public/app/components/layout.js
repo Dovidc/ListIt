@@ -14,6 +14,25 @@
       );
     }
 
+    function ResumeOverlay({ active }) {
+      if (!active) return null;
+      return H('div', { className: 'resume-overlay' },
+        H('div', { className: 'resume-overlay__content' },
+          H('div', { className: 'resume-overlay__icon' },
+            H('div', { className: 'resume-overlay__geometric' },
+              H('div', { className: 'resume-overlay__hexagon resume-overlay__hexagon--outer' }),
+              H('div', { className: 'resume-overlay__hexagon resume-overlay__hexagon--middle' }),
+              H('div', { className: 'resume-overlay__hexagon resume-overlay__hexagon--inner' })
+            )
+          ),
+          H('div', { className: 'resume-overlay__quote' },
+            'One man\'s trash is another man\'s ',
+            H('span', { style: { color: '#ffa366' } }, 'treasure')
+          )
+        )
+      );
+    }
+
     const navIcons = {
       browse: () => H('svg', {
         viewBox: '0 0 24 24',
@@ -179,6 +198,7 @@
 
     return {
       GlobalLoader,
+      ResumeOverlay,
       Header
     };
   }
