@@ -137,6 +137,40 @@
       return display || safeFallback;
     }
 
+    function formatRelativeTime(dateValue) {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      if (!Number.isFinite(date.getTime())) return null;
+
+      const now = Date.now();
+      const diffMs = now - date.getTime();
+      if (diffMs < 0) return null;
+
+      const seconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      const weeks = Math.floor(days / 7);
+      const months = Math.floor(days / 30);
+
+      if (months > 0) {
+        return months === 1 ? '1 month ago' : `${months} months ago`;
+      }
+      if (weeks > 0) {
+        return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+      }
+      if (days > 0) {
+        return days === 1 ? '1 day ago' : `${days} days ago`;
+      }
+      if (hours > 0) {
+        return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+      }
+      if (minutes > 0) {
+        return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+      }
+      return 'Just now';
+    }
+
     async function fetchCoordsAndReverseInternal() {
       if (typeof fetchCoordsAndReverse === 'function') {
         return fetchCoordsAndReverse();
@@ -1756,6 +1790,8 @@
           ),
 
           H('div', { className: 'muted' }, item.location || 'No location'),
+
+          item.created_at && H('div', { className: 'muted' }, 'Listed ' + formatRelativeTime(item.created_at)),
 
           (showDistance && derivedMeters != null) &&
           H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
