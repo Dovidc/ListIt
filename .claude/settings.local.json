@@ -19,7 +19,8 @@
       "Bash(npx knex:*)",
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(npm ls:*)"
     ],
     "deny": [],
     "ask": []

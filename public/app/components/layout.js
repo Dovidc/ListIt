@@ -7,16 +7,50 @@
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
     function GlobalLoader({ active }) {
-      if (!active) return null;
-      return H('div', { className: 'global-loader' },
+      const [visible, setVisible] = React.useState(active);
+      const [fadeOut, setFadeOut] = React.useState(false);
+
+      React.useEffect(() => {
+        if (active) {
+          setVisible(true);
+          setFadeOut(false);
+        } else if (visible) {
+          setFadeOut(true);
+          const timer = setTimeout(() => {
+            setVisible(false);
+            setFadeOut(false);
+          }, 250);
+          return () => clearTimeout(timer);
+        }
+      }, [active, visible]);
+
+      if (!visible) return null;
+      return H('div', { className: fadeOut ? 'global-loader fade-out' : 'global-loader' },
         H('div', { className: 'spinner' }),
         H('div', { className: 'loader-text' }, 'Loading...')
       );
     }
 
     function ResumeOverlay({ active }) {
-      if (!active) return null;
-      return H('div', { className: 'resume-overlay' },
+      const [visible, setVisible] = React.useState(active);
+      const [fadeOut, setFadeOut] = React.useState(false);
+
+      React.useEffect(() => {
+        if (active) {
+          setVisible(true);
+          setFadeOut(false);
+        } else if (visible) {
+          setFadeOut(true);
+          const timer = setTimeout(() => {
+            setVisible(false);
+            setFadeOut(false);
+          }, 350);
+          return () => clearTimeout(timer);
+        }
+      }, [active, visible]);
+
+      if (!visible) return null;
+      return H('div', { className: fadeOut ? 'resume-overlay fade-out' : 'resume-overlay' },
         H('div', { className: 'resume-overlay__content' },
           H('div', { className: 'resume-overlay__icon' },
             H('div', { className: 'resume-overlay__geometric' },

@@ -206,7 +206,7 @@
       max-height: 95vh;
     }
 
-    /* Global loading overlay */
+    /* Global loading overlay - updated */
     .global-loader {
       position: fixed;
       inset: 0;
@@ -215,11 +215,32 @@
       align-items: center;
       justify-content: center;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.55);
-      -webkit-backdrop-filter: blur(2px);
-      backdrop-filter: blur(2px);
+      background: rgba(255, 255, 255, 0.85);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
       z-index: 1000;
       pointer-events: all;
+      opacity: 1;
+      transition: opacity 0.3s ease-out;
+      border: 12px solid transparent;
+      border-image: linear-gradient(135deg, rgba(96, 165, 250, 0.5), rgba(147, 197, 253, 0.3), rgba(191, 219, 254, 0.2), transparent 70%) 1;
+    }
+
+    .global-loader.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Calming blue border fade effect */
+    .global-loader::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      box-shadow:
+        inset 0 0 100px 50px rgba(96, 165, 250, 0.25),
+        inset 0 0 200px 100px rgba(147, 197, 253, 0.15);
+      z-index: -1;
     }
 
     .global-loader .spinner {
@@ -227,7 +248,7 @@
       height: 40px;
       border-radius: 999px;
       border: 4px solid #e5e7eb;
-      border-top-color: #111;
+      border-top-color: #3b82f6;
       animation: spin 0.9s linear infinite;
     }
 
@@ -962,7 +983,7 @@
   </script>
 
   <!-- Mobile-only overrides (kept after app.css) -->
-  <link rel="stylesheet" href="/mobile.css?v=nearby-dropdown-1" media="screen and (max-width: 720px)" />
+  <link rel="stylesheet" href="/mobile.css?v=resume-fade-1" media="screen and (max-width: 720px)" />
 </head>
 
 <body>
@@ -977,7 +998,7 @@
   <script src="/app/components/media.js?v=modular-media-1" defer></script>
   <script src="/app/components/ads.js?v=modular-ads-1" defer></script>
   <script src="/app/components/grid.js?v=supporter-badges-1" defer></script>
-  <script src="/app/components/layout.js?v=modular-layout-1" defer></script>
+  <script src="/app/components/layout.js?v=resume-fade-1" defer></script>
   <script src="/app/components/supporter.js?v=supporter-badges-1" defer></script>
   <script src="/app/components/listings.js?v=supporter-badges-1" defer></script>
   <script src="/app/components/profile-picture-upload.js?v=3" defer></script>
@@ -995,7 +1016,7 @@
   <script src="/app/features/profile.js?v=supporter-badges-1" defer></script>
   <script src="/app/features/nearby.js?v=modular-nearby-2" defer></script>
   <script src="/app/features/message-center.js?v=modular-message-center-2" defer></script>
-  <script src="/app/features/messages.js?v=modular-messages-pfp-1" defer></script>
+  <script src="/app/features/messages.js?v=mark-all-read-1" defer></script>
   <script src="/app/features/push.js?v=modular-push-debug-1" defer></script>
   <script src="/app/features/ads.js?v=ad-debug-1" defer></script>
   <script src="/app/features/admin/state.js?v=modular-admin-2" defer></script>
@@ -1045,7 +1066,7 @@
   </script>
 
   <!-- Mobile-only overrides (kept after app.css) -->
-  <link rel="stylesheet" href="/mobile.css?v=nearby-dropdown-1" media="screen and (max-width: 720px)" />
+  <link rel="stylesheet" href="/mobile.css?v=resume-fade-1" media="screen and (max-width: 720px)" />
   </head>
 
   <body>
@@ -1060,7 +1081,7 @@
     <script src="/app/components/media.js?v=modular-media-1" defer></script>
     <script src="/app/components/ads.js?v=modular-ads-1" defer></script>
     <script src="/app/components/grid.js?v=supporter-badges-1" defer></script>
-    <script src="/app/components/layout.js?v=modular-layout-1" defer></script>
+    <script src="/app/components/layout.js?v=resume-fade-1" defer></script>
     <script src="/app/components/supporter.js?v=supporter-badges-1" defer></script>
     <script src="/app/components/listings.js?v=supporter-badges-1" defer></script>
     <script src="/app/components/profile-picture-upload.js?v=3" defer></script>
@@ -1078,7 +1099,7 @@
     <script src="/app/features/profile.js?v=supporter-badges-1" defer></script>
     <script src="/app/features/nearby.js?v=modular-nearby-2" defer></script>
     <script src="/app/features/message-center.js?v=modular-message-center-2" defer></script>
-    <script src="/app/features/messages.js?v=modular-messages-pfp-1" defer></script>
+    <script src="/app/features/messages.js?v=mark-all-read-1" defer></script>
     <script src="/app/features/push.js?v=modular-push-debug-1" defer></script>
     <script src="/app/features/ads.js?v=ad-debug-1" defer></script>
     <script src="/app/features/admin/state.js?v=modular-admin-2" defer></script>

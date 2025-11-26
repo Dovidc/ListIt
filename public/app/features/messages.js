@@ -129,9 +129,27 @@
       }, icon);
     }
 
-    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, className }) {
+    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, onMarkAllRead, className }) {
+      const hasUnread = conversations.some(c => c._unread);
       return H('aside', { className: `card sidebar messages-sidebar ${className || ''}` },
-        H('div', { className: 'messages-sidebar__header' }, 'Conversations'),
+        H('div', {
+          className: 'messages-sidebar__header',
+          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+        },
+          'Conversations',
+          hasUnread && H('button', {
+            className: 'btn',
+            onClick: onMarkAllRead,
+            style: {
+              padding: '4px 10px',
+              fontSize: 12,
+              borderRadius: 8,
+              background: '#f3f4f6',
+              border: '1px solid #e5e7eb'
+            },
+            title: 'Mark all conversations as read'
+          }, 'Mark all read')
+        ),
         H('div', { className: 'messages-sidebar__list' },
           ...(conversations.length
             ? conversations.map((conversation) => H('div', {
@@ -870,6 +888,24 @@
 
       const canSendLocation = !!locationPreset;
 
+      const markAllAsRead = useCallback(() => {
+        if (!user?.id || !convos || convos.length === 0) return;
+        const seen = loadSeen(user.id) || {};
+        let changed = false;
+        for (const c of convos) {
+          if (c.last_message_id && (!seen[c.id] || seen[c.id] < c.last_message_id)) {
+            seen[c.id] = c.last_message_id;
+            changed = true;
+          }
+        }
+        if (changed) {
+          saveSeen(user.id, seen);
+          // Trigger re-render by re-fetching convos
+          fetchConvos();
+          onSeenChange?.(null, null);
+        }
+      }, [user?.id, convos, loadSeen, saveSeen, fetchConvos, onSeenChange]);
+
       return {
         user,
         convosDecorated,
@@ -903,7 +939,8 @@
         openLightbox,
         closeLightbox,
         setLightboxIndex,
-        lb
+        lb,
+        markAllAsRead
       };
     }
 
@@ -1020,7 +1057,8 @@
         user: currentUser,
         canSendLocation,
         locationPreset,
-        sendLocationPreset
+        sendLocationPreset,
+        markAllAsRead
       } = useMessagesPanelState(props);
 
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
@@ -1084,6 +1122,7 @@
           activeId,
           onSelectConversation: handleSelectConversation,
           onDeleteConversation: deleteConvo,
+          onMarkAllRead: markAllAsRead,
           className: showConversationOnMobile ? 'hide-on-mobile' : ''
         }),
         H('section', {
