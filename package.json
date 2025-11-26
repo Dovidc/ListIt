@@ -21,8 +21,8 @@
     "open:ios": "npx cap open ios"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.882.0",
-    "@aws-sdk/s3-request-presigner": "^3.882.0",
+    "@aws-sdk/client-s3": "^3.940.0",
+    "@aws-sdk/s3-request-presigner": "^3.940.0",
     "@capacitor/core": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.4",
     "@sendgrid/mail": "^8.1.2",
