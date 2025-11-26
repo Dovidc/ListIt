@@ -1,9 +1,9 @@
 (() => {
   console.log('[Push] push.js file loaded');
-  alert('PUSH.JS LOADED - TEST');
 
   function createPushFeature({ React, api, helpers }) {
     console.log('[Push] createPushFeature called');
+    alert('createPushFeature called - user will see this when feature initializes');
     if (!React || typeof React.useRef !== 'function') {
       throw new Error('Push feature requires React.');
     }
@@ -35,6 +35,7 @@
 
     function usePushNotifications({ user, pushMeta }) {
       console.log('[Push] usePushNotifications hook called', { userId: user?.id, pushMeta });
+      alert('usePushNotifications called, user: ' + user?.id);
       const pushSetupRef = useRef({ userId: null, permission: null, platform: null });
       const listenersRef = useRef([]);
 
@@ -93,13 +94,17 @@
 
       // Native iOS/Android push setup
       useEffect(() => {
+        const platform = window.Capacitor?.getPlatform?.();
+        const isNative = isNativeCapacitor();
+        alert('useEffect running! Platform: ' + platform + ', isNative: ' + isNative + ', userId: ' + user?.id);
+
         console.log('[Push Debug] Starting push setup check');
-        console.log('[Push Debug] isNativeCapacitor:', isNativeCapacitor());
-        console.log('[Push Debug] platform:', window.Capacitor?.getPlatform?.());
+        console.log('[Push Debug] isNativeCapacitor:', isNative);
+        console.log('[Push Debug] platform:', platform);
         console.log('[Push Debug] user?.id:', user?.id);
         console.log('[Push Debug] Capacitor.Plugins:', Object.keys(window.Capacitor?.Plugins || {}));
 
-        if (!isNativeCapacitor()) {
+        if (!isNative) {
           console.log('[Push Debug] Not native Capacitor, skipping');
           return;
         }
