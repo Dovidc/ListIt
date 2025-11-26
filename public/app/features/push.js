@@ -177,11 +177,14 @@
 
               // Send token to server
               try {
-                await api.pushSubscribeIos?.({
+                alert('Sending token to server...');
+                const result = await api.pushSubscribeIos?.({
                   token: token.value,
                   platform: window.Capacitor?.getPlatform?.() || 'ios'
-                }, { silent: true });
+                });
+                alert('Token sent to server! Result: ' + JSON.stringify(result));
               } catch (err) {
+                alert('FAILED to send token: ' + err.message);
                 console.warn('Failed to register iOS token with server:', err);
               }
             });
