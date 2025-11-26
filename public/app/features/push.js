@@ -1,5 +1,6 @@
 (() => {
   console.log('[Push] push.js file loaded');
+  alert('PUSH.JS LOADED - TEST');
 
   function createPushFeature({ React, api, helpers }) {
     console.log('[Push] createPushFeature called');

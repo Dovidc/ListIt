@@ -18,7 +18,8 @@
       "Bash(npx cap sync ios)",
       "Bash(npx knex:*)",
       "Bash(git add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(node --check:*)"
     ],
     "deny": [],
     "ask": []
