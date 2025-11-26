@@ -88,10 +88,24 @@
 
       // Native iOS/Android push setup
       useEffect(() => {
-        if (!isNativeCapacitor()) return;
-        if (!user?.id) return;
+        console.log('[Push Debug] Starting push setup check');
+        console.log('[Push Debug] isNativeCapacitor:', isNativeCapacitor());
+        console.log('[Push Debug] platform:', window.Capacitor?.getPlatform?.());
+        console.log('[Push Debug] user?.id:', user?.id);
+        console.log('[Push Debug] Capacitor.Plugins:', Object.keys(window.Capacitor?.Plugins || {}));
+
+        if (!isNativeCapacitor()) {
+          console.log('[Push Debug] Not native Capacitor, skipping');
+          return;
+        }
+        if (!user?.id) {
+          console.log('[Push Debug] No user id, skipping');
+          return;
+        }
 
         const PushNotifications = getCapacitorPush();
+        console.log('[Push Debug] PushNotifications plugin:', !!PushNotifications);
+
         if (!PushNotifications) {
           console.warn('PushNotifications plugin not available');
           return;
@@ -101,11 +115,16 @@
 
         async function setupNativePush() {
           try {
+            console.log('[Push Debug] setupNativePush starting');
+
             // Check/request permissions
             let permStatus = await PushNotifications.checkPermissions();
+            console.log('[Push Debug] checkPermissions result:', permStatus);
 
             if (permStatus.receive === 'prompt') {
+              console.log('[Push Debug] Requesting permissions...');
               permStatus = await PushNotifications.requestPermissions();
+              console.log('[Push Debug] requestPermissions result:', permStatus);
             }
 
             if (permStatus.receive !== 'granted') {
@@ -115,7 +134,9 @@
             }
 
             // Register with APNs/FCM
+            console.log('[Push Debug] Calling PushNotifications.register()');
             await PushNotifications.register();
+            console.log('[Push Debug] register() called successfully');
 
             // Listen for registration success
             const registrationListener = await PushNotifications.addListener('registration', async (token) => {
