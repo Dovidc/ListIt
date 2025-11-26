@@ -29,7 +29,12 @@
 
     // Get Capacitor PushNotifications plugin
     function getCapacitorPush() {
-      return window.Capacitor?.Plugins?.PushNotifications;
+      // Try different possible names for the plugin
+      const plugins = window.Capacitor?.Plugins || {};
+      return plugins.PushNotifications ||
+             plugins.CapacitorPushNotifications ||
+             plugins.pushNotifications ||
+             window.Capacitor?.registerPlugin?.('PushNotifications');
     }
 
     function usePushNotifications({ user, pushMeta }) {
@@ -114,8 +119,9 @@
         console.log('[Push Debug] PushNotifications plugin:', !!PushNotifications);
 
         if (!PushNotifications) {
-          alert('ERROR: PushNotifications plugin not available! Plugins: ' + Object.keys(window.Capacitor?.Plugins || {}).join(', '));
-          console.warn('PushNotifications plugin not available');
+          const allPlugins = Object.keys(window.Capacitor?.Plugins || {});
+          alert('ERROR: PushNotifications plugin not available!\n\nAvailable plugins:\n' + allPlugins.join('\n') + '\n\nTotal: ' + allPlugins.length);
+          console.warn('PushNotifications plugin not available. Available:', allPlugins);
           return;
         }
 
