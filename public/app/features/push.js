@@ -177,8 +177,13 @@
 
               // Send token to server
               try {
+                alert('api.pushSubscribeIos exists: ' + (typeof api.pushSubscribeIos));
+                if (typeof api.pushSubscribeIos !== 'function') {
+                  alert('ERROR: api.pushSubscribeIos is not a function! Available methods: ' + Object.keys(api).filter(k => k.includes('push')).join(', '));
+                  return;
+                }
                 alert('Sending token to server...');
-                const result = await api.pushSubscribeIos?.({
+                const result = await api.pushSubscribeIos({
                   token: token.value,
                   platform: window.Capacitor?.getPlatform?.() || 'ios'
                 });
