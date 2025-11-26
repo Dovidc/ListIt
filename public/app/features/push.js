@@ -3,7 +3,6 @@
 
   function createPushFeature({ React, api, helpers }) {
     console.log('[Push] createPushFeature called');
-    alert('createPushFeature called - user will see this when feature initializes');
     if (!React || typeof React.useRef !== 'function') {
       throw new Error('Push feature requires React.');
     }
@@ -35,7 +34,6 @@
 
     function usePushNotifications({ user, pushMeta }) {
       console.log('[Push] usePushNotifications hook called', { userId: user?.id, pushMeta });
-      alert('usePushNotifications called, user: ' + user?.id);
       const pushSetupRef = useRef({ userId: null, permission: null, platform: null });
       const listenersRef = useRef([]);
 
@@ -96,7 +94,6 @@
       useEffect(() => {
         const platform = window.Capacitor?.getPlatform?.();
         const isNative = isNativeCapacitor();
-        alert('useEffect running! Platform: ' + platform + ', isNative: ' + isNative + ', userId: ' + user?.id);
 
         console.log('[Push Debug] Starting push setup check');
         console.log('[Push Debug] isNativeCapacitor:', isNative);
@@ -117,9 +114,13 @@
         console.log('[Push Debug] PushNotifications plugin:', !!PushNotifications);
 
         if (!PushNotifications) {
+          alert('ERROR: PushNotifications plugin not available! Plugins: ' + Object.keys(window.Capacitor?.Plugins || {}).join(', '));
           console.warn('PushNotifications plugin not available');
           return;
         }
+
+        // If we get here, we're about to request permissions
+        alert('SUCCESS: About to request push permissions for user ' + user?.id);
 
         let aborted = false;
 
