@@ -2170,6 +2170,14 @@ function mapUserRow(row, extra = {}) {
 
     karma: row.karma || 0,
 
+    notifications_disabled: !!row.notifications_disabled,
+
+    quiet_hours_enabled: !!row.quiet_hours_enabled,
+
+    quiet_hours_start: row.quiet_hours_start || '20:30',
+
+    quiet_hours_end: row.quiet_hours_end || '09:30',
+
     ...extra
 
   };
@@ -2731,7 +2739,15 @@ app.get('/api/me', async (req, res) => {
 
              stripe_customer_id,
 
-             karma
+             karma,
+
+             COALESCE(notifications_disabled, 0) AS notifications_disabled,
+
+             COALESCE(quiet_hours_enabled, 0) AS quiet_hours_enabled,
+
+             COALESCE(quiet_hours_start, '20:30') AS quiet_hours_start,
+
+             COALESCE(quiet_hours_end, '09:30') AS quiet_hours_end
 
       FROM users
 
@@ -2940,6 +2956,47 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
 
   }
 
+});
+
+app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) => {
+  try {
+    const notificationsDisabled = Boolean(req.body?.notifications_disabled);
+    const quietHoursEnabled = Boolean(req.body?.quiet_hours_enabled);
+    const quietHoursStart = String(req.body?.quiet_hours_start || '20:30').trim();
+    const quietHoursEnd = String(req.body?.quiet_hours_end || '09:30').trim();
+
+    // Validate time format (HH:MM)
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(quietHoursStart) || !timeRegex.test(quietHoursEnd)) {
+      return res.status(400).json({ error: 'Invalid time format. Use HH:MM' });
+    }
+
+    await db.prepare(`
+      UPDATE users SET
+        notifications_disabled = ?,
+        quiet_hours_enabled = ?,
+        quiet_hours_start = ?,
+        quiet_hours_end = ?
+      WHERE id = ?
+    `).run(
+      notificationsDisabled ? 1 : 0,
+      quietHoursEnabled ? 1 : 0,
+      quietHoursStart,
+      quietHoursEnd,
+      req.user.id
+    );
+
+    return res.json({
+      ok: true,
+      notifications_disabled: notificationsDisabled,
+      quiet_hours_enabled: quietHoursEnabled,
+      quiet_hours_start: quietHoursStart,
+      quiet_hours_end: quietHoursEnd
+    });
+  } catch (e) {
+    console.error('Update notification settings failed:', e);
+    return res.status(500).json({ error: 'update_failed' });
+  }
 });
 
 app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) => {

@@ -215,17 +215,33 @@
         H('circle', { cx: 12, cy: 10, r: 2.6 }));
     }
 
+    function NotificationIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: 20,
+        height: 20,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.7,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+        H('path', { d: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' }),
+        H('path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' }));
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
-        title: 'Auto-post to Nearby',
-        intro: 'When enabled, Auto-List will also publish your item to the Nearby feed.',
+        title: 'Enable distance tags',
+        intro: 'When enabled, distance tags will be added to your listings.',
         bullets: [
           'Uses your latest saved location to set latitude and longitude.',
-          'Marks the new listing as available to nearby shoppers.',
-          'Requires Auto-List to be turned on and is best used from your phone.'
+          'Allows users to see the distance your item is from them.',
         ],
-        footer: 'You can always edit the listing afterwards to adjust its location or disable Nearby.'
+        footer: 'You can always edit the listing afterwards to adjust its location or disable distance tags.'
       });
     });
 
@@ -888,8 +904,8 @@
                 }),
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Auto Nearby'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'auto-list extra option')
+                  H('div', { style: { fontWeight: 700 } }, 'Distance Tag'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Displays item proximity')
                 ),
                 H('button', {
                   type: 'button',
@@ -966,6 +982,186 @@
       );
     });
 
+    const NotificationSettingsModal = React.memo(function NotificationSettingsModal({
+      open,
+      onClose,
+      notificationsDisabled,
+      setNotificationsDisabled,
+      quietHoursEnabled,
+      setQuietHoursEnabled,
+      quietHoursStart,
+      setQuietHoursStart,
+      quietHoursEnd,
+      setQuietHoursEnd,
+      onSave,
+      saving
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '420px',
+              width: 'min(420px, 92vw)',
+              padding: '24px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 16,
+              position: 'relative'
+            }
+          },
+            H('button', {
+              className: 'close',
+              onClick: onClose,
+              title: 'Close notification settings',
+              style: {
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#111',
+                fontWeight: 'bold'
+              }
+            }, '✕'),
+            H('div', { style: { display: 'grid', gap: 8, marginBottom: 20 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
+              },
+                H(NotificationIcon, { width: 22, height: 22 }),
+                'Notification Settings'
+              ),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0 }
+              }, 'Control when you receive push notifications.')
+            ),
+            H('div', { style: { display: 'grid', gap: 16 } },
+              H('label', { className: 'toggle-card', style: { padding: '12px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!notificationsDisabled,
+                  onChange: (e) => setNotificationsDisabled?.(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Disable all notifications'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Stop all push notifications')
+                )
+              ),
+              !notificationsDisabled && H('div', {
+                style: {
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  padding: 16,
+                  background: '#f9fafb'
+                }
+              },
+                H('label', { className: 'toggle-card', style: { padding: '10px 0', width: '100%', border: 'none', background: 'transparent' } },
+                  H('input', {
+                    type: 'checkbox',
+                    className: 'toggle-input',
+                    checked: !!quietHoursEnabled,
+                    onChange: (e) => setQuietHoursEnabled?.(e.target.checked)
+                  }),
+                  H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                  H('div', { className: 'toggle-copy' },
+                    H('div', { style: { fontWeight: 700 } }, 'Quiet hours'),
+                    H('div', { className: 'muted', style: { fontSize: 12 } }, 'Silence notifications during set times')
+                  )
+                ),
+                quietHoursEnabled && H('div', {
+                  style: {
+                    marginTop: 16,
+                    display: 'grid',
+                    gap: 12
+                  }
+                },
+                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
+                    H('label', { style: { display: 'grid', gap: 4, flex: 1, minWidth: 120 } },
+                      H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Start time'),
+                      H('input', {
+                        type: 'time',
+                        value: quietHoursStart || '20:30',
+                        onChange: (e) => setQuietHoursStart?.(e.target.value),
+                        style: {
+                          padding: '8px 12px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: 8,
+                          fontSize: 14
+                        }
+                      })
+                    ),
+                    H('label', { style: { display: 'grid', gap: 4, flex: 1, minWidth: 120 } },
+                      H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'End time'),
+                      H('input', {
+                        type: 'time',
+                        value: quietHoursEnd || '09:30',
+                        onChange: (e) => setQuietHoursEnd?.(e.target.value),
+                        style: {
+                          padding: '8px 12px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: 8,
+                          fontSize: 14
+                        }
+                      })
+                    )
+                  ),
+                  H('p', {
+                    className: 'muted',
+                    style: { fontSize: 12, margin: 0 }
+                  }, 'Notifications will be silenced between these times daily.')
+                )
+              ),
+              H('div', {
+                style: {
+                  marginTop: 8,
+                  display: 'flex',
+                  justifyContent: 'flex-end'
+                }
+              },
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onSave,
+                  disabled: saving
+                }, saving ? 'Saving...' : 'Save')
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     const ProfilePanel = React.memo(function ProfilePanel({
       isMobile,
       user,
@@ -1010,6 +1206,12 @@
       const [profileBgImageUploadError, setProfileBgImageUploadError] = useState('');
       const [profileCustomizationModalOpen, setProfileCustomizationModalOpen] = useState(false);
       const [profileCustomizationStatusMessage, setProfileCustomizationStatusMessage] = useState('');
+      const [notificationSettingsModalOpen, setNotificationSettingsModalOpen] = useState(false);
+      const [notificationsDisabled, setNotificationsDisabled] = useState(user?.notifications_disabled || false);
+      const [quietHoursEnabled, setQuietHoursEnabled] = useState(user?.quiet_hours_enabled || false);
+      const [quietHoursStart, setQuietHoursStart] = useState(user?.quiet_hours_start || '20:30');
+      const [quietHoursEnd, setQuietHoursEnd] = useState(user?.quiet_hours_end || '09:30');
+      const [notificationSettingsSaving, setNotificationSettingsSaving] = useState(false);
       const isPremiumUser = useMemo(() => {
         return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
       }, [premiumFreeForAll, user?.supporter_tier, user?.subscription_status]);
@@ -1261,6 +1463,44 @@
           setProfileAboutStatusMessage('');
         }, 2000);
       }
+
+      const handleOpenNotificationSettingsModal = useCallback(() => {
+        setNotificationSettingsModalOpen(true);
+      }, []);
+
+      const handleCloseNotificationSettingsModal = useCallback(() => {
+        setNotificationSettingsModalOpen(false);
+      }, []);
+
+      const saveNotificationSettings = useCallback(async () => {
+        setNotificationSettingsSaving(true);
+        try {
+          const response = await api.updateNotificationSettings({
+            notifications_disabled: notificationsDisabled,
+            quiet_hours_enabled: quietHoursEnabled,
+            quiet_hours_start: quietHoursStart,
+            quiet_hours_end: quietHoursEnd
+          });
+          if (response?.error) {
+            alert(response.error);
+          } else {
+            if (user) {
+              navBridge.setUser?.({
+                ...user,
+                notifications_disabled: notificationsDisabled,
+                quiet_hours_enabled: quietHoursEnabled,
+                quiet_hours_start: quietHoursStart,
+                quiet_hours_end: quietHoursEnd
+              });
+            }
+            setNotificationSettingsModalOpen(false);
+          }
+        } catch (err) {
+          alert(err?.message || 'Failed to save notification settings');
+        } finally {
+          setNotificationSettingsSaving(false);
+        }
+      }, [notificationsDisabled, quietHoursEnabled, quietHoursStart, quietHoursEnd, user]);
 
       const handleOpenProfilePictureModal = useCallback(() => {
         setProfilePictureModalOpen(true);
@@ -1644,6 +1884,17 @@
           H('button', {
             className: 'btn',
             type: 'button',
+            onClick: handleOpenNotificationSettingsModal,
+            title: 'Notification settings',
+            style: iconButtonStyle
+          },
+            H(NotificationIcon, null),
+            H('span', { style: visuallyHidden }, 'Notification settings')
+          ),
+
+          H('button', {
+            className: 'btn',
+            type: 'button',
             onClick: handleOpenSettings,
             title: 'Profile settings',
             style: iconButtonStyle
@@ -1762,6 +2013,21 @@
           subscriptionStatus,
           askCreateActionEnabled,
           setAskCreateActionEnabled
+        }),
+
+        H(NotificationSettingsModal, {
+          open: notificationSettingsModalOpen,
+          onClose: handleCloseNotificationSettingsModal,
+          notificationsDisabled,
+          setNotificationsDisabled,
+          quietHoursEnabled,
+          setQuietHoursEnabled,
+          quietHoursStart,
+          setQuietHoursStart,
+          quietHoursEnd,
+          setQuietHoursEnd,
+          onSave: saveNotificationSettings,
+          saving: notificationSettingsSaving
         }),
 
         H(ProfilePictureUploadModal, {

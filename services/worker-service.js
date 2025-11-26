@@ -460,12 +460,67 @@ class WorkerService {
   }
 
   /**
+   * Check if current time is within quiet hours
+   */
+  isWithinQuietHours(startTime, endTime) {
+    if (!startTime || !endTime) return false;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    // Handle overnight quiet hours (e.g., 20:30 to 09:30)
+    if (startMinutes > endMinutes) {
+      // Quiet hours span midnight
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    } else {
+      // Quiet hours within same day
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    }
+  }
+
+  /**
    * Send push notification (web + iOS/Android native)
    */
   async sendPushNotification(payload) {
     console.log('[Worker] sendPushNotification called:', { userId: payload?.userId, hasNotification: !!payload?.notification });
 
     if (!payload || !payload.userId || !payload.notification) return;
+
+    // Check user notification settings
+    try {
+      const userSettings = await db.prepare(`
+        SELECT notifications_disabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end
+        FROM users WHERE id = ?
+      `).get(payload.userId);
+
+      if (userSettings) {
+        // Check if all notifications are disabled
+        if (userSettings.notifications_disabled) {
+          console.log('[Worker] User has notifications disabled, skipping push:', payload.userId);
+          return;
+        }
+
+        // Check quiet hours
+        if (userSettings.quiet_hours_enabled) {
+          const inQuietHours = this.isWithinQuietHours(
+            userSettings.quiet_hours_start,
+            userSettings.quiet_hours_end
+          );
+          if (inQuietHours) {
+            console.log('[Worker] User is in quiet hours, skipping push:', payload.userId);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Worker] Failed to check notification settings:', err?.message || err);
+      // Continue sending if we can't check settings
+    }
 
     // Send web push
     if (this.pushService && typeof this.pushService.sendPushToUser === 'function') {

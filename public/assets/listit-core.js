@@ -191,6 +191,12 @@
       body: JSON.stringify({ profile_picture_url: profilePictureUrl })  
     }, meta);  
     
+    const updateNotificationSettings = (settings, meta) => request('/api/me/notification-settings', {  
+      method: 'PUT',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify(settings)  
+    }, meta);  
+    
     const startSupporterCheckout = (tier = 'basic', meta) => request('/api/supporters/checkout', {  
       method: 'POST',  
       headers: { 'Content-Type': 'application/json' },  
@@ -470,6 +476,7 @@
     
       updateLocationPreset,  
       updateProfilePicture,  
+      updateNotificationSettings,  
       startSupporterCheckout,  
       confirmSupporterCheckout,  
       cancelSubscription,  
