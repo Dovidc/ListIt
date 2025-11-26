@@ -127,32 +127,40 @@
         async function setupNativePush() {
           try {
             console.log('[Push Debug] setupNativePush starting');
+            alert('setupNativePush starting...');
 
             // Check/request permissions
             let permStatus = await PushNotifications.checkPermissions();
             console.log('[Push Debug] checkPermissions result:', permStatus);
+            alert('checkPermissions result: ' + JSON.stringify(permStatus));
 
             if (permStatus.receive === 'prompt') {
               console.log('[Push Debug] Requesting permissions...');
+              alert('Status is "prompt", calling requestPermissions...');
               permStatus = await PushNotifications.requestPermissions();
               console.log('[Push Debug] requestPermissions result:', permStatus);
+              alert('requestPermissions result: ' + JSON.stringify(permStatus));
             }
 
             if (permStatus.receive !== 'granted') {
               console.log('Push permission not granted:', permStatus.receive);
+              alert('Permission NOT granted: ' + permStatus.receive);
               pushSetupRef.current = { userId: user.id, permission: permStatus.receive, platform: 'native' };
               return;
             }
 
+            alert('Permission GRANTED! Calling register()...');
             // Register with APNs/FCM
             console.log('[Push Debug] Calling PushNotifications.register()');
             await PushNotifications.register();
             console.log('[Push Debug] register() called successfully');
+            alert('register() completed!');
 
             // Listen for registration success
             const registrationListener = await PushNotifications.addListener('registration', async (token) => {
               if (aborted) return;
               console.log('Push registration success, token:', token.value?.substring(0, 20) + '...');
+              alert('GOT TOKEN: ' + token.value?.substring(0, 30) + '...');
 
               pushSetupRef.current = {
                 userId: user.id,
