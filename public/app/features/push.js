@@ -1,5 +1,8 @@
 (() => {
+  console.log('[Push] push.js file loaded');
+
   function createPushFeature({ React, api, helpers }) {
+    console.log('[Push] createPushFeature called');
     if (!React || typeof React.useRef !== 'function') {
       throw new Error('Push feature requires React.');
     }
@@ -30,6 +33,7 @@
     }
 
     function usePushNotifications({ user, pushMeta }) {
+      console.log('[Push] usePushNotifications hook called', { userId: user?.id, pushMeta });
       const pushSetupRef = useRef({ userId: null, permission: null, platform: null });
       const listenersRef = useRef([]);
 
