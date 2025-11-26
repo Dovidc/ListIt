@@ -1,7 +1,5 @@
 /* server.js — ListIt (PostgreSQL-ready with S3-only image storage) */
 
-
-
 const express = require('express');
 
 const fs = require('fs');
@@ -332,17 +330,21 @@ async function publishBackgroundEvent(topic, payload, { req = null, failOnError 
   }
 }
 
-if (IS_TEST && process.env.EMBED_WORKER !== 'false') {
+// Start embedded worker service (handles push notifications, emails, etc.)
+// Runs in both test and production unless explicitly disabled
+if (process.env.EMBED_WORKER !== 'false') {
   const { createWorkerService } = require('./services/worker-service');
+  const iosPushService = require('./lib/ios-push-service');
   (async () => {
     try {
       const embeddedWorker = await createWorkerService(
-        { NODE_ENV: process.env.NODE_ENV || 'test', IS_TEST: true },
+        { NODE_ENV: process.env.NODE_ENV || 'development', IS_TEST },
         fallbackMessageBus,
-        { stripe, mailService, pushService }
+        { stripe, mailService, pushService, iosPushService }
       );
       await embeddedWorker.start();
       app._embeddedWorker = embeddedWorker;
+      console.log('[Worker] Embedded worker service started successfully');
     } catch (err) {
       console.error('[worker] Failed to start embedded worker:', err);
     }

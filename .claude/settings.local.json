@@ -16,7 +16,8 @@
       "Bash(find:*)",
       "Bash(npm install:*)",
       "Bash(npx cap sync ios)",
-      "Bash(npx knex:*)"
+      "Bash(npx knex:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
