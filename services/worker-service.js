@@ -461,12 +461,19 @@ class WorkerService {
 
   /**
    * Check if current time is within quiet hours
+   * @param {string} startTime - Start time in HH:MM format
+   * @param {string} endTime - End time in HH:MM format
+   * @param {number} timezoneOffset - User's timezone offset in minutes from getTimezoneOffset() (e.g., 300 for EST/UTC-5)
    */
-  isWithinQuietHours(startTime, endTime) {
+  isWithinQuietHours(startTime, endTime, timezoneOffset = 0) {
     if (!startTime || !endTime) return false;
 
+    // Get current time in user's timezone
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    // getTimezoneOffset() returns positive for timezones behind UTC (e.g., 300 for EST/UTC-5)
+    // To convert UTC to local: subtract the offset
+    const userLocalTime = new Date(now.getTime() - (timezoneOffset * 60 * 1000));
+    const currentMinutes = userLocalTime.getUTCHours() * 60 + userLocalTime.getUTCMinutes();
 
     const [startHour, startMin] = startTime.split(':').map(Number);
     const [endHour, endMin] = endTime.split(':').map(Number);
@@ -494,7 +501,7 @@ class WorkerService {
     // Check user notification settings
     try {
       const userSettings = await db.prepare(`
-        SELECT notifications_disabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end
+        SELECT notifications_disabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, timezone_offset
         FROM users WHERE id = ?
       `).get(payload.userId);
 
@@ -509,7 +516,8 @@ class WorkerService {
         if (userSettings.quiet_hours_enabled) {
           const inQuietHours = this.isWithinQuietHours(
             userSettings.quiet_hours_start,
-            userSettings.quiet_hours_end
+            userSettings.quiet_hours_end,
+            userSettings.timezone_offset || 0
           );
           if (inQuietHours) {
             console.log('[Worker] User is in quiet hours, skipping push:', payload.userId);

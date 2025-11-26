@@ -1475,11 +1475,14 @@
       const saveNotificationSettings = useCallback(async () => {
         setNotificationSettingsSaving(true);
         try {
+          // Get user's timezone offset in minutes (e.g., 300 for EST which is UTC-5)
+          const timezoneOffset = new Date().getTimezoneOffset();
           const response = await api.updateNotificationSettings({
             notifications_disabled: notificationsDisabled,
             quiet_hours_enabled: quietHoursEnabled,
             quiet_hours_start: quietHoursStart,
-            quiet_hours_end: quietHoursEnd
+            quiet_hours_end: quietHoursEnd,
+            timezone_offset: timezoneOffset
           });
           if (response?.error) {
             alert(response.error);
@@ -1490,7 +1493,8 @@
                 notifications_disabled: notificationsDisabled,
                 quiet_hours_enabled: quietHoursEnabled,
                 quiet_hours_start: quietHoursStart,
-                quiet_hours_end: quietHoursEnd
+                quiet_hours_end: quietHoursEnd,
+                timezone_offset: timezoneOffset
               });
             }
             setNotificationSettingsModalOpen(false);

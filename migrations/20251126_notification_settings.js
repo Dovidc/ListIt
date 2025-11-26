@@ -4,6 +4,7 @@ exports.up = async (knex) => {
   const hasQuietHoursEnabled = await knex.schema.hasColumn('users', 'quiet_hours_enabled');
   const hasQuietHoursStart = await knex.schema.hasColumn('users', 'quiet_hours_start');
   const hasQuietHoursEnd = await knex.schema.hasColumn('users', 'quiet_hours_end');
+  const hasTimezoneOffset = await knex.schema.hasColumn('users', 'timezone_offset');
 
   await knex.schema.alterTable('users', (table) => {
     if (!hasNotificationsDisabled) {
@@ -18,6 +19,9 @@ exports.up = async (knex) => {
     if (!hasQuietHoursEnd) {
       table.string('quiet_hours_end', 5).defaultTo('09:30');
     }
+    if (!hasTimezoneOffset) {
+      table.integer('timezone_offset').defaultTo(0); // Minutes offset from UTC
+    }
   });
 };
 
@@ -27,5 +31,6 @@ exports.down = async (knex) => {
     table.dropColumn('quiet_hours_enabled');
     table.dropColumn('quiet_hours_start');
     table.dropColumn('quiet_hours_end');
+    table.dropColumn('timezone_offset');
   });
 };

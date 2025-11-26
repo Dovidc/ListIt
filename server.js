@@ -2964,6 +2964,10 @@ app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) =>
     const quietHoursEnabled = Boolean(req.body?.quiet_hours_enabled);
     const quietHoursStart = String(req.body?.quiet_hours_start || '20:30').trim();
     const quietHoursEnd = String(req.body?.quiet_hours_end || '09:30').trim();
+    // Timezone offset in minutes (e.g., -300 for EST, which is UTC-5)
+    const timezoneOffset = Number.isFinite(Number(req.body?.timezone_offset))
+      ? Math.round(Number(req.body.timezone_offset))
+      : 0;
 
     // Validate time format (HH:MM)
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -2976,13 +2980,15 @@ app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) =>
         notifications_disabled = ?,
         quiet_hours_enabled = ?,
         quiet_hours_start = ?,
-        quiet_hours_end = ?
+        quiet_hours_end = ?,
+        timezone_offset = ?
       WHERE id = ?
     `).run(
       notificationsDisabled ? 1 : 0,
       quietHoursEnabled ? 1 : 0,
       quietHoursStart,
       quietHoursEnd,
+      timezoneOffset,
       req.user.id
     );
 
@@ -2991,7 +2997,8 @@ app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) =>
       notifications_disabled: notificationsDisabled,
       quiet_hours_enabled: quietHoursEnabled,
       quiet_hours_start: quietHoursStart,
-      quiet_hours_end: quietHoursEnd
+      quiet_hours_end: quietHoursEnd,
+      timezone_offset: timezoneOffset
     });
   } catch (e) {
     console.error('Update notification settings failed:', e);
