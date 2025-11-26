@@ -197,6 +197,7 @@
 
             // Listen for registration errors
             const errorListener = await PushNotifications.addListener('registrationError', (error) => {
+              alert('REGISTRATION ERROR from APNs: ' + JSON.stringify(error));
               console.error('Push registration failed:', error);
               pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'native' };
             });
