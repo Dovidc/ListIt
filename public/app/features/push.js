@@ -155,12 +155,10 @@
               return;
             }
 
-            alert('Permission GRANTED! Calling register()...');
-            // Register with APNs/FCM
-            console.log('[Push Debug] Calling PushNotifications.register()');
-            await PushNotifications.register();
-            console.log('[Push Debug] register() called successfully');
-            alert('register() completed!');
+            alert('Permission GRANTED! Setting up listeners BEFORE register()...');
+
+            // IMPORTANT: Set up listeners BEFORE calling register() to avoid race condition
+            // APNs can respond very quickly, and we'd miss the token if listeners aren't ready
 
             // Listen for registration success
             const registrationListener = await PushNotifications.addListener('registration', async (token) => {
@@ -182,6 +180,12 @@
                   alert('ERROR: api.pushSubscribeIos is not a function! Available methods: ' + Object.keys(api).filter(k => k.includes('push')).join(', '));
                   return;
                 }
+
+                // Debug: Show what URL we're about to hit
+                const metaBase = document.querySelector('meta[name="listit-api-base"]')?.getAttribute('content');
+                const currentOrigin = window.location.origin;
+                alert('DEBUG URL INFO:\n- Meta base: ' + metaBase + '\n- Current origin: ' + currentOrigin + '\n- Token length: ' + token.value?.length);
+
                 alert('Sending token to server...');
                 const result = await api.pushSubscribeIos({
                   token: token.value,
@@ -189,7 +193,13 @@
                 });
                 alert('Token sent to server! Result: ' + JSON.stringify(result));
               } catch (err) {
-                alert('FAILED to send token: ' + err.message);
+                // Enhanced error logging
+                const errDetails = {
+                  message: err.message,
+                  name: err.name,
+                  stack: err.stack?.split('\n').slice(0, 3).join('\n')
+                };
+                alert('FAILED to send token:\n' + JSON.stringify(errDetails, null, 2));
                 console.warn('Failed to register iOS token with server:', err);
               }
             });
@@ -202,6 +212,13 @@
               pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'native' };
             });
             listenersRef.current.push(errorListener);
+
+            // NOW call register() after listeners are ready
+            console.log('[Push Debug] Listeners ready, calling PushNotifications.register()');
+            alert('Listeners ready! Now calling register()...');
+            await PushNotifications.register();
+            console.log('[Push Debug] register() called successfully');
+            alert('register() completed! Waiting for token...');
 
             // Listen for push notifications received while app is open
             const receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification) => {
