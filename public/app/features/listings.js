@@ -225,7 +225,11 @@
             // Deduplicate
             const existingIds = new Set(prev.map(r => r.id));
             const toAppend = newRows.filter(r => !existingIds.has(r.id));
-            return toAppend.length ? [...prev, ...toAppend] : prev;
+            if (!toAppend.length) return prev;
+
+            const merged = [...prev, ...toAppend];
+            // Cap at 2000 listings to prevent memory issues on very long sessions
+            return merged.length > 2000 ? merged.slice(-2000) : merged;
           });
 
           // Fetch covers for new listings
@@ -469,6 +473,8 @@
         setTimeout(() => setOpen(false), 100);
       }, []);
 
+      const hasValue = value && value.trim().length > 0;
+
       return H('div', { ref: boxRef, style: { position: 'relative', display: 'flex', alignItems: 'center', flex: 1 } },
         H('input', {
           placeholder: 'City...',
@@ -477,16 +483,34 @@
           onKeyDown,
           onFocus,
           onBlur,
-          style: { width: '100%', paddingRight: 40 }
+          style: { width: '100%', paddingRight: hasValue ? 64 : 44 }
         }),
+        // Clear button - only show when there's a value
+        hasValue && H('button', {
+          type: 'button',
+          onClick: () => { onChange(''); setOpen(false); },
+          title: 'Clear location',
+          style: {
+            position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', padding: 6, cursor: 'pointer',
+            color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }
+        },
+          H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+            H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+            H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+          )
+        ),
+        // Location arrow button - larger touch target (44x44 minimum)
         H('button', {
           type: 'button',
           onClick: onUseMyLocation,
           title: 'Use my location',
           style: {
-            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-            background: 'none', border: 'none', padding: 4, cursor: 'pointer',
-            color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', padding: 12, cursor: 'pointer',
+            color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 44, minHeight: 44
           }
         },
           H('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },

@@ -504,8 +504,11 @@
         autoRunning.current = true;
 
         const runAutoListJob = async () => {
-          const uploads = await Promise.all(files.map(uploadFileDraft));
-          if (!uploads.length) throw new Error('No images to upload');
+          const uploadResults = await Promise.allSettled(files.map(uploadFileDraft));
+          const uploads = uploadResults
+            .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
+            .map(r => r.value);
+          if (!uploads.length) throw new Error('No images uploaded successfully');
 
           let ai = {};
           let aiDescription = '';
@@ -1528,15 +1531,17 @@
           return;
         }
 
+        let isMounted = true;
         if (Number.isFinite(item?.lat) && Number.isFinite(item?.lon)) {
           getUserCoordsOnce().then(coords => {
-            if (!coords) return;
+            if (!isMounted || !coords) return;
             const m = haversineMeters(coords.lat, coords.lon, item.lat, item.lon);
             setDerivedMeters(m);
-          });
+          }).catch(() => {});
         } else {
           setDerivedMeters(null);
         }
+        return () => { isMounted = false; };
       }, [showDistance, item?.id, item?.lat, item?.lon]);
 
       const isFree = Number(item?.price ?? 0) === 0;

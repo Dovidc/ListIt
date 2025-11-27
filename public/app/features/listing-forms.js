@@ -444,8 +444,11 @@
         autoRunning.current = true;
 
         const runAutoListJob = async () => {
-          const uploads = await Promise.all(files.map(uploadFileDraft));
-          if (!uploads.length) throw new Error('No images to upload');
+          const uploadResults = await Promise.allSettled(files.map(uploadFileDraft));
+          const uploads = uploadResults
+            .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
+            .map(r => r.value);
+          if (!uploads.length) throw new Error('No images uploaded successfully');
 
           let ai = {};
           let aiDescription = '';

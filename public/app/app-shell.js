@@ -231,6 +231,7 @@
       // Resume overlay state - tracks when app went to background and shows refresh screen
       const [isResuming, setIsResuming] = useState(false);
       const backgroundTimestampRef = useRef(null);
+      const resumeTimerRef = useRef(null);
 
       // Wrapper for tab changes to save scroll position
       const onTabChange = useCallback((newTab) => {
@@ -518,7 +519,8 @@
                 // Ensure overlay shows for at least 3 seconds
                 const elapsed = Date.now() - overlayStartTime;
                 const remainingTime = Math.max(0, 3000 - elapsed);
-                setTimeout(() => setIsResuming(false), remainingTime);
+                if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+                resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
               }
             }
           }
@@ -553,18 +555,20 @@
                   // Ensure overlay shows for at least 3 seconds
                   const elapsed = Date.now() - overlayStartTime;
                   const remainingTime = Math.max(0, 3000 - elapsed);
-                  setTimeout(() => setIsResuming(false), remainingTime);
+                  if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+                  resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
                 }
               }
             }
-          }).then(handle => { capacitorUnlisten = handle; }).catch(() => {});
+          }).then(handle => { capacitorUnlisten = handle; }).catch((err) => {
+            console.warn('Failed to register Capacitor app state listener:', err);
+          });
         }
 
         return () => {
           document.removeEventListener('visibilitychange', handleVisibilityChange);
-          if (capacitorUnlisten?.remove) {
-            capacitorUnlisten.remove();
-          }
+          if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+          capacitorUnlisten?.remove?.();
         };
       }, [refreshListings, reloadMineOnly]);
 
@@ -1049,15 +1053,38 @@
                               alignItems: 'center'
                             }
                           },
-                            H('input', {
-                              placeholder: 'Search...',
-                              value: query,
-                              onChange: e => setQuery(e.target.value),
+                            H('div', {
                               style: {
+                                position: 'relative',
                                 gridColumn: isMobile ? '1 / -1' : 'auto',
                                 width: '100%'
                               }
-                            }),
+                            },
+                              H('input', {
+                                placeholder: 'Search...',
+                                value: query,
+                                onChange: e => setQuery(e.target.value),
+                                style: {
+                                  width: '100%',
+                                  paddingRight: query && query.trim() ? 32 : 8
+                                }
+                              }),
+                              query && query.trim() && H('button', {
+                                type: 'button',
+                                onClick: () => setQuery(''),
+                                title: 'Clear search',
+                                style: {
+                                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                                  background: 'none', border: 'none', padding: 6, cursor: 'pointer',
+                                  color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }
+                              },
+                                H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                                )
+                              )
+                            ),
                             H(CityAutocomplete, {
                               value: locationQuery,
                               onChange: setLocationQuery,
