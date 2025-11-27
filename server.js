@@ -2178,6 +2178,8 @@ function mapUserRow(row, extra = {}) {
 
     quiet_hours_end: row.quiet_hours_end || '09:30',
 
+    timezone_offset: row.timezone_offset || 0,
+
     ...extra
 
   };
@@ -2741,13 +2743,15 @@ app.get('/api/me', async (req, res) => {
 
              karma,
 
-             COALESCE(notifications_disabled, 0) AS notifications_disabled,
+             COALESCE(notifications_disabled, false) AS notifications_disabled,
 
-             COALESCE(quiet_hours_enabled, 0) AS quiet_hours_enabled,
+             COALESCE(quiet_hours_enabled, false) AS quiet_hours_enabled,
 
              COALESCE(quiet_hours_start, '20:30') AS quiet_hours_start,
 
-             COALESCE(quiet_hours_end, '09:30') AS quiet_hours_end
+             COALESCE(quiet_hours_end, '09:30') AS quiet_hours_end,
+
+             COALESCE(timezone_offset, 0) AS timezone_offset
 
       FROM users
 
