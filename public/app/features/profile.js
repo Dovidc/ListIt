@@ -485,7 +485,7 @@
       statusMessage,
       isPremium: isPremiumProp
     }) {
-      const isPremium = isPremiumProp;
+      const isPremium = isPremiumProp; // The prop passed in should already account for payments_disabled, but let's be safe in the parent
 
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -493,6 +493,21 @@
       }
 
       const uploadInputRef = useRef(null);
+
+      const [previewScale, setPreviewScale] = useState(1.05);
+      const [previewOffset, setPreviewOffset] = useState(50);
+
+      if (useEffect) {
+        useEffect(() => {
+          setPreviewScale(1.05);
+          setPreviewOffset(50);
+        }, [bgImageUrl, open]);
+      }
+
+      const borderStyleValue = borderStyle === 'dashed' ? 'dashed' : 'solid';
+      const borderColorValue = typeof borderColor === 'string' && borderColor.trim()
+        ? borderColor.trim()
+        : '#ffffff';
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -512,7 +527,17 @@
         evt.target.value = '';
       };
 
-      const isSaving = statusMessage === 'Saving...';
+      const premiumMsg = !isPremium ? H('div', {
+        style: {
+          padding: '12px',
+          background: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: 8,
+          fontSize: 13,
+          color: '#92400e',
+          marginBottom: 12
+        }
+      }, '✨ Profile customization is a premium subscriber feature') : null;
 
       return createPortal(
         H('div', {
@@ -522,150 +547,221 @@
           H('div', {
             className: 'modal-inner',
             style: {
-              maxWidth: '380px',
-              width: 'min(380px, 92vw)',
-              padding: 20,
+              maxWidth: '460px',
+              width: 'min(460px, 92vw)',
+              padding: '24px',
               background: '#fff',
               color: '#111',
               borderRadius: 16,
+              display: 'grid',
+              gap: 16,
               position: 'relative'
             }
           },
-            // Close button
             H('button', {
+              className: 'close',
               onClick: onClose,
+              title: 'Close profile customization',
               style: {
                 position: 'absolute',
-                top: 12,
-                right: 12,
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
+                top: '12px',
+                right: '12px',
+                width: '44px',
+                height: '44px',
+                fontSize: '32px',
+                lineHeight: '32px',
+                padding: 0,
                 border: 'none',
-                background: '#f3f4f6',
-                color: '#6b7280',
-                fontSize: 16,
+                background: 'transparent',
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                color: '#111',
+                fontWeight: 'bold'
               }
-            }, '\u2715'),
-
-            // Title
-            H('h3', {
-              style: { margin: '0 0 16px', fontSize: 17, fontWeight: 600 }
-            }, 'Banner Image'),
-
-            // Premium badge inline
-            !isPremium && H('div', {
-              style: {
-                padding: '8px 12px',
-                background: '#fef3c7',
-                borderRadius: 8,
-                fontSize: 12,
-                color: '#92400e',
-                marginBottom: 12
-              }
-            }, 'Premium feature'),
-
-            // Preview / Upload area combined
-            H('div', {
-              style: {
-                position: 'relative',
-                width: '100%',
-                height: 120,
-                borderRadius: 10,
-                overflow: 'hidden',
-                background: bgImageUrl ? 'none' : '#f3f4f6',
-                border: bgImageUrl ? 'none' : '2px dashed #d1d5db',
-                cursor: isPremium && !bgImageUploading ? 'pointer' : 'default',
-                marginBottom: 16
+            }, '✕'),
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('h2', {
+                style: {
+                  fontSize: 20,
+                  fontWeight: 800,
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }
               },
-              onClick: () => {
-                if (!isPremium || bgImageUploading || bgImageUrl) return;
-                uploadInputRef.current?.click();
-              }
-            },
-              H('input', {
-                ref: uploadInputRef,
-                type: 'file',
-                accept: 'image/*',
-                disabled: !isPremium || bgImageUploading,
-                onChange: handleBgImageFileChange,
-                style: { display: 'none' }
-              }),
-              bgImageUrl
-                ? H('img', {
-                  src: bgImageUrl,
-                  alt: 'Banner',
-                  style: { width: '100%', height: '100%', objectFit: 'cover' }
-                })
-                : H('div', {
+                '🎨 Profile Display',
+                !isPremium && H('span', {
                   style: {
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#9ca3af',
-                    fontSize: 13
+                    gap: 4,
+                    padding: '2px 8px',
+                    background: '#dbeafe',
+                    color: '#0c4a6e',
+                    borderRadius: 12,
+                    fontSize: 11,
+                    fontWeight: 700
+                  }
+                }, '✨ Premium')
+              ),
+              H('p', {
+                className: 'muted',
+                style: { fontSize: 13, margin: 0 }
+              }, 'Customize how your profile appears when others view it from listings.')
+            ),
+            premiumMsg,
+            H('section', { style: { display: 'grid', gap: 16 } },
+              H('label', { style: { display: 'grid', gap: 8 } },
+                H('span', { style: { fontWeight: 600 } }, 'Banner Image'),
+                H('div', {
+                  style: {
+                    position: 'relative',
+                    border: '1px dashed #cbd5f5',
+                    borderRadius: 10,
+                    padding: 16,
+                    background: '#f8fafc',
+                    cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed',
+                    transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.3)'
+                  },
+                  onClick: () => {
+                    if (!isPremium || bgImageUploading) return;
+                    uploadInputRef.current?.click();
+                  },
+                  onKeyDown: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    if (evt.key === 'Enter' || evt.key === ' ') {
+                      evt.preventDefault();
+                      uploadInputRef.current?.click();
+                    }
+                  },
+                  onDragOver: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    evt.preventDefault();
+                    evt.dataTransfer.dropEffect = 'copy';
+                  },
+                  onDrop: (evt) => {
+                    if (!isPremium || bgImageUploading) return;
+                    evt.preventDefault();
+                    const droppedFile = evt.dataTransfer?.files && evt.dataTransfer.files[0];
+                    if (droppedFile) {
+                      onUploadBgImage?.(droppedFile);
+                    }
+                  },
+                  role: 'button',
+                  tabIndex: isPremium && !bgImageUploading ? 0 : -1,
+                  'aria-label': 'Upload banner image'
+                },
+                  H('input', {
+                    ref: uploadInputRef,
+                    type: 'file',
+                    accept: 'image/*',
+                    disabled: !isPremium || bgImageUploading,
+                    onChange: handleBgImageFileChange,
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      opacity: 0
+                    }
+                  }),
+                  H('div', {
+                    style: {
+                      display: 'grid',
+                      gap: 4,
+                      color: '#1e3a8a'
+                    }
+                  },
+                    H('strong', { style: { fontSize: 14 } }, 'Click to upload or drop an image'),
+                    H('span', { style: { fontSize: 12, color: '#475569' } }, 'PNG, JPG, WEBP (8MB max)')
+                  )
+                ),
+                bgImageUploading && H('div', {
+                  role: 'status',
+                  style: {
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#2563eb'
+                  }
+                }, 'Uploading image...'),
+                bgImageUploadError && H('div', {
+                  role: 'alert',
+                  style: {
+                    fontSize: 12,
+                    color: '#b91c1c'
+                  }
+                }, bgImageUploadError),
+                H('div', {
+                  style: {
+                    display: 'grid',
+                    gap: 8,
+                    marginTop: 4
                   }
                 },
-                  bgImageUploading ? 'Uploading...' : 'Tap to upload image'
+                  H('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Preview & adjustments'),
+                  H('div', {
+                    style: {
+                      position: 'relative',
+                      width: '100%',
+                      height: 190,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      background: '#0f172a',
+                      boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)',
+                      display: 'grid',
+                      placeItems: 'center'
+                    }
+                  },
+                    bgImageUrl
+                      ? H('img', {
+                        src: bgImageUrl,
+                        alt: 'Banner preview',
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: `50% ${previewOffset}%`,
+                          transform: `scale(${previewScale})`,
+                          transition: 'transform 150ms ease, object-position 150ms ease'
+                        }
+                      })
+                      : H('div', {
+                        style: {
+                          color: '#94a3b8',
+                          fontSize: 18,
+                          textAlign: 'center',
+                          padding: '0 16px'
+                        }
+                      }, 'Upload an image to see a live preview')
+                  ),
                 )
-            ),
-
-            // Error
-            bgImageUploadError && H('div', {
-              style: { fontSize: 12, color: '#dc2626', marginBottom: 12 }
-            }, bgImageUploadError),
-
-            // Buttons
-            H('div', { style: { display: 'flex', gap: 10 } },
-              bgImageUrl && isPremium && H('button', {
-                onClick: () => uploadInputRef.current?.click(),
+              ),
+              H('footer', {
                 style: {
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: 8,
-                  border: '1px solid #e5e7eb',
-                  background: '#fff',
-                  color: '#374151',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer'
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  marginTop: 8
                 }
-              }, 'Change'),
-              bgImageUrl && isPremium && H('button', {
-                onClick: onClearBgImage,
-                style: {
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: 8,
-                  border: '1px solid #e5e7eb',
-                  background: '#fff',
-                  color: '#dc2626',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer'
-                }
-              }, 'Remove'),
-              H('button', {
-                onClick: onSave,
-                disabled: !isPremium || isSaving,
-                style: {
-                  flex: bgImageUrl ? 1 : 2,
-                  padding: '10px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: (!isPremium || isSaving) ? '#e5e7eb' : '#111',
-                  color: (!isPremium || isSaving) ? '#9ca3af' : '#fff',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: (!isPremium || isSaving) ? 'not-allowed' : 'pointer'
-                }
-              }, isSaving ? 'Saving...' : 'Save')
+              },
+                statusMessage
+                  ? H('div', {
+                    role: 'status',
+                    'aria-live': 'polite',
+                    style: { fontSize: 13, color: '#047857', fontWeight: 600 }
+                  }, statusMessage)
+                  : H('span', { className: 'muted', style: { fontSize: 12 } }, 'Press save to apply your changes'),
+                H('button', {
+                  className: 'btn primary',
+                  type: 'button',
+                  onClick: async () => {
+                    await onSave?.();
+                    onClose?.();
+                  },
+                  disabled: !isPremium
+                }, 'Save changes')
+              )
             )
           )
         ),
@@ -1489,8 +1585,10 @@
               profile_bg_image_url: profileBgImageUrl
             });
           }
-          setProfileCustomizationStatusMessage('');
-          setProfileCustomizationModalOpen(false);
+          setProfileCustomizationStatusMessage('Saved!');
+          setTimeout(() => {
+            setProfileCustomizationStatusMessage('');
+          }, 2000);
         } catch (err) {
           alert(err?.message || 'Failed to save profile customization');
           setProfileCustomizationStatusMessage('');
