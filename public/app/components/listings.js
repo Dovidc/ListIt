@@ -907,26 +907,22 @@
 
         updateProgress(0, 0);
 
+        // MassList has no manual location field, so always attempt to fetch
+        // coordinates regardless of the autoPostNearbyEnabled setting.
         let sharedNearby = { ok: false, lat: null, lon: null, display: '' };
-        if (autoPostNearbyEnabled) {
-          try {
-            const c = await fetchCoordsAndReverseInternal();
-            sharedNearby = { ok: true, lat: c.lat, lon: c.lon, display: c.display };
-          } catch (_) {
-            sharedNearby = { ok: false, lat: null, lon: null, display: '' };
-          }
+        try {
+          const c = await fetchCoordsAndReverseInternal();
+          sharedNearby = { ok: true, lat: c.lat, lon: c.lon, display: c.display };
+        } catch (_) {
+          sharedNearby = { ok: false, lat: null, lon: null, display: '' };
         }
 
         const nearbyLocation = sharedNearby.display ? String(sharedNearby.display).trim() : '';
         const presetLocation = typeof user?.location_preset === 'string'
           ? user.location_preset.trim()
           : '';
-        // MassList runs without a manual location field, so when auto-nearby is
-        // disabled we still need to send a non-empty location string. The API
-        // rejects blank locations, which is what caused the failure. Prefer the
-        // fresh nearby label when available, fall back to the saved profile
-        // preset, and finally use the generic placeholder that matches the
-        // single-listing flow.
+        // When geolocation fails or is unavailable, fall back to the saved
+        // profile preset, then to the generic placeholder.
         const normalizedLocation = nearbyLocation || presetLocation || 'Unknown location';
 
         const limiter = createConcurrencyLimiter(3);

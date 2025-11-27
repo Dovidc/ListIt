@@ -1255,7 +1255,7 @@
               reloadMine: reloadMineOnly,
               user,
               onLockedAction: showLockedBanner,
-              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+              autoPostNearbyEnabled,
               aiDescriptionEnabled,
               autoInquiryEnabled,
               backgroundQueueEnabled,
