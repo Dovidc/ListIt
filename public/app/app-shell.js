@@ -1076,7 +1076,14 @@
                             }),
                             H('select', {
                               value: sort,
-                              onChange: e => setSort(e.target.value),
+                              onChange: e => {
+                                const newSort = e.target.value;
+                                // Clear GPS cache when switching to nearest to get fresh coordinates
+                                if (newSort === 'nearest' && typeof helpers?.clearCoordsCache === 'function') {
+                                  helpers.clearCoordsCache();
+                                }
+                                setSort(newSort);
+                              },
                               style: { width: '100%' }
                             },
                               H('option', { value: 'new' }, 'Newest'),
