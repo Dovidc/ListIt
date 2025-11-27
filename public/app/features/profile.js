@@ -517,274 +517,155 @@
       return createPortal(
         H('div', {
           className: 'modal open',
-          onClick: handleOverlayClick,
-          style: {
-            background: 'rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(4px)'
-          }
+          onClick: handleOverlayClick
         },
           H('div', {
             className: 'modal-inner',
             style: {
-              maxWidth: '440px',
-              width: 'min(440px, 92vw)',
-              padding: 0,
+              maxWidth: '380px',
+              width: 'min(380px, 92vw)',
+              padding: 20,
               background: '#fff',
               color: '#111',
-              borderRadius: 20,
-              overflow: 'hidden',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+              borderRadius: 16,
+              position: 'relative'
             }
           },
-            // Header with gradient background
+            // Close button
+            H('button', {
+              onClick: onClose,
+              style: {
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                border: 'none',
+                background: '#f3f4f6',
+                color: '#6b7280',
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }
+            }, '\u2715'),
+
+            // Title
+            H('h3', {
+              style: { margin: '0 0 16px', fontSize: 17, fontWeight: 600 }
+            }, 'Banner Image'),
+
+            // Premium badge inline
+            !isPremium && H('div', {
+              style: {
+                padding: '8px 12px',
+                background: '#fef3c7',
+                borderRadius: 8,
+                fontSize: 12,
+                color: '#92400e',
+                marginBottom: 12
+              }
+            }, 'Premium feature'),
+
+            // Preview / Upload area combined
             H('div', {
               style: {
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                padding: '24px 24px 20px',
-                position: 'relative'
+                position: 'relative',
+                width: '100%',
+                height: 120,
+                borderRadius: 10,
+                overflow: 'hidden',
+                background: bgImageUrl ? 'none' : '#f3f4f6',
+                border: bgImageUrl ? 'none' : '2px dashed #d1d5db',
+                cursor: isPremium && !bgImageUploading ? 'pointer' : 'default',
+                marginBottom: 16
+              },
+              onClick: () => {
+                if (!isPremium || bgImageUploading || bgImageUrl) return;
+                uploadInputRef.current?.click();
               }
             },
-              H('button', {
-                onClick: onClose,
-                title: 'Close',
-                style: {
-                  position: 'absolute',
-                  top: 12,
-                  right: 12,
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  color: '#fff',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'background 150ms ease'
-                }
-              }, '\u2715'),
-              H('h2', {
-                style: {
-                  fontSize: 22,
-                  fontWeight: 700,
-                  margin: 0,
-                  color: '#fff'
-                }
-              }, 'Profile Display'),
-              H('p', {
-                style: {
-                  fontSize: 14,
-                  margin: '8px 0 0',
-                  color: 'rgba(255, 255, 255, 0.85)'
-                }
-              }, 'Customize how your profile appears to others')
-            ),
-
-            // Content area
-            H('div', { style: { padding: '20px 24px 24px' } },
-              // Premium notice
-              !isPremium && H('div', {
-                style: {
-                  padding: '12px 16px',
-                  background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                  borderRadius: 12,
-                  fontSize: 13,
-                  color: '#92400e',
-                  marginBottom: 20,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8
-                }
-              },
-                H('span', { style: { fontSize: 16 } }, '\u2728'),
-                'Profile customization is a premium feature'
-              ),
-
-              // Banner Image Section
-              H('div', { style: { marginBottom: 20 } },
-                H('label', {
+              H('input', {
+                ref: uploadInputRef,
+                type: 'file',
+                accept: 'image/*',
+                disabled: !isPremium || bgImageUploading,
+                onChange: handleBgImageFileChange,
+                style: { display: 'none' }
+              }),
+              bgImageUrl
+                ? H('img', {
+                  src: bgImageUrl,
+                  alt: 'Banner',
+                  style: { width: '100%', height: '100%', objectFit: 'cover' }
+                })
+                : H('div', {
                   style: {
-                    display: 'block',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: '#374151',
-                    marginBottom: 10
-                  }
-                }, 'Banner Image'),
-
-                // Upload area
-                H('div', {
-                  style: {
-                    position: 'relative',
-                    border: '2px dashed ' + (isPremium ? '#d1d5db' : '#e5e7eb'),
-                    borderRadius: 12,
-                    padding: 20,
-                    background: isPremium ? '#fafafa' : '#f9fafb',
-                    cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed',
-                    transition: 'all 150ms ease',
-                    textAlign: 'center',
-                    opacity: isPremium ? 1 : 0.6
-                  },
-                  onClick: () => {
-                    if (!isPremium || bgImageUploading) return;
-                    uploadInputRef.current?.click();
-                  },
-                  onDragOver: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    evt.preventDefault();
-                    evt.dataTransfer.dropEffect = 'copy';
-                  },
-                  onDrop: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    evt.preventDefault();
-                    const droppedFile = evt.dataTransfer?.files && evt.dataTransfer.files[0];
-                    if (droppedFile) {
-                      onUploadBgImage?.(droppedFile);
-                    }
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#9ca3af',
+                    fontSize: 13
                   }
                 },
-                  H('input', {
-                    ref: uploadInputRef,
-                    type: 'file',
-                    accept: 'image/*',
-                    disabled: !isPremium || bgImageUploading,
-                    onChange: handleBgImageFileChange,
-                    style: { display: 'none' }
-                  }),
-                  H('div', {
-                    style: {
-                      width: 48,
-                      height: 48,
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 12px',
-                      fontSize: 20,
-                      color: '#fff'
-                    }
-                  }, '\u2191'),
-                  H('div', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } },
-                    bgImageUploading ? 'Uploading...' : 'Click to upload or drag & drop'
-                  ),
-                  H('div', { style: { fontSize: 12, color: '#9ca3af', marginTop: 4 } },
-                    'PNG, JPG, WEBP up to 8MB'
-                  )
-                ),
-
-                // Error message
-                bgImageUploadError && H('div', {
-                  style: {
-                    fontSize: 13,
-                    color: '#dc2626',
-                    marginTop: 8,
-                    padding: '8px 12px',
-                    background: '#fef2f2',
-                    borderRadius: 8
-                  }
-                }, bgImageUploadError),
-
-                // Preview
-                bgImageUrl && H('div', { style: { marginTop: 16 } },
-                  H('div', {
-                    style: {
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: '#374151',
-                      marginBottom: 8
-                    }
-                  }, 'Preview'),
-                  H('div', {
-                    style: {
-                      position: 'relative',
-                      width: '100%',
-                      height: 140,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      background: '#1f2937'
-                    }
-                  },
-                    H('img', {
-                      src: bgImageUrl,
-                      alt: 'Banner preview',
-                      style: {
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
-                      }
-                    }),
-                    isPremium && H('button', {
-                      onClick: (e) => {
-                        e.stopPropagation();
-                        onClearBgImage?.();
-                      },
-                      style: {
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        width: 28,
-                        height: 28,
-                        borderRadius: '50%',
-                        border: 'none',
-                        background: 'rgba(0, 0, 0, 0.6)',
-                        color: '#fff',
-                        fontSize: 14,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      },
-                      title: 'Remove image'
-                    }, '\u2715')
-                  )
+                  bgImageUploading ? 'Uploading...' : 'Tap to upload image'
                 )
-              ),
+            ),
 
-              // Action buttons
-              H('div', {
+            // Error
+            bgImageUploadError && H('div', {
+              style: { fontSize: 12, color: '#dc2626', marginBottom: 12 }
+            }, bgImageUploadError),
+
+            // Buttons
+            H('div', { style: { display: 'flex', gap: 10 } },
+              bgImageUrl && isPremium && H('button', {
+                onClick: () => uploadInputRef.current?.click(),
                 style: {
-                  display: 'flex',
-                  gap: 12,
-                  marginTop: 8
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  color: '#374151',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer'
                 }
-              },
-                H('button', {
-                  type: 'button',
-                  onClick: onClose,
-                  style: {
-                    flex: 1,
-                    padding: '12px 20px',
-                    borderRadius: 10,
-                    border: '1px solid #e5e7eb',
-                    background: '#fff',
-                    color: '#374151',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 150ms ease'
-                  }
-                }, 'Cancel'),
-                H('button', {
-                  type: 'button',
-                  onClick: onSave,
-                  disabled: !isPremium || isSaving,
-                  style: {
-                    flex: 1,
-                    padding: '12px 20px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: (!isPremium || isSaving) ? '#d1d5db' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: '#fff',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: (!isPremium || isSaving) ? 'not-allowed' : 'pointer',
-                    transition: 'all 150ms ease'
-                  }
-                }, isSaving ? 'Saving...' : 'Save Changes')
-              )
+              }, 'Change'),
+              bgImageUrl && isPremium && H('button', {
+                onClick: onClearBgImage,
+                style: {
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  color: '#dc2626',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }
+              }, 'Remove'),
+              H('button', {
+                onClick: onSave,
+                disabled: !isPremium || isSaving,
+                style: {
+                  flex: bgImageUrl ? 1 : 2,
+                  padding: '10px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: (!isPremium || isSaving) ? '#e5e7eb' : '#111',
+                  color: (!isPremium || isSaving) ? '#9ca3af' : '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: (!isPremium || isSaving) ? 'not-allowed' : 'pointer'
+                }
+              }, isSaving ? 'Saving...' : 'Save')
             )
           )
         ),
