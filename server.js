@@ -2707,6 +2707,8 @@ app.get('/api/me', async (req, res) => {
 
              COALESCE(location_preset, '') AS location_preset,
 
+             COALESCE(profile_about, '') AS profile_about,
+
              profile_picture_url,
 
              profile_avatar_border_color,
