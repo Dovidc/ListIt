@@ -189,6 +189,12 @@ export function createApiClient(options = {}) {
     body: JSON.stringify({ profile_about: profileAbout })
   }, meta);
 
+  const updateProfileCustomization = (customization, meta) => request('/api/me/profile-customization', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(customization)
+  }, meta);
+
   const updateProfilePicture = (profilePictureUrl, meta) => request('/api/me/profile-picture', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -480,6 +486,7 @@ export function createApiClient(options = {}) {
 
     updateLocationPreset,
     updateProfileAbout,
+    updateProfileCustomization,
     updateProfilePicture,
     updateNotificationSettings,
     startSupporterCheckout,

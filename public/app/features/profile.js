@@ -485,7 +485,7 @@
       statusMessage,
       isPremium: isPremiumProp
     }) {
-      const isPremium = isPremiumProp; // The prop passed in should already account for payments_disabled, but let's be safe in the parent
+      const isPremium = isPremiumProp;
 
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
@@ -493,21 +493,6 @@
       }
 
       const uploadInputRef = useRef(null);
-
-      const [previewScale, setPreviewScale] = useState(1.05);
-      const [previewOffset, setPreviewOffset] = useState(50);
-
-      if (useEffect) {
-        useEffect(() => {
-          setPreviewScale(1.05);
-          setPreviewOffset(50);
-        }, [bgImageUrl, open]);
-      }
-
-      const borderStyleValue = borderStyle === 'dashed' ? 'dashed' : 'solid';
-      const borderColorValue = typeof borderColor === 'string' && borderColor.trim()
-        ? borderColor.trim()
-        : '#ffffff';
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -527,113 +512,124 @@
         evt.target.value = '';
       };
 
-      const premiumMsg = !isPremium ? H('div', {
-        style: {
-          padding: '12px',
-          background: '#fef3c7',
-          border: '1px solid #fcd34d',
-          borderRadius: 8,
-          fontSize: 13,
-          color: '#92400e',
-          marginBottom: 12
-        }
-      }, '✨ Profile customization is a premium subscriber feature') : null;
+      const isSaving = statusMessage === 'Saving...';
 
       return createPortal(
         H('div', {
           className: 'modal open',
-          onClick: handleOverlayClick
+          onClick: handleOverlayClick,
+          style: {
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)'
+          }
         },
           H('div', {
             className: 'modal-inner',
             style: {
-              maxWidth: '460px',
-              width: 'min(460px, 92vw)',
-              padding: '24px',
+              maxWidth: '440px',
+              width: 'min(440px, 92vw)',
+              padding: 0,
               background: '#fff',
               color: '#111',
-              borderRadius: 16,
-              display: 'grid',
-              gap: 16,
-              position: 'relative'
+              borderRadius: 20,
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
             }
           },
-            H('button', {
-              className: 'close',
-              onClick: onClose,
-              title: 'Close profile customization',
+            // Header with gradient background
+            H('div', {
               style: {
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '44px',
-                height: '44px',
-                fontSize: '32px',
-                lineHeight: '32px',
-                padding: 0,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                color: '#111',
-                fontWeight: 'bold'
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                padding: '24px 24px 20px',
+                position: 'relative'
               }
-            }, '✕'),
-            H('div', { style: { display: 'grid', gap: 8 } },
+            },
+              H('button', {
+                onClick: onClose,
+                title: 'Close',
+                style: {
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  color: '#fff',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background 150ms ease'
+                }
+              }, '\u2715'),
               H('h2', {
                 style: {
-                  fontSize: 20,
-                  fontWeight: 800,
+                  fontSize: 22,
+                  fontWeight: 700,
                   margin: 0,
+                  color: '#fff'
+                }
+              }, 'Profile Display'),
+              H('p', {
+                style: {
+                  fontSize: 14,
+                  margin: '8px 0 0',
+                  color: 'rgba(255, 255, 255, 0.85)'
+                }
+              }, 'Customize how your profile appears to others')
+            ),
+
+            // Content area
+            H('div', { style: { padding: '20px 24px 24px' } },
+              // Premium notice
+              !isPremium && H('div', {
+                style: {
+                  padding: '12px 16px',
+                  background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                  borderRadius: 12,
+                  fontSize: 13,
+                  color: '#92400e',
+                  marginBottom: 20,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8
                 }
               },
-                '🎨 Profile Display',
-                !isPremium && H('span', {
-                  style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '2px 8px',
-                    background: '#dbeafe',
-                    color: '#0c4a6e',
-                    borderRadius: 12,
-                    fontSize: 11,
-                    fontWeight: 700
-                  }
-                }, '✨ Premium')
+                H('span', { style: { fontSize: 16 } }, '\u2728'),
+                'Profile customization is a premium feature'
               ),
-              H('p', {
-                className: 'muted',
-                style: { fontSize: 13, margin: 0 }
-              }, 'Customize how your profile appears when others view it from listings.')
-            ),
-            premiumMsg,
-            H('section', { style: { display: 'grid', gap: 16 } },
-              H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Banner Image'),
+
+              // Banner Image Section
+              H('div', { style: { marginBottom: 20 } },
+                H('label', {
+                  style: {
+                    display: 'block',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#374151',
+                    marginBottom: 10
+                  }
+                }, 'Banner Image'),
+
+                // Upload area
                 H('div', {
                   style: {
                     position: 'relative',
-                    border: '1px dashed #cbd5f5',
-                    borderRadius: 10,
-                    padding: 16,
-                    background: '#f8fafc',
+                    border: '2px dashed ' + (isPremium ? '#d1d5db' : '#e5e7eb'),
+                    borderRadius: 12,
+                    padding: 20,
+                    background: isPremium ? '#fafafa' : '#f9fafb',
                     cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed',
-                    transition: 'border-color 120ms ease, box-shadow 120ms ease',
-                    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.3)'
+                    transition: 'all 150ms ease',
+                    textAlign: 'center',
+                    opacity: isPremium ? 1 : 0.6
                   },
                   onClick: () => {
                     if (!isPremium || bgImageUploading) return;
                     uploadInputRef.current?.click();
-                  },
-                  onKeyDown: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    if (evt.key === 'Enter' || evt.key === ' ') {
-                      evt.preventDefault();
-                      uploadInputRef.current?.click();
-                    }
                   },
                   onDragOver: (evt) => {
                     if (!isPremium || bgImageUploading) return;
@@ -647,10 +643,7 @@
                     if (droppedFile) {
                       onUploadBgImage?.(droppedFile);
                     }
-                  },
-                  role: 'button',
-                  tabIndex: isPremium && !bgImageUploading ? 0 : -1,
-                  'aria-label': 'Upload banner image'
+                  }
                 },
                   H('input', {
                     ref: uploadInputRef,
@@ -658,106 +651,139 @@
                     accept: 'image/*',
                     disabled: !isPremium || bgImageUploading,
                     onChange: handleBgImageFileChange,
-                    style: {
-                      position: 'absolute',
-                      inset: 0,
-                      opacity: 0
-                    }
+                    style: { display: 'none' }
                   }),
                   H('div', {
                     style: {
-                      display: 'grid',
-                      gap: 4,
-                      color: '#1e3a8a'
+                      width: 48,
+                      height: 48,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 12px',
+                      fontSize: 20,
+                      color: '#fff'
                     }
-                  },
-                    H('strong', { style: { fontSize: 14 } }, 'Click to upload or drop an image'),
-                    H('span', { style: { fontSize: 12, color: '#475569' } }, 'PNG, JPG, WEBP (8MB max)')
+                  }, '\u2191'),
+                  H('div', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } },
+                    bgImageUploading ? 'Uploading...' : 'Click to upload or drag & drop'
+                  ),
+                  H('div', { style: { fontSize: 12, color: '#9ca3af', marginTop: 4 } },
+                    'PNG, JPG, WEBP up to 8MB'
                   )
                 ),
-                bgImageUploading && H('div', {
-                  role: 'status',
-                  style: {
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#2563eb'
-                  }
-                }, 'Uploading image...'),
+
+                // Error message
                 bgImageUploadError && H('div', {
-                  role: 'alert',
                   style: {
-                    fontSize: 12,
-                    color: '#b91c1c'
+                    fontSize: 13,
+                    color: '#dc2626',
+                    marginTop: 8,
+                    padding: '8px 12px',
+                    background: '#fef2f2',
+                    borderRadius: 8
                   }
                 }, bgImageUploadError),
-                H('div', {
-                  style: {
-                    display: 'grid',
-                    gap: 8,
-                    marginTop: 4
-                  }
-                },
-                  H('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Preview & adjustments'),
+
+                // Preview
+                bgImageUrl && H('div', { style: { marginTop: 16 } },
+                  H('div', {
+                    style: {
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#374151',
+                      marginBottom: 8
+                    }
+                  }, 'Preview'),
                   H('div', {
                     style: {
                       position: 'relative',
                       width: '100%',
-                      height: 190,
+                      height: 140,
                       borderRadius: 12,
                       overflow: 'hidden',
-                      background: '#0f172a',
-                      boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)',
-                      display: 'grid',
-                      placeItems: 'center'
+                      background: '#1f2937'
                     }
                   },
-                    bgImageUrl
-                      ? H('img', {
-                        src: bgImageUrl,
-                        alt: 'Banner preview',
-                        style: {
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          objectPosition: `50% ${previewOffset}%`,
-                          transform: `scale(${previewScale})`,
-                          transition: 'transform 150ms ease, object-position 150ms ease'
-                        }
-                      })
-                      : H('div', {
-                        style: {
-                          color: '#94a3b8',
-                          fontSize: 18,
-                          textAlign: 'center',
-                          padding: '0 16px'
-                        }
-                      }, 'Upload an image to see a live preview')
-                  ),
+                    H('img', {
+                      src: bgImageUrl,
+                      alt: 'Banner preview',
+                      style: {
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }
+                    }),
+                    isPremium && H('button', {
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        onClearBgImage?.();
+                      },
+                      style: {
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        width: 28,
+                        height: 28,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        color: '#fff',
+                        fontSize: 14,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      },
+                      title: 'Remove image'
+                    }, '\u2715')
+                  )
                 )
               ),
-              H('footer', {
+
+              // Action buttons
+              H('div', {
                 style: {
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
                   gap: 12,
                   marginTop: 8
                 }
               },
-                statusMessage
-                  ? H('div', {
-                    role: 'status',
-                    'aria-live': 'polite',
-                    style: { fontSize: 13, color: '#047857', fontWeight: 600 }
-                  }, statusMessage)
-                  : H('span', { className: 'muted', style: { fontSize: 12 } }, 'Press save to apply your changes'),
                 H('button', {
-                  className: 'btn primary',
+                  type: 'button',
+                  onClick: onClose,
+                  style: {
+                    flex: 1,
+                    padding: '12px 20px',
+                    borderRadius: 10,
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    color: '#374151',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 150ms ease'
+                  }
+                }, 'Cancel'),
+                H('button', {
                   type: 'button',
                   onClick: onSave,
-                  disabled: !isPremium
-                }, 'Save changes')
+                  disabled: !isPremium || isSaving,
+                  style: {
+                    flex: 1,
+                    padding: '12px 20px',
+                    borderRadius: 10,
+                    border: 'none',
+                    background: (!isPremium || isSaving) ? '#d1d5db' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: (!isPremium || isSaving) ? 'not-allowed' : 'pointer',
+                    transition: 'all 150ms ease'
+                  }
+                }, isSaving ? 'Saving...' : 'Save Changes')
               )
             )
           )
@@ -1582,10 +1608,8 @@
               profile_bg_image_url: profileBgImageUrl
             });
           }
-          setProfileCustomizationStatusMessage('Saved!');
-          setTimeout(() => {
-            setProfileCustomizationStatusMessage('');
-          }, 2000);
+          setProfileCustomizationStatusMessage('');
+          setProfileCustomizationModalOpen(false);
         } catch (err) {
           alert(err?.message || 'Failed to save profile customization');
           setProfileCustomizationStatusMessage('');
