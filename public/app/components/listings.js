@@ -951,11 +951,11 @@
               location: normalizedLocation,
               price: safePrice,
               tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-              enable_nearby: sharedNearby.ok ? 1 : 0,
+              enable_nearby: (autoPostNearbyEnabled && sharedNearby.ok) ? 1 : 0,
               upload_tokens: [upload.uploadToken]
             };
             if (autoInquiryEnabled) payload.inquiry_enabled = 1;
-            if (sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
+            if (autoPostNearbyEnabled && sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
             const created = await api.createListing(payload);
             if (!created?.id) throw new Error('create_failed');
