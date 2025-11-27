@@ -208,6 +208,7 @@
         selectPrimaryListingImage,
         createLRUCache,
         getUserCoordsOnce,
+        fetchCoordsAndReverse,
         pageSize: PAGE_SIZE
       },
       uploads: {

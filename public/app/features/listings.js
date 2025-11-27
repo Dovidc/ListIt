@@ -16,6 +16,7 @@
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
     const createLRUCache = helpers?.createLRUCache;
     const getUserCoordsOnce = helpers?.getUserCoordsOnce;
+    const fetchCoordsAndReverse = helpers?.fetchCoordsAndReverse;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
 
     // Validate required helpers
@@ -547,6 +548,26 @@
       const [query, setQuery] = useState('');
       const [locationQuery, setLocationQuery] = useState('');
       const [sort, setSort] = useState('new');
+      const locationInitialized = useRef(false);
+
+      // Auto-detect user's location on initial load
+      useEffect(() => {
+        if (locationInitialized.current) return;
+        if (typeof fetchCoordsAndReverse !== 'function') return;
+        locationInitialized.current = true;
+
+        fetchCoordsAndReverse()
+          .then(result => {
+            // Use just the city for the prepopulated search, not city + state
+            const city = result?.display?.split(',')[0]?.trim();
+            if (city) {
+              setLocationQuery(city);
+            }
+          })
+          .catch(() => {
+            // Silently fail - user can manually enter location
+          });
+      }, []);
 
       // Debounced search values
       const debouncedQuery = useDebounce(query, 250);
