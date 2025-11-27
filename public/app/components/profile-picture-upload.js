@@ -17,6 +17,7 @@
       const [uploading, setUploading] = useState(false);
       const [error, setError] = useState(null);
       const [cropData, setCropData] = useState({ x: 0, y: 0, size: 100 });
+      const [saving, setSaving] = useState(false);
       const fileInputRef = useRef(null);
       const canvasRef = useRef(null);
       const imageRef = useRef(null);
@@ -32,6 +33,7 @@
           setPreviewUrl(null);
           setError(null);
           setCropData({ x: 0, y: 0, size: 100 });
+          setSaving(false);
         }
       }, [open]);
 
@@ -66,44 +68,27 @@
         setError(null);
 
         try {
-          // Create cropped image
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
           const img = imageRef.current;
 
-          // Set canvas size
           canvas.width = 200;
           canvas.height = 200;
 
-          // Calculate crop dimensions
           const scale = img.naturalWidth / img.width;
           const cropX = cropData.x * scale;
           const cropY = cropData.y * scale;
           const cropSize = cropData.size * scale;
 
-          // Draw cropped image
-          ctx.drawImage(
-            img,
-            cropX,
-            cropY,
-            cropSize,
-            cropSize,
-            0,
-            0,
-            200,
-            200
-          );
+          ctx.drawImage(img, cropX, cropY, cropSize, cropSize, 0, 0, 200, 200);
 
-          // Convert to blob
           const blob = await new Promise((resolve) => {
             canvas.toBlob(resolve, 'image/jpeg', 0.9);
           });
 
-          // Upload to S3
           const file = new File([blob], 'profile-picture.jpg', { type: 'image/jpeg' });
           const url = await uploadOneMessageImage(file);
 
-          // Update profile picture
           await api.updateProfilePicture(url);
 
           onUploadComplete?.(url);
@@ -134,6 +119,20 @@
         }
       }, [onUploadComplete, onClose]);
 
+      const handleSaveAndClose = useCallback(async () => {
+        if (!onSave) return;
+        setSaving(true);
+        try {
+          await onSave();
+          onClose?.();
+        } catch (err) {
+          console.error('Save failed:', err);
+          setError(err.message || 'Save failed');
+        } finally {
+          setSaving(false);
+        }
+      }, [onSave, onClose]);
+
       const handleImageLoad = useCallback(() => {
         if (!imageRef.current) return;
         const img = imageRef.current;
@@ -147,7 +146,6 @@
         if (!imageRef.current) return;
         evt.preventDefault();
         const img = imageRef.current;
-        const rect = img.getBoundingClientRect();
         const startX = evt.clientX;
         const startY = evt.clientY;
         const initialCrop = { ...cropData };
@@ -172,138 +170,279 @@
       if (!open) return null;
 
       const modalContent = H('div', {
-        className: 'modal-overlay',
+        className: 'modal open',
         onClick: (e) => {
-          if (e.target.classList.contains('modal-overlay')) {
+          if (e.target.classList.contains('modal')) {
             onClose?.();
           }
+        },
+        style: {
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)'
         }
       },
-        H('div', { className: 'modal-content', style: { maxWidth: 500 } },
-          H('div', { className: 'modal-header' },
-            H('h2', { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, 'Profile Picture'),
-            H('button', {
-              className: 'modal-close',
-              onClick: onClose,
-              'aria-label': 'Close'
-            }, '×')
-          ),
-          avatarBorderColor && avatarBorderStyle && H('div', {
+        H('div', {
+          className: 'modal-inner',
+          style: {
+            maxWidth: '440px',
+            width: 'min(440px, 92vw)',
+            padding: 0,
+            background: '#fff',
+            color: '#111',
+            borderRadius: 20,
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+          }
+        },
+          // Header with gradient background
+          H('div', {
             style: {
-              display: 'grid',
-              gap: 16,
-              padding: '16px',
-              background: '#f8fafc',
-              borderBottom: '1px solid #e5e7eb'
+              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+              padding: '24px 24px 20px',
+              position: 'relative'
             }
           },
-            H('div', { style: { display: 'grid', gap: 8 } },
-              H('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Avatar outline'),
-                onSave && H('button', {
-                  className: 'btn primary',
-                  onClick: onSave,
-                  disabled: !isPremium,
-                  style: { padding: '4px 12px', fontSize: 13, height: 28, minHeight: 0 }
-                }, 'Save')
-              ),
+            H('button', {
+              onClick: onClose,
+              title: 'Close',
+              style: {
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: '#fff',
+                fontSize: 18,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 150ms ease'
+              }
+            }, '\u2715'),
+            H('h2', {
+              style: {
+                fontSize: 22,
+                fontWeight: 700,
+                margin: 0,
+                color: '#fff'
+              }
+            }, 'Profile Picture'),
+            H('p', {
+              style: {
+                fontSize: 14,
+                margin: '8px 0 0',
+                color: 'rgba(255, 255, 255, 0.85)'
+              }
+            }, 'Upload a photo and customize your avatar')
+          ),
+
+          // Content area
+          H('div', { style: { padding: '20px 24px 24px' } },
+            // Error message
+            error && H('div', {
+              style: {
+                padding: '12px 16px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 12,
+                fontSize: 13,
+                color: '#dc2626',
+                marginBottom: 16
+              }
+            }, error),
+
+            // Avatar border customization (Premium feature)
+            avatarBorderColor && avatarBorderStyle && H('div', {
+              style: {
+                marginBottom: 20,
+                padding: 16,
+                background: '#f8fafc',
+                borderRadius: 12,
+                border: '1px solid #e2e8f0'
+              }
+            },
               H('div', {
                 style: {
-                  display: 'grid',
-                  gap: 12,
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 12
                 }
               },
-                H('label', { style: { display: 'grid', gap: 4 } },
-                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Color'),
-                  H('input', {
-                    type: 'color',
-                    value: borderColorValue,
-                    onChange: (evt) => onChangeBorderColor?.(evt.target.value),
-                    style: {
-                      width: '100%',
-                      height: 36,
-                      borderRadius: 10,
-                      border: '1px solid #d1d5db',
-                      cursor: 'pointer'
-                    }
-                  })
-                ),
-                H('label', { style: { display: 'grid', gap: 4 } },
-                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Style'),
-                  H('select', {
-                    value: borderStyleValue,
-                    onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
-                    style: {
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      background: '#fff'
-                    }
-                  },
-                    H('option', { value: 'solid' }, 'Solid'),
-                    H('option', { value: 'dashed' }, 'Dashed')
-                  )
-                )
+                H('span', {
+                  style: { fontWeight: 600, fontSize: 14, color: '#374151' }
+                }, 'Avatar Outline'),
+                !isPremium && H('span', {
+                  style: {
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    color: '#92400e',
+                    borderRadius: 10,
+                    fontWeight: 600
+                  }
+                }, 'Premium')
               ),
               H('div', {
                 style: {
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  flexWrap: 'wrap'
+                  gap: 16
                 }
               },
+                // Preview
                 H('div', {
                   style: {
-                    width: 56,
-                    height: 56,
+                    width: 64,
+                    height: 64,
                     borderRadius: '50%',
                     borderColor: borderColorValue,
                     borderStyle: borderStyleValue,
                     borderWidth: 4,
-                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.2)',
-                    background: '#0f172a',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                    background: currentPictureUrl ? `url(${currentPictureUrl}) center/cover` : '#1f2937',
                     color: '#e2e8f0',
                     display: 'grid',
                     placeItems: 'center',
                     fontWeight: 700,
-                    fontSize: 18
+                    fontSize: 20,
+                    flexShrink: 0
                   }
-                }, 'Aa'),
-                H('span', { className: 'muted', style: { fontSize: 12 } }, 'Live preview of your outline')
-              )
-            )
-          ),
-          H('div', { className: 'modal-body' },
-            error && H('div', {
-              style: {
-                padding: 12,
-                background: '#fee2e2',
-                color: '#991b1b',
-                borderRadius: 8,
-                marginBottom: 12
-              }
-            }, error),
-            !previewUrl && H('div', null,
-              currentPictureUrl && H('div', {
+                }, !currentPictureUrl && 'Aa'),
+                // Controls
+                H('div', {
+                  style: {
+                    display: 'flex',
+                    gap: 8,
+                    flex: 1
+                  }
+                },
+                  H('label', {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      flex: 1
+                    }
+                  },
+                    H('span', {
+                      style: { fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }
+                    }, 'Color'),
+                    H('input', {
+                      type: 'color',
+                      value: borderColorValue,
+                      onChange: (evt) => onChangeBorderColor?.(evt.target.value),
+                      disabled: !isPremium,
+                      style: {
+                        width: '100%',
+                        height: 36,
+                        borderRadius: 8,
+                        border: '1px solid #d1d5db',
+                        cursor: isPremium ? 'pointer' : 'not-allowed',
+                        opacity: isPremium ? 1 : 0.5
+                      }
+                    })
+                  ),
+                  H('label', {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      flex: 1
+                    }
+                  },
+                    H('span', {
+                      style: { fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }
+                    }, 'Style'),
+                    H('select', {
+                      value: borderStyleValue,
+                      onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
+                      disabled: !isPremium,
+                      style: {
+                        width: '100%',
+                        height: 36,
+                        padding: '0 8px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 8,
+                        cursor: isPremium ? 'pointer' : 'not-allowed',
+                        background: '#fff',
+                        opacity: isPremium ? 1 : 0.5
+                      }
+                    },
+                      H('option', { value: 'solid' }, 'Solid'),
+                      H('option', { value: 'dashed' }, 'Dashed')
+                    )
+                  )
+                )
+              ),
+              // Save button for avatar outline
+              onSave && H('button', {
+                onClick: handleSaveAndClose,
+                disabled: !isPremium || saving,
                 style: {
-                  width: 200,
-                  height: 200,
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  margin: '0 auto 16px',
-                  border: '2px solid #e5e7eb'
+                  marginTop: 12,
+                  width: '100%',
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: (!isPremium || saving) ? '#d1d5db' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: (!isPremium || saving) ? 'not-allowed' : 'pointer',
+                  transition: 'all 150ms ease'
+                }
+              }, saving ? 'Saving...' : 'Save Outline')
+            ),
+
+            // Photo upload section
+            !previewUrl && H('div', null,
+              // Current picture display
+              H('div', {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  marginBottom: 20
                 }
               },
-                H('img', {
-                  src: currentPictureUrl,
-                  alt: 'Current profile picture',
-                  style: { width: '100%', height: '100%', objectFit: 'cover' }
-                })
+                H('div', {
+                  style: {
+                    width: 120,
+                    height: 120,
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    border: '3px solid #e5e7eb',
+                    background: '#f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 8
+                  }
+                },
+                  currentPictureUrl
+                    ? H('img', {
+                      src: currentPictureUrl,
+                      alt: 'Current profile picture',
+                      style: { width: '100%', height: '100%', objectFit: 'cover' }
+                    })
+                    : H('div', {
+                      style: {
+                        fontSize: 40,
+                        color: '#9ca3af'
+                      }
+                    }, '\uD83D\uDC64')
+                ),
+                H('span', {
+                  style: { fontSize: 13, color: '#6b7280' }
+                }, currentPictureUrl ? 'Current photo' : 'No photo set')
               ),
+
+              // Upload button
               H('input', {
                 ref: fileInputRef,
                 type: 'file',
@@ -312,24 +451,52 @@
                 style: { display: 'none' }
               }),
               H('button', {
-                className: 'btn-primary',
                 onClick: () => fileInputRef.current?.click(),
-                style: { width: '100%', marginBottom: 8 }
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  transition: 'all 150ms ease'
+                }
               }, 'Choose Photo'),
+
+              // Remove button
               currentPictureUrl && H('button', {
-                className: 'btn',
                 onClick: handleRemove,
                 disabled: uploading,
-                style: { width: '100%' }
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  borderRadius: 10,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  color: '#dc2626',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  transition: 'all 150ms ease',
+                  opacity: uploading ? 0.6 : 1
+                }
               }, uploading ? 'Removing...' : 'Remove Photo')
             ),
+
+            // Crop preview
             previewUrl && H('div', null,
               H('div', {
                 style: {
                   position: 'relative',
                   width: '100%',
-                  maxWidth: 400,
-                  margin: '0 auto 16px'
+                  maxWidth: 350,
+                  margin: '0 auto 16px',
+                  borderRadius: 12,
+                  overflow: 'hidden'
                 }
               },
                 H('img', {
@@ -339,8 +506,7 @@
                   onLoad: handleImageLoad,
                   style: {
                     width: '100%',
-                    display: 'block',
-                    borderRadius: 8
+                    display: 'block'
                   }
                 }),
                 H('div', {
@@ -366,7 +532,7 @@
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: 'white',
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: 600,
                       textShadow: '0 1px 3px rgba(0,0,0,0.8)',
                       pointerEvents: 'none',
@@ -379,21 +545,47 @@
                 ref: canvasRef,
                 style: { display: 'none' }
               }),
-              H('div', { style: { display: 'flex', gap: 8 } },
+              // Action buttons
+              H('div', {
+                style: {
+                  display: 'flex',
+                  gap: 12
+                }
+              },
                 H('button', {
-                  className: 'btn',
                   onClick: () => {
                     setPreviewUrl(null);
                     setSelectedFile(null);
                   },
                   disabled: uploading,
-                  style: { flex: 1 }
+                  style: {
+                    flex: 1,
+                    padding: '12px 20px',
+                    borderRadius: 10,
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    color: '#374151',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    transition: 'all 150ms ease'
+                  }
                 }, 'Cancel'),
                 H('button', {
-                  className: 'btn-primary',
                   onClick: handleUpload,
                   disabled: uploading,
-                  style: { flex: 1 }
+                  style: {
+                    flex: 1,
+                    padding: '12px 20px',
+                    borderRadius: 10,
+                    border: 'none',
+                    background: uploading ? '#d1d5db' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    transition: 'all 150ms ease'
+                  }
                 }, uploading ? 'Uploading...' : 'Upload')
               )
             )
