@@ -506,6 +506,10 @@
               const overlayStartTime = Date.now();
               setIsResuming(true);
               try {
+                // Clear cached GPS coordinates so we get fresh location
+                if (typeof helpers?.clearCoordsCache === 'function') {
+                  helpers.clearCoordsCache();
+                }
                 await refreshListings();
                 await reloadMineOnly();
               } catch (err) {
@@ -537,6 +541,10 @@
                 const overlayStartTime = Date.now();
                 setIsResuming(true);
                 try {
+                  // Clear cached GPS coordinates so we get fresh location
+                  if (typeof helpers?.clearCoordsCache === 'function') {
+                    helpers.clearCoordsCache();
+                  }
                   await refreshListings();
                   await reloadMineOnly();
                 } catch (err) {

@@ -346,6 +346,11 @@
       return coordsPromise;
     }
 
+    // Clear cached coordinates so next call fetches fresh GPS position
+    function clearCoordsCache() {
+      coordsPromise = null;
+    }
+
     function useBodyScrollLock(active) {
       useEffect(() => {
         if (!active) return undefined;
@@ -427,6 +432,7 @@
       serializePushSubscription,
       createConcurrencyLimiter,
       getUserCoordsOnce,
+      clearCoordsCache,
       useBodyScrollLock,
       normalizeListingsResponse,
       asArray,
