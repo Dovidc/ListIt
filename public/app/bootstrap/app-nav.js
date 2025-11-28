@@ -5,10 +5,7 @@
       setTab: () => {},
       incLoad: () => {},
       decLoad: () => {},
-      notifyLocked: () => {},
-      setActiveConvoId: () => {},
-      // Store pending notification data for cold-start scenarios
-      pendingConversationId: null
+      notifyLocked: () => {}
     };
   }
 

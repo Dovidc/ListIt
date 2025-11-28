@@ -161,15 +161,12 @@
             });
             listenersRef.current.push(receivedListener);
 
-            // Listen for notification taps (warm-start - app already running)
-            // Note: Cold-start is handled by early listener in app-nav.js
+            // Listen for notification taps
             const actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              // Navigate to relevant screen based on notification data
               const data = action.notification?.data;
               if (data?.conversation_id) {
-                const AppNav = window.ListItApp?.AppNav;
-                // Navigate directly since app is already running
-                AppNav?.setActiveConvoId?.(data.conversation_id);
-                AppNav?.setTab?.('messages');
+                window.ListItApp?.AppNav?.setTab?.('messages');
               }
             });
             listenersRef.current.push(actionListener);
