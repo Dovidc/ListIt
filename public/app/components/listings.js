@@ -1260,6 +1260,238 @@
       );
     }
 
+    // ============================================================
+    // PinchZoomImage - Pinch-to-zoom image component for lightbox
+    // ============================================================
+    function PinchZoomImage({ src, alt, onLoad, onError, style, className }) {
+      const containerRef = useRef(null);
+      const imgRef = useRef(null);
+      const stateRef = useRef({
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+        initialDistance: 0,
+        initialScale: 1,
+        isPinching: false,
+        lastTouchX: 0,
+        lastTouchY: 0,
+        isDragging: false
+      });
+
+      const MIN_SCALE = 1;
+      const MAX_SCALE = 4;
+
+      const updateTransform = useCallback(() => {
+        const img = imgRef.current;
+        if (!img) return;
+        const { scale, translateX, translateY } = stateRef.current;
+        img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+      }, []);
+
+      const clampTranslation = useCallback(() => {
+        const container = containerRef.current;
+        const img = imgRef.current;
+        if (!container || !img) return;
+
+        const state = stateRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const imgWidth = img.naturalWidth || img.offsetWidth;
+        const imgHeight = img.naturalHeight || img.offsetHeight;
+
+        // Calculate the displayed size of the image
+        const aspectRatio = imgWidth / imgHeight;
+        let displayWidth, displayHeight;
+        if (containerRect.width / containerRect.height > aspectRatio) {
+          displayHeight = containerRect.height;
+          displayWidth = displayHeight * aspectRatio;
+        } else {
+          displayWidth = containerRect.width;
+          displayHeight = displayWidth / aspectRatio;
+        }
+
+        const scaledWidth = displayWidth * state.scale;
+        const scaledHeight = displayHeight * state.scale;
+
+        // Calculate max translation bounds
+        const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2);
+        const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2);
+
+        // Clamp translation
+        state.translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, state.translateX));
+        state.translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, state.translateY));
+      }, []);
+
+      const getDistance = useCallback((touches) => {
+        if (touches.length < 2) return 0;
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }, []);
+
+      const getMidpoint = useCallback((touches) => {
+        if (touches.length < 2) return { x: touches[0]?.clientX || 0, y: touches[0]?.clientY || 0 };
+        return {
+          x: (touches[0].clientX + touches[1].clientX) / 2,
+          y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+      }, []);
+
+      const handleTouchStart = useCallback((e) => {
+        const state = stateRef.current;
+        const touches = e.touches;
+
+        if (touches.length === 2) {
+          e.preventDefault();
+          state.isPinching = true;
+          state.isDragging = false;
+          state.initialDistance = getDistance(touches);
+          state.initialScale = state.scale;
+        } else if (touches.length === 1 && state.scale > 1) {
+          state.isDragging = true;
+          state.isPinching = false;
+          state.lastTouchX = touches[0].clientX;
+          state.lastTouchY = touches[0].clientY;
+        }
+      }, [getDistance]);
+
+      const handleTouchMove = useCallback((e) => {
+        const state = stateRef.current;
+        const touches = e.touches;
+
+        if (state.isPinching && touches.length === 2) {
+          e.preventDefault();
+          const currentDistance = getDistance(touches);
+          const scaleFactor = currentDistance / state.initialDistance;
+          let newScale = state.initialScale * scaleFactor;
+          newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+          state.scale = newScale;
+
+          // Reset translation if zooming back to 1
+          if (newScale <= 1) {
+            state.translateX = 0;
+            state.translateY = 0;
+          }
+
+          clampTranslation();
+          updateTransform();
+        } else if (state.isDragging && touches.length === 1 && state.scale > 1) {
+          e.preventDefault();
+          const deltaX = touches[0].clientX - state.lastTouchX;
+          const deltaY = touches[0].clientY - state.lastTouchY;
+          state.translateX += deltaX;
+          state.translateY += deltaY;
+          state.lastTouchX = touches[0].clientX;
+          state.lastTouchY = touches[0].clientY;
+
+          clampTranslation();
+          updateTransform();
+        }
+      }, [getDistance, clampTranslation, updateTransform]);
+
+      const handleTouchEnd = useCallback((e) => {
+        const state = stateRef.current;
+        const touches = e.touches;
+
+        if (touches.length < 2) {
+          state.isPinching = false;
+        }
+        if (touches.length === 0) {
+          state.isDragging = false;
+        }
+
+        // Snap back to scale 1 if close
+        if (state.scale < 1.1 && !state.isPinching) {
+          state.scale = 1;
+          state.translateX = 0;
+          state.translateY = 0;
+          updateTransform();
+        }
+      }, [updateTransform]);
+
+      // Reset zoom when image changes
+      useEffect(() => {
+        const state = stateRef.current;
+        state.scale = 1;
+        state.translateX = 0;
+        state.translateY = 0;
+        state.isPinching = false;
+        state.isDragging = false;
+        updateTransform();
+      }, [src, updateTransform]);
+
+      // Double-tap to zoom
+      const lastTapRef = useRef(0);
+      const handleDoubleTap = useCallback((e) => {
+        const now = Date.now();
+        const state = stateRef.current;
+
+        if (now - lastTapRef.current < 300) {
+          e.preventDefault();
+          if (state.scale > 1) {
+            // Zoom out
+            state.scale = 1;
+            state.translateX = 0;
+            state.translateY = 0;
+          } else {
+            // Zoom in to 2x at tap location
+            const container = containerRef.current;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const tapX = e.changedTouches?.[0]?.clientX || e.clientX;
+              const tapY = e.changedTouches?.[0]?.clientY || e.clientY;
+              const offsetX = tapX - rect.left - rect.width / 2;
+              const offsetY = tapY - rect.top - rect.height / 2;
+              state.scale = 2;
+              state.translateX = -offsetX;
+              state.translateY = -offsetY;
+              clampTranslation();
+            }
+          }
+          updateTransform();
+        }
+        lastTapRef.current = now;
+      }, [clampTranslation, updateTransform]);
+
+      return H('div', {
+        ref: containerRef,
+        className: 'pinch-zoom-container',
+        style: {
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          touchAction: 'none'
+        },
+        onTouchStart: handleTouchStart,
+        onTouchMove: handleTouchMove,
+        onTouchEnd: handleTouchEnd,
+        onClick: handleDoubleTap
+      },
+        H(ResponsiveImage, {
+          ref: imgRef,
+          src,
+          alt,
+          widths: [480, 720, 1080, 1440],
+          sizes: '100vw',
+          loading: 'eager',
+          fetchPriority: 'high',
+          className: className || 'lightbox-img',
+          onLoad,
+          onError,
+          style: {
+            ...style,
+            transformOrigin: 'center center',
+            willChange: 'transform',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain'
+          }
+        })
+      );
+    }
+
     function ListingGalleryModal({ open, images, index, onClose, onIndex, loading = false }) {
       useBodyScrollLock(open);
 
@@ -1326,13 +1558,9 @@
 
       const imageContent = len
         ? H('div', { className: 'lightbox-main' },
-          H(ResponsiveImage, {
+          H(PinchZoomImage, {
             src: currentSrc,
             alt: `Listing image ${safeIndex + 1}`,
-            widths: [480, 720, 1080, 1440],
-            sizes: '100vw',
-            loading: 'eager',
-            fetchPriority: 'high',
             className: 'lightbox-img',
             onLoad: handleStageSettled,
             onError: handleStageSettled,
