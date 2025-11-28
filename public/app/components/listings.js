@@ -1907,7 +1907,7 @@
             style: {
               background: 'none',
               border: 'none',
-              color: '#111',
+              color: '#2563eb',
               fontWeight: 600,
               textDecoration: 'underline',
               cursor: 'pointer',
