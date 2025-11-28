@@ -253,7 +253,7 @@
         bullets: [
           'Overlay the listing image with a banner inviting buyers to make an offer.'
         ],
-        footer: 'Turn Offer off to show the price again.'
+        footer: 'Best used for items that you want to sell fast.'
       });
     });
 

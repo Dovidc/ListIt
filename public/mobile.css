@@ -432,7 +432,7 @@ textarea {
 }
 
 main.container {
-  padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
 }
 
 label {
@@ -1048,7 +1048,7 @@ main {
 
 /* Add padding to body so content isn't hidden behind nav */
 body {
-  padding-bottom: 60px !important;
+  padding-bottom: 80px !important;
 }
 
 /* Protruding Plus Button */

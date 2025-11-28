@@ -242,18 +242,7 @@
         role: 'region',
         'aria-label': heading
       },
-        H('header', {
-          className: 'listing-form-screen__header'
-        },
-          H('button', {
-            type: 'button',
-            className: 'btn listing-form-screen__dismiss',
-            onClick: onClose
-          }, 'Cancel'),
-          H('h1', { className: 'listing-form-screen__title' }, heading),
-          H('div', { className: 'listing-form-screen__spacer', 'aria-hidden': 'true' })
-        ),
-        H('div', { className: 'listing-form-screen__body' },
+        H('div', { className: 'listing-form-screen__body', style: { paddingTop: 16 } },
           H('div', { className: 'listing-form-screen__content' }, form)
         )
       );
@@ -457,7 +446,7 @@
             if (aiSources.length) {
               ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
             }
-          } catch (_) {}
+          } catch (_) { }
 
           const parsedPrice = Number(ai.suggested_price);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
@@ -499,7 +488,7 @@
                 latAuto = c.lat;
                 lonAuto = c.lon;
               }
-            } catch (_) {}
+            } catch (_) { }
           }
 
           if (!locAuto) {
@@ -661,220 +650,416 @@
       const showInquiryText = !!inquiryEnabled;
       const formattedPrice = isFree ? price(0) : price(Number(priceVal));
 
+      const allImages = [
+        ...existingUrls.map((url, i) => ({ type: 'existing', url, index: i })),
+        ...filePreviews.map(({ url }, i) => ({ type: 'new', url, index: i }))
+      ];
+
       return H('form', {
         className: 'compact-listing-form',
-        onSubmit: submit
+        onSubmit: submit,
+        style: { display: 'flex', flexDirection: 'column', gap: 20 }
       },
-        H('div', { className: 'row', style: { gap: 6, alignItems: 'center' } },
-          H('input', {
-            ref: fileRef,
-            type: 'file',
-            accept: 'image/*',
-            multiple: true,
-            onChange: pickFiles,
-            style: { ...TOUCH_CONTROL_STYLE, flex: 1 }
-          }),
+        // Hidden file input
+        H('input', {
+          ref: fileRef,
+          type: 'file',
+          accept: 'image/*',
+          multiple: true,
+          onChange: pickFiles,
+          style: { display: 'none' }
+        }),
+
+        // ==================== PHOTOS SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+          H('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+            H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Photos'),
+            H('span', { style: { fontSize: 13, color: '#64748b' } }, `${allImages.length} photo${allImages.length !== 1 ? 's' : ''}`)
+          ),
+
+          // Image grid - large images
+          allImages.length > 0 && H('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 10
+            }
+          },
+            ...allImages.map((img, idx) =>
+              H('div', {
+                key: `${img.type}-${img.index}`,
+                style: {
+                  position: 'relative',
+                  aspectRatio: '1',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: '#f1f5f9'
+                }
+              },
+                H(ImageWithSkeleton, {
+                  src: img.url,
+                  style: {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }
+                }),
+                // Small X button
+                H('button', {
+                  type: 'button',
+                  onClick: () => {
+                    if (img.type === 'existing') {
+                      const next = [...existingUrls];
+                      next.splice(img.index, 1);
+                      setExistingUrls(next);
+                    } else {
+                      removeFile(img.index);
+                    }
+                  },
+                  style: {
+                    position: 'absolute',
+                    top: 6,
+                    right: 6,
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'rgba(239, 68, 68, 0.9)',
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                  }
+                }, '×')
+              )
+            )
+          ),
+
+          // Add Photos button
           H('button', {
-            className: 'btn',
             type: 'button',
             onClick: () => fileRef.current?.click(),
-            style: TOUCH_BUTTON_STYLE
-          }, 'Pick images')
-        ),
-
-        filePreviews.length > 0 && H('div', {
-          className: 'row',
-          style: { gap: 3, flexWrap: 'wrap', marginTop: 3 }
-        },
-          ...filePreviews.map(({ url }, i) =>
-            H('div', { key: i, style: { position: 'relative' } },
-              H(ImageWithSkeleton, {
-                src: url,
-                style: { width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid #ddd' }
-              }),
-              H('button', {
-                className: 'btn danger',
-                type: 'button',
-                style: { position: 'absolute', top: -2, right: -2, padding: '0px 3px', fontSize: 9, lineHeight: '12px' },
-                onClick: () => removeFile(i)
-              }, 'x')
-            )
-          )
-        ),
-
-        (existingUrls.length > 0) && H('div', null,
-          H('div', { className: 'muted', style: { fontSize: 11, marginBottom: 2 } }, 'Current:'),
-          H('div', { className: 'row', style: { gap: 3, flexWrap: 'wrap' } },
-            ...existingUrls.map((src, i) =>
-              H('div', { key: i, style: { position: 'relative' } },
-                H(ImageWithSkeleton, { src, style: { width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid #ddd' } }),
-                H('button', {
-                  className: 'btn danger',
-                  type: 'button',
-                  style: { position: 'absolute', top: -2, right: -2, padding: '0px 3px', fontSize: 9, lineHeight: '12px' },
-                  onClick: () => {
-                    const next = [...existingUrls];
-                    next.splice(i, 1);
-                    setExistingUrls(next);
-                  }
-                }, 'x')
-              )
-            )
-          )
-        ),
-
-        H('button', {
-          type: 'button',
-          className: `btn ${aiBusy ? '' : 'primary'}`,
-          disabled: aiBusy,
-          onClick: runAI,
-          style: { ...TOUCH_BUTTON_STYLE, width: '100%' }
-        }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
-
-        aiErr && H('span', { className: 'muted', style: { color: '#b91c1c', fontSize: 11 } }, aiErr),
-
-        H('input', {
-          value: title,
-          maxLength: 80,
-          onChange: e => setTitle(e.target.value),
-          placeholder: 'Title (optional)',
-          style: TOUCH_CONTROL_STYLE
-        }),
-
-        H('textarea', {
-          value: description,
-          maxLength: 400,
-          rows: 2,
-          onChange: e => setDescription(e.target.value),
-          placeholder: 'Description (optional)',
-          style: { ...TOUCH_CONTROL_STYLE, lineHeight: '1.5', resize: 'none' }
-        }),
-
-        H('input', {
-          value: location,
-          maxLength: 80,
-          onChange: e => setLocation(e.target.value),
-          placeholder: 'Location (required)',
-          style: TOUCH_CONTROL_STYLE
-        }),
-
-        H('button', {
-          type: 'button',
-          className: 'btn',
-          onClick: useMyLocation,
-          disabled: geoBusy,
-          style: { ...TOUCH_BUTTON_STYLE, width: '100%' }
-        },
-          geoBusy ? 'Locating...' : 'Use my location'
-        ),
-        geoErr && H('span', { className: 'muted', style: { color: '#b91c1c', fontSize: 11 } }, geoErr),
-
-        H('label', {
-          className: 'toggle-card',
-          style: { marginTop: 4, gap: 6, alignItems: 'flex-start', fontSize: 12, padding: '6px 8px' }
-        },
-          H('input', {
-            type: 'checkbox',
-            className: 'toggle-input',
-            checked: enableNearby,
-            onChange: e => {
-              const checked = e.target.checked;
-              setEnableNearby(checked);
-              if (checked && !hasFixedGps) useMyLocation();
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '16px 20px',
+              border: '2px dashed #cbd5e1',
+              borderRadius: 12,
+              background: '#f8fafc',
+              color: '#475569',
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
             }
-          }),
-          H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-          H('div', { className: 'toggle-copy' },
-            H('div', { style: { fontWeight: 700, fontSize: 12 } }, 'Enable Nearby searches'),
-            H('div', { className: 'muted', style: { fontSize: 11 } }, 'Shows distance in feet/miles to buyers.')
+          },
+            H('svg', {
+              width: 22,
+              height: 22,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+              H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+              H('polyline', { points: '21 15 16 10 5 21' })
+            ),
+            allImages.length > 0 ? 'Add More Photos' : 'Add Photos'
           )
         ),
 
-        H('div', { className: 'row', style: { alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
-          H('div', { className: 'row', style: { alignItems: 'center', gap: 6, flex: 1 } },
-            H('input', {
-              value: priceVal,
-              inputMode: 'decimal',
-              onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
-              placeholder: 'Price (empty = $0.00)',
-              style: { ...TOUCH_CONTROL_STYLE, flex: 1 }
-            }),
-            showInquiryText
-              ? H('span', { className: 'inquiry-badge', style: { fontSize: 11, padding: '3px 8px' } }, 'Seller wants an offer')
-              : H('span', { style: { fontSize: 11, color: isFree ? '#16a34a' : '#6b7280', fontWeight: 700 } }, formattedPrice)
+        // ==================== AI ANALYSIS ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          H('button', {
+            type: 'button',
+            className: 'btn',
+            disabled: aiBusy,
+            onClick: runAI,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '14px 20px',
+              background: aiBusy ? '#e2e8f0' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+              color: aiBusy ? '#64748b' : '#fff',
+              border: 'none',
+              borderRadius: 12,
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: aiBusy ? 'not-allowed' : 'pointer'
+            }
+          },
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('polygon', { points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2' })
+            ),
+            aiBusy ? 'Analyzing...' : 'Auto-fill with AI'
           ),
-          H('div', { className: 'row', style: { alignItems: 'center', gap: 4 } },
-            H('label', { className: 'toggle-card', style: { padding: '4px 8px', fontSize: 11 } },
-              H('input', {
-                type: 'checkbox',
-                className: 'toggle-input',
-                checked: showInquiryText,
-                onChange: e => setInquiryEnabled(e.target.checked)
-              }),
-              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-              H('div', { className: 'toggle-copy' },
-                H('div', { style: { fontWeight: 600, fontSize: 11 } }, 'Offer Message'),
-                H('div', { className: 'muted', style: { fontSize: 10 } }, 'show offer msg')
-              )
+          aiErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, aiErr)
+        ),
+
+        // ==================== DETAILS SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Details'),
+
+          // Title
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Title'),
+            H('input', {
+              value: title,
+              maxLength: 80,
+              onChange: e => setTitle(e.target.value),
+              placeholder: 'What are you selling?',
+              style: { ...TOUCH_CONTROL_STYLE, borderRadius: 10 }
+            })
+          ),
+
+          // Description
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Description'),
+            H('textarea', {
+              value: description,
+              maxLength: 400,
+              rows: 4,
+              onChange: e => setDescription(e.target.value),
+              placeholder: 'Describe your item, condition, features...',
+              style: { ...TOUCH_CONTROL_STYLE, lineHeight: '1.5', resize: 'none', borderRadius: 10 }
+            })
+          ),
+
+          // Price
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Price'),
+            H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              H('div', { style: { position: 'relative', flex: 1 } },
+                H('span', { style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 16, fontWeight: 500 } }, '$'),
+                H('input', {
+                  value: priceVal,
+                  inputMode: 'decimal',
+                  onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
+                  placeholder: '0.00',
+                  style: { ...TOUCH_CONTROL_STYLE, paddingLeft: 28, borderRadius: 10, width: '100%' }
+                })
+              ),
+              showInquiryText && H('span', {
+                style: {
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap'
+                }
+              }, 'Wants offers')
+            )
+          ),
+
+          // Inquiry toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: inquiryEnabled,
+              onChange: e => setInquiryEnabled(e.target.checked),
+              style: { width: 20, height: 20, accentColor: '#2563eb' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: '#0f172a' } }, 'Display offer banner'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers will be more likely to make a lower offer')
             ),
             H('button', {
               type: 'button',
               onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
-              title: 'Inquiry mode info',
               style: {
-                width: 22,
-                height: 22,
-                lineHeight: '20px',
-                borderRadius: 11,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
                 border: '1px solid #e5e7eb',
                 background: '#fff',
-                fontSize: 12,
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#64748b',
                 cursor: 'pointer'
               }
             }, '?')
           )
         ),
 
-        H('button', {
-          type: 'button',
-          onClick: () => setShowTags(!showTags),
-          style: {
-            width: '100%',
-            padding: '6px',
-            background: '#f9f9f9',
-            border: '1px solid #e5e7eb',
-            borderRadius: 6,
-            textAlign: 'left',
-            fontSize: 11,
-            color: '#6b7280'
-          }
-        }, showTags ? 'v Hide search tags' : '> Show search tags (optional)'),
+        // ==================== LOCATION SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Location'),
 
-        showTags && H('input', {
-          placeholder: 'e.g. car, suv, 4x4',
-          value: tags,
-          onChange: e => setTags(e.target.value),
-          style: TOUCH_CONTROL_STYLE
-        }),
-
-        H('div', { className: 'row', style: { gap: 6, marginTop: 6 } },
-          H('button', {
-            className: 'btn primary',
-            type: 'submit',
-            disabled: autoBusy,
-            style: { ...TOUCH_BUTTON_STYLE, flex: 1, fontWeight: 600 }
-          },
-            draft ? 'Save' : 'Create'
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'City or area'),
+            H('input', {
+              value: location,
+              maxLength: 80,
+              onChange: e => setLocation(e.target.value),
+              placeholder: 'e.g. Brooklyn, NY',
+              style: { ...TOUCH_CONTROL_STYLE, borderRadius: 10 }
+            })
           ),
+
+          H('button', {
+            type: 'button',
+            onClick: useMyLocation,
+            disabled: geoBusy,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '12px 16px',
+              border: '1px solid #e5e7eb',
+              borderRadius: 10,
+              background: '#fff',
+              color: '#374151',
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: geoBusy ? 'not-allowed' : 'pointer'
+            }
+          },
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('polygon', { points: '3 11 22 2 13 21 11 13 3 11' })
+            ),
+            geoBusy ? 'Getting location...' : 'Use my current location'
+          ),
+          geoErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, geoErr),
+
+          // Nearby toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: enableNearby,
+              onChange: e => {
+                const checked = e.target.checked;
+                setEnableNearby(checked);
+                if (checked && !hasFixedGps) useMyLocation();
+              },
+              style: { width: 20, height: 20, accentColor: '#2563eb' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: '#0f172a' } }, 'Show in Nearest searches'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the items distance from them')
+            )
+          )
+        ),
+
+        // ==================== TAGS SECTION (COLLAPSIBLE) ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          H('button', {
+            type: 'button',
+            onClick: () => setShowTags(!showTags),
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 14px',
+              background: '#f8fafc',
+              border: '1px solid #e5e7eb',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 500,
+              color: '#374151',
+              cursor: 'pointer'
+            }
+          },
+            H('span', null, 'Search tags (optional)'),
+            H('span', { style: { color: '#64748b' } }, showTags ? '▲' : '▼')
+          ),
+          showTags && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('input', {
+              placeholder: 'e.g. vintage, electronics, furniture',
+              value: tags,
+              onChange: e => setTags(e.target.value),
+              style: { ...TOUCH_CONTROL_STYLE, borderRadius: 10 }
+            }),
+            H('p', { style: { margin: 0, fontSize: 12, color: '#64748b' } }, 'Separate tags with commas. Helps buyers find your listing.')
+          )
+        ),
+
+        // ==================== ACTION BUTTONS ====================
+        H('section', { style: { display: 'flex', gap: 12, paddingTop: 8 } },
           H('button', {
             className: 'btn',
             type: 'button',
             onClick: onCancel,
             disabled: autoBusy,
-            style: { ...TOUCH_BUTTON_STYLE, flex: 1 }
-          },
-            'Cancel'
-          )
+            style: {
+              flex: 1,
+              padding: '14px 20px',
+              border: '1px solid #e5e7eb',
+              borderRadius: 12,
+              background: '#fff',
+              color: '#374151',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }
+          }, 'Cancel'),
+          H('button', {
+            type: 'submit',
+            disabled: autoBusy,
+            style: {
+              flex: 1,
+              padding: '14px 20px',
+              border: 'none',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: autoBusy ? 'not-allowed' : 'pointer',
+              opacity: autoBusy ? 0.6 : 1
+            }
+          }, draft ? 'Save Changes' : 'Create Listing')
         ),
         showInquiryHelp && H('div', {
           style: {
@@ -896,9 +1081,9 @@
               boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)'
             }
           },
-            H('div', { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, 'Inquiry mode'),
+            H('div', { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, 'Offer Banner'),
             H('p', { style: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.5 } },
-              'When inquiry is enabled it will replace the price field with a message inviting buyers to make an offer.'
+              'Enable offer banner if you want an item gone ASAP.'
             ),
             H('button', {
               type: 'button',
