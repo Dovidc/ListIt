@@ -364,7 +364,7 @@ textarea {
   display: flex;
   justify-content: space-around;
   gap: 8px;
-  padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 6px 12px calc(4px + env(safe-area-inset-bottom, 0px));
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
   border-top: 1px solid rgba(148, 163, 184, 0.35);
@@ -432,7 +432,7 @@ textarea {
 }
 
 main.container {
-  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
 }
 
 label {
@@ -1040,19 +1040,15 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 6px 12px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  padding: 4px 12px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom));
   z-index: 1000;
-  height: 56px;
-  /* Explicit height for padding calc */
-  box-sizing: content-box;
-  /* To include padding-bottom in height if needed, but standard box-sizing is border-box usually. Let's stick to standard flex layout */
+  height: 48px;
 }
 
 /* Add padding to body so content isn't hidden behind nav */
 body {
-  padding-bottom: 90px !important;
-  /* 64px + padding + safe area approx */
+  padding-bottom: 60px !important;
 }
 
 /* Protruding Plus Button */
