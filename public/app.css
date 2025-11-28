@@ -264,16 +264,15 @@
   right: 16px;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   color: #fff;
-  padding: 12px 18px 12px 14px;
+  padding: 12px 14px 12px 18px;
   border-radius: 12px;
   display: inline-flex;
-  flex-direction: row-reverse;
   align-items: center;
   gap: 10px;
   box-shadow: 0 12px 30px rgba(37, 99, 235, 0.35);
   z-index: 2000;
   cursor: pointer;
-  animation: editToastSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: editToastSlideInOut 5s ease-out forwards;
   touch-action: pan-x;
   user-select: none;
 }
@@ -282,18 +281,25 @@
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }
 
-.edit-listing-toast:active {
-  transform: scale(0.98);
-}
-
-@keyframes editToastSlideIn {
+@keyframes editToastSlideInOut {
   0% {
     transform: translateX(120%);
     opacity: 0;
   }
-  100% {
+  /* Slide in complete */
+  10% {
     transform: translateX(0);
     opacity: 1;
+  }
+  /* Stay visible for 4 seconds */
+  90% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  /* Slide out */
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
   }
 }
 
@@ -303,7 +309,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  animation: cogSpin 2s linear infinite;
+  animation: cogSpinInOut 5s ease-out forwards;
 }
 
 .edit-listing-toast__cog svg {
@@ -311,12 +317,21 @@
   height: 24px;
 }
 
-@keyframes cogSpin {
+@keyframes cogSpinInOut {
   0% {
     transform: rotate(0deg);
   }
+  /* Rotate forward during slide in, then ease to stop */
+  10% {
+    transform: rotate(720deg);
+  }
+  /* Stay still while toast is visible */
+  90% {
+    transform: rotate(720deg);
+  }
+  /* Rotate backward during slide out */
   100% {
-    transform: rotate(360deg);
+    transform: rotate(0deg);
   }
 }
 

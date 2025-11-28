@@ -515,13 +515,14 @@
               console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
             }
           }
+          return created;
         };
 
         if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
           enqueueListingJob(async () => {
             try {
-              await runAutoListJob();
-              onSaved?.();
+              const created = await runAutoListJob();
+              onSaved?.(created);
             } catch (err) {
               console.error('Auto-list failed:', err);
               alert(`Auto-list failed: ${err?.message || err}`);
@@ -536,8 +537,8 @@
         setAutoBusy(true);
         (async () => {
           try {
-            await runAutoListJob();
-            onSaved?.();
+            const created = await runAutoListJob();
+            onSaved?.(created);
           } catch (err) {
             console.error('Auto-list failed:', err);
             alert(`Auto-list failed: ${err?.message || err}`);
@@ -628,8 +629,8 @@
           if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
             enqueueListingJob(async () => {
               try {
-                await runCreate();
-                onSaved?.();
+                const created = await runCreate();
+                onSaved?.(created);
               } catch (err) {
                 console.error('Create/save failed:', err);
                 alert(`Create/save failed: ${err?.message || err}`);

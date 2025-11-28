@@ -720,10 +720,10 @@
           clearTimeout(editToastTimeoutRef.current);
         }
 
-        // Auto-hide after 3 seconds
+        // Auto-hide after 5 seconds (matches CSS animation duration)
         editToastTimeoutRef.current = setTimeout(() => {
           setShowEditToast(false);
-        }, 3000);
+        }, 5000);
       }, []);
 
       const dismissEditToast = useCallback(() => {
@@ -1094,8 +1094,8 @@
                   onSaved: async (createdListing) => {
                     await refreshListings({ preserveExisting: true });
                     await reloadMineOnly();
-                    // Show edit toast only for new listings (not edits)
-                    if (createdListing?.id && !editing) {
+                    // Show edit toast only for new listings (createdListing is only passed for new listings, not edits)
+                    if (createdListing?.id) {
                       showRecentListingToast(createdListing);
                     }
                   },
