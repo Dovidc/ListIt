@@ -469,8 +469,12 @@
 
         // Check for pending notification from cold-start
         // Check both AppNav and global storage (early listener may have stored it globally)
+        console.log('[AppShell] Checking for pending notification...');
+        console.log('[AppShell] AppNav.pendingConversationId:', AppNav.pendingConversationId);
+        console.log('[AppShell] window.ListItApp._pendingConversationId:', window.ListItApp?._pendingConversationId);
         const pendingId = AppNav.pendingConversationId || window.ListItApp?._pendingConversationId;
         if (pendingId) {
+          console.log('[AppShell] Found pending conversation, navigating to:', pendingId);
           AppNav.pendingConversationId = null;
           if (window.ListItApp?._pendingConversationId) {
             window.ListItApp._pendingConversationId = null;
@@ -478,6 +482,8 @@
           // Navigate to the conversation from the notification
           setActiveConvoId(pendingId);
           onTabChange('messages');
+        } else {
+          console.log('[AppShell] No pending notification found');
         }
 
         return () => {
