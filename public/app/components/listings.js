@@ -1266,12 +1266,16 @@
     function PinchZoomImage({ src, alt, onLoad, onError, style, className }) {
       const containerRef = useRef(null);
       const imgRef = useRef(null);
+      const [imgLoaded, setImgLoaded] = useState(false);
+
       const stateRef = useRef({
         scale: 1,
         translateX: 0,
         translateY: 0,
         initialDistance: 0,
         initialScale: 1,
+        initialTranslateX: 0,
+        initialTranslateY: 0,
         isPinching: false,
         lastTouchX: 0,
         lastTouchY: 0,
@@ -1295,22 +1299,14 @@
 
         const state = stateRef.current;
         const containerRect = container.getBoundingClientRect();
-        const imgWidth = img.naturalWidth || img.offsetWidth;
-        const imgHeight = img.naturalHeight || img.offsetHeight;
+        const imgRect = img.getBoundingClientRect();
 
-        // Calculate the displayed size of the image
-        const aspectRatio = imgWidth / imgHeight;
-        let displayWidth, displayHeight;
-        if (containerRect.width / containerRect.height > aspectRatio) {
-          displayHeight = containerRect.height;
-          displayWidth = displayHeight * aspectRatio;
-        } else {
-          displayWidth = containerRect.width;
-          displayHeight = displayWidth / aspectRatio;
-        }
+        // Get the unscaled image dimensions
+        const imgWidth = imgRect.width / state.scale;
+        const imgHeight = imgRect.height / state.scale;
 
-        const scaledWidth = displayWidth * state.scale;
-        const scaledHeight = displayHeight * state.scale;
+        const scaledWidth = imgWidth * state.scale;
+        const scaledHeight = imgHeight * state.scale;
 
         // Calculate max translation bounds
         const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2);
@@ -1342,11 +1338,15 @@
 
         if (touches.length === 2) {
           e.preventDefault();
+          e.stopPropagation();
           state.isPinching = true;
           state.isDragging = false;
           state.initialDistance = getDistance(touches);
           state.initialScale = state.scale;
+          state.initialTranslateX = state.translateX;
+          state.initialTranslateY = state.translateY;
         } else if (touches.length === 1 && state.scale > 1) {
+          e.stopPropagation();
           state.isDragging = true;
           state.isPinching = false;
           state.lastTouchX = touches[0].clientX;
@@ -1360,6 +1360,7 @@
 
         if (state.isPinching && touches.length === 2) {
           e.preventDefault();
+          e.stopPropagation();
           const currentDistance = getDistance(touches);
           const scaleFactor = currentDistance / state.initialDistance;
           let newScale = state.initialScale * scaleFactor;
@@ -1376,6 +1377,7 @@
           updateTransform();
         } else if (state.isDragging && touches.length === 1 && state.scale > 1) {
           e.preventDefault();
+          e.stopPropagation();
           const deltaX = touches[0].clientX - state.lastTouchX;
           const deltaY = touches[0].clientY - state.lastTouchY;
           state.translateX += deltaX;
@@ -1416,17 +1418,22 @@
         state.translateY = 0;
         state.isPinching = false;
         state.isDragging = false;
-        updateTransform();
-      }, [src, updateTransform]);
+        setImgLoaded(false);
+        if (imgRef.current) {
+          imgRef.current.style.transform = '';
+        }
+      }, [src]);
 
       // Double-tap to zoom
       const lastTapRef = useRef(0);
-      const handleDoubleTap = useCallback((e) => {
+      const handleTap = useCallback((e) => {
         const now = Date.now();
         const state = stateRef.current;
 
         if (now - lastTapRef.current < 300) {
+          // Double tap detected
           e.preventDefault();
+          e.stopPropagation();
           if (state.scale > 1) {
             // Zoom out
             state.scale = 1;
@@ -1437,8 +1444,8 @@
             const container = containerRef.current;
             if (container) {
               const rect = container.getBoundingClientRect();
-              const tapX = e.changedTouches?.[0]?.clientX || e.clientX;
-              const tapY = e.changedTouches?.[0]?.clientY || e.clientY;
+              const tapX = e.clientX || (e.changedTouches?.[0]?.clientX ?? rect.left + rect.width / 2);
+              const tapY = e.clientY || (e.changedTouches?.[0]?.clientY ?? rect.top + rect.height / 2);
               const offsetX = tapX - rect.left - rect.width / 2;
               const offsetY = tapY - rect.top - rect.height / 2;
               state.scale = 2;
@@ -1448,9 +1455,21 @@
             }
           }
           updateTransform();
+          lastTapRef.current = 0; // Reset to prevent triple-tap issues
+        } else {
+          lastTapRef.current = now;
         }
-        lastTapRef.current = now;
       }, [clampTranslation, updateTransform]);
+
+      const handleImgLoad = useCallback((e) => {
+        setImgLoaded(true);
+        onLoad?.(e);
+      }, [onLoad]);
+
+      const handleImgError = useCallback((e) => {
+        setImgLoaded(true);
+        onError?.(e);
+      }, [onError]);
 
       return H('div', {
         ref: containerRef,
@@ -1462,31 +1481,33 @@
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          touchAction: 'none'
+          touchAction: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none'
         },
         onTouchStart: handleTouchStart,
         onTouchMove: handleTouchMove,
         onTouchEnd: handleTouchEnd,
-        onClick: handleDoubleTap
+        onClick: handleTap
       },
-        H(ResponsiveImage, {
+        H('img', {
           ref: imgRef,
-          src,
-          alt,
-          widths: [480, 720, 1080, 1440],
-          sizes: '100vw',
-          loading: 'eager',
-          fetchPriority: 'high',
+          src: src,
+          alt: alt,
+          draggable: false,
           className: className || 'lightbox-img',
-          onLoad,
-          onError,
+          onLoad: handleImgLoad,
+          onError: handleImgError,
           style: {
-            ...style,
+            ...(style || {}),
+            opacity: imgLoaded ? (style?.opacity ?? 1) : 0,
+            transition: 'opacity 180ms ease',
             transformOrigin: 'center center',
             willChange: 'transform',
             maxWidth: '100%',
             maxHeight: '100%',
-            objectFit: 'contain'
+            objectFit: 'contain',
+            pointerEvents: 'none'
           }
         })
       );
