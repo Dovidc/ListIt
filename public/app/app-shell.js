@@ -370,6 +370,14 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
+      // Edit listing toast state
+      const [recentlyCreatedListing, setRecentlyCreatedListing] = useState(null);
+      const [showEditToast, setShowEditToast] = useState(false);
+      const editToastTimeoutRef = useRef(null);
+      const editToastSwipeRef = useRef(null);
+      const editToastStartXRef = useRef(0);
+      const editToastCurrentXRef = useRef(0);
+
       // Backward compatibility aliases
       const all = items;
 
@@ -701,6 +709,90 @@
         }
       }, [editorState, onTabChange, items, mineById, resetEditorState, setSelectedListing, tab]);
 
+      // Edit toast functions
+      const showRecentListingToast = useCallback((listing) => {
+        if (!listing?.id) return;
+        setRecentlyCreatedListing(listing);
+        setShowEditToast(true);
+
+        // Clear any existing timeout
+        if (editToastTimeoutRef.current) {
+          clearTimeout(editToastTimeoutRef.current);
+        }
+
+        // Auto-hide after 3 seconds
+        editToastTimeoutRef.current = setTimeout(() => {
+          setShowEditToast(false);
+        }, 3000);
+      }, []);
+
+      const dismissEditToast = useCallback(() => {
+        setShowEditToast(false);
+        if (editToastTimeoutRef.current) {
+          clearTimeout(editToastTimeoutRef.current);
+        }
+      }, []);
+
+      const handleEditToastClick = useCallback(() => {
+        dismissEditToast();
+        if (recentlyCreatedListing?.id) {
+          openListingEditor({ draft: recentlyCreatedListing, originTab: 'browse' });
+          onTabChange('listing-edit');
+        }
+      }, [recentlyCreatedListing, dismissEditToast, onTabChange]);
+
+      // Swipe-to-dismiss handlers for edit toast
+      const handleEditToastTouchStart = useCallback((e) => {
+        const touch = e.touches[0];
+        editToastStartXRef.current = touch.clientX;
+        editToastCurrentXRef.current = touch.clientX;
+        if (editToastSwipeRef.current) {
+          editToastSwipeRef.current.style.transition = 'none';
+        }
+      }, []);
+
+      const handleEditToastTouchMove = useCallback((e) => {
+        const touch = e.touches[0];
+        editToastCurrentXRef.current = touch.clientX;
+        const deltaX = editToastCurrentXRef.current - editToastStartXRef.current;
+        if (editToastSwipeRef.current) {
+          editToastSwipeRef.current.style.transform = `translateX(${deltaX}px)`;
+        }
+      }, []);
+
+      const handleEditToastTouchEnd = useCallback(() => {
+        const deltaX = editToastCurrentXRef.current - editToastStartXRef.current;
+        const threshold = 80; // Swipe threshold in pixels
+
+        if (editToastSwipeRef.current) {
+          editToastSwipeRef.current.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+        }
+
+        if (Math.abs(deltaX) > threshold) {
+          // Swipe was far enough - dismiss
+          if (editToastSwipeRef.current) {
+            const direction = deltaX > 0 ? 1 : -1;
+            editToastSwipeRef.current.style.transform = `translateX(${direction * 400}px)`;
+            editToastSwipeRef.current.style.opacity = '0';
+          }
+          setTimeout(dismissEditToast, 300);
+        } else {
+          // Snap back
+          if (editToastSwipeRef.current) {
+            editToastSwipeRef.current.style.transform = 'translateX(0)';
+          }
+        }
+      }, [dismissEditToast]);
+
+      // Cleanup timeout on unmount
+      useEffect(() => {
+        return () => {
+          if (editToastTimeoutRef.current) {
+            clearTimeout(editToastTimeoutRef.current);
+          }
+        };
+      }, []);
+
       const openListingEditor = useCallback(({ draft = null, files = [], originTab: origin, reopenListingId } = {}) => {
         const normalizedFiles = Array.isArray(files) ? files.slice() : [];
         const originValue = origin || tab || 'browse';
@@ -999,9 +1091,13 @@
                   isOpen: editorState.isOpen,
                   draft: editing,
                   onClose: closeEditor,
-                  onSaved: async () => {
+                  onSaved: async (createdListing) => {
                     await refreshListings({ preserveExisting: true });
                     await reloadMineOnly();
+                    // Show edit toast only for new listings (not edits)
+                    if (createdListing?.id && !editing) {
+                      showRecentListingToast(createdListing);
+                    }
                   },
                   autoListEnabled,
                   aiDescriptionEnabled,
@@ -1279,6 +1375,34 @@
             }),
 
             H(ListingQueueToast, null),
+
+            // Edit listing toast with rotating cog
+            showEditToast && H('div', {
+              ref: editToastSwipeRef,
+              className: 'edit-listing-toast',
+              onClick: handleEditToastClick,
+              onTouchStart: handleEditToastTouchStart,
+              onTouchMove: handleEditToastTouchMove,
+              onTouchEnd: handleEditToastTouchEnd,
+              role: 'button',
+              tabIndex: 0,
+              'aria-label': 'Edit recent listing'
+            },
+              H('div', { className: 'edit-listing-toast__cog' },
+                H('svg', {
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  H('circle', { cx: 12, cy: 12, r: 3 }),
+                  H('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })
+                )
+              ),
+              H('span', { className: 'edit-listing-toast__text' }, 'Edit recent listing?')
+            ),
 
             createChoiceModalOpen && H('div', {
               className: 'modal open',

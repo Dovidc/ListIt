@@ -213,7 +213,7 @@
         ? H(CompactListingForm, {
           draft,
           onCancel: onClose,
-          onSaved: () => { onSaved?.(); onClose(); },
+          onSaved: (createdListing) => { onSaved?.(createdListing); onClose(); },
           autoListEnabled,
           aiDescriptionEnabled,
           autoPostNearbyEnabled,
@@ -227,7 +227,7 @@
         : H(ListingForm, {
           draft,
           onCancel: onClose,
-          onSaved: () => { onSaved?.(); onClose(); },
+          onSaved: (createdListing) => { onSaved?.(createdListing); onClose(); },
           autoListEnabled,
           aiDescriptionEnabled,
           autoPostNearbyEnabled,
@@ -622,6 +622,7 @@
                 console.error('Failed to mark listing as inquiry-enabled:', err);
               }
             }
+            return created;
           };
 
           if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
@@ -638,8 +639,8 @@
             return;
           }
 
-          await runCreate();
-          onSaved?.();
+          const createdListing = await runCreate();
+          onSaved?.(createdListing);
         } catch (err) {
           console.error('Create/save failed:', err);
           alert(`Create/save failed: ${err?.message || err}`);
