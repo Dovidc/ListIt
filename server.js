@@ -5002,7 +5002,7 @@ app.put(
       const id = Number(req.params.id);
 
       // Only fetch columns needed for ownership check and update logic (skip image_data)
-      const existing = await db.prepare('SELECT id, user_id, location FROM listings WHERE id = ?').get(id);
+      const existing = await db.prepare('SELECT id, user_id, title, description, location, price, lat, lon FROM listings WHERE id = ?').get(id);
 
       if (!existing) return res.status(404).json({ error: 'Not found' });
 
