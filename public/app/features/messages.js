@@ -1000,7 +1000,20 @@
       }, [user, onSellerCleared, onConversationOpened, onTabChange]);
 
       const handleSeen = useCallback((convoId, lastMsgId) => {
-        if (!user || !convoId || !lastMsgId) return;
+        if (!user) return;
+
+        // If called with null/null (from markAllAsRead), just recompute unread
+        if (!convoId || !lastMsgId) {
+          if (typeof recomputeUnread === 'function') {
+            setTimeout(() => {
+              Promise.resolve()
+                .then(() => recomputeUnread())
+                .catch(() => {});
+            }, 0);
+          }
+          return;
+        }
+
         const seen = loadSeen(user.id) || {};
         if (!seen[convoId] || seen[convoId] < lastMsgId) {
           seen[convoId] = lastMsgId;

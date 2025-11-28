@@ -364,7 +364,7 @@ textarea {
   display: flex;
   justify-content: space-around;
   gap: 8px;
-  padding: 6px 12px calc(4px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 12px calc(6px + env(safe-area-inset-bottom, 0px));
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
   border-top: 1px solid rgba(148, 163, 184, 0.35);
@@ -1040,10 +1040,10 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 4px 12px;
-  padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  padding: 8px 12px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
   z-index: 1000;
-  height: 48px;
+  height: 52px;
 }
 
 /* Add padding to body so content isn't hidden behind nav */
