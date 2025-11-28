@@ -530,8 +530,9 @@
           style: {
             position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
             background: 'none', border: 'none', padding: 12, cursor: 'pointer',
-            color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            minWidth: 44, minHeight: 44
+            color: hasValue ? '#2563eb' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 44, minHeight: 44,
+            transition: 'color 0.15s ease'
           }
         },
           H('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -566,6 +567,8 @@
     function useListingsFeature({ user, currentTab }) {
       // Search state
       const [query, setQuery] = useState('');
+      const [committedQuery, setCommittedQuery] = useState('');
+      const [searchVersion, setSearchVersion] = useState(0);
       const [locationQuery, setLocationQuery] = useState('');
       const [sort, setSort] = useState('new');
       const locationInitialized = useRef(false);
@@ -589,16 +592,23 @@
           });
       }, []);
 
-      // Debounced search values
-      const debouncedQuery = useDebounce(query, 250);
+      // Debounced location (still live for city autocomplete)
       const debouncedLocation = useDebounce(locationQuery, 500);
+
+      // Submit search function - only searches when called explicitly
+      // Can optionally pass a value to search for (used when clearing)
+      const submitSearch = useCallback((searchValue) => {
+        const valueToSearch = searchValue !== undefined ? searchValue : query;
+        setCommittedQuery(valueToSearch.trim());
+        setSearchVersion(v => v + 1);
+      }, [query]);
 
       // Cover cache
       const coverCache = useCoverCache();
 
       // Pagination
       const pagination = useListingsPagination({
-        query: debouncedQuery,
+        query: committedQuery,
         location: debouncedLocation,
         sort,
         onCoversLoaded: coverCache.setCovers
@@ -623,7 +633,7 @@
       useEffect(() => {
         coverCache.clear();
         pagination.loadInitial();
-      }, [user?.id, debouncedQuery, debouncedLocation, sort]);
+      }, [user?.id, committedQuery, searchVersion, debouncedLocation, sort]);
 
       // Load user's listings when switching to profile tab
       useEffect(() => {
@@ -690,6 +700,7 @@
         // Search
         query,
         setQuery,
+        submitSearch,
         locationQuery,
         setLocationQuery,
         sort,

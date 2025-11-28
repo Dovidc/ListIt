@@ -230,10 +230,96 @@
       );
     }
 
+    function CustomDropdown({ value, onChange, options, disabled, style }) {
+      const [isOpen, setIsOpen] = React.useState(false);
+      const containerRef = React.useRef(null);
+
+      // Close dropdown when clicking outside
+      React.useEffect(() => {
+        function handleClickOutside(event) {
+          if (containerRef.current && !containerRef.current.contains(event.target)) {
+            setIsOpen(false);
+          }
+        }
+        if (isOpen) {
+          document.addEventListener('mousedown', handleClickOutside);
+          document.addEventListener('touchstart', handleClickOutside);
+        }
+        return () => {
+          document.removeEventListener('mousedown', handleClickOutside);
+          document.removeEventListener('touchstart', handleClickOutside);
+        };
+      }, [isOpen]);
+
+      const selectedOption = options.find(opt => opt.value === value);
+      const selectedLabel = selectedOption ? selectedOption.label : '';
+
+      const handleSelect = (optValue) => {
+        onChange({ target: { value: optValue } });
+        setIsOpen(false);
+      };
+
+      return H('div', {
+        ref: containerRef,
+        className: 'custom-dropdown' + (isOpen ? ' open' : '') + (disabled ? ' disabled' : ''),
+        style: style
+      },
+        H('button', {
+          type: 'button',
+          className: 'custom-dropdown__trigger',
+          onClick: () => !disabled && setIsOpen(!isOpen),
+          disabled: disabled
+        },
+          H('span', { className: 'custom-dropdown__value' }, selectedLabel),
+          H('span', { className: 'custom-dropdown__arrow' },
+            H('svg', {
+              width: 12,
+              height: 12,
+              viewBox: '0 0 12 12',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('path', { d: isOpen ? 'M9 7.5L6 4.5L3 7.5' : 'M3 4.5L6 7.5L9 4.5' })
+            )
+          )
+        ),
+        isOpen && H('div', { className: 'custom-dropdown__menu' },
+          options.map(opt =>
+            H('button', {
+              key: opt.value,
+              type: 'button',
+              className: 'custom-dropdown__option' + (opt.value === value ? ' selected' : ''),
+              onClick: () => handleSelect(opt.value)
+            },
+              opt.label,
+              opt.value === value && H('span', { className: 'custom-dropdown__check' },
+                H('svg', {
+                  width: 14,
+                  height: 14,
+                  viewBox: '0 0 14 14',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  H('path', { d: 'M11 4L5.5 10L3 7.5' })
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
     return {
       GlobalLoader,
       ResumeOverlay,
-      Header
+      Header,
+      CustomDropdown
     };
   }
 

@@ -145,7 +145,7 @@
     const listingComponents = components?.listing || {};
     const supporterComponents = components?.supporter || {};
 
-    const { Header, GlobalLoader, ResumeOverlay } = layoutComponents;
+    const { Header, GlobalLoader, ResumeOverlay, CustomDropdown } = layoutComponents;
     const { ListingsGrid } = gridComponents;
     const {
       MassListModal,
@@ -348,6 +348,7 @@
       const {
         query,
         setQuery,
+        submitSearch,
         locationQuery,
         setLocationQuery,
         sort,
@@ -1042,19 +1043,27 @@
                             },
                               H('input', {
                                 placeholder: 'Search...',
+                                enterKeyHint: 'search',
                                 value: query,
                                 onChange: e => setQuery(e.target.value),
+                                onKeyDown: e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    submitSearch();
+                                  }
+                                },
                                 style: {
                                   width: '100%',
-                                  paddingRight: query && query.trim() ? 32 : 8
+                                  paddingRight: query && query.trim() ? 72 : 40
                                 }
                               }),
+                              // Clear button - only show when there's text
                               query && query.trim() && H('button', {
                                 type: 'button',
-                                onClick: () => setQuery(''),
+                                onClick: () => { setQuery(''); submitSearch(''); },
                                 title: 'Clear search',
                                 style: {
-                                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                                  position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)',
                                   background: 'none', border: 'none', padding: 6, cursor: 'pointer',
                                   color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }
@@ -1062,6 +1071,23 @@
                                 H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
                                   H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
                                   H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                                )
+                              ),
+                              // Search button
+                              H('button', {
+                                type: 'button',
+                                onClick: () => submitSearch(),
+                                title: 'Search',
+                                style: {
+                                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                                  background: 'none', border: 'none', padding: 6, cursor: 'pointer',
+                                  color: query && query.trim() ? '#2563eb' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'color 0.15s ease'
+                                }
+                              },
+                                H('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                                  H('circle', { cx: 11, cy: 11, r: 8 }),
+                                  H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
                                 )
                               )
                             ),
@@ -1081,7 +1107,7 @@
                                 } catch { alert('Could not determine your location'); }
                               }
                             }),
-                            H('select', {
+                            H(CustomDropdown, {
                               value: sort,
                               onChange: e => {
                                 const newSort = e.target.value;
@@ -1091,14 +1117,15 @@
                                 }
                                 setSort(newSort);
                               },
+                              options: [
+                                { value: 'new', label: 'Newest' },
+                                { value: 'nearest', label: 'Nearest' },
+                                { value: 'price_asc', label: 'Price: Low' },
+                                { value: 'price_desc', label: 'Price: High' },
+                                { value: 'city', label: 'City' }
+                              ],
                               style: { width: '100%' }
-                            },
-                              H('option', { value: 'new' }, 'Newest'),
-                              H('option', { value: 'nearest' }, 'Nearest'),
-                              H('option', { value: 'price_asc' }, 'Price: Low'),
-                              H('option', { value: 'price_desc' }, 'Price: High'),
-                              H('option', { value: 'city' }, 'City')
-                            )
+                            })
                           ),
                           !isMobile && H('div', { className: 'row', style: { gap: 8 } },
                             H('button', {

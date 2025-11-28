@@ -26,6 +26,7 @@
     const providedListingCard = components?.ListingCard;
     const providedListingsGrid = components?.ListingsGrid;
     const providedListingModal = components?.ListingModal;
+    const CustomDropdown = components?.CustomDropdown;
 
     // Page size for Instagram-style loading
     const NEARBY_PAGE_SIZE = 20;
@@ -694,26 +695,47 @@
           }),
           // Row 2: Compact controls
           H('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
-            H('select', {
-              value: sort,
-              onChange: (e) => setSort(e.target.value),
-              disabled: busy && !isLoadingMore,
-              style: { flex: '1 1 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
-            },
-              H('option', { value: 'dist' }, 'Distance'),
-              H('option', { value: 'new' }, 'Newest'),
-              H('option', { value: 'price_asc' }, 'Low→High'),
-              H('option', { value: 'price_desc' }, 'High→Low')
-            ),
-            H('select', {
-              id: 'nearby-radius',
-              value: radius,
-              onChange: (e) => setRadius(Number(e.target.value)),
-              disabled: busy && !isLoadingMore,
-              style: { flex: '0 0 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
-            },
-              RADIUS_OPTIONS.map((opt) => H('option', { key: opt.value, value: opt.value }, opt.label))
-            ),
+            CustomDropdown
+              ? H(CustomDropdown, {
+                  value: sort,
+                  onChange: (e) => setSort(e.target.value),
+                  disabled: busy && !isLoadingMore,
+                  options: [
+                    { value: 'dist', label: 'Distance' },
+                    { value: 'new', label: 'Newest' },
+                    { value: 'price_asc', label: 'Low→High' },
+                    { value: 'price_desc', label: 'High→Low' }
+                  ],
+                  style: { flex: '1 1 auto', minWidth: 100 }
+                })
+              : H('select', {
+                  value: sort,
+                  onChange: (e) => setSort(e.target.value),
+                  disabled: busy && !isLoadingMore,
+                  style: { flex: '1 1 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
+                },
+                  H('option', { value: 'dist' }, 'Distance'),
+                  H('option', { value: 'new' }, 'Newest'),
+                  H('option', { value: 'price_asc' }, 'Low→High'),
+                  H('option', { value: 'price_desc' }, 'High→Low')
+                ),
+            CustomDropdown
+              ? H(CustomDropdown, {
+                  value: radius,
+                  onChange: (e) => setRadius(Number(e.target.value)),
+                  disabled: busy && !isLoadingMore,
+                  options: RADIUS_OPTIONS,
+                  style: { flex: '0 0 auto', minWidth: 90 }
+                })
+              : H('select', {
+                  id: 'nearby-radius',
+                  value: radius,
+                  onChange: (e) => setRadius(Number(e.target.value)),
+                  disabled: busy && !isLoadingMore,
+                  style: { flex: '0 0 auto', fontSize: 13, padding: '6px 8px', minHeight: 36 }
+                },
+                  RADIUS_OPTIONS.map((opt) => H('option', { key: opt.value, value: opt.value }, opt.label))
+                ),
             H('button', {
               className: 'btn',
               type: 'button',
