@@ -587,6 +587,13 @@
         isAtBottomRef.current = isAtBottom;
       }, [isAtBottom]);
 
+      // Update activeId when initialActiveId prop changes (e.g., from notification tap)
+      useEffect(() => {
+        if (initialActiveId && initialActiveId !== activeId) {
+          setActiveId(initialActiveId);
+        }
+      }, [initialActiveId]);
+
       const checkIfAtBottom = () => {
         const container = msgsContainerRef.current;
         if (!container) return;

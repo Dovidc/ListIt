@@ -166,6 +166,8 @@
               // Navigate to relevant screen based on notification data
               const data = action.notification?.data;
               if (data?.conversation_id) {
+                // Set the active conversation first, then switch to messages tab
+                window.ListItApp?.AppNav?.setActiveConvoId?.(data.conversation_id);
                 window.ListItApp?.AppNav?.setTab?.('messages');
               }
             });

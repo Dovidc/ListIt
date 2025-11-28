@@ -465,12 +465,14 @@
         AppNav.setUser = setUser;
         AppNav.setTab = onTabChange;
         AppNav.notifyLocked = showLockedBanner;
+        AppNav.setActiveConvoId = setActiveConvoId;
         return () => {
           AppNav.setUser = () => { };
           AppNav.setTab = () => { };
           AppNav.notifyLocked = () => { };
+          AppNav.setActiveConvoId = () => { };
         };
-      }, [setUser, onTabChange, showLockedBanner]);
+      }, [setUser, onTabChange, showLockedBanner, setActiveConvoId]);
       useEffect(() => {
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
