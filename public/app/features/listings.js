@@ -77,12 +77,20 @@
         pendingIdsRef.current.clear();
         if (!allIds.length) return;
 
+        // Filter out IDs that already have valid data in cache (not just null placeholder)
+        const idsToFetch = allIds.filter(id => {
+          const cached = cacheRef.current?.get(id);
+          return !cached || !cached.url;
+        });
+
+        if (!idsToFetch.length) return;
+
         const maxBatchSize = 12;
-        const ids = allIds.slice(0, maxBatchSize);
+        const ids = idsToFetch.slice(0, maxBatchSize);
 
         // Re-queue remaining for next batch
-        if (allIds.length > maxBatchSize) {
-          allIds.slice(maxBatchSize).forEach(id => pendingIdsRef.current.add(id));
+        if (idsToFetch.length > maxBatchSize) {
+          idsToFetch.slice(maxBatchSize).forEach(id => pendingIdsRef.current.add(id));
           batchTimerRef.current = setTimeout(() => {
             batchTimerRef.current = null;
             flushRef.current?.();
@@ -111,7 +119,9 @@
 
       const ensureCover = useCallback((id) => {
         if (id == null) return;
-        if (cacheRef.current?.has(id)) return;
+        const cached = cacheRef.current?.get(id);
+        // Skip if already has valid data or is already pending
+        if (cached?.url || pendingIdsRef.current.has(id)) return;
 
         // Mark pending to prevent duplicates
         cacheRef.current?.set(id, null);
@@ -138,6 +148,8 @@
         let hasUpdates = false;
         for (const [id, data] of entries) {
           cacheRef.current?.set(id, data);
+          // Remove from pending queue to prevent duplicate fetches
+          pendingIdsRef.current.delete(id);
           hasUpdates = true;
         }
         if (hasUpdates) bumpVersion();
@@ -189,26 +201,16 @@
           if (typeof getUserCoordsOnce === 'function') {
             try {
               const coords = await getUserCoordsOnce();
-              console.log('[fetchPage] getUserCoordsOnce returned:', coords);
               if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
                 params.lat = coords.lat;
                 params.lon = coords.lon;
               }
-            } catch (e) {
-              console.warn('[fetchPage] getUserCoordsOnce error:', e);
-              // Only warn if sorting by nearest (it's expected to work then)
-              if (sort === 'nearest') {
-                console.warn('Could not get user coordinates for nearest sort:', e);
-              }
+            } catch {
+              // Silently fail - coordinates are optional
             }
-          } else {
-            console.warn('[fetchPage] getUserCoordsOnce is not available');
           }
 
-          console.log('[fetchPage] API params:', JSON.stringify(params));
           const res = await api.listAll(params);
-          const firstItem = res?.items?.[0] || res?.rows?.[0] || (Array.isArray(res) ? res[0] : null);
-          console.log('[fetchPage] API response sample:', firstItem ? { id: firstItem.id, distance_m: firstItem.distance_m, lat: firstItem.lat, lon: firstItem.lon } : 'no items');
 
           // Stale request check
           if (reqId !== requestIdRef.current) return;
@@ -229,8 +231,8 @@
             if (!toAppend.length) return prev;
 
             const merged = [...prev, ...toAppend];
-            // Cap at 2000 listings to prevent memory issues on very long sessions
-            return merged.length > 2000 ? merged.slice(-2000) : merged;
+            // Cap at 500 listings to prevent memory issues on long sessions
+            return merged.length > 500 ? merged.slice(-500) : merged;
           });
 
           // Fetch covers for new listings
@@ -375,7 +377,7 @@
     function useInfiniteScroll({ enabled, onLoadMore, getIsLoading, getCursor }) {
       const sentinelRef = useRef(null);
       const lastLoadTimeRef = useRef(0);
-      const throttleMs = 500; // Minimum time between load attempts
+      const throttleMs = 1000; // Minimum time between load attempts
 
       useEffect(() => {
         if (!enabled) return;
@@ -408,6 +410,7 @@
     // ============================================================
     // HELPER: addCoversToListings
     // Enriches listings with cover image data
+    // Only creates new objects for items whose cover actually changed
     // ============================================================
     function addCoversToListings(listings, getCover) {
       return (listings || []).map(item => {
@@ -416,10 +419,17 @@
           item,
           item?.image_data || item?.thumb_url || (Array.isArray(item?.images) ? item.images[0] : null)
         );
+        const newCover = inlineUrl || '';
+        const newAr = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
+
+        // Only create new object if cover data actually changed
+        if (item.__cover === newCover && item.__ar === newAr) {
+          return item;
+        }
         return {
           ...item,
-          __cover: inlineUrl || '',
-          __ar: (cached?.w && cached?.h) ? (cached.w / cached.h) : 1
+          __cover: newCover,
+          __ar: newAr
         };
       });
     }
@@ -474,13 +484,23 @@
         setTimeout(() => setOpen(false), 100);
       }, []);
 
+      const handleInputChange = useCallback((e) => {
+        onChange(e.target.value);
+        setOpen(true);
+      }, [onChange]);
+
+      const handleClear = useCallback(() => {
+        onChange('');
+        setOpen(false);
+      }, [onChange]);
+
       const hasValue = value && value.trim().length > 0;
 
       return H('div', { ref: boxRef, style: { position: 'relative', display: 'flex', alignItems: 'center', flex: 1 } },
         H('input', {
           placeholder: 'City...',
           value: value,
-          onChange: e => { onChange(e.target.value); setOpen(true); },
+          onChange: handleInputChange,
           onKeyDown,
           onFocus,
           onBlur,
@@ -489,7 +509,7 @@
         // Clear button - only show when there's a value
         hasValue && H('button', {
           type: 'button',
-          onClick: () => { onChange(''); setOpen(false); },
+          onClick: handleClear,
           title: 'Clear location',
           style: {
             position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)',

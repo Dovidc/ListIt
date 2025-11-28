@@ -5001,7 +5001,8 @@ app.put(
 
       const id = Number(req.params.id);
 
-      const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
+      // Only fetch columns needed for ownership check and update logic (skip image_data)
+      const existing = await db.prepare('SELECT id, user_id, location FROM listings WHERE id = ?').get(id);
 
       if (!existing) return res.status(404).json({ error: 'Not found' });
 
@@ -5302,7 +5303,8 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 
     const id = Number(req.params.id);
 
-    const existing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(id);
+    // Only fetch columns needed for ownership check and city count (skip image_data)
+    const existing = await db.prepare('SELECT id, user_id, location FROM listings WHERE id = ?').get(id);
 
 
 
@@ -6312,8 +6314,8 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
 
     if (listing_id) {
-
-      const lst = await db.prepare('SELECT * FROM listings WHERE id = ?').get(Number(listing_id));
+      // Only fetch user_id - that's all we need here
+      const lst = await db.prepare('SELECT user_id FROM listings WHERE id = ?').get(Number(listing_id));
 
       if (!lst) return res.status(404).json({ error: 'Listing not found' });
 

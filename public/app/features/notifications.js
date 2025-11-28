@@ -46,8 +46,14 @@
           gain.connect(ctx.destination);
           osc.start(start);
           osc.stop(start + 0.5);
-        } catch (err) {
-          console.warn('Notification sound failed:', err);
+          // Suspend audio context after sound finishes to save battery
+          setTimeout(() => {
+            if (ctx.state === 'running') {
+              ctx.suspend().catch(() => {});
+            }
+          }, 600);
+        } catch {
+          // Silently fail - notification sound is non-critical
         }
       }, [ensureAudioContext]);
 

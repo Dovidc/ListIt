@@ -276,7 +276,6 @@
       if (!open) return null;
 
       const handleTierClick = (tier) => {
-        console.log('handleTierClick called with:', tier, 'onTierChange exists:', !!onTierChange);
         if (onTierChange) {
           onTierChange(tier);
         }

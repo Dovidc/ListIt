@@ -15,12 +15,8 @@
       const refreshAds = useCallback(async () => {
         try {
           const rows = await api.listAds({ silent: true });
-          console.log('Ads API response:', rows);
-          console.log('Is array?', Array.isArray(rows));
-          console.log('Ads count:', Array.isArray(rows) ? rows.length : 0);
           setAds(Array.isArray(rows) ? rows : []);
-        } catch (err) {
-          console.error('Failed to load ads', err);
+        } catch {
           setAds([]);
         }
       }, [api]);

@@ -33,11 +33,6 @@
       const hasDistance = Number.isFinite(item?.distance_m);
       const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
 
-      // Debug: Log distance info
-      if (item?.enable_nearby || item?.lat) {
-        console.log('[GridTile] Item', item?.id, 'distance_m:', item?.distance_m, 'lat:', item?.lat, 'enable_nearby:', item?.enable_nearby);
-      }
-
       const handleClick = isClickable
         ? (evt) => onSelect(evt, item, src)
         : undefined;

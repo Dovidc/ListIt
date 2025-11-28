@@ -1,8 +1,5 @@
 (() => {
-  console.log('[Push] push.js file loaded');
-
   function createPushFeature({ React, api, helpers }) {
-    console.log('[Push] createPushFeature called');
     if (!React || typeof React.useRef !== 'function') {
       throw new Error('Push feature requires React.');
     }
@@ -38,7 +35,6 @@
     }
 
     function usePushNotifications({ user, pushMeta }) {
-      console.log('[Push] usePushNotifications hook called', { userId: user?.id, pushMeta });
       const pushSetupRef = useRef({ userId: null, permission: null, platform: null });
       const listenersRef = useRef([]);
 
@@ -119,7 +115,6 @@
             }
 
             if (permStatus.receive !== 'granted') {
-              console.log('Push permission not granted:', permStatus.receive);
               pushSetupRef.current = { userId: user.id, permission: permStatus.receive, platform: 'native' };
               return;
             }
@@ -130,7 +125,6 @@
             // Listen for registration success
             const registrationListener = await PushNotifications.addListener('registration', async (token) => {
               if (aborted) return;
-              console.log('Push registration success, token:', token.value?.substring(0, 20) + '...');
 
               pushSetupRef.current = {
                 userId: user.id,
@@ -145,9 +139,8 @@
                   token: token.value,
                   platform: window.Capacitor?.getPlatform?.() || 'ios'
                 });
-                console.log('iOS push token registered with server');
-              } catch (err) {
-                console.warn('Failed to register iOS token with server:', err);
+              } catch {
+                // Silently fail - will retry on next app launch
               }
             });
             listenersRef.current.push(registrationListener);
@@ -164,18 +157,15 @@
 
             // Listen for push notifications received while app is open
             const receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-              console.log('Push received in foreground:', notification);
               // Could show an in-app toast here
             });
             listenersRef.current.push(receivedListener);
 
             // Listen for notification taps
             const actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-              console.log('Push notification tapped:', action);
-              // Could navigate to relevant screen here
+              // Navigate to relevant screen based on notification data
               const data = action.notification?.data;
               if (data?.conversation_id) {
-                // Navigate to messages
                 window.ListItApp?.AppNav?.setTab?.('messages');
               }
             });

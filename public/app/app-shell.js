@@ -282,11 +282,7 @@
       }, [setSupporterPromptSeen]);
 
       const handleTierChange = useCallback((tier) => {
-        console.log('handleTierChange called with:', tier);
-        setSupporterUpsellState((prev) => {
-          console.log('Previous state:', prev.selectedTier, '→ New state:', tier);
-          return { ...prev, selectedTier: tier };
-        });
+        setSupporterUpsellState((prev) => ({ ...prev, selectedTier: tier }));
       }, []);
 
       const handleSupporterBadgeClick = useCallback((payload = {}) => {
@@ -382,24 +378,15 @@
 
       // Wrap toggleSold with karma logic for premium users
       const toggleSoldWithKarma = useCallback(async (listing, makeSold) => {
-        console.log('=== KARMA HANDLER (app-shell) START ===');
-        console.log('Listing:', listing);
-        console.log('Make sold?', makeSold);
-        console.log('User:', user);
-        console.log('User has premium access:', hasPremiumAccess);
-
         if (makeSold && hasPremiumAccess) {
           // Show karma modal for premium users when marking as sold
-          console.log('Opening karma modal for listing:', listing.id);
           setKarmaListingId(listing.id);
           setKarmaModalOpen(true);
           // Don't mark as sold yet - wait for modal
         } else {
           // Non-premium users or unmarking sold - proceed normally
-          console.log('Proceeding with normal toggle sold');
           await toggleSold?.(listing, makeSold);
         }
-        console.log('=== KARMA HANDLER (app-shell) END ===');
       }, [user, toggleSold, hasPremiumAccess]);
 
       const handleKarmaBuyerSelected = useCallback(async (result) => {
@@ -846,10 +833,8 @@
       }
 
       const handlePlusButtonStart = useCallback((e) => {
-        console.log('handlePlusButtonStart', e.type);
         isLongPressRef.current = false;
         plusButtonTimerRef.current = setTimeout(() => {
-          console.log('Long press triggered');
           isLongPressRef.current = true;
           if (navigator.vibrate) {
             navigator.vibrate(50);
@@ -860,28 +845,23 @@
       }, [setShowMassList]);
 
       const handlePlusButtonEnd = useCallback((e) => {
-        console.log('handlePlusButtonEnd', e.type);
         if (plusButtonTimerRef.current) {
           clearTimeout(plusButtonTimerRef.current);
           plusButtonTimerRef.current = null;
         }
 
         if (isLongPressRef.current) {
-          console.log('Preventing click due to long press');
           e.preventDefault();
           return;
         }
       }, []);
 
       const handlePlusClick = useCallback((e) => {
-        console.log('handlePlusClick', { isLongPress: isLongPressRef.current, askCreateActionEnabled });
         if (isLongPressRef.current) return;
 
         if (askCreateActionEnabled) {
-          console.log('Opening choice modal');
           setCreateChoiceModalOpen(true);
         } else {
-          console.log('Opening camera directly');
           handleMobileCaptureClick('camera');
         }
       }, [askCreateActionEnabled, handleMobileCaptureClick]);
