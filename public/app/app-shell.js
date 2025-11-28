@@ -466,6 +466,20 @@
         AppNav.setTab = onTabChange;
         AppNav.notifyLocked = showLockedBanner;
         AppNav.setActiveConvoId = setActiveConvoId;
+
+        // Check for pending notification from cold-start
+        // Check both AppNav and global storage (early listener may have stored it globally)
+        const pendingId = AppNav.pendingConversationId || window.ListItApp?._pendingConversationId;
+        if (pendingId) {
+          AppNav.pendingConversationId = null;
+          if (window.ListItApp?._pendingConversationId) {
+            window.ListItApp._pendingConversationId = null;
+          }
+          // Navigate to the conversation from the notification
+          setActiveConvoId(pendingId);
+          onTabChange('messages');
+        }
+
         return () => {
           AppNav.setUser = () => { };
           AppNav.setTab = () => { };

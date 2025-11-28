@@ -989,6 +989,40 @@
 <body>
   <div id="root"></div>
 
+  <!-- Early push notification listener for cold-start - must run before any deferred scripts -->
+  <script>
+    (function() {
+      // Capture notification taps that launched the app (cold-start)
+      // This runs immediately to catch the event before React mounts
+      window.ListItApp = window.ListItApp || {};
+
+      function setupEarlyPushListener() {
+        var Capacitor = window.Capacitor;
+        if (!Capacitor) return;
+
+        var platform = Capacitor.getPlatform && Capacitor.getPlatform();
+        if (platform !== 'ios' && platform !== 'android') return;
+
+        var plugins = Capacitor.Plugins || {};
+        var PushNotifications = plugins.PushNotifications;
+        if (!PushNotifications || !PushNotifications.addListener) return;
+
+        PushNotifications.addListener('pushNotificationActionPerformed', function(action) {
+          var data = action && action.notification && action.notification.data;
+          var conversationId = data && data.conversation_id;
+          if (conversationId) {
+            // Store for app-shell to pick up once React mounts
+            window.ListItApp._pendingConversationId = conversationId;
+            console.log('[Push] Cold-start notification tap, conversation:', conversationId);
+          }
+        });
+        console.log('[Push] Early listener registered');
+      }
+
+      setupEarlyPushListener();
+    })();
+  </script>
+
   <!-- React 18 (UMD) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -1023,101 +1057,18 @@
   <script src="/app/features/admin/components.js?v=modular-admin-2" defer></script>
   <script src="/app/features/admin.js?v=modular-admin-1" defer></script>
   <script type="module" src="/app/features/listing-queue.js?v=modular-listing-queue-2" defer></script>
-  <script>
-    (function () {
-      const viewport = document.querySelector('meta[name="viewport"]');
-      if (!viewport) return;
+  <script src="/app/helpers.js?v=clear-coords-cache-1" defer></script>
+  <script src="/app/contexts/listings.js?v=modular-contexts-1" defer></script>
+  <script src="/app/contexts/listing-queue.js?v=modular-contexts-1" defer></script>
+  <script src="/app/contexts/notifications.js?v=modular-contexts-1" defer></script>
+  <script src="/app/bootstrap/app-nav.js?v=modular-bootstrap-1" defer></script>
+  <script src="/app/bootstrap/location.js?v=modular-bootstrap-1" defer></script>
+  <script src="/app/bootstrap/browser-app.js?v=supporter-badges-1" defer></script>
+  <script src="/app/app-shell.js?v=clear-buttons-1" defer></script>
+  <script src="/app.js?v=modular-browser-app-2" defer></script>
 
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
-
-      if (!isIOS && !isCoarsePointer) return;
-
-      const baseContent = 'width=device-width, initial-scale=1, viewport-fit=cover';
-      const lockedContent = `${baseContent}, maximum-scale=1`;
-
-      const applyLockedViewport = () => viewport.setAttribute('content', lockedContent);
-      const restoreViewport = () => viewport.setAttribute('content', baseContent);
-
-      const shouldLock = (element) =>
-        element instanceof HTMLElement && element.matches('input, textarea, select');
-
-      window.addEventListener(
-        'focusin',
-        (event) => {
-          if (!shouldLock(event.target)) return;
-          applyLockedViewport();
-        },
-        { passive: true }
-      );
-
-      window.addEventListener(
-        'focusout',
-        (event) => {
-          if (!shouldLock(event.target)) return;
-          restoreViewport();
-        },
-        { passive: true }
-      );
-
-      document.addEventListener('gesturestart', restoreViewport, { passive: true });
-    })();
-  </script>
-
-  <!-- Mobile-only overrides (kept after app.css) -->
-  <link rel="stylesheet" href="/mobile.css?v=resume-fade-1" media="screen and (max-width: 720px)" />
-  </head>
-
-  <body>
-    <div id="root"></div>
-
-    <!-- React 18 (UMD) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-    <!-- App -->
-    <script src="/assets/listit-core.js?v=shared-core-1" defer></script>
-    <script src="/app/components/media.js?v=modular-media-1" defer></script>
-    <script src="/app/components/ads.js?v=modular-ads-1" defer></script>
-    <script src="/app/components/grid.js?v=safari-scroll-fix-1" defer></script>
-    <script src="/app/components/layout.js?v=resume-fade-1" defer></script>
-    <script src="/app/components/supporter.js?v=supporter-badges-1" defer></script>
-    <script src="/app/components/listings.js?v=pinch-zoom-2" defer></script>
-    <script src="/app/components/profile-picture-upload.js?v=3" defer></script>
-    <script src="/app/features/auth.js?v=better-auth-errors-1" defer></script>
-    <script src="/app/features/landing.js?v=modular-landing-1" defer></script>
-    <script src="/app/features/listings.js?v=clear-buttons-1" defer></script>
-    <script src="/app/features/listing-forms.js?v=stability-fixes-1" defer></script>
-    <script src="/app/features/app-view.js?v=modular-app-view-1" defer></script>
-    <script src="/app/features/uploads/utils.js?v=modular-uploads-2" defer></script>
-    <script src="/app/features/uploads/service.js?v=modular-uploads-2" defer></script>
-    <script src="/app/features/uploads/hooks.js?v=modular-uploads-2" defer></script>
-    <script src="/app/features/uploads.js?v=modular-uploads-2" defer></script>
-    <script src="/app/features/notifications.js?v=modular-notifications-1" defer></script>
-    <script src="/app/features/preferences.js?v=modular-preferences-1" defer></script>
-    <script src="/app/features/profile.js?v=notification-settings-2" defer></script>
-    <script src="/app/features/nearby.js?v=modular-nearby-2" defer></script>
-    <script src="/app/features/message-center.js?v=modular-message-center-2" defer></script>
-    <script src="/app/features/messages.js?v=mark-all-read-1" defer></script>
-    <script src="/app/features/push.js?v=modular-push-debug-1" defer></script>
-    <script src="/app/features/ads.js?v=ad-debug-1" defer></script>
-    <script src="/app/features/admin/state.js?v=modular-admin-2" defer></script>
-    <script src="/app/features/admin/components.js?v=modular-admin-2" defer></script>
-    <script src="/app/features/admin.js?v=modular-admin-1" defer></script>
-    <script type="module" src="/app/features/listing-queue.js?v=modular-listing-queue-2" defer></script>
-    <script src="/app/helpers.js?v=clear-coords-cache-1" defer></script>
-    <script src="/app/contexts/listings.js?v=modular-contexts-1" defer></script>
-    <script src="/app/contexts/listing-queue.js?v=modular-contexts-1" defer></script>
-    <script src="/app/contexts/notifications.js?v=modular-contexts-1" defer></script>
-    <script src="/app/bootstrap/app-nav.js?v=modular-bootstrap-1" defer></script>
-    <script src="/app/bootstrap/location.js?v=modular-bootstrap-1" defer></script>
-    <script src="/app/bootstrap/browser-app.js?v=supporter-badges-1" defer></script>
-    <script src="/app/app-shell.js?v=clear-buttons-1" defer></script>
-    <script src="/app.js?v=modular-browser-app-2" defer></script>
-
-    <!-- Auto-resize textareas (nice-to-have) -->
-    <script src="/app/autosize.js" defer></script>
-  </body>
+  <!-- Auto-resize textareas (nice-to-have) -->
+  <script src="/app/autosize.js" defer></script>
+</body>
 
 </html>
