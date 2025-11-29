@@ -2381,17 +2381,6 @@
                         durationText = monthsSince === 1 ? '1 month' : `${monthsSince} months`;
                       }
 
-                      let badgeStyle = {
-                        Bronze: { gradient: 'linear-gradient(135deg, #ff6b35, #f7931e, #ffb84d)', glow: 'rgba(255, 107, 53, 0.9)' },
-                        Silver: { gradient: 'linear-gradient(135deg, #c0c0c0, #e8e8e8, #d0d0d0)', glow: 'rgba(192, 192, 192, 0.9)' },
-                        Gold: { gradient: 'linear-gradient(135deg, #ffd700, #ffed4e, #ffa500)', glow: 'rgba(255, 215, 0, 0.9)' },
-                        Platinum: { gradient: 'linear-gradient(135deg, #00bfff, #00d4ff, #00ffff)', glow: 'rgba(0, 212, 255, 0.9)' },
-                        Diamond: { gradient: 'linear-gradient(135deg, #b366ff, #d699ff, #e6ccff)', glow: 'rgba(179, 102, 255, 0.9)' },
-                        Emerald: { gradient: 'linear-gradient(135deg, #00ff41, #39ff14, #00ff00)', glow: 'rgba(0, 255, 65, 0.9)' },
-                        Ruby: { gradient: 'linear-gradient(135deg, #ff1744, #ff5252, #ff6e40)', glow: 'rgba(255, 23, 68, 0.9)' },
-                        Opal: { gradient: 'linear-gradient(135deg, #87ceeb, #4fc3f7, #81d4fa)', glow: 'rgba(135, 206, 235, 0.9)' }
-                      };
-
                       let tier = 'Bronze';
                       if (monthsSince >= 72) tier = 'Opal';
                       else if (monthsSince >= 60) tier = 'Ruby';
@@ -2401,43 +2390,306 @@
                       else if (monthsSince >= 6) tier = 'Gold';
                       else if (monthsSince >= 3) tier = 'Silver';
 
-                      const style = badgeStyle[tier];
                       const [showTooltip, setShowTooltip] = React.useState(false);
                       const tooltipText = `${tier} Supporter - ${durationText}`;
 
+                      // SVG badge definitions for each tier
+                      const badgeSVGs = {
+                        // Bronze: Flame medallion with warm orange tones
+                        Bronze: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'bronzeGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#ffb84d' }),
+                              H('stop', { offset: '50%', stopColor: '#f7931e' }),
+                              H('stop', { offset: '100%', stopColor: '#ff6b35' })
+                            ),
+                            H('linearGradient', { id: 'bronzeFlame', x1: '0%', y1: '100%', x2: '0%', y2: '0%' },
+                              H('stop', { offset: '0%', stopColor: '#ff6b35' }),
+                              H('stop', { offset: '50%', stopColor: '#ffa500' }),
+                              H('stop', { offset: '100%', stopColor: '#ffdd44' })
+                            ),
+                            H('filter', { id: 'bronzeGlow' },
+                              H('feGaussianBlur', { stdDeviation: '2', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#bronzeGrad)', stroke: '#cd7f32', strokeWidth: '3', filter: 'url(#bronzeGlow)' }),
+                          H('circle', { cx: '50', cy: '50', r: '35', fill: 'none', stroke: '#ffb84d', strokeWidth: '2', opacity: '0.6' }),
+                          H('path', { d: 'M50 25 Q55 35 50 45 Q45 35 50 25', fill: 'url(#bronzeFlame)', className: 'badge-fire-element' }),
+                          H('path', { d: 'M40 35 Q43 42 40 50 Q37 42 40 35', fill: 'url(#bronzeFlame)', opacity: '0.8', className: 'badge-fire-element', style: { animationDelay: '0.2s' } }),
+                          H('path', { d: 'M60 35 Q63 42 60 50 Q57 42 60 35', fill: 'url(#bronzeFlame)', opacity: '0.8', className: 'badge-fire-element', style: { animationDelay: '0.4s' } }),
+                          H('circle', { cx: '50', cy: '62', r: '12', fill: 'url(#bronzeGrad)', stroke: '#cd7f32', strokeWidth: '2' }),
+                          H('path', { d: 'M44 62 L50 55 L56 62 L50 69 Z', fill: '#ffdd44', opacity: '0.9' })
+                        ),
+
+                        // Silver: Ornate shield with wings
+                        Silver: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'silverGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#e8e8e8' }),
+                              H('stop', { offset: '50%', stopColor: '#c0c0c0' }),
+                              H('stop', { offset: '100%', stopColor: '#a8a8a8' })
+                            ),
+                            H('linearGradient', { id: 'silverShine', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+                              H('stop', { offset: '0%', stopColor: 'transparent' }),
+                              H('stop', { offset: '50%', stopColor: 'rgba(255,255,255,0.8)' }),
+                              H('stop', { offset: '100%', stopColor: 'transparent' })
+                            ),
+                            H('filter', { id: 'silverGlow' },
+                              H('feGaussianBlur', { stdDeviation: '2', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('path', { d: 'M50 10 L75 25 L75 55 Q75 75 50 90 Q25 75 25 55 L25 25 Z', fill: 'url(#silverGrad)', stroke: '#888', strokeWidth: '2', filter: 'url(#silverGlow)' }),
+                          H('path', { d: 'M50 18 L68 30 L68 53 Q68 68 50 80 Q32 68 32 53 L32 30 Z', fill: 'none', stroke: '#e8e8e8', strokeWidth: '2' }),
+                          H('path', { d: 'M20 35 Q10 30 5 40 Q10 45 20 42 Q15 50 20 55 Q30 50 25 42', fill: 'url(#silverGrad)', stroke: '#888', strokeWidth: '1' }),
+                          H('path', { d: 'M80 35 Q90 30 95 40 Q90 45 80 42 Q85 50 80 55 Q70 50 75 42', fill: 'url(#silverGrad)', stroke: '#888', strokeWidth: '1' }),
+                          H('circle', { cx: '50', cy: '45', r: '10', fill: '#e8e8e8', stroke: '#888', strokeWidth: '2' }),
+                          H('path', { d: 'M50 38 L52 43 L57 43 L53 47 L55 52 L50 49 L45 52 L47 47 L43 43 L48 43 Z', fill: '#c0c0c0' }),
+                          H('rect', { x: '35', y: '15', width: '30', height: '70', fill: 'url(#silverShine)', className: 'badge-shimmer-effect', opacity: '0.5' })
+                        ),
+
+                        // Gold: Royal crown with jewels
+                        Gold: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'goldGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#ffed4e' }),
+                              H('stop', { offset: '50%', stopColor: '#ffd700' }),
+                              H('stop', { offset: '100%', stopColor: '#ffa500' })
+                            ),
+                            H('linearGradient', { id: 'goldShine', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+                              H('stop', { offset: '0%', stopColor: 'transparent' }),
+                              H('stop', { offset: '50%', stopColor: 'rgba(255,255,255,0.9)' }),
+                              H('stop', { offset: '100%', stopColor: 'transparent' })
+                            ),
+                            H('filter', { id: 'goldGlow' },
+                              H('feGaussianBlur', { stdDeviation: '3', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('path', { d: 'M20 70 L20 40 L35 55 L50 30 L65 55 L80 40 L80 70 Z', fill: 'url(#goldGrad)', stroke: '#b8860b', strokeWidth: '2', filter: 'url(#goldGlow)' }),
+                          H('rect', { x: '18', y: '68', width: '64', height: '15', rx: '3', fill: 'url(#goldGrad)', stroke: '#b8860b', strokeWidth: '2' }),
+                          H('circle', { cx: '50', cy: '35', r: '8', fill: '#ff4444', stroke: '#b8860b', strokeWidth: '2' }),
+                          H('circle', { cx: '30', cy: '50', r: '5', fill: '#4444ff', stroke: '#b8860b', strokeWidth: '1' }),
+                          H('circle', { cx: '70', cy: '50', r: '5', fill: '#44ff44', stroke: '#b8860b', strokeWidth: '1' }),
+                          H('circle', { cx: '50', cy: '75', r: '4', fill: '#ff44ff', stroke: '#b8860b', strokeWidth: '1' }),
+                          H('circle', { cx: '35', cy: '75', r: '3', fill: '#44ffff', stroke: '#b8860b', strokeWidth: '1' }),
+                          H('circle', { cx: '65', cy: '75', r: '3', fill: '#ffff44', stroke: '#b8860b', strokeWidth: '1' }),
+                          H('circle', { cx: '20', cy: '40', r: '4', fill: '#ffed4e', className: 'badge-sparkle-particle' }),
+                          H('circle', { cx: '80', cy: '40', r: '4', fill: '#ffed4e', className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
+                          H('circle', { cx: '50', cy: '25', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.25s' } }),
+                          H('rect', { x: '25', y: '30', width: '50', height: '55', fill: 'url(#goldShine)', className: 'badge-shimmer-effect', opacity: '0.4' })
+                        ),
+
+                        // Platinum: Crystalline ice star
+                        Platinum: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'platGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#00ffff' }),
+                              H('stop', { offset: '50%', stopColor: '#00d4ff' }),
+                              H('stop', { offset: '100%', stopColor: '#00bfff' })
+                            ),
+                            H('linearGradient', { id: 'platIce', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#ffffff' }),
+                              H('stop', { offset: '100%', stopColor: '#a0e8ff' })
+                            ),
+                            H('filter', { id: 'platGlow' },
+                              H('feGaussianBlur', { stdDeviation: '3', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('polygon', { points: '50,5 58,35 90,35 65,55 75,90 50,70 25,90 35,55 10,35 42,35', fill: 'url(#platGrad)', stroke: '#0099cc', strokeWidth: '2', filter: 'url(#platGlow)' }),
+                          H('polygon', { points: '50,15 55,38 75,38 60,52 67,75 50,62 33,75 40,52 25,38 45,38', fill: 'url(#platIce)', opacity: '0.6' }),
+                          H('circle', { cx: '50', cy: '45', r: '12', fill: 'url(#platIce)', stroke: '#00d4ff', strokeWidth: '2' }),
+                          H('path', { d: 'M50 35 L50 55 M40 45 L60 45', stroke: '#00ffff', strokeWidth: '2' }),
+                          H('circle', { cx: '50', cy: '5', r: '3', fill: '#fff', className: 'badge-sparkle-particle' }),
+                          H('circle', { cx: '90', cy: '35', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.3s' } }),
+                          H('circle', { cx: '75', cy: '90', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.6s' } }),
+                          H('circle', { cx: '25', cy: '90', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.9s' } }),
+                          H('circle', { cx: '10', cy: '35', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.2s' } }),
+                          H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 45px' } },
+                            H('circle', { cx: '50', cy: '25', r: '2', fill: '#fff', opacity: '0.7' }),
+                            H('circle', { cx: '70', cy: '45', r: '2', fill: '#fff', opacity: '0.7' }),
+                            H('circle', { cx: '50', cy: '65', r: '2', fill: '#fff', opacity: '0.7' }),
+                            H('circle', { cx: '30', cy: '45', r: '2', fill: '#fff', opacity: '0.7' })
+                          )
+                        ),
+
+                        // Diamond: Faceted brilliant cut diamond
+                        Diamond: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'diamondGrad1', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#e6ccff' }),
+                              H('stop', { offset: '50%', stopColor: '#d699ff' }),
+                              H('stop', { offset: '100%', stopColor: '#b366ff' })
+                            ),
+                            H('linearGradient', { id: 'diamondGrad2', x1: '100%', y1: '0%', x2: '0%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#ff99ff' }),
+                              H('stop', { offset: '50%', stopColor: '#cc99ff' }),
+                              H('stop', { offset: '100%', stopColor: '#9966ff' })
+                            ),
+                            H('linearGradient', { id: 'diamondShine', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(255,255,255,0.9)' }),
+                              H('stop', { offset: '50%', stopColor: 'rgba(255,255,255,0.3)' }),
+                              H('stop', { offset: '100%', stopColor: 'rgba(255,255,255,0.9)' })
+                            ),
+                            H('filter', { id: 'diamondGlow' },
+                              H('feGaussianBlur', { stdDeviation: '3', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('polygon', { points: '50,8 85,35 50,92 15,35', fill: 'url(#diamondGrad1)', stroke: '#9966cc', strokeWidth: '2', filter: 'url(#diamondGlow)' }),
+                          H('polygon', { points: '50,8 15,35 50,45 85,35', fill: 'url(#diamondGrad2)', opacity: '0.8' }),
+                          H('polygon', { points: '15,35 50,45 50,92', fill: '#b366ff', opacity: '0.6' }),
+                          H('polygon', { points: '85,35 50,45 50,92', fill: '#d699ff', opacity: '0.7' }),
+                          H('polygon', { points: '50,8 35,35 50,45 65,35', fill: 'url(#diamondShine)', opacity: '0.5' }),
+                          H('line', { x1: '50', y1: '8', x2: '50', y2: '45', stroke: '#fff', strokeWidth: '1', opacity: '0.4' }),
+                          H('line', { x1: '15', y1: '35', x2: '50', y2: '45', stroke: '#fff', strokeWidth: '1', opacity: '0.3' }),
+                          H('line', { x1: '85', y1: '35', x2: '50', y2: '45', stroke: '#fff', strokeWidth: '1', opacity: '0.3' }),
+                          H('circle', { cx: '50', cy: '25', r: '4', fill: '#fff', className: 'badge-sparkle-particle' }),
+                          H('circle', { cx: '30', cy: '40', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.4s' } }),
+                          H('circle', { cx: '70', cy: '40', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.8s' } }),
+                          H('circle', { cx: '50', cy: '65', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.2s' } })
+                        ),
+
+                        // Emerald: Cut emerald with nature elements
+                        Emerald: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'emeraldGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#00ff41' }),
+                              H('stop', { offset: '50%', stopColor: '#00cc33' }),
+                              H('stop', { offset: '100%', stopColor: '#009922' })
+                            ),
+                            H('linearGradient', { id: 'emeraldShine', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(255,255,255,0.1)' }),
+                              H('stop', { offset: '50%', stopColor: 'rgba(255,255,255,0.6)' }),
+                              H('stop', { offset: '100%', stopColor: 'rgba(255,255,255,0.1)' })
+                            ),
+                            H('filter', { id: 'emeraldGlow' },
+                              H('feGaussianBlur', { stdDeviation: '3', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('rect', { x: '22', y: '15', width: '56', height: '70', rx: '4', fill: 'url(#emeraldGrad)', stroke: '#006622', strokeWidth: '3', filter: 'url(#emeraldGlow)' }),
+                          H('rect', { x: '28', y: '20', width: '44', height: '60', rx: '2', fill: 'none', stroke: '#00ff41', strokeWidth: '1', opacity: '0.6' }),
+                          H('polygon', { points: '22,25 28,15 72,15 78,25', fill: '#00ff66', opacity: '0.7' }),
+                          H('polygon', { points: '22,75 28,85 72,85 78,75', fill: '#007722', opacity: '0.7' }),
+                          H('line', { x1: '35', y1: '15', x2: '35', y2: '85', stroke: '#00ff88', strokeWidth: '1', opacity: '0.3' }),
+                          H('line', { x1: '50', y1: '15', x2: '50', y2: '85', stroke: '#00ff88', strokeWidth: '1', opacity: '0.4' }),
+                          H('line', { x1: '65', y1: '15', x2: '65', y2: '85', stroke: '#00ff88', strokeWidth: '1', opacity: '0.3' }),
+                          H('path', { d: 'M10 50 Q5 45 10 40 Q12 45 10 50', fill: '#00cc33', opacity: '0.8' }),
+                          H('path', { d: 'M8 60 Q3 55 8 50 Q10 55 8 60', fill: '#00aa22', opacity: '0.7' }),
+                          H('path', { d: 'M90 50 Q95 45 90 40 Q88 45 90 50', fill: '#00cc33', opacity: '0.8' }),
+                          H('path', { d: 'M92 60 Q97 55 92 50 Q90 55 92 60', fill: '#00aa22', opacity: '0.7' }),
+                          H('circle', { cx: '50', cy: '50', r: '8', fill: 'none', stroke: '#aaffaa', strokeWidth: '2', opacity: '0.5' }),
+                          H('rect', { x: '30', y: '20', width: '40', height: '60', fill: 'url(#emeraldShine)', className: 'badge-shimmer-effect', opacity: '0.4' }),
+                          H('circle', { cx: '35', cy: '30', r: '3', fill: '#aaffaa', className: 'badge-sparkle-particle' }),
+                          H('circle', { cx: '65', cy: '70', r: '3', fill: '#aaffaa', className: 'badge-sparkle-particle', style: { animationDelay: '0.7s' } })
+                        ),
+
+                        // Ruby: Fiery ruby gem with flames
+                        Ruby: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('linearGradient', { id: 'rubyGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#ff6e40' }),
+                              H('stop', { offset: '50%', stopColor: '#ff1744' }),
+                              H('stop', { offset: '100%', stopColor: '#d50000' })
+                            ),
+                            H('linearGradient', { id: 'rubyFlame', x1: '0%', y1: '100%', x2: '0%', y2: '0%' },
+                              H('stop', { offset: '0%', stopColor: '#ff1744' }),
+                              H('stop', { offset: '50%', stopColor: '#ff6e40' }),
+                              H('stop', { offset: '100%', stopColor: '#ffab40' })
+                            ),
+                            H('linearGradient', { id: 'rubyShine', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(255,255,255,0.7)' }),
+                              H('stop', { offset: '100%', stopColor: 'rgba(255,255,255,0)' })
+                            ),
+                            H('filter', { id: 'rubyGlow' },
+                              H('feGaussianBlur', { stdDeviation: '3', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('path', { d: 'M50 15 Q30 10 25 25 Q22 40 20 45 Q10 50 20 75 Q25 85 50 90 Q75 85 80 75 Q90 50 80 45 Q78 40 75 25 Q70 10 50 15', fill: 'url(#rubyGrad)', stroke: '#b71c1c', strokeWidth: '2', filter: 'url(#rubyGlow)' }),
+                          H('ellipse', { cx: '50', cy: '50', rx: '20', ry: '25', fill: 'none', stroke: '#ff5252', strokeWidth: '1', opacity: '0.5' }),
+                          H('path', { d: 'M35 50 Q50 35 65 50 Q50 45 35 50', fill: 'url(#rubyShine)', opacity: '0.6' }),
+                          H('path', { d: 'M15 30 Q20 20 25 28 Q22 35 18 32 Q12 38 15 30', fill: 'url(#rubyFlame)', className: 'badge-fire-element' }),
+                          H('path', { d: 'M85 30 Q80 20 75 28 Q78 35 82 32 Q88 38 85 30', fill: 'url(#rubyFlame)', className: 'badge-fire-element', style: { animationDelay: '0.3s' } }),
+                          H('path', { d: 'M30 10 Q35 5 38 12 Q34 16 30 10', fill: 'url(#rubyFlame)', className: 'badge-fire-element', style: { animationDelay: '0.15s' } }),
+                          H('path', { d: 'M70 10 Q65 5 62 12 Q66 16 70 10', fill: 'url(#rubyFlame)', className: 'badge-fire-element', style: { animationDelay: '0.45s' } }),
+                          H('circle', { cx: '40', cy: '40', r: '4', fill: '#ffab40', className: 'badge-sparkle-particle' }),
+                          H('circle', { cx: '60', cy: '60', r: '3', fill: '#ffab40', className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
+                          H('circle', { cx: '50', cy: '30', r: '3', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1s' } })
+                        ),
+
+                        // Opal: Iridescent orb with shifting colors
+                        Opal: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                          H('defs', null,
+                            H('radialGradient', { id: 'opalGrad', cx: '30%', cy: '30%', r: '70%' },
+                              H('stop', { offset: '0%', stopColor: '#ffffff' }),
+                              H('stop', { offset: '30%', stopColor: '#e0f7fa' }),
+                              H('stop', { offset: '50%', stopColor: '#b2ebf2' }),
+                              H('stop', { offset: '70%', stopColor: '#80deea' }),
+                              H('stop', { offset: '100%', stopColor: '#4dd0e1' })
+                            ),
+                            H('radialGradient', { id: 'opalSheen1', cx: '70%', cy: '30%', r: '50%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(255,182,193,0.6)' }),
+                              H('stop', { offset: '100%', stopColor: 'transparent' })
+                            ),
+                            H('radialGradient', { id: 'opalSheen2', cx: '30%', cy: '70%', r: '50%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(152,251,152,0.5)' }),
+                              H('stop', { offset: '100%', stopColor: 'transparent' })
+                            ),
+                            H('radialGradient', { id: 'opalSheen3', cx: '60%', cy: '60%', r: '40%' },
+                              H('stop', { offset: '0%', stopColor: 'rgba(221,160,221,0.5)' }),
+                              H('stop', { offset: '100%', stopColor: 'transparent' })
+                            ),
+                            H('filter', { id: 'opalGlow' },
+                              H('feGaussianBlur', { stdDeviation: '4', result: 'blur' }),
+                              H('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+                            )
+                          ),
+                          H('ellipse', { cx: '50', cy: '50', rx: '40', ry: '38', fill: 'url(#opalGrad)', stroke: '#80cbc4', strokeWidth: '2', filter: 'url(#opalGlow)' }),
+                          H('ellipse', { cx: '50', cy: '50', rx: '40', ry: '38', fill: 'url(#opalSheen1)' }),
+                          H('ellipse', { cx: '50', cy: '50', rx: '40', ry: '38', fill: 'url(#opalSheen2)' }),
+                          H('ellipse', { cx: '50', cy: '50', rx: '40', ry: '38', fill: 'url(#opalSheen3)' }),
+                          H('ellipse', { cx: '50', cy: '50', rx: '32', ry: '30', fill: 'none', stroke: 'rgba(255,255,255,0.4)', strokeWidth: '1' }),
+                          H('ellipse', { cx: '38', cy: '38', rx: '12', ry: '8', fill: 'rgba(255,255,255,0.5)', transform: 'rotate(-30 38 38)' }),
+                          H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
+                            H('circle', { cx: '50', cy: '18', r: '3', fill: '#fff', opacity: '0.8' }),
+                            H('circle', { cx: '75', cy: '35', r: '2', fill: '#ffb6c1', opacity: '0.7' }),
+                            H('circle', { cx: '75', cy: '65', r: '2', fill: '#98fb98', opacity: '0.7' }),
+                            H('circle', { cx: '50', cy: '82', r: '3', fill: '#dda0dd', opacity: '0.8' }),
+                            H('circle', { cx: '25', cy: '65', r: '2', fill: '#87ceeb', opacity: '0.7' }),
+                            H('circle', { cx: '25', cy: '35', r: '2', fill: '#fffacd', opacity: '0.7' })
+                          ),
+                          H('g', { className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } },
+                            H('circle', { cx: '50', cy: '28', r: '2', fill: '#fff', className: 'badge-sparkle-particle' }),
+                            H('circle', { cx: '68', cy: '50', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
+                            H('circle', { cx: '50', cy: '72', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1s' } }),
+                            H('circle', { cx: '32', cy: '50', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } })
+                          )
+                        )
+                      };
+
+                      const glowColors = {
+                        Bronze: 'rgba(255, 107, 53, 0.8)',
+                        Silver: 'rgba(192, 192, 192, 0.8)',
+                        Gold: 'rgba(255, 215, 0, 0.8)',
+                        Platinum: 'rgba(0, 212, 255, 0.8)',
+                        Diamond: 'rgba(179, 102, 255, 0.8)',
+                        Emerald: 'rgba(0, 255, 65, 0.8)',
+                        Ruby: 'rgba(255, 23, 68, 0.8)',
+                        Opal: 'rgba(135, 206, 235, 0.8)'
+                      };
+
                       return H('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
                         H('div', {
-                          style: {
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 24,
-                            height: 24,
-                            borderRadius: '50%',
-                            background: style.gradient,
-                            border: '1px solid rgba(255, 255, 255, 0.8)',
-                            cursor: 'pointer',
-                            position: 'relative',
-                            fontSize: 12,
-                            fontWeight: 900,
-                            color: '#fff',
-                            textShadow: '0 1px 2px rgba(0, 0, 0, 0.4)',
-                            boxShadow: `0 0 12px ${style.glow}, 0 0 24px ${style.glow}`,
-                            animation: 'badge-shine 2.5s ease-in-out infinite',
-                            title: tooltipText,
-                            transition: 'transform 0.2s ease',
-                            zIndex: 1
-                          },
-                          onMouseEnter: (e) => {
-                            e.target.style.transform = 'scale(1.25)';
-                            setShowTooltip(true);
-                          },
-                          onMouseLeave: (e) => {
-                            e.target.style.transform = 'scale(1)';
-                            setShowTooltip(false);
-                          }
+                          className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
+                          title: tooltipText,
+                          onMouseEnter: () => setShowTooltip(true),
+                          onMouseLeave: () => setShowTooltip(false)
                         },
-                          'T'
+                          badgeSVGs[tier]
                         ),
                         showTooltip && H('div', {
                           style: {
@@ -2455,7 +2707,7 @@
                             whiteSpace: 'nowrap',
                             zIndex: 1000,
                             pointerEvents: 'none',
-                            border: `1px solid ${style.glow}`
+                            border: `1px solid ${glowColors[tier]}`
                           }
                         }, tooltipText)
                       );
