@@ -733,13 +733,13 @@
         }
       }, []);
 
+      // Note: openListingEditor is defined later, so we access it directly (it will be hoisted as a function reference)
       const handleEditToastClick = useCallback(() => {
         dismissEditToast();
         if (recentlyCreatedListing?.id) {
           openListingEditor({ draft: recentlyCreatedListing, originTab: 'browse' });
-          onTabChange('listing-edit');
         }
-      }, [recentlyCreatedListing, dismissEditToast, onTabChange]);
+      }, [recentlyCreatedListing, dismissEditToast]);
 
       // Swipe-to-dismiss handlers for edit toast
       const handleEditToastTouchStart = useCallback((e) => {
