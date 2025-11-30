@@ -15,6 +15,16 @@
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
+    // Detect if running in iOS native app (Capacitor)
+    function isIOSNativeApp() {
+      try {
+        const platform = window.Capacitor?.getPlatform?.();
+        return platform === 'ios';
+      } catch {
+        return false;
+      }
+    }
+
     const badgeIcons = {
       sparkles: () => H('svg', {
         className: 'supporter-badge__icon',
@@ -170,6 +180,7 @@
       if (!open) return null;
 
       const sinceLabel = formatSinceLabel(since);
+      const isIOS = isIOSNativeApp();
 
       const handleOverlay = (evt) => {
         if (evt.target === evt.currentTarget) {
@@ -200,6 +211,11 @@
                 ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
                 : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
             ),
+            // Show web subscription message on iOS native app
+            isIOS && !isSelf && H('p', {
+              className: 'supporter-modal__body',
+              style: { fontSize: 13, color: '#666', marginTop: 8 }
+            }, 'To subscribe, visit trovelr.com in your web browser.'),
 
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
@@ -218,7 +234,8 @@
                     marginTop: 4
                   }
                 }, 'Already subscribed')
-                : (!paymentsDisabled && typeof onJoin === 'function') && H('button', {
+                // Hide payment button on iOS native app (App Store rules)
+                : (!isIOS && !paymentsDisabled && typeof onJoin === 'function') && H('button', {
                   type: 'button',
                   className: 'btn primary',
                   onClick: () => {
@@ -272,6 +289,7 @@
       };
 
       const isPrompt = mode !== 'success';
+      const isIOS = isIOSNativeApp();
 
       if (!open) return null;
 
@@ -281,9 +299,13 @@
         }
       };
 
-      const effectiveNotice = paymentsDisabled
-        ? (notice || 'Supporter payments are currently disabled, so premium perks are unlocked for everyone.')
-        : notice;
+      // iOS App Store doesn't allow in-app payment links to external sites
+      // Show message to subscribe via web browser instead
+      const effectiveNotice = isIOS
+        ? 'To subscribe, visit trovelr.com in your web browser.'
+        : paymentsDisabled
+          ? (notice || 'Supporter payments are currently disabled, so premium perks are unlocked for everyone.')
+          : notice;
 
       return ReactDOM.createPortal(
         H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
@@ -359,8 +381,9 @@
                 className: 'btn',
                 onClick: () => onClose?.(),
                 disabled: busy
-              }, isPrompt ? 'Maybe later' : 'Close'),
-              isPrompt && typeof onJoin === 'function' && H('button', {
+              }, isPrompt ? (isIOS ? 'Close' : 'Maybe later') : 'Close'),
+              // Hide payment button on iOS native app (App Store rules prohibit external payment links)
+              isPrompt && !isIOS && typeof onJoin === 'function' && H('button', {
                 type: 'button',
                 className: 'btn primary',
                 onClick: () => {

@@ -232,6 +232,84 @@
         H('path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' }));
     }
 
+    // Default profile banner with trovelr branding
+    function DefaultProfileBanner() {
+      return H('svg', {
+        viewBox: '0 0 800 220',
+        preserveAspectRatio: 'xMidYMid slice',
+        style: {
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%'
+        },
+        'aria-hidden': 'true'
+      },
+        // Background gradient
+        H('defs', null,
+          H('linearGradient', { id: 'bannerBg', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            H('stop', { offset: '0%', stopColor: '#0f172a' }),
+            H('stop', { offset: '50%', stopColor: '#1e293b' }),
+            H('stop', { offset: '100%', stopColor: '#0f172a' })
+          ),
+          H('linearGradient', { id: 'bannerAccent', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+            H('stop', { offset: '0%', stopColor: '#3b82f6', stopOpacity: '0.3' }),
+            H('stop', { offset: '50%', stopColor: '#8b5cf6', stopOpacity: '0.4' }),
+            H('stop', { offset: '100%', stopColor: '#3b82f6', stopOpacity: '0.3' })
+          ),
+          H('linearGradient', { id: 'textGradient', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+            H('stop', { offset: '0%', stopColor: '#60a5fa' }),
+            H('stop', { offset: '50%', stopColor: '#a78bfa' }),
+            H('stop', { offset: '100%', stopColor: '#60a5fa' })
+          ),
+          H('filter', { id: 'glow' },
+            H('feGaussianBlur', { stdDeviation: '3', result: 'coloredBlur' }),
+            H('feMerge', null,
+              H('feMergeNode', { in: 'coloredBlur' }),
+              H('feMergeNode', { in: 'SourceGraphic' })
+            )
+          ),
+          // Pattern for subtle texture
+          H('pattern', { id: 'dots', x: '0', y: '0', width: '20', height: '20', patternUnits: 'userSpaceOnUse' },
+            H('circle', { cx: '2', cy: '2', r: '1', fill: 'rgba(148, 163, 184, 0.08)' })
+          )
+        ),
+        // Main background
+        H('rect', { x: '0', y: '0', width: '800', height: '220', fill: 'url(#bannerBg)' }),
+        // Dot pattern overlay
+        H('rect', { x: '0', y: '0', width: '800', height: '220', fill: 'url(#dots)' }),
+        // Accent gradient stripe
+        H('rect', { x: '0', y: '60', width: '800', height: '100', fill: 'url(#bannerAccent)' }),
+        // Decorative circles
+        H('circle', { cx: '650', cy: '110', r: '120', fill: 'none', stroke: 'rgba(99, 102, 241, 0.15)', strokeWidth: '1' }),
+        H('circle', { cx: '680', cy: '90', r: '80', fill: 'none', stroke: 'rgba(139, 92, 246, 0.12)', strokeWidth: '1' }),
+        H('circle', { cx: '100', cy: '150', r: '100', fill: 'none', stroke: 'rgba(59, 130, 246, 0.1)', strokeWidth: '1' }),
+        // Location pin icon (subtle, top right area)
+        H('g', { transform: 'translate(720, 30)', opacity: '0.15' },
+          H('path', {
+            d: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z',
+            fill: '#60a5fa',
+            transform: 'scale(1.5)'
+          })
+        ),
+        // "trovelr" text - positioned right side, subtle
+        H('text', {
+          x: '760',
+          y: '195',
+          textAnchor: 'end',
+          style: {
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: '28px',
+            fontWeight: '700',
+            letterSpacing: '2px'
+          },
+          fill: 'url(#textGradient)',
+          filter: 'url(#glow)',
+          opacity: '0.6'
+        }, 'trovelr')
+      );
+    }
+
     const AutoPostNearbyHelpModal = React.memo(function AutoPostNearbyHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -726,12 +804,24 @@
                       })
                       : H('div', {
                         style: {
-                          color: '#94a3b8',
-                          fontSize: 18,
-                          textAlign: 'center',
-                          padding: '0 16px'
+                          position: 'relative',
+                          width: '100%',
+                          height: '100%'
                         }
-                      }, 'Upload an image to see a live preview')
+                      },
+                        H(DefaultProfileBanner),
+                        H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: 8,
+                            left: 0,
+                            right: 0,
+                            textAlign: 'center',
+                            color: '#94a3b8',
+                            fontSize: 12
+                          }
+                        }, isPremium ? 'Upload an image to customize your banner' : 'Default banner (Premium can customize)')
+                      )
                   ),
                 )
               ),
@@ -1711,7 +1801,9 @@
       const soldItems = asArray(items).filter(it => !!it?.sold);
       const shownItems = profileTab === 'sold' ? soldItems : activeItems;
       const trimmedBgImageUrl = (profileBgImageUrl || '').trim();
-      const hasBgImage = !!trimmedBgImageUrl;
+      const hasCustomBanner = !!trimmedBgImageUrl;
+      // Always show banner (custom or default)
+      const hasBgImage = true;
       const avatarBorderStyleValue = profileAvatarBorderStyle === 'dashed' ? 'dashed' : 'solid';
       const avatarBorderColorValue = typeof profileAvatarBorderColor === 'string' && profileAvatarBorderColor.trim()
         ? profileAvatarBorderColor.trim()
@@ -1800,46 +1892,48 @@
           )
         ),
       );
-      const profileHeader = hasBgImage
-        ? H('div', {
-          style: {
-            position: 'relative',
-            height: 220,
-            overflow: 'hidden'
-          }
-        },
-          trimmedBgImageUrl
-            ? H('img', {
-              key: trimmedBgImageUrl,
-              src: trimmedBgImageUrl,
-              alt: 'Profile banner',
-              loading: 'lazy',
-              decoding: 'async',
-              style: {
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
-              }
-            })
-            : null,
-          H('div', {
+      const profileHeader = H('div', {
+        style: {
+          position: 'relative',
+          height: 220,
+          overflow: 'hidden'
+        }
+      },
+        // Show custom banner if uploaded, otherwise show default trovelr banner
+        hasCustomBanner
+          ? H('img', {
+            key: trimmedBgImageUrl,
+            src: trimmedBgImageUrl,
+            alt: 'Profile banner',
+            loading: 'lazy',
+            decoding: 'async',
             style: {
               position: 'absolute',
               inset: 0,
-              background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover'
             }
-          }),
-          H('div', {
-            style: {
-              position: 'relative',
-              padding: '16px 16px 60px',
-              color: '#f8fafc'
-            }
-          }, profileHeaderContent)
-        )
-        : profileHeaderContent;
+          })
+          : H(DefaultProfileBanner),
+        // Gradient overlay (stronger for custom images, subtle for default)
+        H('div', {
+          style: {
+            position: 'absolute',
+            inset: 0,
+            background: hasCustomBanner
+              ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+              : 'linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.7) 100%)'
+          }
+        }),
+        H('div', {
+          style: {
+            position: 'relative',
+            padding: '16px 16px 60px',
+            color: '#f8fafc'
+          }
+        }, profileHeaderContent)
+      );
       const profileSections = [
         H('section', {
           className: 'card',
