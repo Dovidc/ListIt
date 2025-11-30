@@ -2875,6 +2875,85 @@
                           }
                         }, 'Beta Tester')
                       );
+                    })(),
+                    // Admin Badge
+                    sellerInfo?.is_admin && (() => {
+                      const [showAdminTooltip, setShowAdminTooltip] = React.useState(false);
+                      const adminBadgeRef = React.useRef(null);
+
+                      // Click outside to dismiss
+                      React.useEffect(() => {
+                        if (!showAdminTooltip) return;
+                        const handleClickOutside = (e) => {
+                          if (adminBadgeRef.current && !adminBadgeRef.current.contains(e.target)) {
+                            setShowAdminTooltip(false);
+                          }
+                        };
+                        document.addEventListener('click', handleClickOutside, true);
+                        return () => document.removeEventListener('click', handleClickOutside, true);
+                      }, [showAdminTooltip]);
+
+                      return H('div', { ref: adminBadgeRef, style: { position: 'relative', display: 'inline-flex' } },
+                        H('div', {
+                          className: 'admin-badge',
+                          title: 'Trovelr Admin',
+                          onClick: (e) => { e.stopPropagation(); setShowAdminTooltip(true); },
+                          style: showAdminTooltip ? { transform: 'scale(1.25)' } : undefined
+                        },
+                          H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                            H('defs', null,
+                              H('linearGradient', { id: 'adminShieldGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                                H('stop', { offset: '0%', stopColor: '#ef4444' }),
+                                H('stop', { offset: '50%', stopColor: '#dc2626' }),
+                                H('stop', { offset: '100%', stopColor: '#b91c1c' })
+                              ),
+                              H('linearGradient', { id: 'adminShieldInner', x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+                                H('stop', { offset: '0%', stopColor: '#fef2f2' }),
+                                H('stop', { offset: '100%', stopColor: '#fecaca' })
+                              )
+                            ),
+                            // Shield shape
+                            H('path', {
+                              d: 'M50 8 L85 22 L85 45 C85 65 70 82 50 92 C30 82 15 65 15 45 L15 22 Z',
+                              fill: 'url(#adminShieldGrad)',
+                              stroke: '#991b1b',
+                              strokeWidth: '2'
+                            }),
+                            // Inner shield highlight
+                            H('path', {
+                              d: 'M50 16 L75 27 L75 45 C75 60 63 73 50 81 C37 73 25 60 25 45 L25 27 Z',
+                              fill: 'url(#adminShieldInner)',
+                              opacity: '0.9'
+                            }),
+                            // Star in center
+                            H('polygon', {
+                              points: '50,28 54,40 67,40 57,48 61,60 50,52 39,60 43,48 33,40 46,40',
+                              fill: '#dc2626',
+                              stroke: '#991b1b',
+                              strokeWidth: '1'
+                            })
+                          )
+                        ),
+                        showAdminTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: '1px solid rgba(239, 68, 68, 0.6)'
+                          }
+                        }, 'Trovelr Admin')
+                      );
                     })()
                   ),
                   sellerJoinedText && H('div', {
