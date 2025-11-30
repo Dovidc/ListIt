@@ -248,60 +248,77 @@
         H('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }));
     }
 
-    // Karma badge component with custom icon
-    function KarmaBadge({ karma, size = 'md' }) {
+    // Karma badge component - circle with count, pill if 100+
+    function KarmaBadge({ karma, size = 'md', onClick }) {
+      const [showTooltip, setShowTooltip] = React.useState(false);
+
       if (typeof karma !== 'number' || karma <= 0) return null;
 
       const sizes = {
-        sm: { height: 22, fontSize: 11, iconSize: 14, padding: '3px 8px', gap: 4 },
-        md: { height: 26, fontSize: 13, iconSize: 16, padding: '4px 10px', gap: 5 }
+        sm: { size: 24, fontSize: 11, minWidth: 24 },
+        md: { size: 28, fontSize: 13, minWidth: 28 }
       };
       const s = sizes[size] || sizes.md;
 
-      return H('div', {
-        style: {
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: s.gap,
-          padding: s.padding,
-          background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
-          borderRadius: 20,
-          fontSize: s.fontSize,
-          fontWeight: 700,
-          color: '#92400e',
-          border: '1px solid #fcd34d',
-          boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
+      // Determine if we need pill shape (3+ digits)
+      const isPill = karma >= 100;
+      const displayKarma = karma >= 1000 ? `${(karma / 1000).toFixed(1)}k` : karma;
+
+      const handleClick = (e) => {
+        e.stopPropagation();
+        setShowTooltip(!showTooltip);
+        onClick?.();
+      };
+
+      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+        H('div', {
+          onClick: handleClick,
+          onMouseEnter: () => setShowTooltip(true),
+          onMouseLeave: () => setShowTooltip(false),
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: isPill ? s.minWidth + 8 : s.size,
+            height: s.size,
+            padding: isPill ? '0 8px' : 0,
+            background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+            borderRadius: isPill ? s.size / 2 : '50%',
+            fontSize: s.fontSize,
+            fontWeight: 800,
+            color: '#fff',
+            cursor: 'pointer',
+            boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
+            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            transition: 'transform 0.15s ease',
+            userSelect: 'none'
+          },
+          onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
+          onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
+        }, displayKarma),
+        showTooltip && H('div', {
+          style: {
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            marginBottom: 8,
+            background: 'rgba(0, 0, 0, 0.9)',
+            color: '#fff',
+            padding: '8px 12px',
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            border: '1px solid rgba(251, 191, 36, 0.6)',
+            textAlign: 'center'
+          }
         },
-        title: `${karma} Karma points`
-      },
-        // Custom karma icon - a stylized flame/spark
-        H('svg', {
-          viewBox: '0 0 24 24',
-          width: s.iconSize,
-          height: s.iconSize,
-          fill: 'none',
-          'aria-hidden': 'true'
-        },
-          H('defs', null,
-            H('linearGradient', { id: 'karmaGrad', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
-              H('stop', { offset: '0%', stopColor: '#f59e0b' }),
-              H('stop', { offset: '100%', stopColor: '#fbbf24' })
-            )
-          ),
-          // Flame/energy shape
-          H('path', {
-            d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
-            fill: 'url(#karmaGrad)'
-          }),
-          // Inner glow circle
-          H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
-          // Base/pedestal
-          H('path', {
-            d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
-            fill: '#f59e0b'
-          })
-        ),
-        H('span', null, karma)
+          H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
+          H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
+        )
       );
     }
 

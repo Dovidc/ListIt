@@ -2817,47 +2817,63 @@
                         }, 'Beta Tester')
                       );
                     })(),
-                    // Karma badge
-                    karmaValue && karmaValue > 0 && H('div', {
-                      style: {
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '3px 8px',
-                        background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: '#92400e',
-                        border: '1px solid #fcd34d',
-                        boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
-                      },
-                      title: `${karmaValue} Karma points`
-                    },
-                      H('svg', {
-                        viewBox: '0 0 24 24',
-                        width: 14,
-                        height: 14,
-                        fill: 'none'
-                      },
-                        H('defs', null,
-                          H('linearGradient', { id: 'karmaGradPreview', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
-                            H('stop', { offset: '0%', stopColor: '#f59e0b' }),
-                            H('stop', { offset: '100%', stopColor: '#fbbf24' })
-                          )
-                        ),
-                        H('path', {
-                          d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
-                          fill: 'url(#karmaGradPreview)'
-                        }),
-                        H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
-                        H('path', {
-                          d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
-                          fill: '#f59e0b'
-                        })
-                      ),
-                      H('span', null, karmaValue)
-                    )
+                    // Karma badge - circle with count
+                    karmaValue && karmaValue > 0 && (() => {
+                      const [showKarmaTooltip, setShowKarmaTooltip] = React.useState(false);
+                      const isPill = karmaValue >= 100;
+                      const displayKarma = karmaValue >= 1000 ? `${(karmaValue / 1000).toFixed(1)}k` : karmaValue;
+
+                      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+                        H('div', {
+                          onClick: (e) => { e.stopPropagation(); setShowKarmaTooltip(!showKarmaTooltip); },
+                          onMouseEnter: () => setShowKarmaTooltip(true),
+                          onMouseLeave: () => setShowKarmaTooltip(false),
+                          style: {
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: isPill ? 32 : 24,
+                            height: 24,
+                            padding: isPill ? '0 8px' : 0,
+                            background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                            borderRadius: isPill ? 12 : '50%',
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: '#fff',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                            transition: 'transform 0.15s ease',
+                            userSelect: 'none'
+                          },
+                          onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
+                          onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
+                        }, displayKarma),
+                        showKarmaTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: '1px solid rgba(251, 191, 36, 0.6)',
+                            textAlign: 'center'
+                          }
+                        },
+                          H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
+                          H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
+                        )
+                      );
+                    })()
                   ),
                   sellerJoinedText && H('div', {
                     style: { fontSize: 13, color: '#cbd5f5' }
@@ -3249,46 +3265,64 @@
                 onClick: () => onSupporterClick?.(sellerSupporter)
               })
             ),
-            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
-                borderRadius: 20,
-                fontSize: 13,
-                fontWeight: 700,
-                color: '#92400e',
-                border: '1px solid #fcd34d',
-                boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
-              },
-              title: `${sellerInfo.karma} Karma points`
-            },
-              H('svg', {
-                viewBox: '0 0 24 24',
-                width: 16,
-                height: 16,
-                fill: 'none'
-              },
-                H('defs', null,
-                  H('linearGradient', { id: 'karmaGradSeller', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
-                    H('stop', { offset: '0%', stopColor: '#f59e0b' }),
-                    H('stop', { offset: '100%', stopColor: '#fbbf24' })
-                  )
-                ),
-                H('path', {
-                  d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
-                  fill: 'url(#karmaGradSeller)'
-                }),
-                H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
-                H('path', {
-                  d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
-                  fill: '#f59e0b'
-                })
-              ),
-              H('span', null, sellerInfo.karma)
-            )
+            // Karma badge - circle with count
+            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && (() => {
+              const [showKarmaTooltip, setShowKarmaTooltip] = React.useState(false);
+              const karmaVal = sellerInfo.karma;
+              const isPill = karmaVal >= 100;
+              const displayKarma = karmaVal >= 1000 ? `${(karmaVal / 1000).toFixed(1)}k` : karmaVal;
+
+              return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+                H('div', {
+                  onClick: (e) => { e.stopPropagation(); setShowKarmaTooltip(!showKarmaTooltip); },
+                  onMouseEnter: () => setShowKarmaTooltip(true),
+                  onMouseLeave: () => setShowKarmaTooltip(false),
+                  style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: isPill ? 36 : 28,
+                    height: 28,
+                    padding: isPill ? '0 10px' : 0,
+                    background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                    borderRadius: isPill ? 14 : '50%',
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                    transition: 'transform 0.15s ease',
+                    userSelect: 'none'
+                  },
+                  onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
+                  onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
+                }, displayKarma),
+                showKarmaTooltip && H('div', {
+                  style: {
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    marginBottom: 8,
+                    background: 'rgba(0, 0, 0, 0.9)',
+                    color: '#fff',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                    zIndex: 1000,
+                    pointerEvents: 'none',
+                    border: '1px solid rgba(251, 191, 36, 0.6)',
+                    textAlign: 'center'
+                  }
+                },
+                  H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
+                  H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
+                )
+              );
+            })()
           )
         ),
         H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: 16, right: 16 } },
