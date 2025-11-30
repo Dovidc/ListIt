@@ -3148,11 +3148,26 @@
         ? sellerInfo.profile_avatar_border_color.trim()
         : '#ffffff';
 
-      const sellerProfileHeaderContent = H('div', { style: { position: 'relative', minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
-        H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: 16, left: 16 } },
+      // Stats pills style (matching user's own profile)
+      const sellerStatPillStyle = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        borderRadius: 999,
+        border: '1px solid rgba(148, 163, 184, 0.3)',
+        background: 'rgba(248, 250, 252, 0.05)',
+        fontSize: 13,
+        color: '#f8fafc',
+        fontWeight: 600
+      };
+
+      const sellerKarmaValue = typeof sellerInfo?.karma === 'number' ? sellerInfo.karma : 0;
+
+      const sellerProfileHeaderContent = H('div', { style: { position: 'relative', minHeight: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
+        H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
           H('div', {
             style: {
-              cursor: 'pointer',
               borderColor: sellerAvatarBorderColorValue,
               borderStyle: sellerAvatarBorderStyleValue,
               borderWidth: 4,
@@ -3167,7 +3182,8 @@
               backgroundColor: '#f0f0f0',
               fontSize: 32,
               fontWeight: 800,
-              color: '#666'
+              color: '#666',
+              boxShadow: '0 16px 35px rgba(2, 6, 23, 0.5)'
             }
           },
             (sellerInfo?.profile_picture_url && sellerInfo.profile_picture_url.trim())
@@ -3181,60 +3197,129 @@
           ),
           H('div', { style: { display: 'grid', gap: 6, alignItems: 'flex-start' } },
             H('div', { style: { fontWeight: 800, fontSize: 18 } }, sellerLabel),
-            sellerJoinedText && H('div', { className: 'muted' }, `Trovelr since ${sellerJoinedText}`),
-            sellerSupporter && H('div', {
+            // Stats pills (active, sold, karma) - matching user's own profile
+            H('div', {
               style: {
                 display: 'flex',
-                alignItems: 'center',
+                gap: 8,
                 flexWrap: 'wrap',
-                gap: 8
+                marginTop: 8
               }
             },
-              H(SupporterBadge, {
-                size: 'sm',
-                since: sellerSupporter.since,
-                onClick: () => onSupporterClick?.(sellerSupporter)
-              })
-            ),
-            // Karma badge - circle with count
-            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minWidth: sellerInfo.karma >= 100 ? 36 : 28,
-                height: 28,
-                padding: sellerInfo.karma >= 100 ? '0 10px' : 0,
-                background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                borderRadius: sellerInfo.karma >= 100 ? 14 : '50%',
-                fontSize: 13,
-                fontWeight: 800,
-                color: '#fff',
-                boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
-                textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                transition: 'transform 0.15s ease',
-                userSelect: 'none'
+              // Active listings pill
+              H('span', { style: sellerStatPillStyle }, '🛍️ ', activeListings.length, ' active'),
+              // Sold pill
+              H('span', { style: sellerStatPillStyle }, '✅ ', soldListings.length, ' sold'),
+              // Karma pill (only for supporters with karma > 0)
+              sellerSupporter && sellerKarmaValue > 0 && H('span', {
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(251, 191, 36, 0.4)',
+                  background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
+                  fontSize: 13,
+                  color: '#fbbf24',
+                  fontWeight: 600
+                }
               },
-              title: `${sellerInfo.karma} Karma - Points earned from successful sales`,
-              onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
-              onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
-            }, sellerInfo.karma >= 1000 ? `${(sellerInfo.karma / 1000).toFixed(1)}k` : sellerInfo.karma)
+                H('svg', {
+                  viewBox: '0 0 24 24',
+                  width: 14,
+                  height: 14,
+                  fill: 'currentColor',
+                  style: { flexShrink: 0 }
+                },
+                  H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
+                ),
+                ' ',
+                sellerKarmaValue,
+                ' karma'
+              )
+            )
+          )
+        )
+      );
+
+      // Default banner SVG for sellers without custom banner (matching user's own profile)
+      const DefaultSellerBanner = () => H('svg', {
+        viewBox: '0 0 800 220',
+        preserveAspectRatio: 'xMidYMid slice',
+        style: {
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%'
+        },
+        'aria-hidden': 'true'
+      },
+        H('defs', null,
+          H('linearGradient', { id: 'sellerBannerBg', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            H('stop', { offset: '0%', stopColor: '#0f172a' }),
+            H('stop', { offset: '50%', stopColor: '#1e293b' }),
+            H('stop', { offset: '100%', stopColor: '#0f172a' })
+          ),
+          H('linearGradient', { id: 'sellerBannerAccent', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+            H('stop', { offset: '0%', stopColor: '#3b82f6', stopOpacity: '0.3' }),
+            H('stop', { offset: '50%', stopColor: '#8b5cf6', stopOpacity: '0.4' }),
+            H('stop', { offset: '100%', stopColor: '#3b82f6', stopOpacity: '0.3' })
+          ),
+          H('linearGradient', { id: 'sellerTextGradient', x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+            H('stop', { offset: '0%', stopColor: '#60a5fa' }),
+            H('stop', { offset: '50%', stopColor: '#a78bfa' }),
+            H('stop', { offset: '100%', stopColor: '#60a5fa' })
+          ),
+          H('filter', { id: 'sellerGlow' },
+            H('feGaussianBlur', { stdDeviation: '3', result: 'coloredBlur' }),
+            H('feMerge', null,
+              H('feMergeNode', { in: 'coloredBlur' }),
+              H('feMergeNode', { in: 'SourceGraphic' })
+            )
+          ),
+          H('pattern', { id: 'sellerDots', x: '0', y: '0', width: '20', height: '20', patternUnits: 'userSpaceOnUse' },
+            H('circle', { cx: '2', cy: '2', r: '1', fill: 'rgba(148, 163, 184, 0.08)' })
           )
         ),
-        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: 16, right: 16 } },
-          H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '<- Back')
-        )
+        H('rect', { x: '0', y: '0', width: '800', height: '220', fill: 'url(#sellerBannerBg)' }),
+        H('rect', { x: '0', y: '0', width: '800', height: '220', fill: 'url(#sellerDots)' }),
+        H('rect', { x: '0', y: '60', width: '800', height: '100', fill: 'url(#sellerBannerAccent)' }),
+        H('circle', { cx: '650', cy: '110', r: '120', fill: 'none', stroke: 'rgba(99, 102, 241, 0.15)', strokeWidth: '1' }),
+        H('circle', { cx: '680', cy: '90', r: '80', fill: 'none', stroke: 'rgba(139, 92, 246, 0.12)', strokeWidth: '1' }),
+        H('circle', { cx: '100', cy: '150', r: '100', fill: 'none', stroke: 'rgba(59, 130, 246, 0.1)', strokeWidth: '1' }),
+        H('g', { transform: 'translate(720, 30)', opacity: '0.15' },
+          H('path', {
+            d: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z',
+            fill: '#60a5fa',
+            transform: 'scale(1.5)'
+          })
+        ),
+        H('text', {
+          x: '760',
+          y: '195',
+          textAnchor: 'end',
+          style: {
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: '28px',
+            fontWeight: '700',
+            letterSpacing: '2px'
+          },
+          fill: 'url(#sellerTextGradient)',
+          filter: 'url(#sellerGlow)',
+          opacity: '0.6'
+        }, 'trovelr')
       );
 
       const sellerProfileHeader = H('div', {
         style: {
           position: 'relative',
           height: 220,
-          overflow: 'hidden',
-          background: hasSellerBgImage ? undefined : '#1a1f2e'
+          overflow: 'hidden'
         }
       },
-        trimmedSellerBgImageUrl
+        // Show custom banner if uploaded, otherwise show default trovelr banner
+        hasSellerBgImage
           ? H('img', {
             key: trimmedSellerBgImageUrl,
             src: trimmedSellerBgImageUrl,
@@ -3249,26 +3334,68 @@
               objectFit: 'cover'
             }
           })
-          : null,
+          : H(DefaultSellerBanner),
+        // Gradient overlay (stronger for custom images, subtle for default)
         H('div', {
           style: {
             position: 'absolute',
             inset: 0,
-            background: hasSellerBgImage ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)' : undefined
+            background: hasSellerBgImage
+              ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.92) 100%)'
+              : 'linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.7) 100%)'
           }
         }),
         H('div', {
           style: {
             position: 'relative',
-            height: '100%',
+            padding: '16px 16px 60px',
             color: '#f8fafc'
           }
         }, sellerProfileHeaderContent)
       );
 
       return H(React.Fragment, null,
-        H('section', { className: 'card', style: { padding: hasSellerBgImage ? 0 : 16, margin: '12px 0 16px', overflow: hasSellerBgImage ? 'hidden' : undefined, background: hasSellerBgImage ? '#020617' : undefined, color: hasSellerBgImage ? '#f8fafc' : undefined } },
+        H('section', { className: 'card', style: { padding: 0, margin: '12px 0 16px', overflow: 'hidden', background: '#020617', color: '#f8fafc' } },
           sellerProfileHeader
+        ),
+
+        // Row with supporter badge, join date on left, and buttons on right (matching user's own profile)
+        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 16px', justifyContent: 'space-between' } },
+          // Left side: Supporter badge and join date
+          H('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
+            sellerSupporter && H(SupporterBadge, {
+              size: 'sm',
+              since: sellerSupporter.since,
+              onClick: () => onSupporterClick?.(sellerSupporter)
+            }),
+            sellerJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${sellerJoinedText}`)
+          ),
+          // Right side: Action buttons
+          H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            // Message button
+            onMessage && H('button', {
+              className: 'btn primary',
+              type: 'button',
+              onClick: () => onMessage?.({ seller_id: sellerId, seller_username: sellerLabel }),
+              style: { padding: '8px 16px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }
+            },
+              H('svg', {
+                viewBox: '0 0 24 24',
+                width: 16,
+                height: 16,
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' })
+              ),
+              'Message'
+            ),
+            // Back button
+            H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '← Back')
+          )
         ),
 
         H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
