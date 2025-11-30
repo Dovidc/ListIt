@@ -248,6 +248,63 @@
         H('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }));
     }
 
+    // Karma badge component with custom icon
+    function KarmaBadge({ karma, size = 'md' }) {
+      if (typeof karma !== 'number' || karma <= 0) return null;
+
+      const sizes = {
+        sm: { height: 22, fontSize: 11, iconSize: 14, padding: '3px 8px', gap: 4 },
+        md: { height: 26, fontSize: 13, iconSize: 16, padding: '4px 10px', gap: 5 }
+      };
+      const s = sizes[size] || sizes.md;
+
+      return H('div', {
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: s.gap,
+          padding: s.padding,
+          background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+          borderRadius: 20,
+          fontSize: s.fontSize,
+          fontWeight: 700,
+          color: '#92400e',
+          border: '1px solid #fcd34d',
+          boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
+        },
+        title: `${karma} Karma points`
+      },
+        // Custom karma icon - a stylized flame/spark
+        H('svg', {
+          viewBox: '0 0 24 24',
+          width: s.iconSize,
+          height: s.iconSize,
+          fill: 'none',
+          'aria-hidden': 'true'
+        },
+          H('defs', null,
+            H('linearGradient', { id: 'karmaGrad', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
+              H('stop', { offset: '0%', stopColor: '#f59e0b' }),
+              H('stop', { offset: '100%', stopColor: '#fbbf24' })
+            )
+          ),
+          // Flame/energy shape
+          H('path', {
+            d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
+            fill: 'url(#karmaGrad)'
+          }),
+          // Inner glow circle
+          H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
+          // Base/pedestal
+          H('path', {
+            d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
+            fill: '#f59e0b'
+          })
+        ),
+        H('span', null, karma)
+      );
+    }
+
     // Default profile banner with trovelr branding
     function DefaultProfileBanner() {
       return H('svg', {
@@ -1873,23 +1930,7 @@
                 onClick: handleSelfSupporterClick
               })
             ),
-            profileSupporter && typeof user.karma === 'number' && user.karma > 0 && H('div', {
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
-                borderRadius: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#374151',
-                border: '1px solid #d1d5db'
-              }
-            },
-              H('span', { style: { fontSize: 14 } }, '⭐'),
-              H('span', null, `${user.karma} Karma`)
-            ),
+            profileSupporter && H(KarmaBadge, { karma: user.karma, size: 'md' }),
           )
         ),
       );

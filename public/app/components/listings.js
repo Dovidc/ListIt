@@ -2156,9 +2156,6 @@
         { label: 'Active listings', value: activeCount },
         { label: 'Sold', value: soldCount }
       ];
-      if (karmaValue && karmaValue > 0) {
-        stats.push({ label: 'Karma', value: karmaValue });
-      }
       const avatarSize = 96;
       const avatarOverlap = 34;
       const avatarBorderWidth = 4;
@@ -2752,7 +2749,48 @@
                           }
                         }, 'Beta Tester')
                       );
-                    })()
+                    })(),
+                    // Karma badge
+                    karmaValue && karmaValue > 0 && H('div', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '3px 8px',
+                        background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                        borderRadius: 20,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: '#92400e',
+                        border: '1px solid #fcd34d',
+                        boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
+                      },
+                      title: `${karmaValue} Karma points`
+                    },
+                      H('svg', {
+                        viewBox: '0 0 24 24',
+                        width: 14,
+                        height: 14,
+                        fill: 'none'
+                      },
+                        H('defs', null,
+                          H('linearGradient', { id: 'karmaGradPreview', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
+                            H('stop', { offset: '0%', stopColor: '#f59e0b' }),
+                            H('stop', { offset: '100%', stopColor: '#fbbf24' })
+                          )
+                        ),
+                        H('path', {
+                          d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
+                          fill: 'url(#karmaGradPreview)'
+                        }),
+                        H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
+                        H('path', {
+                          d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
+                          fill: '#f59e0b'
+                        })
+                      ),
+                      H('span', null, karmaValue)
+                    )
                   ),
                   sellerJoinedText && H('div', {
                     style: { fontSize: 13, color: '#cbd5f5' }
@@ -3146,20 +3184,43 @@
             ),
             sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
               style: {
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
                 padding: '4px 10px',
-                background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
-                borderRadius: 6,
+                background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                borderRadius: 20,
                 fontSize: 13,
-                fontWeight: 600,
-                color: '#374151',
-                border: '1px solid #d1d5db'
-              }
+                fontWeight: 700,
+                color: '#92400e',
+                border: '1px solid #fcd34d',
+                boxShadow: '0 1px 3px rgba(251, 191, 36, 0.3)'
+              },
+              title: `${sellerInfo.karma} Karma points`
             },
-              H('span', { style: { fontSize: 14 } }, '⭐'),
-              H('span', null, `${sellerInfo.karma} Karma`)
+              H('svg', {
+                viewBox: '0 0 24 24',
+                width: 16,
+                height: 16,
+                fill: 'none'
+              },
+                H('defs', null,
+                  H('linearGradient', { id: 'karmaGradSeller', x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
+                    H('stop', { offset: '0%', stopColor: '#f59e0b' }),
+                    H('stop', { offset: '100%', stopColor: '#fbbf24' })
+                  )
+                ),
+                H('path', {
+                  d: 'M12 2C12 2 8 6 8 10c0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-8-4-8zm0 10c-1.1 0-2-.9-2-2 0-1.5 2-4 2-4s2 2.5 2 4c0 1.1-.9 2-2 2z',
+                  fill: 'url(#karmaGradSeller)'
+                }),
+                H('circle', { cx: '12', cy: '17', r: '4', fill: '#fbbf24', opacity: '0.3' }),
+                H('path', {
+                  d: 'M8 18h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z',
+                  fill: '#f59e0b'
+                })
+              ),
+              H('span', null, sellerInfo.karma)
             )
           )
         ),
