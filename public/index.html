@@ -1284,11 +1284,49 @@
 
     /* Global loader */
     [data-theme="dark"] .global-loader {
-      background: rgba(26, 27, 38, 0.9);
+      background: rgba(26, 27, 38, 0.95);
+    }
+
+    [data-theme="dark"] .global-loader::before {
+      box-shadow:
+        inset 0 0 100px 50px rgba(122, 162, 247, 0.15),
+        inset 0 0 200px 100px rgba(122, 162, 247, 0.08);
     }
 
     [data-theme="dark"] .global-loader .loader-text {
       color: var(--text-primary);
+    }
+
+    /* Resume overlay - dark mode */
+    [data-theme="dark"] .resume-overlay {
+      background: linear-gradient(145deg, rgba(26, 27, 38, 0.98), rgba(36, 40, 59, 0.98));
+    }
+
+    [data-theme="dark"] .resume-overlay::before {
+      box-shadow:
+        inset 0 0 120px 60px rgba(122, 162, 247, 0.15),
+        inset 0 0 200px 100px rgba(122, 162, 247, 0.08),
+        inset 0 0 300px 150px rgba(122, 162, 247, 0.04);
+    }
+
+    [data-theme="dark"] .resume-overlay__text {
+      color: var(--text-primary);
+    }
+
+    [data-theme="dark"] .resume-overlay__quote {
+      color: var(--text-secondary);
+    }
+
+    [data-theme="dark"] .resume-overlay__hexagon--outer {
+      border-color: var(--accent-blue);
+    }
+
+    [data-theme="dark"] .resume-overlay__hexagon--middle {
+      border-color: #5a7dc7;
+    }
+
+    [data-theme="dark"] .resume-overlay__hexagon--inner {
+      border-color: #3d5a9e;
     }
 
     /* Supporter modal */
