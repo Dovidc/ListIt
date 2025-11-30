@@ -10,7 +10,8 @@
     const {
       useMemo,
       useState,
-      useEffect
+      useEffect,
+      useCallback
     } = React;
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
@@ -23,6 +24,49 @@
       } catch {
         return false;
       }
+    }
+
+    // Copy link button for iOS users
+    function CopySubscribeLink() {
+      const [copied, setCopied] = useState(false);
+
+      const handleCopy = useCallback(async () => {
+        try {
+          await navigator.clipboard.writeText('https://trovelr.com');
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      }, []);
+
+      return H('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginTop: 8,
+          fontSize: 13,
+          color: '#666'
+        }
+      },
+        H('span', null, 'Subscribe at '),
+        H('button', {
+          type: 'button',
+          onClick: handleCopy,
+          style: {
+            background: copied ? '#10b981' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }
+        }, copied ? 'Copied!' : 'Copy Link')
+      );
     }
 
     const badgeIcons = {
@@ -211,11 +255,8 @@
                 ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
                 : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
             ),
-            // Show web subscription message on iOS native app
-            isIOS && !isSelf && H('p', {
-              className: 'supporter-modal__body',
-              style: { fontSize: 13, color: '#666', marginTop: 8 }
-            }, 'To subscribe, visit trovelr.com in your web browser.'),
+            // Show copy link for iOS native app users
+            isIOS && !isSelf && H(CopySubscribeLink),
 
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
@@ -299,13 +340,10 @@
         }
       };
 
-      // iOS App Store doesn't allow in-app payment links to external sites
-      // Show message to subscribe via web browser instead
-      const effectiveNotice = isIOS
-        ? 'To subscribe, visit trovelr.com in your web browser.'
-        : paymentsDisabled
-          ? (notice || 'Supporter payments are currently disabled, so premium perks are unlocked for everyone.')
-          : notice;
+      // Notice for non-iOS users (iOS gets CopySubscribeLink component instead)
+      const effectiveNotice = paymentsDisabled
+        ? (notice || 'Supporter payments are currently disabled, so premium perks are unlocked for everyone.')
+        : notice;
 
       return ReactDOM.createPortal(
         H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
@@ -389,6 +427,7 @@
               : H('p', { className: 'supporter-modal__body' },
                 'Thanks for supporting Trovelr! Enjoy your premium badge and profile customization features.'
               ),
+            isIOS && isPrompt && H(CopySubscribeLink),
             effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
             H('div', { className: 'supporter-modal__actions' },

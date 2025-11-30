@@ -651,31 +651,110 @@
       bgImageUploadError,
       onSave,
       statusMessage,
-      isPremium: isPremiumProp
+      isPremium: isPremiumProp,
+      username,
+      profilePictureUrl
     }) {
-      const isPremium = isPremiumProp; // The prop passed in should already account for payments_disabled, but let's be safe in the parent
+      const isPremium = isPremiumProp;
+      const displayName = username || 'You';
+      const initials = displayName.trim().slice(0, 1).toUpperCase();
+      const avatarBorderColor = borderColor || '#ffffff';
+      const avatarBorderStyle = borderStyle === 'dashed' ? 'dashed' : 'solid';
+
+      // Profile card dimensions (matching ProfilePreviewModal)
+      const PREVIEW_WIDTH = 340;
+      const BANNER_HEIGHT = 120;
+      const AVATAR_SIZE = 64;
+      const AVATAR_OVERLAP = 24;
+      const AVATAR_BORDER = 3;
+
+      const uploadInputRef = useRef(null);
+      const imageRef = useRef(null);
+      const canvasRef = useRef(null);
+      const cropAreaRef = useRef(null);
+      const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+      const pinchStartRef = useRef({ distance: 0, zoom: 1 });
+
+      // Local preview state for cropping before upload
+      const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
+      const [localFile, setLocalFile] = useState(null);
+      const [zoom, setZoom] = useState(1);
+      const [position, setPosition] = useState({ x: 0, y: 0 });
+      const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+      const [isDragging, setIsDragging] = useState(false);
+      const [cropError, setCropError] = useState(null);
+
+      // Crop dimensions (aspect ratio matches banner ~2.8:1 for the preview)
+      const CROP_WIDTH = PREVIEW_WIDTH;
+      const CROP_HEIGHT = BANNER_HEIGHT;
+      const OUTPUT_WIDTH = 800;
+      const OUTPUT_HEIGHT = 220;
+
+      const clampPosition = useCallback((x, y, currentZoom) => {
+        if (!imageDimensions.width || !imageDimensions.height) return { x: 0, y: 0 };
+
+        const scaledWidth = imageDimensions.width * currentZoom;
+        const scaledHeight = imageDimensions.height * currentZoom;
+
+        const maxX = Math.max(0, (scaledWidth - CROP_WIDTH) / 2);
+        const maxY = Math.max(0, (scaledHeight - CROP_HEIGHT) / 2);
+
+        return {
+          x: Math.max(-maxX, Math.min(maxX, x)),
+          y: Math.max(-maxY, Math.min(maxY, y))
+        };
+      }, [imageDimensions, CROP_WIDTH, CROP_HEIGHT]);
+
+      const handlePointerMove = useCallback((evt) => {
+        if (!isDragging) return;
+        evt.preventDefault();
+        const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+        const deltaX = clientX - dragStartRef.current.x;
+        const deltaY = clientY - dragStartRef.current.y;
+        const newPos = clampPosition(
+          dragStartRef.current.posX + deltaX,
+          dragStartRef.current.posY + deltaY,
+          zoom
+        );
+        setPosition(newPos);
+      }, [isDragging, zoom, clampPosition]);
+
+      const handlePointerUp = useCallback(() => {
+        setIsDragging(false);
+      }, []);
+
+      // Reset state when modal closes
+      useEffect(() => {
+        if (!open) {
+          setLocalPreviewUrl(null);
+          setLocalFile(null);
+          setZoom(1);
+          setPosition({ x: 0, y: 0 });
+          setImageDimensions({ width: 0, height: 0 });
+          setCropError(null);
+        }
+      }, [open]);
+
+      useEffect(() => {
+        if (isDragging) {
+          document.addEventListener('mousemove', handlePointerMove);
+          document.addEventListener('mouseup', handlePointerUp);
+          document.addEventListener('touchmove', handlePointerMove, { passive: false });
+          document.addEventListener('touchend', handlePointerUp);
+          return () => {
+            document.removeEventListener('mousemove', handlePointerMove);
+            document.removeEventListener('mouseup', handlePointerUp);
+            document.removeEventListener('touchmove', handlePointerMove);
+            document.removeEventListener('touchend', handlePointerUp);
+          };
+        }
+      }, [isDragging, handlePointerMove, handlePointerUp]);
 
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
       }
-
-      const uploadInputRef = useRef(null);
-
-      const [previewScale, setPreviewScale] = useState(1.05);
-      const [previewOffset, setPreviewOffset] = useState(50);
-
-      if (useEffect) {
-        useEffect(() => {
-          setPreviewScale(1.05);
-          setPreviewOffset(50);
-        }, [bgImageUrl, open]);
-      }
-
-      const borderStyleValue = borderStyle === 'dashed' ? 'dashed' : 'solid';
-      const borderColorValue = typeof borderColor === 'string' && borderColor.trim()
-        ? borderColor.trim()
-        : '#ffffff';
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -683,30 +762,455 @@
         }
       };
 
-      const handleBgImageFileChange = (evt) => {
+      const handleFileSelect = (evt) => {
         if (!isPremium || bgImageUploading) {
           evt.target.value = '';
           return;
         }
-        const file = evt.target?.files && evt.target.files[0];
-        if (file) {
-          onUploadBgImage?.(file);
+        const file = evt.target?.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+          setCropError('Please select an image file');
+          evt.target.value = '';
+          return;
         }
+
+        if (file.size > 8 * 1024 * 1024) {
+          setCropError('Image must be less than 8MB');
+          evt.target.value = '';
+          return;
+        }
+
+        setLocalFile(file);
+        setCropError(null);
+        setZoom(1);
+        setPosition({ x: 0, y: 0 });
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setLocalPreviewUrl(e.target.result);
+        };
+        reader.readAsDataURL(file);
         evt.target.value = '';
+      };
+
+      const handleImageLoad = () => {
+        if (!imageRef.current) return;
+        const img = imageRef.current;
+        setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+        // Calculate initial zoom to cover the crop area
+        const scaleX = CROP_WIDTH / img.naturalWidth;
+        const scaleY = CROP_HEIGHT / img.naturalHeight;
+        const initialZoom = Math.max(scaleX, scaleY, 0.5);
+        setZoom(initialZoom);
+        setPosition({ x: 0, y: 0 });
+      };
+
+      const handlePointerDown = (evt) => {
+        if (!localPreviewUrl) return;
+        setIsDragging(true);
+        const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+        dragStartRef.current = { x: clientX, y: clientY, posX: position.x, posY: position.y };
+
+        // Handle pinch-to-zoom start
+        if (evt.touches && evt.touches.length === 2) {
+          const dx = evt.touches[0].clientX - evt.touches[1].clientX;
+          const dy = evt.touches[0].clientY - evt.touches[1].clientY;
+          pinchStartRef.current = {
+            distance: Math.sqrt(dx * dx + dy * dy),
+            zoom: zoom
+          };
+        }
+      };
+
+      const handleTouchMove = (evt) => {
+        if (!localPreviewUrl) return;
+
+        // Handle pinch-to-zoom
+        if (evt.touches && evt.touches.length === 2) {
+          evt.preventDefault();
+          const dx = evt.touches[0].clientX - evt.touches[1].clientX;
+          const dy = evt.touches[0].clientY - evt.touches[1].clientY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const scale = distance / pinchStartRef.current.distance;
+          const newZoom = Math.max(0.3, Math.min(3, pinchStartRef.current.zoom * scale));
+          setZoom(newZoom);
+          setPosition(prev => clampPosition(prev.x, prev.y, newZoom));
+        }
+      };
+
+      const handleWheel = (evt) => {
+        if (!localPreviewUrl) return;
+        evt.preventDefault();
+        const delta = evt.deltaY > 0 ? -0.1 : 0.1;
+        const newZoom = Math.max(0.3, Math.min(3, zoom + delta));
+        setZoom(newZoom);
+        setPosition(prev => clampPosition(prev.x, prev.y, newZoom));
+      };
+
+      const handleZoomChange = (newZoom) => {
+        const clampedZoom = Math.max(0.3, Math.min(3, newZoom));
+        setZoom(clampedZoom);
+        setPosition(prev => clampPosition(prev.x, prev.y, clampedZoom));
+      };
+
+      const handleCropAndUpload = async () => {
+        if (!localFile || !canvasRef.current || !imageRef.current) return;
+
+        try {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext('2d');
+          const img = imageRef.current;
+
+          canvas.width = OUTPUT_WIDTH;
+          canvas.height = OUTPUT_HEIGHT;
+
+          // Calculate the crop area in original image coordinates
+          const scaledWidth = imageDimensions.width * zoom;
+          const scaledHeight = imageDimensions.height * zoom;
+
+          const centerX = scaledWidth / 2 - position.x;
+          const centerY = scaledHeight / 2 - position.y;
+
+          const srcCenterX = centerX / zoom;
+          const srcCenterY = centerY / zoom;
+          const srcWidth = CROP_WIDTH / zoom;
+          const srcHeight = CROP_HEIGHT / zoom;
+
+          const srcX = srcCenterX - srcWidth / 2;
+          const srcY = srcCenterY - srcHeight / 2;
+
+          ctx.drawImage(
+            img,
+            srcX,
+            srcY,
+            srcWidth,
+            srcHeight,
+            0,
+            0,
+            OUTPUT_WIDTH,
+            OUTPUT_HEIGHT
+          );
+
+          const blob = await new Promise((resolve) => {
+            canvas.toBlob(resolve, 'image/jpeg', 0.9);
+          });
+
+          const croppedFile = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
+
+          // Clear local preview and upload
+          setLocalPreviewUrl(null);
+          setLocalFile(null);
+
+          onUploadBgImage?.(croppedFile);
+        } catch (err) {
+          console.error('Crop failed:', err);
+          setCropError('Failed to process image');
+        }
+      };
+
+      const handleCancelCrop = () => {
+        setLocalPreviewUrl(null);
+        setLocalFile(null);
+        setZoom(1);
+        setPosition({ x: 0, y: 0 });
+        setCropError(null);
       };
 
       const premiumMsg = !isPremium ? H('div', {
         style: {
           padding: '12px',
-          background: '#fef3c7',
-          border: '1px solid #fcd34d',
+          background: '#dbeafe',
+          border: '1px solid #93c5fd',
           borderRadius: 8,
           fontSize: 13,
-          color: '#92400e',
+          color: '#1e40af',
           marginBottom: 12
         }
       }, '✨ Profile customization is a premium subscriber feature') : null;
 
+      // Helper to render the profile card preview
+      const renderProfileCardPreview = (bannerSrc, isLive = false) => {
+        return H('div', {
+          style: {
+            width: PREVIEW_WIDTH,
+            background: '#0f172a',
+            borderRadius: 16,
+            overflow: 'hidden',
+            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
+            margin: '0 auto'
+          }
+        },
+          // Banner area
+          H('div', {
+            style: {
+              position: 'relative',
+              width: '100%',
+              height: BANNER_HEIGHT,
+              overflow: 'hidden',
+              background: 'linear-gradient(120deg, #1e3a5f, #1e40af)',
+              cursor: isLive ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              touchAction: isLive ? 'none' : 'auto'
+            },
+            onMouseDown: isLive ? handlePointerDown : undefined,
+            onTouchStart: isLive ? handlePointerDown : undefined,
+            onTouchMove: isLive ? handleTouchMove : undefined,
+            onWheel: isLive ? handleWheel : undefined
+          },
+            bannerSrc ? (
+              isLive ? H('div', {
+                style: {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  overflow: 'hidden'
+                }
+              },
+                H('img', {
+                  src: bannerSrc,
+                  alt: 'Banner preview',
+                  style: {
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom})`,
+                    transformOrigin: 'center',
+                    maxWidth: 'none',
+                    pointerEvents: 'none'
+                  }
+                })
+              ) : H('img', {
+                src: bannerSrc,
+                alt: 'Banner',
+                style: {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }
+              })
+            ) : null,
+            // Gradient overlay
+            H('div', {
+              style: {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
+              }
+            })
+          ),
+          // Avatar and info area
+          H('div', {
+            style: {
+              position: 'relative',
+              padding: `0 16px 16px`,
+              marginTop: -AVATAR_OVERLAP
+            }
+          },
+            // Avatar
+            H('div', {
+              style: {
+                width: AVATAR_SIZE,
+                height: AVATAR_SIZE,
+                borderRadius: '50%',
+                border: `${AVATAR_BORDER}px ${avatarBorderStyle} ${avatarBorderColor}`,
+                background: '#1e293b',
+                boxShadow: '0 8px 20px rgba(0, 0, 0, 0.35)',
+                overflow: 'hidden',
+                marginBottom: 8
+              }
+            },
+              profilePictureUrl
+                ? H('img', {
+                    src: profilePictureUrl,
+                    alt: 'Avatar',
+                    style: { width: '100%', height: '100%', objectFit: 'cover' }
+                  })
+                : H('span', {
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 24,
+                      fontWeight: 700,
+                      color: '#e2e8f0'
+                    }
+                  }, initials)
+            ),
+            // Username
+            H('div', {
+              style: {
+                fontSize: 18,
+                fontWeight: 700,
+                color: '#f8fafc'
+              }
+            }, displayName),
+            // Preview label
+            H('div', {
+              style: {
+                fontSize: 11,
+                color: '#64748b',
+                marginTop: 4
+              }
+            }, 'How others see your profile')
+          )
+        );
+      };
+
+      // Cropping view with live preview
+      if (localPreviewUrl) {
+        return createPortal(
+          H('div', {
+            className: 'modal open',
+            onClick: handleOverlayClick,
+            style: { background: 'rgba(0, 0, 0, 0.8)' }
+          },
+            H('div', {
+              className: 'modal-inner',
+              style: {
+                maxWidth: '420px',
+                width: 'min(420px, 94vw)',
+                padding: '20px',
+                background: '#ffffff',
+                color: '#0f172a',
+                borderRadius: 16,
+                display: 'grid',
+                gap: 16
+              }
+            },
+              // Header
+              H('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }
+              },
+                H('h2', {
+                  style: { fontSize: 18, fontWeight: 700, margin: 0 }
+                }, 'Adjust Banner'),
+                H('button', {
+                  onClick: handleCancelCrop,
+                  style: {
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: '#f1f5f9',
+                    color: '#64748b',
+                    fontSize: 20,
+                    cursor: 'pointer'
+                  }
+                }, '×')
+              ),
+
+              cropError && H('div', {
+                style: {
+                  padding: 12,
+                  background: '#fee2e2',
+                  color: '#991b1b',
+                  borderRadius: 8,
+                  fontSize: 14
+                }
+              }, cropError),
+
+              // Live profile card preview
+              renderProfileCardPreview(localPreviewUrl, true),
+
+              // Hidden image for loading dimensions
+              H('img', {
+                ref: imageRef,
+                src: localPreviewUrl,
+                alt: 'Source',
+                onLoad: handleImageLoad,
+                style: { display: 'none' }
+              }),
+
+              // Zoom slider
+              H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '0 8px'
+                }
+              },
+                H('span', { style: { fontSize: 16, color: '#64748b' } }, '−'),
+                H('input', {
+                  type: 'range',
+                  min: '0.3',
+                  max: '3',
+                  step: '0.05',
+                  value: zoom,
+                  onChange: (e) => handleZoomChange(parseFloat(e.target.value)),
+                  style: {
+                    flex: 1,
+                    height: 8,
+                    borderRadius: 4,
+                    appearance: 'none',
+                    background: '#e2e8f0',
+                    cursor: 'pointer'
+                  }
+                }),
+                H('span', { style: { fontSize: 16, color: '#64748b' } }, '+')
+              ),
+
+              H('p', {
+                style: { fontSize: 12, color: '#64748b', textAlign: 'center', margin: 0 }
+              }, 'Drag the preview to reposition • Pinch or use slider to zoom'),
+
+              // Hidden canvas
+              H('canvas', { ref: canvasRef, style: { display: 'none' } }),
+
+              // Action buttons
+              H('div', { style: { display: 'flex', gap: 12 } },
+                H('button', {
+                  onClick: handleCancelCrop,
+                  style: {
+                    flex: 1,
+                    padding: '14px',
+                    background: '#f1f5f9',
+                    color: '#64748b',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }
+                }, 'Cancel'),
+                H('button', {
+                  onClick: handleCropAndUpload,
+                  style: {
+                    flex: 1,
+                    padding: '14px',
+                    background: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }
+                }, 'Apply')
+              )
+            )
+          ),
+          document.body
+        );
+      }
+
+      // Main modal view
       return createPortal(
         H('div', {
           className: 'modal open',
@@ -715,11 +1219,11 @@
           H('div', {
             className: 'modal-inner',
             style: {
-              maxWidth: '460px',
-              width: 'min(460px, 92vw)',
+              maxWidth: '420px',
+              width: 'min(420px, 92vw)',
               padding: '24px',
               background: '#fff',
-              color: '#111',
+              color: '#0f172a',
               borderRadius: 16,
               display: 'grid',
               gap: 16,
@@ -727,221 +1231,142 @@
             }
           },
             H('button', {
-              className: 'close',
               onClick: onClose,
-              title: 'Close profile customization',
               style: {
                 position: 'absolute',
                 top: '12px',
                 right: '12px',
-                width: '44px',
-                height: '44px',
-                fontSize: '32px',
-                lineHeight: '32px',
-                padding: 0,
+                width: '36px',
+                height: '36px',
+                fontSize: '20px',
                 border: 'none',
-                background: 'transparent',
+                background: '#f1f5f9',
+                borderRadius: '50%',
                 cursor: 'pointer',
-                color: '#111',
-                fontWeight: 'bold'
+                color: '#64748b'
               }
-            }, '✕'),
-            H('div', { style: { display: 'grid', gap: 8 } },
+            }, '×'),
+
+            H('div', { style: { display: 'grid', gap: 4 } },
               H('h2', {
                 style: {
-                  fontSize: 20,
-                  fontWeight: 800,
+                  fontSize: 18,
+                  fontWeight: 700,
                   margin: 0,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8
                 }
               },
-                '🎨 Profile Display',
+                'Profile Banner',
                 !isPremium && H('span', {
                   style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
                     padding: '2px 8px',
                     background: '#dbeafe',
-                    color: '#0c4a6e',
-                    borderRadius: 12,
+                    color: '#1e40af',
+                    borderRadius: 10,
                     fontSize: 11,
-                    fontWeight: 700
+                    fontWeight: 600
                   }
-                }, '✨ Premium')
+                }, 'Premium')
               ),
               H('p', {
-                className: 'muted',
-                style: { fontSize: 13, margin: 0 }
-              }, 'Customize how your profile appears when others view it from listings.')
+                style: { fontSize: 13, color: '#64748b', margin: 0 }
+              }, 'Customize how your profile appears to others')
             ),
+
             premiumMsg,
-            H('section', { style: { display: 'grid', gap: 16 } },
-              H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Banner Image'),
-                H('div', {
-                  style: {
-                    position: 'relative',
-                    border: '1px dashed #cbd5f5',
-                    borderRadius: 10,
-                    padding: 16,
-                    background: '#f8fafc',
-                    cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed',
-                    transition: 'border-color 120ms ease, box-shadow 120ms ease',
-                    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.3)'
-                  },
-                  onClick: () => {
-                    if (!isPremium || bgImageUploading) return;
-                    uploadInputRef.current?.click();
-                  },
-                  onKeyDown: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    if (evt.key === 'Enter' || evt.key === ' ') {
-                      evt.preventDefault();
-                      uploadInputRef.current?.click();
-                    }
-                  },
-                  onDragOver: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    evt.preventDefault();
-                    evt.dataTransfer.dropEffect = 'copy';
-                  },
-                  onDrop: (evt) => {
-                    if (!isPremium || bgImageUploading) return;
-                    evt.preventDefault();
-                    const droppedFile = evt.dataTransfer?.files && evt.dataTransfer.files[0];
-                    if (droppedFile) {
-                      onUploadBgImage?.(droppedFile);
-                    }
-                  },
-                  role: 'button',
-                  tabIndex: isPremium && !bgImageUploading ? 0 : -1,
-                  'aria-label': 'Upload banner image'
-                },
-                  H('input', {
-                    ref: uploadInputRef,
-                    type: 'file',
-                    accept: 'image/*',
-                    disabled: !isPremium || bgImageUploading,
-                    onChange: handleBgImageFileChange,
-                    style: {
-                      position: 'absolute',
-                      inset: 0,
-                      opacity: 0
-                    }
-                  }),
-                  H('div', {
-                    style: {
-                      display: 'grid',
-                      gap: 4,
-                      color: '#1e3a8a'
-                    }
-                  },
-                    H('strong', { style: { fontSize: 14 } }, 'Click to upload or drop an image'),
-                    H('span', { style: { fontSize: 12, color: '#475569' } }, 'PNG, JPG, WEBP (8MB max)')
-                  )
-                ),
-                bgImageUploading && H('div', {
-                  role: 'status',
-                  style: {
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#2563eb'
-                  }
-                }, 'Uploading image...'),
-                bgImageUploadError && H('div', {
-                  role: 'alert',
-                  style: {
-                    fontSize: 12,
-                    color: '#b91c1c'
-                  }
-                }, bgImageUploadError),
-                H('div', {
-                  style: {
-                    display: 'grid',
-                    gap: 8,
-                    marginTop: 4
-                  }
-                },
-                  H('span', { style: { fontWeight: 600, fontSize: 13 } }, 'Preview & adjustments'),
-                  H('div', {
-                    style: {
-                      position: 'relative',
-                      width: '100%',
-                      height: 190,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      background: '#0f172a',
-                      boxShadow: '0 12px 25px rgba(15, 23, 42, 0.35)',
-                      display: 'grid',
-                      placeItems: 'center'
-                    }
-                  },
-                    bgImageUrl
-                      ? H('img', {
-                        src: bgImageUrl,
-                        alt: 'Banner preview',
-                        style: {
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          objectPosition: `50% ${previewOffset}%`,
-                          transform: `scale(${previewScale})`,
-                          transition: 'transform 150ms ease, object-position 150ms ease'
-                        }
-                      })
-                      : H('div', {
-                        style: {
-                          position: 'relative',
-                          width: '100%',
-                          height: '100%'
-                        }
-                      },
-                        H(DefaultProfileBanner),
-                        H('div', {
-                          style: {
-                            position: 'absolute',
-                            bottom: 8,
-                            left: 0,
-                            right: 0,
-                            textAlign: 'center',
-                            color: '#94a3b8',
-                            fontSize: 12
-                          }
-                        }, isPremium ? 'Upload an image to customize your banner' : 'Default banner (Premium can customize)')
-                      )
-                  ),
-                )
-              ),
-              H('footer', {
+
+            // Profile card preview
+            renderProfileCardPreview(bgImageUrl, false),
+
+            // Upload section
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('input', {
+                ref: uploadInputRef,
+                type: 'file',
+                accept: 'image/*',
+                disabled: !isPremium || bgImageUploading,
+                onChange: handleFileSelect,
+                style: { display: 'none' }
+              }),
+
+              H('button', {
+                onClick: () => isPremium && !bgImageUploading && uploadInputRef.current?.click(),
+                disabled: !isPremium || bgImageUploading,
                 style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                  marginTop: 8
+                  width: '100%',
+                  padding: '14px',
+                  background: isPremium ? '#2563eb' : '#e2e8f0',
+                  color: isPremium ? '#fff' : '#94a3b8',
+                  border: 'none',
+                  borderRadius: 12,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed'
                 }
-              },
-                statusMessage
-                  ? H('div', {
-                    role: 'status',
-                    'aria-live': 'polite',
-                    style: { fontSize: 13, color: '#047857', fontWeight: 600 }
-                  }, statusMessage)
-                  : H('span', { className: 'muted', style: { fontSize: 12 } }, 'Press save to apply your changes'),
-                H('button', {
-                  className: 'btn primary',
-                  type: 'button',
-                  onClick: async () => {
-                    await onSave?.();
-                    onClose?.();
-                  },
-                  disabled: !isPremium
-                }, 'Save changes')
-              )
+              }, bgImageUploading ? 'Uploading...' : (bgImageUrl ? 'Change Banner' : 'Upload Banner')),
+
+              bgImageUrl && isPremium && H('button', {
+                onClick: () => {
+                  if (confirm('Remove your banner image?')) {
+                    onClearBgImage?.();
+                  }
+                },
+                disabled: bgImageUploading,
+                style: {
+                  width: '100%',
+                  padding: '12px',
+                  background: '#fff',
+                  color: '#dc2626',
+                  border: '1px solid #fecaca',
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: bgImageUploading ? 'not-allowed' : 'pointer'
+                }
+              }, 'Remove Banner'),
+
+              bgImageUploadError && H('div', {
+                style: {
+                  padding: 10,
+                  background: '#fee2e2',
+                  color: '#991b1b',
+                  borderRadius: 8,
+                  fontSize: 13
+                }
+              }, bgImageUploadError),
+
+              statusMessage && H('div', {
+                style: {
+                  padding: 10,
+                  background: '#d1fae5',
+                  color: '#065f46',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600
+                }
+              }, statusMessage),
+
+              // Done button
+              H('button', {
+                onClick: async () => {
+                  await onSave?.();
+                  onClose?.();
+                },
+                style: {
+                  width: '100%',
+                  padding: '14px',
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: 'none',
+                  borderRadius: 12,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginTop: 4
+                }
+              }, 'Done')
             )
           )
         ),
@@ -2199,7 +2624,9 @@
           bgImageUploadError: profileBgImageUploadError,
           onSave: saveProfileCustomization,
           statusMessage: profileCustomizationStatusMessage,
-          isPremium: isPremiumUser
+          isPremium: isPremiumUser,
+          username: user?.username || user?.email,
+          profilePictureUrl: profilePictureUrl
         }),
 
         H(ProfileSettingsModal, {

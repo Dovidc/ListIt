@@ -16,22 +16,31 @@
       const [previewUrl, setPreviewUrl] = useState(null);
       const [uploading, setUploading] = useState(false);
       const [error, setError] = useState(null);
-      const [cropData, setCropData] = useState({ x: 0, y: 0, size: 100 });
+      const [zoom, setZoom] = useState(1);
+      const [position, setPosition] = useState({ x: 0, y: 0 });
+      const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+      const [isDragging, setIsDragging] = useState(false);
       const fileInputRef = useRef(null);
       const canvasRef = useRef(null);
       const imageRef = useRef(null);
+      const containerRef = useRef(null);
+      const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
       const borderColorValue = typeof avatarBorderColor === 'string' && avatarBorderColor.trim()
         ? avatarBorderColor.trim()
         : '#ffffff';
       const borderStyleValue = avatarBorderStyle === 'dashed' ? 'dashed' : 'solid';
 
+      const CROP_SIZE = 280; // Size of the crop area in the UI
+
       useEffect(() => {
         if (!open) {
           setSelectedFile(null);
           setPreviewUrl(null);
           setError(null);
-          setCropData({ x: 0, y: 0, size: 100 });
+          setZoom(1);
+          setPosition({ x: 0, y: 0 });
+          setImageDimensions({ width: 0, height: 0 });
         }
       }, [open]);
 
@@ -51,6 +60,8 @@
 
         setSelectedFile(file);
         setError(null);
+        setZoom(1);
+        setPosition({ x: 0, y: 0 });
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -59,6 +70,82 @@
         reader.readAsDataURL(file);
       }, []);
 
+      const handleImageLoad = useCallback(() => {
+        if (!imageRef.current) return;
+        const img = imageRef.current;
+        setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+        // Center the image initially
+        setPosition({ x: 0, y: 0 });
+        // Calculate initial zoom to fit the smaller dimension
+        const minDim = Math.min(img.naturalWidth, img.naturalHeight);
+        const initialZoom = CROP_SIZE / minDim;
+        setZoom(Math.max(1, initialZoom));
+      }, []);
+
+      const clampPosition = useCallback((x, y, currentZoom) => {
+        if (!imageDimensions.width || !imageDimensions.height) return { x: 0, y: 0 };
+
+        const scaledWidth = imageDimensions.width * currentZoom;
+        const scaledHeight = imageDimensions.height * currentZoom;
+
+        const maxX = Math.max(0, (scaledWidth - CROP_SIZE) / 2);
+        const maxY = Math.max(0, (scaledHeight - CROP_SIZE) / 2);
+
+        return {
+          x: Math.max(-maxX, Math.min(maxX, x)),
+          y: Math.max(-maxY, Math.min(maxY, y))
+        };
+      }, [imageDimensions]);
+
+      const handlePointerDown = useCallback((evt) => {
+        // Don't call preventDefault here - use touch-action: none CSS instead
+        setIsDragging(true);
+        const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+        dragStartRef.current = { x: clientX, y: clientY, posX: position.x, posY: position.y };
+      }, [position]);
+
+      const handlePointerMove = useCallback((evt) => {
+        if (!isDragging) return;
+        evt.preventDefault();
+        const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+        const deltaX = clientX - dragStartRef.current.x;
+        const deltaY = clientY - dragStartRef.current.y;
+        const newPos = clampPosition(
+          dragStartRef.current.posX + deltaX,
+          dragStartRef.current.posY + deltaY,
+          zoom
+        );
+        setPosition(newPos);
+      }, [isDragging, zoom, clampPosition]);
+
+      const handlePointerUp = useCallback(() => {
+        setIsDragging(false);
+      }, []);
+
+      useEffect(() => {
+        if (isDragging) {
+          document.addEventListener('mousemove', handlePointerMove);
+          document.addEventListener('mouseup', handlePointerUp);
+          document.addEventListener('touchmove', handlePointerMove, { passive: false });
+          document.addEventListener('touchend', handlePointerUp);
+          return () => {
+            document.removeEventListener('mousemove', handlePointerMove);
+            document.removeEventListener('mouseup', handlePointerUp);
+            document.removeEventListener('touchmove', handlePointerMove);
+            document.removeEventListener('touchend', handlePointerUp);
+          };
+        }
+      }, [isDragging, handlePointerMove, handlePointerUp]);
+
+      const handleZoomChange = useCallback((newZoom) => {
+        const clampedZoom = Math.max(0.5, Math.min(3, newZoom));
+        setZoom(clampedZoom);
+        // Re-clamp position with new zoom
+        setPosition(prev => clampPosition(prev.x, prev.y, clampedZoom));
+      }, [clampPosition]);
+
       const handleUpload = useCallback(async () => {
         if (!selectedFile || !canvasRef.current || !imageRef.current) return;
 
@@ -66,44 +153,49 @@
         setError(null);
 
         try {
-          // Create cropped image
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
           const img = imageRef.current;
 
-          // Set canvas size
-          canvas.width = 200;
-          canvas.height = 200;
+          // Output size
+          canvas.width = 400;
+          canvas.height = 400;
 
-          // Calculate crop dimensions
-          const scale = img.naturalWidth / img.width;
-          const cropX = cropData.x * scale;
-          const cropY = cropData.y * scale;
-          const cropSize = cropData.size * scale;
+          // Calculate the crop area in original image coordinates
+          const scaledWidth = imageDimensions.width * zoom;
+          const scaledHeight = imageDimensions.height * zoom;
 
-          // Draw cropped image
+          // Center of the crop area in scaled coordinates
+          const centerX = scaledWidth / 2 - position.x;
+          const centerY = scaledHeight / 2 - position.y;
+
+          // Convert to original image coordinates
+          const srcCenterX = centerX / zoom;
+          const srcCenterY = centerY / zoom;
+          const srcSize = CROP_SIZE / zoom;
+
+          const srcX = srcCenterX - srcSize / 2;
+          const srcY = srcCenterY - srcSize / 2;
+
+          // Draw the cropped image
           ctx.drawImage(
             img,
-            cropX,
-            cropY,
-            cropSize,
-            cropSize,
+            srcX,
+            srcY,
+            srcSize,
+            srcSize,
             0,
             0,
-            200,
-            200
+            400,
+            400
           );
 
-          // Convert to blob
           const blob = await new Promise((resolve) => {
             canvas.toBlob(resolve, 'image/jpeg', 0.9);
           });
 
-          // Upload to S3
           const file = new File([blob], 'profile-picture.jpg', { type: 'image/jpeg' });
           const url = await uploadOneMessageImage(file);
-
-          // Update profile picture
           await api.updateProfilePicture(url);
 
           onUploadComplete?.(url);
@@ -114,7 +206,7 @@
         } finally {
           setUploading(false);
         }
-      }, [selectedFile, cropData, onUploadComplete, onClose]);
+      }, [selectedFile, zoom, position, imageDimensions, onUploadComplete, onClose]);
 
       const handleRemove = useCallback(async () => {
         if (!confirm('Remove your profile picture?')) return;
@@ -134,41 +226,6 @@
         }
       }, [onUploadComplete, onClose]);
 
-      const handleImageLoad = useCallback(() => {
-        if (!imageRef.current) return;
-        const img = imageRef.current;
-        const size = Math.min(img.width, img.height);
-        const x = (img.width - size) / 2;
-        const y = (img.height - size) / 2;
-        setCropData({ x, y, size });
-      }, []);
-
-      const handleMouseDown = useCallback((evt) => {
-        if (!imageRef.current) return;
-        evt.preventDefault();
-        const img = imageRef.current;
-        const rect = img.getBoundingClientRect();
-        const startX = evt.clientX;
-        const startY = evt.clientY;
-        const initialCrop = { ...cropData };
-
-        const handleMouseMove = (e) => {
-          const deltaX = e.clientX - startX;
-          const deltaY = e.clientY - startY;
-          const newX = Math.max(0, Math.min(img.width - cropData.size, initialCrop.x + deltaX));
-          const newY = Math.max(0, Math.min(img.height - cropData.size, initialCrop.y + deltaY));
-          setCropData({ ...cropData, x: newX, y: newY });
-        };
-
-        const handleMouseUp = () => {
-          document.removeEventListener('mousemove', handleMouseMove);
-          document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-      }, [cropData]);
-
       if (!open) return null;
 
       const modalContent = H('div', {
@@ -177,135 +234,95 @@
           if (e.target.classList.contains('modal-overlay')) {
             onClose?.();
           }
+        },
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+          zIndex: 9999
         }
       },
-        H('div', { className: 'modal-content', style: { maxWidth: 500 } },
-          H('div', { className: 'modal-header' },
-            H('h2', { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, 'Profile Picture'),
-            H('button', {
-              className: 'modal-close',
-              onClick: onClose,
-              'aria-label': 'Close'
-            }, '×')
-          ),
-          avatarBorderColor && avatarBorderStyle && H('div', {
+        H('div', {
+          className: 'modal-content',
+          style: {
+            background: '#fff',
+            borderRadius: 16,
+            maxWidth: 440,
+            width: '100%',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
+          }
+        },
+          // Header
+          H('div', {
             style: {
-              display: 'grid',
-              gap: 16,
-              padding: '16px',
-              background: '#f8fafc',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
               borderBottom: '1px solid #e5e7eb'
             }
           },
-            H('div', { style: { display: 'grid', gap: 8 } },
-              H('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Avatar outline'),
-                onSave && H('button', {
-                  className: 'btn primary',
-                  onClick: async () => {
-                    await onSave();
-                    onClose?.();
-                  },
-                  disabled: !isPremium,
-                  style: { padding: '4px 12px', fontSize: 13, height: 28, minHeight: 0 }
-                }, 'Save')
-              ),
-              H('div', {
-                style: {
-                  display: 'grid',
-                  gap: 12,
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
-                }
-              },
-                H('label', { style: { display: 'grid', gap: 4 } },
-                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Color'),
-                  H('input', {
-                    type: 'color',
-                    value: borderColorValue,
-                    onChange: (evt) => onChangeBorderColor?.(evt.target.value),
-                    style: {
-                      width: '100%',
-                      height: 36,
-                      borderRadius: 10,
-                      border: '1px solid #d1d5db',
-                      cursor: 'pointer'
-                    }
-                  })
-                ),
-                H('label', { style: { display: 'grid', gap: 4 } },
-                  H('span', { style: { fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase' } }, 'Style'),
-                  H('select', {
-                    value: borderStyleValue,
-                    onChange: (evt) => onChangeBorderStyle?.(evt.target.value),
-                    style: {
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      background: '#fff'
-                    }
-                  },
-                    H('option', { value: 'solid' }, 'Solid'),
-                    H('option', { value: 'dashed' }, 'Dashed')
-                  )
-                )
-              ),
-              H('div', {
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  flexWrap: 'wrap'
-                }
-              },
-                H('div', {
-                  style: {
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    borderColor: borderColorValue,
-                    borderStyle: borderStyleValue,
-                    borderWidth: 4,
-                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.2)',
-                    background: '#0f172a',
-                    color: '#e2e8f0',
-                    display: 'grid',
-                    placeItems: 'center',
-                    fontWeight: 700,
-                    fontSize: 18
-                  }
-                }, 'Aa'),
-                H('span', { className: 'muted', style: { fontSize: 12 } }, 'Live preview of your outline')
-              )
-            )
+            H('h2', { style: { margin: 0, fontSize: 18, fontWeight: 700 } }, 'Profile Picture'),
+            H('button', {
+              onClick: onClose,
+              style: {
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: 'none',
+                background: '#f1f5f9',
+                cursor: 'pointer',
+                fontSize: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }
+            }, '×')
           ),
-          H('div', { className: 'modal-body' },
+
+          // Body
+          H('div', { style: { padding: 20 } },
             error && H('div', {
               style: {
                 padding: 12,
                 background: '#fee2e2',
                 color: '#991b1b',
                 borderRadius: 8,
-                marginBottom: 12
+                marginBottom: 16,
+                fontSize: 14
               }
             }, error),
-            !previewUrl && H('div', null,
-              currentPictureUrl && H('div', {
+
+            // File selection view
+            !previewUrl && H('div', { style: { textAlign: 'center' } },
+              // Current picture preview
+              H('div', {
                 style: {
-                  width: 200,
-                  height: 200,
+                  width: 120,
+                  height: 120,
                   borderRadius: '50%',
+                  margin: '0 auto 20px',
+                  border: `4px ${borderStyleValue} ${borderColorValue}`,
                   overflow: 'hidden',
-                  margin: '0 auto 16px',
-                  border: '2px solid #e5e7eb'
+                  background: '#f1f5f9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }
               },
-                H('img', {
-                  src: currentPictureUrl,
-                  alt: 'Current profile picture',
-                  style: { width: '100%', height: '100%', objectFit: 'cover' }
-                })
+                currentPictureUrl
+                  ? H('img', {
+                      src: currentPictureUrl,
+                      alt: 'Current profile picture',
+                      style: { width: '100%', height: '100%', objectFit: 'cover' }
+                    })
+                  : H('span', { style: { fontSize: 40, color: '#94a3b8' } }, '👤')
               ),
               H('input', {
                 ref: fileInputRef,
@@ -315,91 +332,261 @@
                 style: { display: 'none' }
               }),
               H('button', {
-                className: 'btn-primary',
                 onClick: () => fileInputRef.current?.click(),
-                style: { width: '100%', marginBottom: 8 }
-              }, 'Choose Photo'),
+                style: {
+                  width: '100%',
+                  padding: '14px 20px',
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 12,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginBottom: 12
+                }
+              }, currentPictureUrl ? 'Change Photo' : 'Choose Photo'),
               currentPictureUrl && H('button', {
-                className: 'btn',
                 onClick: handleRemove,
                 disabled: uploading,
-                style: { width: '100%' }
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  background: '#fff',
+                  color: '#dc2626',
+                  border: '1px solid #fecaca',
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  opacity: uploading ? 0.6 : 1
+                }
               }, uploading ? 'Removing...' : 'Remove Photo')
             ),
+
+            // Crop view
             previewUrl && H('div', null,
+              // Crop area
               H('div', {
+                ref: containerRef,
                 style: {
                   position: 'relative',
-                  width: '100%',
-                  maxWidth: 400,
-                  margin: '0 auto 16px'
-                }
+                  width: CROP_SIZE,
+                  height: CROP_SIZE,
+                  margin: '0 auto 16px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  background: '#000',
+                  cursor: isDragging ? 'grabbing' : 'grab',
+                  touchAction: 'none'
+                },
+                onMouseDown: handlePointerDown,
+                onTouchStart: handlePointerDown
               },
                 H('img', {
                   ref: imageRef,
                   src: previewUrl,
                   alt: 'Preview',
                   onLoad: handleImageLoad,
-                  style: {
-                    width: '100%',
-                    display: 'block',
-                    borderRadius: 8
-                  }
-                }),
-                H('div', {
-                  onMouseDown: handleMouseDown,
+                  draggable: false,
                   style: {
                     position: 'absolute',
-                    left: cropData.x,
-                    top: cropData.y,
-                    width: cropData.size,
-                    height: cropData.size,
-                    border: '3px solid white',
-                    boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
-                    borderRadius: '50%',
-                    cursor: 'move',
-                    pointerEvents: 'auto'
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom})`,
+                    transformOrigin: 'center',
+                    maxWidth: 'none',
+                    pointerEvents: 'none',
+                    userSelect: 'none'
                   }
-                },
-                  H('div', {
-                    style: {
-                      position: 'absolute',
-                      inset: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                      pointerEvents: 'none',
-                      userSelect: 'none'
-                    }
-                  }, 'Drag to adjust')
-                )
+                }),
+                // Overlay hint
+                H('div', {
+                  style: {
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 0,
+                    right: 0,
+                    textAlign: 'center',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                    pointerEvents: 'none',
+                    opacity: isDragging ? 0 : 0.8
+                  }
+                }, 'Drag to reposition')
               ),
+
+              // Zoom slider
+              H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '0 20px',
+                  marginBottom: 20
+                }
+              },
+                H('span', { style: { fontSize: 18 } }, '🔍'),
+                H('input', {
+                  type: 'range',
+                  min: '0.5',
+                  max: '3',
+                  step: '0.05',
+                  value: zoom,
+                  onChange: (e) => handleZoomChange(parseFloat(e.target.value)),
+                  style: {
+                    flex: 1,
+                    height: 6,
+                    borderRadius: 3,
+                    appearance: 'none',
+                    background: '#e2e8f0',
+                    cursor: 'pointer'
+                  }
+                }),
+                H('span', { style: { fontSize: 18 } }, '🔎')
+              ),
+
+              // Hidden canvas for cropping
               H('canvas', {
                 ref: canvasRef,
                 style: { display: 'none' }
               }),
-              H('div', { style: { display: 'flex', gap: 8 } },
+
+              // Action buttons
+              H('div', { style: { display: 'flex', gap: 12 } },
                 H('button', {
-                  className: 'btn',
                   onClick: () => {
                     setPreviewUrl(null);
                     setSelectedFile(null);
+                    setZoom(1);
+                    setPosition({ x: 0, y: 0 });
                   },
                   disabled: uploading,
-                  style: { flex: 1 }
+                  style: {
+                    flex: 1,
+                    padding: '14px 20px',
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: uploading ? 'not-allowed' : 'pointer'
+                  }
                 }, 'Cancel'),
                 H('button', {
-                  className: 'btn-primary',
                   onClick: handleUpload,
                   disabled: uploading,
-                  style: { flex: 1 }
-                }, uploading ? 'Uploading...' : 'Upload')
+                  style: {
+                    flex: 1,
+                    padding: '14px 20px',
+                    background: uploading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: uploading ? 'not-allowed' : 'pointer'
+                  }
+                }, uploading ? 'Uploading...' : 'Save Photo')
               )
             )
+          ),
+
+          // Border customization (only show when not cropping)
+          !previewUrl && avatarBorderColor !== undefined && avatarBorderStyle !== undefined && H('div', {
+            style: {
+              padding: '16px 20px',
+              borderTop: '1px solid #e5e7eb',
+              background: '#f8fafc'
+            }
+          },
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12
+              }
+            },
+              H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Border Style'),
+              !isPremium && H('span', {
+                style: {
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  background: '#dbeafe',
+                  color: '#1e40af',
+                  borderRadius: 10,
+                  fontWeight: 600
+                }
+              }, '✨ Premium')
+            ),
+            H('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+                marginBottom: 12
+              }
+            },
+              H('label', { style: { display: 'grid', gap: 4 } },
+                H('span', { style: { fontSize: 12, color: '#64748b' } }, 'Color'),
+                H('input', {
+                  type: 'color',
+                  value: borderColorValue,
+                  onChange: (e) => onChangeBorderColor?.(e.target.value),
+                  disabled: !isPremium,
+                  style: {
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    cursor: isPremium ? 'pointer' : 'not-allowed',
+                    opacity: isPremium ? 1 : 0.5
+                  }
+                })
+              ),
+              H('label', { style: { display: 'grid', gap: 4 } },
+                H('span', { style: { fontSize: 12, color: '#64748b' } }, 'Style'),
+                H('select', {
+                  value: borderStyleValue,
+                  onChange: (e) => onChangeBorderStyle?.(e.target.value),
+                  disabled: !isPremium,
+                  style: {
+                    width: '100%',
+                    height: 40,
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    padding: '0 12px',
+                    cursor: isPremium ? 'pointer' : 'not-allowed',
+                    opacity: isPremium ? 1 : 0.5
+                  }
+                },
+                  H('option', { value: 'solid' }, 'Solid'),
+                  H('option', { value: 'dashed' }, 'Dashed')
+                )
+              )
+            ),
+            onSave && H('button', {
+              onClick: async () => {
+                await onSave();
+                onClose?.();
+              },
+              disabled: !isPremium,
+              style: {
+                width: '100%',
+                padding: '12px',
+                background: isPremium ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : '#e2e8f0',
+                color: isPremium ? '#fff' : '#94a3b8',
+                border: 'none',
+                borderRadius: 10,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: isPremium ? 'pointer' : 'not-allowed'
+              }
+            }, 'Save Border Style')
           )
         )
       );

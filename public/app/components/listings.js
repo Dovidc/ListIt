@@ -2455,6 +2455,7 @@
                       else if (monthsSince >= 6) tier = 'Gold';
                       else if (monthsSince >= 3) tier = 'Silver';
 
+                      const [showTooltip, setShowTooltip] = React.useState(false);
                       const tooltipText = `${tier} Supporter - ${durationText}`;
 
                       // Color schemes for each tier (with blended colors for mid-tiers)
@@ -2734,42 +2735,91 @@
                         Obsidian: 'rgba(69, 90, 100, 0.6)'
                       };
 
-                      return H('div', {
-                        className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
-                        title: tooltipText,
-                        style: { display: 'inline-flex' }
-                      },
-                        badgeSVGs[tier]
+                      return H('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
+                        H('div', {
+                          className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
+                          title: tooltipText,
+                          onClick: (e) => { e.stopPropagation(); setShowTooltip(!showTooltip); },
+                          onMouseEnter: () => setShowTooltip(true),
+                          onMouseLeave: () => setShowTooltip(false)
+                        },
+                          badgeSVGs[tier]
+                        ),
+                        showTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: `1px solid ${glowColors[tier]}`
+                          }
+                        }, tooltipText)
                       );
                     })(),
                     // Beta Tester Badge (separate from supporter badge)
-                    sellerInfo?.beta_tester && H('div', {
-                      className: 'beta-tester-badge',
-                      title: 'Beta Tester',
-                      style: { display: 'inline-flex' }
-                    },
-                      H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                        H('defs', null,
-                          H('linearGradient', { id: 'betaBgGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                            H('stop', { offset: '0%', stopColor: '#1a237e' }),
-                            H('stop', { offset: '50%', stopColor: '#0d1442' }),
-                            H('stop', { offset: '100%', stopColor: '#1a237e' })
+                    sellerInfo?.beta_tester && (() => {
+                      const [showBetaTooltip, setShowBetaTooltip] = React.useState(false);
+                      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+                        H('div', {
+                          className: 'beta-tester-badge',
+                          title: 'Beta Tester',
+                          onClick: (e) => { e.stopPropagation(); setShowBetaTooltip(!showBetaTooltip); },
+                          onMouseEnter: () => setShowBetaTooltip(true),
+                          onMouseLeave: () => setShowBetaTooltip(false)
+                        },
+                          H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                            H('defs', null,
+                              H('linearGradient', { id: 'betaBgGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                                H('stop', { offset: '0%', stopColor: '#1a237e' }),
+                                H('stop', { offset: '50%', stopColor: '#0d1442' }),
+                                H('stop', { offset: '100%', stopColor: '#1a237e' })
+                              )
+                            ),
+                            // Dark blue circle with gold outline
+                            H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '3' }),
+                            // Beta symbol (β) in gold
+                            H('text', {
+                              x: '50',
+                              y: '62',
+                              textAnchor: 'middle',
+                              fontSize: '38',
+                              fontWeight: 'bold',
+                              fill: '#ffd700',
+                              fontFamily: 'serif'
+                            }, 'β')
                           )
                         ),
-                        // Dark blue circle with gold outline
-                        H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '3' }),
-                        // Beta symbol (β) in gold
-                        H('text', {
-                          x: '50',
-                          y: '62',
-                          textAnchor: 'middle',
-                          fontSize: '38',
-                          fontWeight: 'bold',
-                          fill: '#ffd700',
-                          fontFamily: 'serif'
-                        }, 'β')
-                      )
-                    )
+                        showBetaTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: '1px solid rgba(255, 215, 0, 0.6)'
+                          }
+                        }, 'Beta Tester')
+                      );
+                    })()
                   ),
                   sellerJoinedText && H('div', {
                     style: { fontSize: 13, color: '#cbd5f5' }
