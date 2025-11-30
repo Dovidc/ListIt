@@ -2876,8 +2876,8 @@
                         }, 'Beta Tester')
                       );
                     })(),
-                    // Admin Badge
-                    sellerInfo?.is_admin && (() => {
+                    // Admin Badge (cosmetic only, separate from actual admin privileges)
+                    sellerInfo?.admin_badge && (() => {
                       const [showAdminTooltip, setShowAdminTooltip] = React.useState(false);
                       const adminBadgeRef = React.useRef(null);
 
