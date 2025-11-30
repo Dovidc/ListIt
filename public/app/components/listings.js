@@ -171,6 +171,293 @@
       return 'Just now';
     }
 
+    // --- Tiered Supporter Badge (Bronze -> Unobtainium) ---
+    function TieredSupporterBadge({ since, size = 20, onClick }) {
+      const [showTooltip, setShowTooltip] = useState(false);
+      const badgeRef = useRef(null);
+
+      // Calculate tier based on months since subscription
+      const sinceDate = since ? new Date(since) : null;
+      const now = Date.now();
+      const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
+      const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
+      const yearsSince = Math.floor(monthsSince / 12);
+      const remainingMonths = monthsSince % 12;
+
+      let durationText = '';
+      if (yearsSince > 0) {
+        durationText = yearsSince === 1
+          ? `1 year${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`
+          : `${yearsSince} years${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`;
+      } else {
+        durationText = monthsSince === 1 ? '1 month' : `${monthsSince} months`;
+      }
+
+      let tier = 'Bronze';
+      if (monthsSince >= 72) tier = 'Unobtainium';
+      else if (monthsSince >= 60) tier = 'Amethyst';
+      else if (monthsSince >= 36) tier = 'Sapphire';
+      else if (monthsSince >= 24) tier = 'Diamond';
+      else if (monthsSince >= 12) tier = 'Platinum';
+      else if (monthsSince >= 6) tier = 'Gold';
+      else if (monthsSince >= 3) tier = 'Silver';
+
+      const tooltipText = `${tier} Supporter - ${durationText}`;
+
+      // Click outside to dismiss
+      useEffect(() => {
+        if (!showTooltip) return;
+        const handleClickOutside = (e) => {
+          if (badgeRef.current && !badgeRef.current.contains(e.target)) {
+            setShowTooltip(false);
+          }
+        };
+        document.addEventListener('click', handleClickOutside, true);
+        return () => document.removeEventListener('click', handleClickOutside, true);
+      }, [showTooltip]);
+
+      // Color schemes for each tier
+      const tierColors = {
+        Bronze: { primary: '#cd7f32', secondary: '#b87333', accent: '#daa06d', dark: '#8b5a2b' },
+        Silver: { primary: '#c0c0c0', secondary: '#cd7f32', accent: '#d8d8d8', dark: '#808080' },
+        Gold: { primary: '#ffd700', secondary: '#ffb800', accent: '#ffed4e', dark: '#b8860b' },
+        Platinum: { primary: '#00bcd4', secondary: '#ffd700', accent: '#4dd0e1', dark: '#0097a7' },
+        Diamond: { primary: '#9c27b0', secondary: '#7b1fa2', accent: '#ce93d8', dark: '#6a1b9a' },
+        Sapphire: { primary: '#1565c0', secondary: '#9c27b0', accent: '#42a5f5', dark: '#0d47a1' },
+        Amethyst: { primary: '#7b1fa2', secondary: '#4a148c', accent: '#ba68c8', dark: '#4a148c' },
+        Unobtainium: { primary: '#00fff7', secondary: '#ff00ff', accent: '#ffff00', dark: '#0a0a1a' }
+      };
+
+      const colors = tierColors[tier];
+
+      // Helper to create the core location pin
+      const createPin = (primary, secondary, accent, dark, tierName) => [
+        H('path', {
+          key: 'pin-body',
+          d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
+          fill: `url(#pinGrad-${tierName})`,
+          stroke: dark,
+          strokeWidth: '2'
+        }),
+        H('circle', { key: 'pin-circle', cx: '50', cy: '42', r: '14', fill: accent, stroke: dark, strokeWidth: '1.5' }),
+        H('text', {
+          key: 'pin-t',
+          x: '50',
+          y: '47',
+          textAnchor: 'middle',
+          fontSize: '12',
+          fontWeight: 'bold',
+          fill: dark,
+          opacity: '0.25'
+        }, 'T')
+      ];
+
+      // Badge SVGs for each tier
+      const getBadgeSVG = () => {
+        const gradientDef = H('defs', { key: 'defs' },
+          H('linearGradient', { id: `pinGrad-${tier}`, x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            H('stop', { offset: '0%', stopColor: colors.accent }),
+            H('stop', { offset: '50%', stopColor: colors.primary }),
+            H('stop', { offset: '100%', stopColor: colors.secondary })
+          )
+        );
+
+        if (tier === 'Bronze') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '3', opacity: '0.6' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Silver') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1', strokeDasharray: '8 4', opacity: '0.5' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Gold') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
+            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.6' }),
+            H('circle', { cx: '50', cy: '4', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '96', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '50', cy: '96', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '4', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Platinum') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', opacity: '0.5' }),
+            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeDasharray: '4 4', opacity: '0.4' }),
+            H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
+              H('circle', { cx: '50', cy: '4', r: '2.5', fill: colors.primary }),
+              H('circle', { cx: '90', cy: '27', r: '2', fill: colors.secondary }),
+              H('circle', { cx: '90', cy: '73', r: '2', fill: colors.accent }),
+              H('circle', { cx: '50', cy: '96', r: '2.5', fill: colors.primary }),
+              H('circle', { cx: '10', cy: '73', r: '2', fill: colors.secondary }),
+              H('circle', { cx: '10', cy: '27', r: '2', fill: colors.accent })
+            ),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Diamond') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('polygon', { points: '50,2 79,14 93,43 93,57 79,86 50,98 21,86 7,57 7,43 21,14', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('polygon', { points: '50,8 73,18 85,43 85,57 73,82 50,92 27,82 15,57 15,43 27,18', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.5' }),
+            H('circle', { cx: '50', cy: '2', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '93', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '50', cy: '98', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '7', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Sapphire') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '44', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('circle', { cx: '50', cy: '50', r: '40', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.4' }),
+            H('path', { d: 'M50 2 Q55 8 50 14 Q45 8 50 2', fill: colors.primary, opacity: '0.7' }),
+            H('path', { d: 'M98 50 Q92 55 86 50 Q92 45 98 50', fill: colors.primary, opacity: '0.7' }),
+            H('path', { d: 'M50 98 Q45 92 50 86 Q55 92 50 98', fill: colors.primary, opacity: '0.7' }),
+            H('path', { d: 'M2 50 Q8 45 14 50 Q8 55 2 50', fill: colors.primary, opacity: '0.7' }),
+            H('circle', { cx: '50', cy: '3', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '97', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '50', cy: '97', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '3', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        if (tier === 'Amethyst') {
+          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
+            gradientDef,
+            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.5' }),
+            H('polygon', { points: '50,0 53,12 50,8 47,12', fill: colors.primary }),
+            H('polygon', { points: '100,50 88,53 92,50 88,47', fill: colors.primary }),
+            H('polygon', { points: '50,100 47,88 50,92 53,88', fill: colors.primary }),
+            H('polygon', { points: '0,50 12,47 8,50 12,53', fill: colors.primary }),
+            H('circle', { cx: '50', cy: '0', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '100', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '50', cy: '100', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '0', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          );
+        }
+
+        // Unobtainium - the legendary tier
+        return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size, className: 'unobtainium-badge' },
+          H('defs', null,
+            H('linearGradient', { id: 'pinGrad-Unobtainium', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#00fff7' }),
+              H('stop', { offset: '25%', stopColor: '#ff00ff' }),
+              H('stop', { offset: '50%', stopColor: '#ffff00' }),
+              H('stop', { offset: '75%', stopColor: '#00ff00' }),
+              H('stop', { offset: '100%', stopColor: '#00fff7' })
+            ),
+            H('linearGradient', { id: 'unobtainiumRing', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#ff0080' }),
+              H('stop', { offset: '33%', stopColor: '#00ffff' }),
+              H('stop', { offset: '66%', stopColor: '#ffff00' }),
+              H('stop', { offset: '100%', stopColor: '#ff0080' })
+            ),
+            H('radialGradient', { id: 'unobtainiumGlow', cx: '50%', cy: '50%', r: '50%' },
+              H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0.8' }),
+              H('stop', { offset: '50%', stopColor: '#00fff7', stopOpacity: '0.4' }),
+              H('stop', { offset: '100%', stopColor: '#ff00ff', stopOpacity: '0' })
+            ),
+            H('radialGradient', { id: 'unobtainiumCore', cx: '30%', cy: '30%', r: '70%' },
+              H('stop', { offset: '0%', stopColor: '#ffffff' }),
+              H('stop', { offset: '30%', stopColor: '#e0ffff' }),
+              H('stop', { offset: '60%', stopColor: '#00fff7' }),
+              H('stop', { offset: '100%', stopColor: '#0088aa' })
+            )
+          ),
+          H('circle', { cx: '50', cy: '50', r: '44', fill: 'url(#unobtainiumGlow)', className: 'badge-sparkle-particle' }),
+          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#unobtainiumRing)', strokeWidth: '3', className: 'unobtainium-ring-outer' }),
+          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: '#00fff7', strokeWidth: '1.5', strokeDasharray: '6 3', opacity: '0.7', className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } }),
+          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#ff00ff', strokeWidth: '1', opacity: '0.5', className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px', animationDirection: 'reverse' } }),
+          H('g', { className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } },
+            H('circle', { cx: '50', cy: '0', r: '3', fill: '#ff0080', className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '100', cy: '50', r: '3', fill: '#00ff00', className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '50', cy: '100', r: '3', fill: '#0080ff', className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '0', cy: '50', r: '3', fill: '#ff00ff', className: 'badge-sparkle-particle' })
+          ),
+          H('path', {
+            d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
+            fill: 'url(#pinGrad-Unobtainium)',
+            stroke: '#0a0a1a',
+            strokeWidth: '1.5'
+          }),
+          H('circle', { cx: '50', cy: '42', r: '14', fill: 'url(#unobtainiumCore)', stroke: '#ffffff', strokeWidth: '1.5' }),
+          H('circle', { cx: '45', cy: '38', r: '4', fill: '#ffffff', opacity: '0.7' }),
+          H('text', { x: '50', y: '47', textAnchor: 'middle', fontSize: '12', fontWeight: 'bold', fill: '#0a0a1a', opacity: '0.4' }, 'T')
+        );
+      };
+
+      const glowColors = {
+        Bronze: 'rgba(205, 127, 50, 0.6)',
+        Silver: 'rgba(192, 192, 192, 0.6)',
+        Gold: 'rgba(255, 215, 0, 0.6)',
+        Platinum: 'rgba(0, 188, 212, 0.6)',
+        Diamond: 'rgba(156, 39, 176, 0.6)',
+        Sapphire: 'rgba(21, 101, 192, 0.6)',
+        Amethyst: 'rgba(123, 31, 162, 0.6)',
+        Unobtainium: 'rgba(0, 255, 247, 0.8)'
+      };
+
+      const handleClick = (e) => {
+        e.stopPropagation();
+        setShowTooltip(true);
+        if (onClick) onClick(e);
+      };
+
+      return H('div', {
+        ref: badgeRef,
+        style: { display: 'inline-flex', position: 'relative', cursor: 'pointer' },
+        onClick: handleClick
+      },
+        H('div', {
+          className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
+          title: tooltipText,
+          style: showTooltip ? { transform: 'scale(1.25)', transition: 'transform 0.15s ease' } : { transition: 'transform 0.15s ease' }
+        },
+          getBadgeSVG()
+        ),
+        showTooltip && H('div', {
+          style: {
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            marginBottom: 8,
+            background: 'rgba(0, 0, 0, 0.9)',
+            color: '#fff',
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 11,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            border: `1px solid ${glowColors[tier]}`
+          }
+        }, tooltipText)
+      );
+    }
+
     async function fetchCoordsAndReverseInternal() {
       if (typeof fetchCoordsAndReverse === 'function') {
         return fetchCoordsAndReverse();
@@ -2003,11 +2290,9 @@
           style: { display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }
         },
           sellerPill,
-          H(SupporterBadge, {
-            size: 'sm',
+          H(TieredSupporterBadge, {
             since: supporterData.since,
-            badge: supporterData.badge,
-            onClick: handleSupporterBadgeClick
+            size: 18
           })
         );
       };

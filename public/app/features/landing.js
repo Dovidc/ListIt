@@ -65,7 +65,7 @@
                     inset: '-50%',
                     width: '200%',
                     height: '200%',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                     zIndex: 0,
                     transform: 'rotate(-12deg)',
                     display: 'flex',
@@ -243,20 +243,20 @@
                 padding: '14px',
                 borderRadius: '12px',
                 border: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                 color: '#fff',
                 fontSize: '16px',
                 fontWeight: '700',
                 cursor: loading ? 'not-allowed' : 'pointer',
                 opacity: loading ? 0.8 : 1,
                 marginTop: '8px',
-                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
             };
 
             const linkBtnStyle = {
                 background: 'none',
                 border: 'none',
-                color: '#667eea',
+                color: '#2563eb',
                 fontWeight: '600',
                 cursor: 'pointer',
                 padding: 0,
@@ -302,24 +302,60 @@
                             marginBottom: '32px'
                         }
                     },
-                        H('img', {
-                            src: '/android-chrome-512x512.png',
-                            style: {
-                                width: 72,
-                                height: 72,
-                                borderRadius: 18,
-                                marginBottom: 20,
-                                objectFit: 'cover',
-                                boxShadow: '0 10px 25px -5px rgba(102, 126, 234, 0.4)'
-                            }
-                        }),
+                        H('svg', {
+                            viewBox: '0 0 100 100',
+                            width: 72,
+                            height: 72,
+                            style: { marginBottom: 16 },
+                            xmlns: 'http://www.w3.org/2000/svg'
+                        },
+                            H('defs', null,
+                                H('linearGradient', { id: 'bagGradient', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                                    H('stop', { offset: '0%', stopColor: '#3b82f6' }),
+                                    H('stop', { offset: '100%', stopColor: '#1e3a8a' })
+                                ),
+                                H('linearGradient', { id: 'pinGradient', x1: '0%', y1: '0%', x2: '50%', y2: '100%' },
+                                    H('stop', { offset: '0%', stopColor: '#60a5fa' }),
+                                    H('stop', { offset: '50%', stopColor: '#2563eb' }),
+                                    H('stop', { offset: '100%', stopColor: '#1e40af' })
+                                )
+                            ),
+                            // Shopping bag body - wider, more rectangular
+                            H('path', {
+                                d: 'M18 28 C16 28 14 30 14 32 L14 88 C14 93 18 97 23 97 L77 97 C82 97 86 93 86 88 L86 32 C86 30 84 28 82 28 Z',
+                                fill: 'url(#bagGradient)'
+                            }),
+                            // Bag handles - rope style coming from inside
+                            H('path', {
+                                d: 'M32 28 L32 20 C32 12 40 6 50 6 C60 6 68 12 68 20 L68 28',
+                                fill: 'none',
+                                stroke: '#1e3a8a',
+                                strokeWidth: '4',
+                                strokeLinecap: 'round'
+                            }),
+                            // Pin inside bag - moved down
+                            H('path', {
+                                d: 'M50 38 C40 38 33 46 33 55 C33 64 48 81 50 83 C52 81 67 64 67 55 C67 46 60 38 50 38 Z',
+                                fill: '#ffffff'
+                            }),
+                            // Blue T letter - moved down
+                            H('text', {
+                                x: '50',
+                                y: '63',
+                                textAnchor: 'middle',
+                                fontSize: '20',
+                                fontWeight: 'bold',
+                                fill: '#1e3a8a',
+                                fontFamily: 'system-ui, -apple-system, sans-serif'
+                            }, 'T')
+                        ),
                         H('h1', {
                             style: {
                                 fontSize: '30px',
                                 fontWeight: '800',
                                 margin: '0 0 8px',
                                 letterSpacing: '-0.02em',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
                                 WebkitBackgroundClip: 'text',
                                 WebkitTextFillColor: 'transparent',
                                 backgroundClip: 'text'
@@ -424,7 +460,7 @@
                                 type: 'submit',
                                 style: btnStyle,
                                 disabled: loading
-                            }, loading ? 'Please wait...' : 'Continue'),
+                            }, loading ? 'Please wait...' : 'Sign In'),
 
                             H('div', {
                                 style: {

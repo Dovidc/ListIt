@@ -1714,25 +1714,6 @@
                 fontWeight: 'bold'
               }
             }, '✕'),
-            H('div', { style: { display: 'grid', gap: 8, marginBottom: 20 } },
-              H('h2', {
-                style: {
-                  fontSize: 20,
-                  fontWeight: 800,
-                  margin: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8
-                }
-              },
-                H(NotificationIcon, { width: 22, height: 22 }),
-                'Notification Settings'
-              ),
-              H('p', {
-                className: 'muted',
-                style: { fontSize: 13, margin: 0 }
-              }, 'Control when you receive push notifications.')
-            ),
             H('div', { style: { display: 'grid', gap: 16 } },
               H('label', { className: 'toggle-card', style: { padding: '12px 14px', width: '100%' } },
                 H('input', {
