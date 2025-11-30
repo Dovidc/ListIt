@@ -2382,9 +2382,9 @@
                       }
 
                       let tier = 'Bronze';
-                      if (monthsSince >= 72) tier = 'Opal';
-                      else if (monthsSince >= 60) tier = 'Ruby';
-                      else if (monthsSince >= 36) tier = 'Emerald';
+                      if (monthsSince >= 72) tier = 'Obsidian';
+                      else if (monthsSince >= 60) tier = 'Amethyst';
+                      else if (monthsSince >= 36) tier = 'Sapphire';
                       else if (monthsSince >= 24) tier = 'Diamond';
                       else if (monthsSince >= 12) tier = 'Platinum';
                       else if (monthsSince >= 6) tier = 'Gold';
@@ -2400,9 +2400,9 @@
                         Gold: { primary: '#ffd700', secondary: '#ffb800', accent: '#ffed4e', dark: '#b8860b' },
                         Platinum: { primary: '#00bcd4', secondary: '#ffd700', accent: '#4dd0e1', dark: '#0097a7' }, // Platinum-Gold blend
                         Diamond: { primary: '#9c27b0', secondary: '#7b1fa2', accent: '#ce93d8', dark: '#6a1b9a' },
-                        Emerald: { primary: '#4caf50', secondary: '#9c27b0', accent: '#81c784', dark: '#2e7d32' }, // Emerald-Diamond blend
-                        Ruby: { primary: '#e53935', secondary: '#c62828', accent: '#ef5350', dark: '#b71c1c' },
-                        Opal: { primary: '#80deea', secondary: '#f8bbd9', accent: '#b2fab4', dark: '#4dd0e1' } // Rainbow blend
+                        Sapphire: { primary: '#1565c0', secondary: '#9c27b0', accent: '#42a5f5', dark: '#0d47a1' }, // Sapphire-Diamond blend
+                        Amethyst: { primary: '#7b1fa2', secondary: '#4a148c', accent: '#ba68c8', dark: '#4a148c' },
+                        Obsidian: { primary: '#37474f', secondary: '#263238', accent: '#78909c', dark: '#102027' } // Dark volcanic glass
                       };
 
                       const colors = tierColors[tier];
@@ -2538,10 +2538,10 @@
                           ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
                         ),
 
-                        // Emerald: Pin + organic ring with leaf-like protrusions (diamond-emerald blend)
-                        Emerald: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                        // Sapphire: Pin + organic ring with wave-like protrusions (diamond-sapphire blend)
+                        Sapphire: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
                           H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Emerald', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                            H('linearGradient', { id: 'pinGrad-Sapphire', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
                               H('stop', { offset: '0%', stopColor: colors.accent }),
                               H('stop', { offset: '50%', stopColor: colors.primary }),
                               H('stop', { offset: '100%', stopColor: colors.secondary })
@@ -2566,10 +2566,10 @@
                           ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
                         ),
 
-                        // Ruby: Pin + ring with 8 ray/spike elements
-                        Ruby: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                        // Amethyst: Pin + ring with 8 ray/spike elements
+                        Amethyst: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
                           H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Ruby', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                            H('linearGradient', { id: 'pinGrad-Amethyst', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
                               H('stop', { offset: '0%', stopColor: colors.accent }),
                               H('stop', { offset: '50%', stopColor: colors.primary }),
                               H('stop', { offset: '100%', stopColor: colors.secondary })
@@ -2594,68 +2594,67 @@
                           ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
                         ),
 
-                        // Opal: Most ornate - multiple rings, many particles, rainbow blend
-                        Opal: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                        // Obsidian: Most ornate - dark volcanic glass with subtle shimmer
+                        Obsidian: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
                           H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Opal', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: '#80deea' }),
-                              H('stop', { offset: '33%', stopColor: '#f8bbd9' }),
-                              H('stop', { offset: '66%', stopColor: '#b2fab4' }),
-                              H('stop', { offset: '100%', stopColor: '#ffe0b2' })
+                            H('linearGradient', { id: 'pinGrad-Obsidian', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#546e7a' }),
+                              H('stop', { offset: '50%', stopColor: '#37474f' }),
+                              H('stop', { offset: '100%', stopColor: '#263238' })
                             ),
-                            H('linearGradient', { id: 'opalRing1', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: '#80deea' }),
-                              H('stop', { offset: '50%', stopColor: '#f8bbd9' }),
-                              H('stop', { offset: '100%', stopColor: '#b2fab4' })
+                            H('linearGradient', { id: 'obsidianRing1', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#78909c' }),
+                              H('stop', { offset: '50%', stopColor: '#455a64' }),
+                              H('stop', { offset: '100%', stopColor: '#37474f' })
                             ),
-                            H('linearGradient', { id: 'opalRing2', x1: '100%', y1: '0%', x2: '0%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: '#ffe0b2' }),
-                              H('stop', { offset: '50%', stopColor: '#e1bee7' }),
-                              H('stop', { offset: '100%', stopColor: '#b3e5fc' })
+                            H('linearGradient', { id: 'obsidianShine', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                              H('stop', { offset: '0%', stopColor: '#90a4ae' }),
+                              H('stop', { offset: '50%', stopColor: '#607d8b' }),
+                              H('stop', { offset: '100%', stopColor: '#455a64' })
                             )
                           ),
-                          // Triple rings
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#opalRing1)', strokeWidth: '2' }),
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: 'url(#opalRing2)', strokeWidth: '1.5', strokeDasharray: '6 3' }),
-                          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: 'url(#opalRing1)', strokeWidth: '1', opacity: '0.6' }),
-                          // Outer rotating particles (rainbow colors)
+                          // Triple dark rings
+                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#obsidianRing1)', strokeWidth: '2.5' }),
+                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: 'url(#obsidianShine)', strokeWidth: '1.5', strokeDasharray: '8 4' }),
+                          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#546e7a', strokeWidth: '1', opacity: '0.5' }),
+                          // Outer rotating particles (subtle silver/white)
                           H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
-                            H('circle', { cx: '50', cy: '2', r: '3', fill: '#80deea' }),
-                            H('circle', { cx: '83', cy: '17', r: '2', fill: '#f8bbd9' }),
-                            H('circle', { cx: '98', cy: '50', r: '3', fill: '#b2fab4' }),
-                            H('circle', { cx: '83', cy: '83', r: '2', fill: '#ffe0b2' }),
-                            H('circle', { cx: '50', cy: '98', r: '3', fill: '#e1bee7' }),
-                            H('circle', { cx: '17', cy: '83', r: '2', fill: '#b3e5fc' }),
-                            H('circle', { cx: '2', cy: '50', r: '3', fill: '#ffccbc' }),
-                            H('circle', { cx: '17', cy: '17', r: '2', fill: '#c8e6c9' })
+                            H('circle', { cx: '50', cy: '2', r: '2.5', fill: '#90a4ae' }),
+                            H('circle', { cx: '83', cy: '17', r: '2', fill: '#78909c' }),
+                            H('circle', { cx: '98', cy: '50', r: '2.5', fill: '#b0bec5' }),
+                            H('circle', { cx: '83', cy: '83', r: '2', fill: '#78909c' }),
+                            H('circle', { cx: '50', cy: '98', r: '2.5', fill: '#90a4ae' }),
+                            H('circle', { cx: '17', cy: '83', r: '2', fill: '#78909c' }),
+                            H('circle', { cx: '2', cy: '50', r: '2.5', fill: '#b0bec5' }),
+                            H('circle', { cx: '17', cy: '17', r: '2', fill: '#78909c' })
                           ),
-                          // Inner rotating particles (opposite direction)
+                          // Inner rotating particles (opposite direction - subtle sparkle)
                           H('g', { className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } },
-                            H('circle', { cx: '50', cy: '10', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle' }),
-                            H('circle', { cx: '78', cy: '25', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.3s' } }),
-                            H('circle', { cx: '90', cy: '50', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.6s' } }),
-                            H('circle', { cx: '78', cy: '75', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.9s' } }),
-                            H('circle', { cx: '50', cy: '90', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.2s' } }),
-                            H('circle', { cx: '22', cy: '75', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } }),
-                            H('circle', { cx: '10', cy: '50', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.8s' } }),
-                            H('circle', { cx: '22', cy: '25', r: '1.5', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '2.1s' } })
+                            H('circle', { cx: '50', cy: '10', r: '1.5', fill: '#eceff1', className: 'badge-sparkle-particle' }),
+                            H('circle', { cx: '78', cy: '25', r: '1.5', fill: '#cfd8dc', className: 'badge-sparkle-particle', style: { animationDelay: '0.3s' } }),
+                            H('circle', { cx: '90', cy: '50', r: '1.5', fill: '#eceff1', className: 'badge-sparkle-particle', style: { animationDelay: '0.6s' } }),
+                            H('circle', { cx: '78', cy: '75', r: '1.5', fill: '#cfd8dc', className: 'badge-sparkle-particle', style: { animationDelay: '0.9s' } }),
+                            H('circle', { cx: '50', cy: '90', r: '1.5', fill: '#eceff1', className: 'badge-sparkle-particle', style: { animationDelay: '1.2s' } }),
+                            H('circle', { cx: '22', cy: '75', r: '1.5', fill: '#cfd8dc', className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } }),
+                            H('circle', { cx: '10', cy: '50', r: '1.5', fill: '#eceff1', className: 'badge-sparkle-particle', style: { animationDelay: '1.8s' } }),
+                            H('circle', { cx: '22', cy: '25', r: '1.5', fill: '#cfd8dc', className: 'badge-sparkle-particle', style: { animationDelay: '2.1s' } })
                           ),
-                          // Pin with rainbow gradient
+                          // Pin with dark gradient
                           H('path', {
                             d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-                            fill: 'url(#pinGrad-Opal)',
-                            stroke: '#4dd0e1',
+                            fill: 'url(#pinGrad-Obsidian)',
+                            stroke: '#263238',
                             strokeWidth: '2'
                           }),
-                          H('circle', { cx: '50', cy: '42', r: '14', fill: '#fff', stroke: '#4dd0e1', strokeWidth: '1.5', opacity: '0.9' }),
+                          H('circle', { cx: '50', cy: '42', r: '14', fill: '#78909c', stroke: '#455a64', strokeWidth: '1.5' }),
                           H('text', {
                             x: '50',
                             y: '47',
                             textAnchor: 'middle',
                             fontSize: '12',
                             fontWeight: 'bold',
-                            fill: '#4dd0e1',
-                            opacity: '0.25'
+                            fill: '#263238',
+                            opacity: '0.3'
                           }, 'T')
                         )
                       };
@@ -2666,9 +2665,9 @@
                         Gold: 'rgba(255, 215, 0, 0.6)',
                         Platinum: 'rgba(0, 188, 212, 0.6)',
                         Diamond: 'rgba(156, 39, 176, 0.6)',
-                        Emerald: 'rgba(76, 175, 80, 0.6)',
-                        Ruby: 'rgba(229, 57, 53, 0.6)',
-                        Opal: 'rgba(128, 222, 234, 0.6)'
+                        Sapphire: 'rgba(21, 101, 192, 0.6)',
+                        Amethyst: 'rgba(123, 31, 162, 0.6)',
+                        Obsidian: 'rgba(69, 90, 100, 0.6)'
                       };
 
                       return H('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
@@ -2699,6 +2698,82 @@
                             border: `1px solid ${glowColors[tier]}`
                           }
                         }, tooltipText)
+                      );
+                    })(),
+                    // Beta Tester Badge (separate from supporter badge)
+                    sellerInfo?.beta_tester && (() => {
+                      const [showBetaTooltip, setShowBetaTooltip] = React.useState(false);
+                      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+                        H('div', {
+                          className: 'beta-tester-badge',
+                          title: 'Beta Tester',
+                          onMouseEnter: () => setShowBetaTooltip(true),
+                          onMouseLeave: () => setShowBetaTooltip(false)
+                        },
+                          H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                            H('defs', null,
+                              H('linearGradient', { id: 'betaBgGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                                H('stop', { offset: '0%', stopColor: '#1a237e' }),
+                                H('stop', { offset: '50%', stopColor: '#0d1442' }),
+                                H('stop', { offset: '100%', stopColor: '#1a237e' })
+                              ),
+                              H('linearGradient', { id: 'betaGoldGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                                H('stop', { offset: '0%', stopColor: '#ffd700' }),
+                                H('stop', { offset: '50%', stopColor: '#ffb800' }),
+                                H('stop', { offset: '100%', stopColor: '#ffd700' })
+                              )
+                            ),
+                            // Outer gold lace ring
+                            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#betaGoldGrad)', strokeWidth: '3' }),
+                            // Gold lace pattern (scalloped edge)
+                            H('circle', { cx: '50', cy: '4', r: '4', fill: '#ffd700' }),
+                            H('circle', { cx: '82', cy: '18', r: '3', fill: '#ffb800' }),
+                            H('circle', { cx: '96', cy: '50', r: '4', fill: '#ffd700' }),
+                            H('circle', { cx: '82', cy: '82', r: '3', fill: '#ffb800' }),
+                            H('circle', { cx: '50', cy: '96', r: '4', fill: '#ffd700' }),
+                            H('circle', { cx: '18', cy: '82', r: '3', fill: '#ffb800' }),
+                            H('circle', { cx: '4', cy: '50', r: '4', fill: '#ffd700' }),
+                            H('circle', { cx: '18', cy: '18', r: '3', fill: '#ffb800' }),
+                            // Inner gold ring
+                            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#ffd700', strokeWidth: '1.5', opacity: '0.6' }),
+                            // Dark blue circle background
+                            H('circle', { cx: '50', cy: '50', r: '34', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '2' }),
+                            // Beta symbol (β) in gold
+                            H('text', {
+                              x: '50',
+                              y: '60',
+                              textAnchor: 'middle',
+                              fontSize: '36',
+                              fontWeight: 'bold',
+                              fill: 'url(#betaGoldGrad)',
+                              fontFamily: 'serif'
+                            }, 'β'),
+                            // Gold sparkles
+                            H('circle', { cx: '50', cy: '4', r: '2', fill: '#fff', className: 'badge-sparkle-particle' }),
+                            H('circle', { cx: '96', cy: '50', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
+                            H('circle', { cx: '50', cy: '96', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1s' } }),
+                            H('circle', { cx: '4', cy: '50', r: '2', fill: '#fff', className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } })
+                          )
+                        ),
+                        showBetaTooltip && H('div', {
+                          style: {
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: 8,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            color: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            pointerEvents: 'none',
+                            border: '1px solid rgba(255, 215, 0, 0.6)'
+                          }
+                        }, 'Beta Tester')
                       );
                     })()
                   ),

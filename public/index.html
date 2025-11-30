@@ -838,21 +838,45 @@
     .supporter-tier-badge--gold { --badge-glow: rgba(255, 200, 0, 0.5); }
     .supporter-tier-badge--platinum { --badge-glow: rgba(0, 180, 220, 0.5); }
     .supporter-tier-badge--diamond { --badge-glow: rgba(160, 100, 220, 0.5); }
-    .supporter-tier-badge--emerald { --badge-glow: rgba(0, 200, 80, 0.5); }
-    .supporter-tier-badge--ruby { --badge-glow: rgba(220, 40, 60, 0.5); }
-    .supporter-tier-badge--opal { --badge-glow: rgba(135, 180, 220, 0.5); }
+    .supporter-tier-badge--sapphire { --badge-glow: rgba(21, 101, 192, 0.5); }
+    .supporter-tier-badge--amethyst { --badge-glow: rgba(123, 31, 162, 0.5); }
+    .supporter-tier-badge--obsidian { --badge-glow: rgba(69, 90, 100, 0.5); }
 
     .supporter-tier-badge--bronze svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
     .supporter-tier-badge--silver svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
     .supporter-tier-badge--gold svg { animation: badge-glow-subtle 2.5s ease-in-out infinite, badge-pulse 4s ease-in-out infinite; }
     .supporter-tier-badge--platinum svg { animation: badge-glow-subtle 2.5s ease-in-out infinite; }
     .supporter-tier-badge--diamond svg { animation: badge-glow-subtle 2.5s ease-in-out infinite; }
-    .supporter-tier-badge--emerald svg { animation: badge-glow-subtle 2.5s ease-in-out infinite, badge-float 5s ease-in-out infinite; }
-    .supporter-tier-badge--ruby svg { animation: badge-glow-subtle 2s ease-in-out infinite; }
-    .supporter-tier-badge--opal svg { animation: opal-shift 8s ease-in-out infinite; }
+    .supporter-tier-badge--sapphire svg { animation: badge-glow-subtle 2.5s ease-in-out infinite, badge-float 5s ease-in-out infinite; }
+    .supporter-tier-badge--amethyst svg { animation: badge-glow-subtle 2s ease-in-out infinite; }
+    .supporter-tier-badge--obsidian svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
 
     .badge-sparkle-particle {
       animation: badge-sparkle 2s ease-in-out infinite;
+    }
+
+    /* Beta Tester Badge */
+    .beta-tester-badge {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      --badge-glow: rgba(255, 215, 0, 0.5);
+    }
+
+    .beta-tester-badge:hover {
+      transform: scale(1.25);
+    }
+
+    .beta-tester-badge svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      animation: badge-glow-subtle 2.5s ease-in-out infinite;
     }
 
     .badge-shimmer-effect {

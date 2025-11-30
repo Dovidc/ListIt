@@ -2088,6 +2088,8 @@ async function getUserWithStatus(userId) {
 
              supporter_tier,
 
+             beta_tester,
+
              stripe_subscription_id,
 
              subscription_status,
@@ -2159,6 +2161,8 @@ function mapUserRow(row, extra = {}) {
     supporter_since: row.supporter_since || null,
 
     supporter_tier: row.supporter_tier || null,
+
+    beta_tester: !!row.beta_tester,
 
     stripe_subscription_id: row.stripe_subscription_id || null,
 
@@ -2734,6 +2738,8 @@ app.get('/api/me', async (req, res) => {
              supporter_since,
 
              supporter_tier,
+
+             beta_tester,
 
              stripe_subscription_id,
 
@@ -4843,6 +4849,7 @@ app.get('/api/users/:userId', async (req, res) => {
              created_at,
              supporter_badge,
              supporter_since,
+             beta_tester,
              profile_picture_url,
              profile_avatar_border_color,
              profile_avatar_border_style,
@@ -4873,6 +4880,8 @@ app.get('/api/users/:userId', async (req, res) => {
       supporter_badge: user.supporter_badge || null,
 
       supporter_since: user.supporter_since || null,
+
+      beta_tester: !!user.beta_tester,
 
       profile_picture_url: user.profile_picture_url || null,
 
