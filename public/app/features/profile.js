@@ -232,6 +232,22 @@
         H('path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' }));
     }
 
+    function StarIcon(props = {}) {
+      return H('svg', Object.assign({
+        viewBox: '0 0 24 24',
+        width: 20,
+        height: 20,
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.7,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true'
+      }, props),
+        H('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }));
+    }
+
     // Default profile banner with trovelr branding
     function DefaultProfileBanner() {
       return H('svg', {
@@ -1874,21 +1890,6 @@
               H('span', { style: { fontSize: 14 } }, '⭐'),
               H('span', null, `${user.karma} Karma`)
             ),
-            showSupporterCta && H('button', {
-              className: 'btn primary',
-              type: 'button',
-              onClick: handleJoinSupporterClick,
-              style: { alignSelf: 'flex-start' }
-            }, 'Get the Trovelr supporter badge'),
-            showSupporterCta && H('span', {
-              className: 'muted',
-              style: {
-                fontSize: 12,
-                lineHeight: 1.45,
-                maxWidth: 280
-              }
-            }, 'Donate once to unlock a dazzling golden badge on every listing you share.'),
-
           )
         ),
       );
@@ -1949,6 +1950,22 @@
         }, profileHeader),
 
         H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 16px', justifyContent: 'flex-end' } },
+          // Premium/Supporter button for non-supporters
+          showSupporterCta && H('button', {
+            className: 'btn',
+            type: 'button',
+            onClick: handleJoinSupporterClick,
+            title: 'Get Premium',
+            style: {
+              ...iconButtonStyle,
+              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+              border: 'none',
+              color: '#78350f'
+            }
+          },
+            H(StarIcon, { stroke: '#78350f', fill: '#fef3c7' }),
+            H('span', { style: visuallyHidden }, 'Get Premium')
+          ),
           H('button', {
             className: 'btn',
             type: 'button',

@@ -2716,47 +2716,16 @@
                                 H('stop', { offset: '0%', stopColor: '#1a237e' }),
                                 H('stop', { offset: '50%', stopColor: '#0d1442' }),
                                 H('stop', { offset: '100%', stopColor: '#1a237e' })
-                              ),
-                              H('linearGradient', { id: 'betaGoldGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                                H('stop', { offset: '0%', stopColor: '#ffd700' }),
-                                H('stop', { offset: '50%', stopColor: '#ffb800' }),
-                                H('stop', { offset: '100%', stopColor: '#ffd700' })
                               )
                             ),
-                            // Outer gold lace - main circle
-                            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#betaGoldGrad)', strokeWidth: '2' }),
-                            // Gold lace pattern - outer scallops (16 points)
-                            H('circle', { cx: '50', cy: '2', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '69', cy: '8', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '85', cy: '22', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '93', cy: '40', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '98', cy: '50', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '93', cy: '60', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '85', cy: '78', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '69', cy: '92', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '50', cy: '98', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '31', cy: '92', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '15', cy: '78', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '7', cy: '60', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '2', cy: '50', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '7', cy: '40', r: '3', fill: '#daa520' }),
-                            H('circle', { cx: '15', cy: '22', r: '4', fill: '#ffd700' }),
-                            H('circle', { cx: '31', cy: '8', r: '3', fill: '#daa520' }),
-                            // Inner gold lace ring
-                            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#ffd700', strokeWidth: '1.5' }),
-                            // Smaller inner lace details
-                            H('circle', { cx: '50', cy: '12', r: '2', fill: '#daa520' }),
-                            H('circle', { cx: '88', cy: '50', r: '2', fill: '#daa520' }),
-                            H('circle', { cx: '50', cy: '88', r: '2', fill: '#daa520' }),
-                            H('circle', { cx: '12', cy: '50', r: '2', fill: '#daa520' }),
-                            // Dark blue circle background
-                            H('circle', { cx: '50', cy: '50', r: '32', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '2' }),
+                            // Dark blue circle with gold outline
+                            H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '3' }),
                             // Beta symbol (β) in gold
                             H('text', {
                               x: '50',
-                              y: '60',
+                              y: '62',
                               textAnchor: 'middle',
-                              fontSize: '34',
+                              fontSize: '38',
                               fontWeight: 'bold',
                               fill: '#ffd700',
                               fontFamily: 'serif'

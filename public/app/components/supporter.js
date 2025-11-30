@@ -330,48 +330,64 @@
             isPrompt
               ? H('div', { style: { display: 'grid', gap: 16 } },
                 H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
-                  'Support Trovelr with a monthly subscription and get exclusive benefits:'
+                  'Subscribe to unlock exclusive premium features:'
                 ),
-                H('div', {
-                  className: 'tier-selection',
-                  style: { display: 'grid', gap: 12, position: 'relative', zIndex: 1 }
-                },
-                  H('div', {
-                    className: 'tier-option tier-option--selected',
-                    style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: 20,
-                      border: '2px solid',
-                      borderColor: '#a0a0a0',
-                      borderRadius: 12,
-                      background: 'linear-gradient(135deg, #f5f5f5, #e8e8e8)',
-                      boxShadow: '0 4px 12px rgba(160, 160, 160, 0.2)'
-                    }
-                  },
-                    H('div', { style: { flex: 1 } },
-                      H('div', { style: { fontWeight: 800, fontSize: 20, marginBottom: 4 } }, `${premiumText}/month`),
-                      H('div', { style: { fontSize: 14, color: '#555', marginBottom: 8 } }, 'Premium platinum badge with mesmerizing shimmer'),
-                      H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Exclusive supporter features'),
-                      H('div', { style: { fontSize: 13, color: '#666' } }, '✓ Cancel anytime from your profile')
-                    ),
-                    H('span', {
-                      style: {
-                        background: 'linear-gradient(135deg, #c0c0c0, #909090)',
-                        color: 'white',
-                        padding: '6px 12px',
-                        borderRadius: 8,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                      }
-                    }, 'PLATINUM')
+                // Benefits list
+                H('div', { style: { display: 'grid', gap: 10, padding: '0 4px' } },
+                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
+                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '✨'),
+                    H('div', null,
+                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Premium Subscriber Badge'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'A shimmering badge displayed on your profile card and all your listings')
+                    )
+                  ),
+                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
+                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '🎨'),
+                    H('div', null,
+                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Profile Customization'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Upload a custom banner image to personalize your profile')
+                    )
+                  ),
+                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
+                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '⭐'),
+                    H('div', null,
+                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Award karma points to buyers when you complete a sale')
+                    )
                   )
+                ),
+                // Pricing
+                H('div', {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: 12,
+                    background: '#fafafa',
+                    marginTop: 4
+                  }
+                },
+                  H('div', null,
+                    H('div', { style: { fontWeight: 800, fontSize: 22 } }, `${premiumText}/month`),
+                    H('div', { style: { fontSize: 12, color: '#666' } }, 'Cancel anytime from your profile')
+                  ),
+                  H('span', {
+                    style: {
+                      background: 'linear-gradient(135deg, #c0c0c0, #909090)',
+                      color: 'white',
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                    }
+                  }, 'PREMIUM')
                 )
               )
               : H('p', { className: 'supporter-modal__body' },
-                'Thanks for supporting Trovelr and showing off the most exclusive badge on the platform!'
+                'Thanks for supporting Trovelr! Enjoy your premium badge and profile customization features.'
               ),
             effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
@@ -555,16 +571,10 @@
                           style: { fontSize: 13 }
                         }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
                       ),
-                      buyer.supporter_badge === 'trovelr_platinum' && H('span', {
-                        style: {
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: '#999',
-                          background: 'linear-gradient(135deg, #e8e8e8, #c0c0c0)',
-                          padding: '4px 8px',
-                          borderRadius: 4
-                        }
-                      }, 'PREMIUM')
+                      buyer.supporter_badge && H(SupporterBadge, {
+                        size: 'sm',
+                        badge: buyer.supporter_badge
+                      })
                     )
                   )
                 ),
