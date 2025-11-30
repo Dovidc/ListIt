@@ -3370,32 +3370,8 @@
             }),
             sellerJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${sellerJoinedText}`)
           ),
-          // Right side: Action buttons
-          H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-            // Message button
-            onMessage && H('button', {
-              className: 'btn primary',
-              type: 'button',
-              onClick: () => onMessage?.({ seller_id: sellerId, seller_username: sellerLabel }),
-              style: { padding: '8px 16px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }
-            },
-              H('svg', {
-                viewBox: '0 0 24 24',
-                width: 16,
-                height: 16,
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 2,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round'
-              },
-                H('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' })
-              ),
-              'Message'
-            ),
-            // Back button
-            H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '← Back')
-          )
+          // Right side: Back button
+          H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '← Back')
         ),
 
         H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
