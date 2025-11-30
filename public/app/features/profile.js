@@ -716,6 +716,14 @@
         };
       }, [imageDimensions, CROP_WIDTH, CROP_HEIGHT]);
 
+      // Calculate minimum zoom to ensure crop region stays within image bounds
+      const getMinZoom = useCallback(() => {
+        if (!imageDimensions.width || !imageDimensions.height) return 0.3;
+        const minZoomX = CROP_WIDTH / imageDimensions.width;
+        const minZoomY = CROP_HEIGHT / imageDimensions.height;
+        return Math.max(minZoomX, minZoomY);
+      }, [imageDimensions, CROP_WIDTH, CROP_HEIGHT]);
+
       const handlePointerMove = useCallback((evt) => {
         if (!isDragging) return;
         evt.preventDefault();
@@ -805,14 +813,6 @@
         reader.readAsDataURL(file);
         evt.target.value = '';
       };
-
-      // Calculate minimum zoom to ensure crop region stays within image bounds
-      const getMinZoom = useCallback(() => {
-        if (!imageDimensions.width || !imageDimensions.height) return 0.3;
-        const minZoomX = CROP_WIDTH / imageDimensions.width;
-        const minZoomY = CROP_HEIGHT / imageDimensions.height;
-        return Math.max(minZoomX, minZoomY);
-      }, [imageDimensions, CROP_WIDTH, CROP_HEIGHT]);
 
       const handleImageLoad = () => {
         if (!imageRef.current) return;
