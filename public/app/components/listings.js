@@ -2221,7 +2221,8 @@
       const karmaValue = Number.isFinite(Number(sellerInfo.karma)) ? Number(sellerInfo.karma) : null;
       const stats = [
         { label: 'Active listings', value: activeCount },
-        { label: 'Sold', value: soldCount }
+        { label: 'Sold', value: soldCount },
+        ...(karmaValue && karmaValue > 0 ? [{ label: 'Karma', value: karmaValue, isKarma: true }] : [])
       ];
       const avatarSize = 96;
       const avatarOverlap = 34;
@@ -2816,63 +2817,6 @@
                           }
                         }, 'Beta Tester')
                       );
-                    })(),
-                    // Karma badge - circle with count
-                    karmaValue && karmaValue > 0 && (() => {
-                      const [showKarmaTooltip, setShowKarmaTooltip] = React.useState(false);
-                      const isPill = karmaValue >= 100;
-                      const displayKarma = karmaValue >= 1000 ? `${(karmaValue / 1000).toFixed(1)}k` : karmaValue;
-
-                      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
-                        H('div', {
-                          onClick: (e) => { e.stopPropagation(); setShowKarmaTooltip(!showKarmaTooltip); },
-                          onMouseEnter: () => setShowKarmaTooltip(true),
-                          onMouseLeave: () => setShowKarmaTooltip(false),
-                          style: {
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minWidth: isPill ? 32 : 24,
-                            height: 24,
-                            padding: isPill ? '0 8px' : 0,
-                            background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                            borderRadius: isPill ? 12 : '50%',
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: '#fff',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
-                            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                            transition: 'transform 0.15s ease',
-                            userSelect: 'none'
-                          },
-                          onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
-                          onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
-                        }, displayKarma),
-                        showKarmaTooltip && H('div', {
-                          style: {
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            marginBottom: 8,
-                            background: 'rgba(0, 0, 0, 0.9)',
-                            color: '#fff',
-                            padding: '8px 12px',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                            zIndex: 1000,
-                            pointerEvents: 'none',
-                            border: '1px solid rgba(251, 191, 36, 0.6)',
-                            textAlign: 'center'
-                          }
-                        },
-                          H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
-                          H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
-                        )
-                      );
                     })()
                   ),
                   sellerJoinedText && H('div', {
@@ -2886,8 +2830,43 @@
                       flexWrap: 'wrap'
                     }
                   },
-                    H('span', { style: pillStyle }, `🛍️ ${activeCount} active`),
-                    H('span', { style: pillStyle }, `✅ ${soldCount} sold`)
+                    ...stats.map((stat, idx) => {
+                      let icon;
+                      if (stat.isKarma) {
+                        // Karma icon - lightning bolt
+                        icon = H('svg', {
+                          viewBox: '0 0 24 24',
+                          width: 14,
+                          height: 14,
+                          fill: 'currentColor',
+                          style: { flexShrink: 0 }
+                        },
+                          H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
+                        );
+                      } else if (stat.label === 'Active listings') {
+                        icon = '🛍️';
+                      } else if (stat.label === 'Sold') {
+                        icon = '✅';
+                      }
+
+                      return H('span', {
+                        key: idx,
+                        style: {
+                          ...pillStyle,
+                          ...(stat.isKarma ? {
+                            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
+                            border: '1px solid rgba(251, 191, 36, 0.4)',
+                            color: '#fbbf24'
+                          } : {})
+                        }
+                      },
+                        typeof icon === 'string' ? icon : icon,
+                        ' ',
+                        stat.value,
+                        ' ',
+                        stat.isKarma ? 'karma' : (stat.label === 'Active listings' ? 'active' : 'sold')
+                      );
+                    })
                   )
                 ),
                 H('div', {
