@@ -151,7 +151,7 @@
                 H('div', { className: 'brand-title' }, 'Trovelr')
               )
             ),
-            H('div', { className: 'row', style: { gap: 8 } },
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
               H('button', { className: 'btn', onClick: () => onAuthClick('register') }, 'Register'),
               H('button', { className: 'btn primary', onClick: () => onAuthClick('login') }, 'Log In')
             )
@@ -189,18 +189,7 @@
         return H('button', mergedProps, ...children);
       }
 
-      const authArea = user
-        ? H('div', { className: 'row', style: { gap: 8 } },
-            !!user.is_admin && H('button', {
-              className: 'btn danger',
-              onClick: async () => {
-                if (confirm('Delete ALL listings? This cannot be undone.')) {
-                  await onAdminDeleteAll?.();
-                }
-              }
-            }, 'Admin: Delete ALL')
-          )
-        : null;
+      const authArea = null;
 
       const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
 
@@ -219,7 +208,7 @@
               H('div', { className: 'brand-title' }, 'Trovelr')
             )
           ),
-          H('nav', { className: 'row' },
+          H('nav', { className: 'row', style: { alignItems: 'center' } },
             navButton('browse', 'Listings', () => onNav('browse')),
             messagesBtn,
             navButton('profile', profileButtonLabel, () => onNav('profile'), null, { title: 'Profile & settings' }),

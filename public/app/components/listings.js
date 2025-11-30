@@ -1330,7 +1330,7 @@
       );
 
       const modal = H('div', { className: 'modal open', onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); } },
-        H('div', { className: 'modal-inner', style: { width: 'min(680px, 92vw)', background: '#fff', borderRadius: 24, overflow: 'hidden' } },
+        H('div', { className: 'modal-inner masslist-modal', style: { width: 'min(680px, 92vw)', borderRadius: 24, overflow: 'hidden' } },
           H('button', { className: 'close', onClick: onClose }, 'x'),
           H('div', { style: { padding: 16 } },
             H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'MassList'),

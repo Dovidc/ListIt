@@ -490,13 +490,11 @@
           onClick: handleOverlayClick
         },
           H('div', {
-            className: 'modal-inner',
+            className: 'modal-inner payment-preset-modal',
             style: {
               maxWidth: '460px',
               width: 'min(460px, 92vw)',
               padding: '24px',
-              background: '#fff',
-              color: '#111',
               borderRadius: 16,
               display: 'grid',
               gap: 16,
@@ -504,7 +502,7 @@
             }
           },
             H('button', {
-              className: 'close',
+              className: 'close preset-close-btn',
               onClick: onClose,
               title: 'Close preset settings',
               style: {
@@ -519,7 +517,6 @@
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
-                color: '#111',
                 fontWeight: 'bold'
               }
             }, '✕'),
@@ -1457,6 +1454,23 @@
       user,
       subscriptionStatus: modalSubscriptionStatus
     }) {
+      const [isDarkMode, setIsDarkMode] = useState(() => {
+        if (typeof localStorage !== 'undefined') {
+          return localStorage.getItem('theme') === 'dark';
+        }
+        return false;
+      });
+
+      useEffect(() => {
+        if (isDarkMode) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          localStorage.setItem('theme', 'dark');
+        } else {
+          document.documentElement.removeAttribute('data-theme');
+          localStorage.setItem('theme', 'light');
+        }
+      }, [isDarkMode]);
+
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
@@ -1488,19 +1502,17 @@
           onClick: handleOverlayClick
         },
           H('div', {
-            className: 'modal-inner',
+            className: 'modal-inner profile-settings-modal',
             style: {
               maxWidth: '520px',
               width: 'min(520px, 92vw)',
               padding: '24px',
-              background: '#fff',
-              color: '#111',
               borderRadius: 16,
               position: 'relative'
             }
           },
             H('button', {
-              className: 'close',
+              className: 'close settings-close-btn',
               onClick: onClose,
               title: 'Close settings',
               style: {
@@ -1515,7 +1527,6 @@
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
-                color: '#111',
                 fontWeight: 'bold'
               }
             }, '✕'),
@@ -1538,11 +1549,12 @@
                 ),
                 H('button', {
                   type: 'button',
+                  className: 'help-btn',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('inquiry'); },
                   title: 'Inquiry mode info',
                   style: {
                     marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                    borderRadius: 12, cursor: 'pointer'
                   }
                 }, '?')
               ),
@@ -1560,11 +1572,12 @@
                 ),
                 H('button', {
                   type: 'button',
+                  className: 'help-btn',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('ai'); },
                   title: 'AI description tips',
                   style: {
                     marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                    borderRadius: 12, cursor: 'pointer'
                   }
                 }, '?')
               ),
@@ -1582,10 +1595,12 @@
                 ),
                 H('button', {
                   type: 'button',
+                  className: 'help-btn',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('nearby'); },
                   title: 'Nearby auto-post info',
                   style: {
-                    borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
+                    borderRadius: 12, cursor: 'pointer'
                   }
                 }, '?')
               ),
@@ -1600,6 +1615,19 @@
                 H('div', { className: 'toggle-copy' },
                   H('div', { style: { fontWeight: 700 } }, 'Ask before creating'),
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'Choose Camera or Gallery')
+                )
+              ),
+              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: isDarkMode,
+                  onChange: (e) => setIsDarkMode(e.target.checked)
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Dark Mode'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Tokyo Night theme')
                 )
               ),
               // Show cancel subscription button for premium monthly subscribers
@@ -1683,19 +1711,17 @@
           onClick: handleOverlayClick
         },
           H('div', {
-            className: 'modal-inner',
+            className: 'modal-inner notification-settings-modal',
             style: {
               maxWidth: '420px',
               width: 'min(420px, 92vw)',
               padding: '24px',
-              background: '#fff',
-              color: '#111',
               borderRadius: 16,
               position: 'relative'
             }
           },
             H('button', {
-              className: 'close',
+              className: 'close notification-close-btn',
               onClick: onClose,
               title: 'Close notification settings',
               style: {
@@ -1710,7 +1736,6 @@
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
-                color: '#111',
                 fontWeight: 'bold'
               }
             }, '✕'),
@@ -1729,11 +1754,10 @@
                 )
               ),
               !notificationsDisabled && H('div', {
+                className: 'quiet-hours-section',
                 style: {
-                  border: '1px solid #e5e7eb',
                   borderRadius: 12,
-                  padding: 16,
-                  background: '#f9fafb'
+                  padding: 16
                 }
               },
                 H('label', { className: 'toggle-card', style: { padding: '10px 0', width: '100%', border: 'none', background: 'transparent' } },
