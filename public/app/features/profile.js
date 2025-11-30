@@ -251,6 +251,19 @@
     // Karma badge component - circle with count, pill if 100+
     function KarmaBadge({ karma, size = 'md', onClick }) {
       const [showTooltip, setShowTooltip] = React.useState(false);
+      const badgeRef = React.useRef(null);
+
+      // Click outside to dismiss
+      React.useEffect(() => {
+        if (!showTooltip) return;
+        const handleClickOutside = (e) => {
+          if (badgeRef.current && !badgeRef.current.contains(e.target)) {
+            setShowTooltip(false);
+          }
+        };
+        document.addEventListener('click', handleClickOutside, true);
+        return () => document.removeEventListener('click', handleClickOutside, true);
+      }, [showTooltip]);
 
       if (typeof karma !== 'number' || karma <= 0) return null;
 
@@ -266,15 +279,13 @@
 
       const handleClick = (e) => {
         e.stopPropagation();
-        setShowTooltip(!showTooltip);
+        setShowTooltip(true);
         onClick?.();
       };
 
-      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
+      return H('div', { ref: badgeRef, style: { position: 'relative', display: 'inline-flex' } },
         H('div', {
           onClick: handleClick,
-          onMouseEnter: () => setShowTooltip(true),
-          onMouseLeave: () => setShowTooltip(false),
           style: {
             display: 'inline-flex',
             alignItems: 'center',
@@ -291,10 +302,9 @@
             boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
             textShadow: '0 1px 2px rgba(0,0,0,0.2)',
             transition: 'transform 0.15s ease',
-            userSelect: 'none'
-          },
-          onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
-          onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
+            userSelect: 'none',
+            transform: showTooltip ? 'scale(1.1)' : 'scale(1)'
+          }
         }, displayKarma),
         showTooltip && H('div', {
           style: {
@@ -796,6 +806,14 @@
         evt.target.value = '';
       };
 
+      // Calculate minimum zoom to ensure crop region stays within image bounds
+      const getMinZoom = useCallback(() => {
+        if (!imageDimensions.width || !imageDimensions.height) return 0.3;
+        const minZoomX = CROP_WIDTH / imageDimensions.width;
+        const minZoomY = CROP_HEIGHT / imageDimensions.height;
+        return Math.max(minZoomX, minZoomY);
+      }, [imageDimensions, CROP_WIDTH, CROP_HEIGHT]);
+
       const handleImageLoad = () => {
         if (!imageRef.current) return;
         const img = imageRef.current;
@@ -803,7 +821,7 @@
         // Calculate initial zoom to cover the crop area
         const scaleX = CROP_WIDTH / img.naturalWidth;
         const scaleY = CROP_HEIGHT / img.naturalHeight;
-        const initialZoom = Math.max(scaleX, scaleY, 0.5);
+        const initialZoom = Math.max(scaleX, scaleY);
         setZoom(initialZoom);
         setPosition({ x: 0, y: 0 });
       };
@@ -836,7 +854,7 @@
           const dy = evt.touches[0].clientY - evt.touches[1].clientY;
           const distance = Math.sqrt(dx * dx + dy * dy);
           const scale = distance / pinchStartRef.current.distance;
-          const newZoom = Math.max(0.3, Math.min(3, pinchStartRef.current.zoom * scale));
+          const newZoom = Math.max(getMinZoom(), Math.min(3, pinchStartRef.current.zoom * scale));
           setZoom(newZoom);
           setPosition(prev => clampPosition(prev.x, prev.y, newZoom));
         }
@@ -846,13 +864,13 @@
         if (!localPreviewUrl) return;
         evt.preventDefault();
         const delta = evt.deltaY > 0 ? -0.1 : 0.1;
-        const newZoom = Math.max(0.3, Math.min(3, zoom + delta));
+        const newZoom = Math.max(getMinZoom(), Math.min(3, zoom + delta));
         setZoom(newZoom);
         setPosition(prev => clampPosition(prev.x, prev.y, newZoom));
       };
 
       const handleZoomChange = (newZoom) => {
-        const clampedZoom = Math.max(0.3, Math.min(3, newZoom));
+        const clampedZoom = Math.max(getMinZoom(), Math.min(3, newZoom));
         setZoom(clampedZoom);
         setPosition(prev => clampPosition(prev.x, prev.y, clampedZoom));
       };
@@ -1220,7 +1238,7 @@
                 H('span', { style: { fontSize: 16, color: '#64748b' } }, '−'),
                 H('input', {
                   type: 'range',
-                  min: '0.3',
+                  min: getMinZoom(),
                   max: '3',
                   step: '0.05',
                   value: zoom,

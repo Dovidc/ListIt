@@ -840,7 +840,7 @@
     .supporter-tier-badge--diamond { --badge-glow: rgba(160, 100, 220, 0.5); }
     .supporter-tier-badge--sapphire { --badge-glow: rgba(21, 101, 192, 0.5); }
     .supporter-tier-badge--amethyst { --badge-glow: rgba(123, 31, 162, 0.5); }
-    .supporter-tier-badge--obsidian { --badge-glow: rgba(69, 90, 100, 0.5); }
+    .supporter-tier-badge--unobtainium { --badge-glow: rgba(0, 255, 247, 0.7); }
 
     .supporter-tier-badge--bronze svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
     .supporter-tier-badge--silver svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
@@ -849,7 +849,23 @@
     .supporter-tier-badge--diamond svg { animation: badge-glow-subtle 2.5s ease-in-out infinite; }
     .supporter-tier-badge--sapphire svg { animation: badge-glow-subtle 2.5s ease-in-out infinite, badge-float 5s ease-in-out infinite; }
     .supporter-tier-badge--amethyst svg { animation: badge-glow-subtle 2s ease-in-out infinite; }
-    .supporter-tier-badge--obsidian svg { animation: badge-glow-subtle 3s ease-in-out infinite; }
+    .supporter-tier-badge--unobtainium svg { animation: unobtainium-shift 4s ease-in-out infinite, badge-pulse 2s ease-in-out infinite; }
+
+    /* Unobtainium legendary tier special animations */
+    @keyframes unobtainium-shift {
+      0%, 100% { filter: hue-rotate(0deg) drop-shadow(0 0 6px rgba(0, 255, 247, 0.8)); }
+      25% { filter: hue-rotate(60deg) drop-shadow(0 0 8px rgba(255, 0, 255, 0.8)); }
+      50% { filter: hue-rotate(120deg) drop-shadow(0 0 10px rgba(255, 255, 0, 0.8)); }
+      75% { filter: hue-rotate(200deg) drop-shadow(0 0 8px rgba(0, 255, 128, 0.8)); }
+    }
+
+    .supporter-tier-badge--unobtainium {
+      filter: drop-shadow(0 0 4px rgba(0, 255, 247, 0.6));
+    }
+
+    .supporter-tier-badge--unobtainium:hover {
+      filter: drop-shadow(0 0 8px rgba(0, 255, 247, 0.9)) drop-shadow(0 0 16px rgba(255, 0, 255, 0.5));
+    }
 
     .badge-sparkle-particle {
       animation: badge-sparkle 2s ease-in-out infinite;
