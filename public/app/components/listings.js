@@ -2455,7 +2455,6 @@
                       else if (monthsSince >= 6) tier = 'Gold';
                       else if (monthsSince >= 3) tier = 'Silver';
 
-                      const [showTooltip, setShowTooltip] = React.useState(false);
                       const tooltipText = `${tier} Supporter - ${durationText}`;
 
                       // Color schemes for each tier (with blended colors for mid-tiers)
@@ -2735,89 +2734,42 @@
                         Obsidian: 'rgba(69, 90, 100, 0.6)'
                       };
 
-                      return H('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
-                        H('div', {
-                          className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
-                          title: tooltipText,
-                          onMouseEnter: () => setShowTooltip(true),
-                          onMouseLeave: () => setShowTooltip(false)
-                        },
-                          badgeSVGs[tier]
-                        ),
-                        showTooltip && H('div', {
-                          style: {
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            marginBottom: 8,
-                            background: 'rgba(0, 0, 0, 0.9)',
-                            color: '#fff',
-                            padding: '6px 10px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            zIndex: 1000,
-                            pointerEvents: 'none',
-                            border: `1px solid ${glowColors[tier]}`
-                          }
-                        }, tooltipText)
+                      return H('div', {
+                        className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
+                        title: tooltipText,
+                        style: { display: 'inline-flex' }
+                      },
+                        badgeSVGs[tier]
                       );
                     })(),
                     // Beta Tester Badge (separate from supporter badge)
-                    sellerInfo?.beta_tester && (() => {
-                      const [showBetaTooltip, setShowBetaTooltip] = React.useState(false);
-                      return H('div', { style: { position: 'relative', display: 'inline-flex' } },
-                        H('div', {
-                          className: 'beta-tester-badge',
-                          title: 'Beta Tester',
-                          onMouseEnter: () => setShowBetaTooltip(true),
-                          onMouseLeave: () => setShowBetaTooltip(false)
-                        },
-                          H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                            H('defs', null,
-                              H('linearGradient', { id: 'betaBgGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                                H('stop', { offset: '0%', stopColor: '#1a237e' }),
-                                H('stop', { offset: '50%', stopColor: '#0d1442' }),
-                                H('stop', { offset: '100%', stopColor: '#1a237e' })
-                              )
-                            ),
-                            // Dark blue circle with gold outline
-                            H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '3' }),
-                            // Beta symbol (β) in gold
-                            H('text', {
-                              x: '50',
-                              y: '62',
-                              textAnchor: 'middle',
-                              fontSize: '38',
-                              fontWeight: 'bold',
-                              fill: '#ffd700',
-                              fontFamily: 'serif'
-                            }, 'β')
+                    sellerInfo?.beta_tester && H('div', {
+                      className: 'beta-tester-badge',
+                      title: 'Beta Tester',
+                      style: { display: 'inline-flex' }
+                    },
+                      H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
+                        H('defs', null,
+                          H('linearGradient', { id: 'betaBgGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                            H('stop', { offset: '0%', stopColor: '#1a237e' }),
+                            H('stop', { offset: '50%', stopColor: '#0d1442' }),
+                            H('stop', { offset: '100%', stopColor: '#1a237e' })
                           )
                         ),
-                        showBetaTooltip && H('div', {
-                          style: {
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            marginBottom: 8,
-                            background: 'rgba(0, 0, 0, 0.9)',
-                            color: '#fff',
-                            padding: '6px 10px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            zIndex: 1000,
-                            pointerEvents: 'none',
-                            border: '1px solid rgba(255, 215, 0, 0.6)'
-                          }
-                        }, 'Beta Tester')
-                      );
-                    })()
+                        // Dark blue circle with gold outline
+                        H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#betaBgGrad)', stroke: '#ffd700', strokeWidth: '3' }),
+                        // Beta symbol (β) in gold
+                        H('text', {
+                          x: '50',
+                          y: '62',
+                          textAnchor: 'middle',
+                          fontSize: '38',
+                          fontWeight: 'bold',
+                          fill: '#ffd700',
+                          fontFamily: 'serif'
+                        }, 'β')
+                      )
+                    )
                   ),
                   sellerJoinedText && H('div', {
                     style: { fontSize: 13, color: '#cbd5f5' }
@@ -3245,63 +3197,28 @@
               })
             ),
             // Karma badge - circle with count
-            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && (() => {
-              const [showKarmaTooltip, setShowKarmaTooltip] = React.useState(false);
-              const karmaVal = sellerInfo.karma;
-              const isPill = karmaVal >= 100;
-              const displayKarma = karmaVal >= 1000 ? `${(karmaVal / 1000).toFixed(1)}k` : karmaVal;
-
-              return H('div', { style: { position: 'relative', display: 'inline-flex' } },
-                H('div', {
-                  onClick: (e) => { e.stopPropagation(); setShowKarmaTooltip(!showKarmaTooltip); },
-                  onMouseEnter: () => setShowKarmaTooltip(true),
-                  onMouseLeave: () => setShowKarmaTooltip(false),
-                  style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: isPill ? 36 : 28,
-                    height: 28,
-                    padding: isPill ? '0 10px' : 0,
-                    background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                    borderRadius: isPill ? 14 : '50%',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: '#fff',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                    transition: 'transform 0.15s ease',
-                    userSelect: 'none'
-                  },
-                  onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
-                  onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
-                }, displayKarma),
-                showKarmaTooltip && H('div', {
-                  style: {
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    marginBottom: 8,
-                    background: 'rgba(0, 0, 0, 0.9)',
-                    color: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    whiteSpace: 'nowrap',
-                    zIndex: 1000,
-                    pointerEvents: 'none',
-                    border: '1px solid rgba(251, 191, 36, 0.6)',
-                    textAlign: 'center'
-                  }
-                },
-                  H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
-                  H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
-                )
-              );
-            })()
+            sellerSupporter && typeof sellerInfo?.karma === 'number' && sellerInfo.karma > 0 && H('div', {
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: sellerInfo.karma >= 100 ? 36 : 28,
+                height: 28,
+                padding: sellerInfo.karma >= 100 ? '0 10px' : 0,
+                background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                borderRadius: sellerInfo.karma >= 100 ? 14 : '50%',
+                fontSize: 13,
+                fontWeight: 800,
+                color: '#fff',
+                boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
+                textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                transition: 'transform 0.15s ease',
+                userSelect: 'none'
+              },
+              title: `${sellerInfo.karma} Karma - Points earned from successful sales`,
+              onMouseOver: (e) => { e.currentTarget.style.transform = 'scale(1.1)'; },
+              onMouseOut: (e) => { e.currentTarget.style.transform = 'scale(1)'; }
+            }, sellerInfo.karma >= 1000 ? `${(sellerInfo.karma / 1000).toFixed(1)}k` : sellerInfo.karma)
           )
         ),
         H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'absolute', bottom: 16, right: 16 } },
