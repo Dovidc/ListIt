@@ -220,8 +220,37 @@
       openLightbox,
       msgsContainerRef,
       onScroll,
-      formatMessageTimestamp
+      formatMessageTimestamp,
+      otherUserPicture,
+      otherUserId,
+      otherUserUsername,
+      onViewProfile
     }) {
+      const userPicture = user?.profile_picture_url;
+      const userInitial = user?.username ? user.username.charAt(0).toUpperCase() : '?';
+      const otherInitial = otherUserUsername ? otherUserUsername.charAt(0).toUpperCase() : '?';
+
+      const avatarStyle = {
+        width: 32,
+        height: 32,
+        borderRadius: '50%',
+        objectFit: 'cover',
+        flexShrink: 0,
+        cursor: 'pointer',
+        border: '2px solid #e5e7eb'
+      };
+
+      const avatarPlaceholderStyle = {
+        ...avatarStyle,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f3f4f6',
+        color: '#6b7280',
+        fontSize: 14,
+        fontWeight: 700
+      };
+
       return H('div', {
         ref: msgsContainerRef,
         style: { flex: 1, overflow: 'auto', padding: 4, minHeight: 0 },
@@ -229,36 +258,70 @@
       },
       messages.map((message) => {
         const ts = formatMessageTimestamp(message.created_at || message.updated_at);
-        return H('div', { key: message.id, className: `message ${message.sender_id === user?.id ? 'mine' : 'their'}` },
-          message.body && H('div', null, message.body),
-          Array.isArray(message.images) && message.images.length > 0 &&
-            H('div', { className: 'row', style: { gap: 6, marginTop: 6, flexWrap: 'wrap' } },
-              ...message.images.map((src, index) =>
-                H(ImageWithSkeleton, {
-                  key: index,
-                  src,
-                  loading: 'lazy',
-                  decoding: 'async',
-                  style: {
-                    width: 140,
-                    height: 140,
-                    objectFit: 'cover',
-                    borderRadius: 10,
-                    border: '1px solid #e5e7eb',
-                    cursor: 'zoom-in'
-                  },
-                  onClick: () => openLightbox(message.images, index)
-                })
-              )
-            ),
-          ts && H('div', {
-            className: 'muted',
-            style: {
-              fontSize: 11,
-              marginTop: 6,
-              textAlign: message.sender_id === user?.id ? 'right' : 'left'
-            }
-          }, ts)
+        const isMine = message.sender_id === user?.id;
+        const picture = isMine ? userPicture : otherUserPicture;
+        const initial = isMine ? userInitial : otherInitial;
+        const profileId = isMine ? user?.id : otherUserId;
+
+        const avatar = picture
+          ? H('img', {
+              src: picture,
+              alt: '',
+              style: avatarStyle,
+              onClick: () => onViewProfile?.(profileId),
+              title: 'View profile'
+            })
+          : H('div', {
+              style: avatarPlaceholderStyle,
+              onClick: () => onViewProfile?.(profileId),
+              title: 'View profile'
+            }, initial);
+
+        return H('div', {
+          key: message.id,
+          style: {
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8,
+            marginBottom: 8,
+            flexDirection: isMine ? 'row-reverse' : 'row'
+          }
+        },
+          avatar,
+          H('div', {
+            className: `message ${isMine ? 'mine' : 'their'}`,
+            style: { maxWidth: 'calc(100% - 50px)' }
+          },
+            message.body && H('div', null, message.body),
+            Array.isArray(message.images) && message.images.length > 0 &&
+              H('div', { className: 'row', style: { gap: 6, marginTop: 6, flexWrap: 'wrap' } },
+                ...message.images.map((src, index) =>
+                  H(ImageWithSkeleton, {
+                    key: index,
+                    src,
+                    loading: 'lazy',
+                    decoding: 'async',
+                    style: {
+                      width: 140,
+                      height: 140,
+                      objectFit: 'cover',
+                      borderRadius: 10,
+                      border: '1px solid #e5e7eb',
+                      cursor: 'zoom-in'
+                    },
+                    onClick: () => openLightbox(message.images, index)
+                  })
+                )
+              ),
+            ts && H('div', {
+              className: 'muted',
+              style: {
+                fontSize: 11,
+                marginTop: 6,
+                textAlign: isMine ? 'right' : 'left'
+              }
+            }, ts)
+          )
         );
       }));
     }
@@ -1036,11 +1099,12 @@
     }
 
     function MessagesPanel(props) {
-      const { user } = props;
+      const { user, onViewProfile } = props;
       if (!user) return H('div', { className: 'muted' }, 'Please log in to view messages.');
 
       const {
         convosDecorated,
+        active,
         activeId,
         setActiveId,
         msgs,
@@ -1173,7 +1237,11 @@
             openLightbox,
             msgsContainerRef,
             onScroll: checkIfAtBottom,
-            formatMessageTimestamp
+            formatMessageTimestamp,
+            otherUserPicture: active?.other_user_profile_picture,
+            otherUserId: active?.other_user_id,
+            otherUserUsername: active?.other_user_username,
+            onViewProfile
           }),
           (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
             previews: imgPreviews,

@@ -926,6 +926,8 @@
       }
 
       const handlePlusButtonStart = useCallback((e) => {
+        // Prevent default to avoid highlighting other buttons during long-press
+        e.preventDefault();
         isLongPressRef.current = false;
         plusButtonTimerRef.current = setTimeout(() => {
           isLongPressRef.current = true;
@@ -1305,7 +1307,12 @@
                           user,
                           initialActiveId: activeConvoId,
                           onSeenChange: handleSeen,
-                          onConversationsUpdate: handleConversationsUpdate
+                          onConversationsUpdate: handleConversationsUpdate,
+                          onViewProfile: (userId) => {
+                            if (userId && userId !== user?.id) {
+                              handleViewSeller(userId, null);
+                            }
+                          }
                         })
                         : H('div', { className: 'muted', style: { padding: '16px 0' } }, 'Please log in to view messages.')
                       ),

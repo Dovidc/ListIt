@@ -864,17 +864,20 @@
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
       const filePreviews = useFilePreviews(files);
 
-      const fileRef = useRef();
+      const cameraRef = useRef();
+      const galleryRef = useRef();
 
       useEffect(() => {
         if (!Array.isArray(initialFiles)) return;
         if (initialFiles.length === 0) {
           setFiles([]);
-          if (fileRef.current) fileRef.current.value = '';
+          if (cameraRef.current) cameraRef.current.value = '';
+          if (galleryRef.current) galleryRef.current.value = '';
           return;
         }
         setFiles(initialFiles.slice());
-        if (fileRef.current) fileRef.current.value = '';
+        if (cameraRef.current) cameraRef.current.value = '';
+        if (galleryRef.current) galleryRef.current.value = '';
       }, [initialFiles]);
 
       function pick(e) {
@@ -887,7 +890,7 @@
           next.push(f);
         }
         setFiles(next);
-        if (fileRef.current) fileRef.current.value = '';
+        if (e.target) e.target.value = '';
       }
       function removeAt(i) {
         const next = [...files];
@@ -1025,30 +1028,94 @@
         }
       }
 
+      // Camera icon SVG
+      const CameraIcon = H('svg', { viewBox: '0 0 24 24', width: 32, height: 32, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        H('rect', { x: 3, y: 6, width: 18, height: 13, rx: 3 }),
+        H('path', { d: 'M9 6l1.5-2h3L15 6' }),
+        H('circle', { cx: 12, cy: 12.5, r: 3 })
+      );
+
+      // Gallery icon SVG
+      const GalleryIcon = H('svg', { viewBox: '0 0 24 24', width: 32, height: 32, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
+        H('circle', { cx: 9, cy: 10, r: 2, fill: 'currentColor', stroke: 'none' }),
+        H('path', { d: 'M7 18l4-4 3 3 4-5 3 4' })
+      );
+
       const modal = H('div', { className: 'modal open', onClick: (e) => { if (e.target.classList.contains('modal')) onClose(); } },
         H('div', { className: 'modal-inner', style: { width: 'min(680px, 92vw)', background: '#fff', borderRadius: 24, overflow: 'hidden' } },
           H('button', { className: 'close', onClick: onClose }, 'x'),
           H('div', { style: { padding: 16 } },
             H('div', { style: { fontWeight: 800, fontSize: 18, marginBottom: 6 } }, 'MassList'),
-            H('div', { className: 'muted', style: { marginBottom: 12 } }, 'Pick multiple photos from your gallery. We will create one listing per photo using AI for title, tags, and price (you can edit later).'),
+            H('div', { className: 'muted', style: { marginBottom: 16 } }, 'Take photos or select from gallery. One listing will be created per photo using AI.'),
 
-            H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
-              H('input', { type: 'file', accept: 'image/*', multiple: true, ref: fileRef, onChange: pick }),
-              H('span', { className: 'muted' }, `${files.length} selected`)
+            // Hidden file inputs
+            H('input', { type: 'file', accept: 'image/*', capture: 'environment', multiple: true, ref: cameraRef, onChange: pick, style: { display: 'none' } }),
+            H('input', { type: 'file', accept: 'image/*', multiple: true, ref: galleryRef, onChange: pick, style: { display: 'none' } }),
+
+            // Camera and Gallery buttons
+            H('div', { style: { display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 16 } },
+              H('button', {
+                type: 'button',
+                onClick: () => cameraRef.current?.click(),
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '20px 32px',
+                  borderRadius: 16,
+                  border: '2px solid #e5e7eb',
+                  background: '#f9fafb',
+                  cursor: 'pointer',
+                  color: '#374151',
+                  transition: 'all 0.15s ease'
+                },
+                onMouseOver: (e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#eff6ff'; },
+                onMouseOut: (e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = '#f9fafb'; }
+              },
+                CameraIcon,
+                H('span', { style: { fontSize: 14, fontWeight: 600 } }, 'Camera')
+              ),
+              H('button', {
+                type: 'button',
+                onClick: () => galleryRef.current?.click(),
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '20px 32px',
+                  borderRadius: 16,
+                  border: '2px solid #e5e7eb',
+                  background: '#f9fafb',
+                  cursor: 'pointer',
+                  color: '#374151',
+                  transition: 'all 0.15s ease'
+                },
+                onMouseOver: (e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#eff6ff'; },
+                onMouseOut: (e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = '#f9fafb'; }
+              },
+                GalleryIcon,
+                H('span', { style: { fontSize: 14, fontWeight: 600 } }, 'Gallery')
+              )
             ),
 
-            filePreviews.length > 0 && H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', marginTop: 12 } },
+            // Selected count
+            files.length > 0 && H('div', { style: { textAlign: 'center', marginBottom: 12, color: '#6b7280', fontSize: 14 } }, `${files.length} photo${files.length === 1 ? '' : 's'} selected`),
+
+            filePreviews.length > 0 && H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', marginTop: 12, justifyContent: 'center' } },
               ...filePreviews.map(({ url }, i) =>
                 H('div', { key: i, style: { position: 'relative' } },
-                  H(ImageWithSkeleton, { src: url, style: { width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid #e5e7eb' }, loading: 'lazy', decoding: 'async' }),
-                  H('button', { className: 'btn danger', type: 'button', style: { position: 'absolute', top: 4, right: 4, padding: '4px 8px' }, onClick: () => removeAt(i) }, 'x')
+                  H(ImageWithSkeleton, { src: url, style: { width: 80, height: 80, objectFit: 'cover', borderRadius: 12, border: '1px solid #e5e7eb' }, loading: 'lazy', decoding: 'async' }),
+                  H('button', { className: 'btn danger', type: 'button', style: { position: 'absolute', top: 2, right: 2, padding: '2px 6px', fontSize: 12 }, onClick: () => removeAt(i) }, '×')
                 )
               )
             ),
 
-            H('div', { className: 'row', style: { marginTop: 16 } },
+            H('div', { className: 'row', style: { marginTop: 16, justifyContent: 'center', gap: 12 } },
               H('button', { className: 'btn', onClick: onClose, disabled: busy }, 'Cancel'),
-              H('button', { className: `btn primary`, onClick: runMassList, disabled: busy || files.length === 0 }, busy ? 'Working...' : 'Confirm MassList')
+              H('button', { className: `btn primary`, onClick: runMassList, disabled: busy || files.length === 0 }, busy ? 'Working...' : 'Create Listings')
             )
           ),
 
