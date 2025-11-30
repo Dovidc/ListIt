@@ -27,8 +27,8 @@
   const SUPPORTER_PREMIUM_AMOUNT = 199;
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
 
-  // Resume overlay: show after 60 seconds of background inactivity (matches geolocation staleness)
-  const RESUME_INACTIVITY_THRESHOLD_MS = 60 * 1000;
+  // Minimum background time before triggering refresh (prevents flicker on quick app switches)
+  const RESUME_MIN_THRESHOLD_MS = 3 * 1000;
 
   function createEditorState(overrides = {}) {
     return { ...EDITOR_DEFAULT_STATE, ...overrides };
@@ -485,9 +485,45 @@
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
       }, []);
 
-      // Background/foreground detection - show resume overlay after extended inactivity
+      // Background/foreground detection - always refresh after minimum background time
+      // This prevents crashes from stale state (cursors, cache, WebView memory reclaim)
       useEffect(() => {
         if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+        const handleResume = async (backgroundTime) => {
+          const elapsedMs = Date.now() - backgroundTime;
+
+          // Skip if was only in background very briefly (under 3 seconds)
+          // This prevents unnecessary refreshes from quick task switches like
+          // opening notification center or briefly switching apps
+          if (elapsedMs < RESUME_MIN_THRESHOLD_MS) {
+            return;
+          }
+
+          // Always refresh after any meaningful background period
+          // This is safer than trying to detect "stale" data because:
+          // 1. Pagination cursors can become invalid server-side
+          // 2. iOS may reclaim WebView memory in ways we can't detect
+          // 3. The cost of an extra refresh is low vs the cost of a crash
+          const overlayStartTime = Date.now();
+          setIsResuming(true);
+          try {
+            // Clear cached GPS coordinates so we get fresh location
+            if (typeof helpers?.clearCoordsCache === 'function') {
+              helpers.clearCoordsCache();
+            }
+            await refreshListings();
+            await reloadMineOnly();
+          } catch (err) {
+            console.error('Error refreshing on resume:', err);
+          } finally {
+            // Ensure overlay shows for at least 2 seconds (reduced from 3 for snappier feel)
+            const elapsed = Date.now() - overlayStartTime;
+            const remainingTime = Math.max(0, 2000 - elapsed);
+            if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+            resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
+          }
+        };
 
         const handleVisibilityChange = async () => {
           if (document.hidden) {
@@ -498,26 +534,8 @@
             const backgroundTime = backgroundTimestampRef.current;
             backgroundTimestampRef.current = null;
 
-            if (backgroundTime && (Date.now() - backgroundTime) >= RESUME_INACTIVITY_THRESHOLD_MS) {
-              // Was in background for a while - show overlay and refresh
-              const overlayStartTime = Date.now();
-              setIsResuming(true);
-              try {
-                // Clear cached GPS coordinates so we get fresh location
-                if (typeof helpers?.clearCoordsCache === 'function') {
-                  helpers.clearCoordsCache();
-                }
-                await refreshListings();
-                await reloadMineOnly();
-              } catch (err) {
-                console.error('Error refreshing on resume:', err);
-              } finally {
-                // Ensure overlay shows for at least 3 seconds
-                const elapsed = Date.now() - overlayStartTime;
-                const remainingTime = Math.max(0, 3000 - elapsed);
-                if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-                resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
-              }
+            if (backgroundTime) {
+              await handleResume(backgroundTime);
             }
           }
         };
@@ -535,25 +553,8 @@
               const backgroundTime = backgroundTimestampRef.current;
               backgroundTimestampRef.current = null;
 
-              if (backgroundTime && (Date.now() - backgroundTime) >= RESUME_INACTIVITY_THRESHOLD_MS) {
-                const overlayStartTime = Date.now();
-                setIsResuming(true);
-                try {
-                  // Clear cached GPS coordinates so we get fresh location
-                  if (typeof helpers?.clearCoordsCache === 'function') {
-                    helpers.clearCoordsCache();
-                  }
-                  await refreshListings();
-                  await reloadMineOnly();
-                } catch (err) {
-                  console.error('Error refreshing on resume:', err);
-                } finally {
-                  // Ensure overlay shows for at least 3 seconds
-                  const elapsed = Date.now() - overlayStartTime;
-                  const remainingTime = Math.max(0, 3000 - elapsed);
-                  if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-                  resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
-                }
+              if (backgroundTime) {
+                await handleResume(backgroundTime);
               }
             }
           }).then(handle => { capacitorUnlisten = handle; }).catch((err) => {
