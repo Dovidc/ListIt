@@ -661,11 +661,12 @@
       const avatarBorderColor = borderColor || '#ffffff';
       const avatarBorderStyle = borderStyle === 'dashed' ? 'dashed' : 'solid';
 
-      // Profile card dimensions (matching ProfilePreviewModal)
-      const PREVIEW_WIDTH = 340;
-      const BANNER_HEIGHT = 120;
-      const AVATAR_SIZE = 64;
-      const AVATAR_OVERLAP = 24;
+      // Profile card dimensions (scaled down ~75% to fit modal nicely)
+      // Maintains same proportions as ProfilePreviewModal
+      const PREVIEW_WIDTH = 280;
+      const BANNER_HEIGHT = 155;
+      const AVATAR_SIZE = 72;
+      const AVATAR_OVERLAP = 26;
       const AVATAR_BORDER = 3;
 
       const uploadInputRef = useRef(null);
@@ -684,11 +685,11 @@
       const [isDragging, setIsDragging] = useState(false);
       const [cropError, setCropError] = useState(null);
 
-      // Crop dimensions (aspect ratio matches banner ~2.8:1 for the preview)
+      // Crop dimensions (aspect ratio matches banner 1.8:1)
       const CROP_WIDTH = PREVIEW_WIDTH;
       const CROP_HEIGHT = BANNER_HEIGHT;
-      const OUTPUT_WIDTH = 800;
-      const OUTPUT_HEIGHT = 220;
+      const OUTPUT_WIDTH = 900;
+      const OUTPUT_HEIGHT = 500;
 
       const clampPosition = useCallback((x, y, currentZoom) => {
         if (!imageDimensions.width || !imageDimensions.height) return { x: 0, y: 0 };
@@ -867,20 +868,20 @@
           canvas.width = OUTPUT_WIDTH;
           canvas.height = OUTPUT_HEIGHT;
 
-          // Calculate the crop area in original image coordinates
+          // Match the exact preview positioning:
+          // Preview image left = (CROP_WIDTH - scaledW) / 2 + position.x
+          // Preview image top = (CROP_HEIGHT - scaledH) / 2 + position.y
           const scaledWidth = imageDimensions.width * zoom;
           const scaledHeight = imageDimensions.height * zoom;
 
-          const centerX = scaledWidth / 2 - position.x;
-          const centerY = scaledHeight / 2 - position.y;
+          const imgLeft = (CROP_WIDTH - scaledWidth) / 2 + position.x;
+          const imgTop = (CROP_HEIGHT - scaledHeight) / 2 + position.y;
 
-          const srcCenterX = centerX / zoom;
-          const srcCenterY = centerY / zoom;
+          // Convert screen crop area (0,0 to CROP_W,CROP_H) to original image coordinates
+          const srcX = -imgLeft / zoom;
+          const srcY = -imgTop / zoom;
           const srcWidth = CROP_WIDTH / zoom;
           const srcHeight = CROP_HEIGHT / zoom;
-
-          const srcX = srcCenterX - srcWidth / 2;
-          const srcY = srcCenterY - srcHeight / 2;
 
           ctx.drawImage(
             img,
@@ -919,6 +920,13 @@
         setCropError(null);
       };
 
+      // Handle clicking on banner area - always opens file picker
+      // (Can't re-crop existing banners due to CDN CORS restrictions)
+      const handleBannerClick = () => {
+        if (!isPremium || bgImageUploading) return;
+        uploadInputRef.current?.click();
+      };
+
       const premiumMsg = !isPremium ? H('div', {
         style: {
           padding: '12px',
@@ -931,102 +939,128 @@
         }
       }, '✨ Profile customization is a premium subscriber feature') : null;
 
-      // Helper to render the profile card preview
-      const renderProfileCardPreview = (bannerSrc, isLive = false) => {
+      // Helper to render the profile card preview (matching ProfilePreviewModal exactly)
+      const renderProfileCardPreview = (bannerSrc, isLive = false, onBannerClick = null) => {
+        const isClickable = !isLive && onBannerClick && isPremium;
         return H('div', {
           style: {
             width: PREVIEW_WIDTH,
             background: '#0f172a',
-            borderRadius: 16,
+            borderRadius: 24,
             overflow: 'hidden',
-            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.35)',
-            margin: '0 auto'
+            boxShadow: '0 35px 90px rgba(0, 0, 0, 0.55)',
+            margin: '0 auto',
+            fontFamily: 'Inter, system-ui'
           }
         },
-          // Banner area
+          // Banner area with avatar overlap space
           H('div', {
             style: {
               position: 'relative',
-              width: '100%',
-              height: BANNER_HEIGHT,
-              overflow: 'hidden',
-              background: 'linear-gradient(120deg, #1e3a5f, #1e40af)',
-              cursor: isLive ? (isDragging ? 'grabbing' : 'grab') : 'default',
-              touchAction: isLive ? 'none' : 'auto'
-            },
-            onMouseDown: isLive ? handlePointerDown : undefined,
-            onTouchStart: isLive ? handlePointerDown : undefined,
-            onTouchMove: isLive ? handleTouchMove : undefined,
-            onWheel: isLive ? handleWheel : undefined
+              minHeight: BANNER_HEIGHT,
+              paddingBottom: AVATAR_OVERLAP + 10
+            }
           },
-            bannerSrc ? (
-              isLive ? H('div', {
-                style: {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  overflow: 'hidden'
-                }
+            // Banner background container
+            H('div', {
+              style: {
+                position: 'absolute',
+                inset: 0,
+                overflow: 'hidden',
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                background: 'linear-gradient(120deg, #1d1f3b, #3730a3)',
+                cursor: isLive ? (isDragging ? 'grabbing' : 'grab') : (isClickable ? 'pointer' : 'default'),
+                touchAction: isLive ? 'none' : 'auto'
               },
-                H('img', {
+              onClick: isClickable ? onBannerClick : undefined,
+              onMouseDown: isLive ? handlePointerDown : undefined,
+              onTouchStart: isLive ? handlePointerDown : undefined,
+              onTouchMove: isLive ? handleTouchMove : undefined,
+              onWheel: isLive ? handleWheel : undefined
+            },
+              bannerSrc ? (
+                isLive ? H('img', {
                   src: bannerSrc,
                   alt: 'Banner preview',
                   style: {
                     position: 'absolute',
-                    left: '50%',
-                    top: '50%',
-                    transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom})`,
-                    transformOrigin: 'center',
+                    left: `${(CROP_WIDTH - imageDimensions.width * zoom) / 2 + position.x}px`,
+                    top: `${(CROP_HEIGHT - imageDimensions.height * zoom) / 2 + position.y}px`,
+                    width: `${imageDimensions.width * zoom}px`,
+                    height: `${imageDimensions.height * zoom}px`,
                     maxWidth: 'none',
                     pointerEvents: 'none'
                   }
+                }) : H('img', {
+                  src: bannerSrc,
+                  alt: 'Banner',
+                  style: {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }
                 })
-              ) : H('img', {
-                src: bannerSrc,
-                alt: 'Banner',
+              ) : H('div', {
                 style: {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover'
+                  display: 'grid',
+                  placeItems: 'center',
+                  fontSize: 36,
+                  color: 'rgba(248, 250, 252, 0.5)'
                 }
-              })
-            ) : null,
-            // Gradient overlay
+              }, '🖼️'),
+              // Gradient overlay
+              H('div', {
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
+                }
+              }),
+              // Clickable hint overlay (only in main view, not crop view)
+              isClickable && H('div', {
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  opacity: 0.85,
+                  transition: 'opacity 0.2s'
+                }
+              },
+                H('div', {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: '#fff',
+                    fontSize: 13,
+                    fontWeight: 600
+                  }
+                },
+                  H('span', { style: { fontSize: 24 } }, '📷'),
+                  bannerSrc ? 'Tap to change' : 'Tap to add banner'
+                )
+              )
+            ),
+            // Avatar positioned at bottom left, overlapping banner
             H('div', {
               style: {
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'linear-gradient(180deg, rgba(2, 6, 23, 0) 40%, rgba(2, 6, 23, 0.9) 100%)'
-              }
-            })
-          ),
-          // Avatar and info area
-          H('div', {
-            style: {
-              position: 'relative',
-              padding: `0 16px 16px`,
-              marginTop: -AVATAR_OVERLAP
-            }
-          },
-            // Avatar
-            H('div', {
-              style: {
+                left: 18,
+                bottom: -AVATAR_OVERLAP,
                 width: AVATAR_SIZE,
                 height: AVATAR_SIZE,
                 borderRadius: '50%',
                 border: `${AVATAR_BORDER}px ${avatarBorderStyle} ${avatarBorderColor}`,
-                background: '#1e293b',
-                boxShadow: '0 8px 20px rgba(0, 0, 0, 0.35)',
-                overflow: 'hidden',
-                marginBottom: 8
+                background: '#0f172a',
+                boxShadow: '0 14px 35px rgba(0, 0, 0, 0.45)',
+                overflow: 'hidden'
               }
             },
               profilePictureUrl
@@ -1039,20 +1073,28 @@
                     style: {
                       width: '100%',
                       height: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 24,
-                      fontWeight: 700,
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontSize: 28,
+                      fontWeight: 800,
                       color: '#e2e8f0'
                     }
                   }, initials)
-            ),
+            )
+          ),
+          // Content area below banner (scaled to match smaller preview)
+          H('div', {
+            style: {
+              padding: `${AVATAR_OVERLAP + 28}px 18px 20px`,
+              display: 'grid',
+              gap: 3
+            }
+          },
             // Username
             H('div', {
               style: {
-                fontSize: 18,
-                fontWeight: 700,
+                fontSize: 17,
+                fontWeight: 800,
                 color: '#f8fafc'
               }
             }, displayName),
@@ -1060,8 +1102,8 @@
             H('div', {
               style: {
                 fontSize: 11,
-                color: '#64748b',
-                marginTop: 4
+                color: '#94a3b8',
+                marginTop: 2
               }
             }, 'How others see your profile')
           )
@@ -1128,16 +1170,26 @@
               // Live profile card preview
               renderProfileCardPreview(localPreviewUrl, true),
 
-              // Hidden image for loading dimensions
+              // Hidden file input for changing image
+              H('input', {
+                ref: uploadInputRef,
+                type: 'file',
+                accept: 'image/*',
+                onChange: handleFileSelect,
+                style: { display: 'none' }
+              }),
+
+              // Hidden image for loading dimensions (crossOrigin for CORS)
               H('img', {
                 ref: imageRef,
                 src: localPreviewUrl,
                 alt: 'Source',
+                crossOrigin: 'anonymous',
                 onLoad: handleImageLoad,
                 style: { display: 'none' }
               }),
 
-              // Zoom slider
+              // Zoom slider with change image button
               H('div', {
                 style: {
                   display: 'flex',
@@ -1146,6 +1198,25 @@
                   padding: '0 8px'
                 }
               },
+                // Change image button (gallery icon)
+                H('button', {
+                  onClick: () => uploadInputRef.current?.click(),
+                  style: {
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: 'none',
+                    background: '#f1f5f9',
+                    color: '#64748b',
+                    fontSize: 18,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  },
+                  title: 'Choose different image'
+                }, '🖼️'),
                 H('span', { style: { fontSize: 16, color: '#64748b' } }, '−'),
                 H('input', {
                   type: 'range',
@@ -1168,7 +1239,7 @@
 
               H('p', {
                 style: { fontSize: 12, color: '#64748b', textAlign: 'center', margin: 0 }
-              }, 'Drag the preview to reposition • Pinch or use slider to zoom'),
+              }, 'Drag to reposition • Pinch or slider to zoom'),
 
               // Hidden canvas
               H('canvas', { ref: canvasRef, style: { display: 'none' } }),
@@ -1277,55 +1348,32 @@
 
             premiumMsg,
 
-            // Profile card preview
-            renderProfileCardPreview(bgImageUrl, false),
+            // Profile card preview - clickable to edit/add banner
+            renderProfileCardPreview(bgImageUrl, false, handleBannerClick),
 
-            // Upload section
+            // Hidden file input
+            H('input', {
+              ref: uploadInputRef,
+              type: 'file',
+              accept: 'image/*',
+              disabled: !isPremium || bgImageUploading,
+              onChange: handleFileSelect,
+              style: { display: 'none' }
+            }),
+
+            // Status messages
             H('div', { style: { display: 'grid', gap: 8 } },
-              H('input', {
-                ref: uploadInputRef,
-                type: 'file',
-                accept: 'image/*',
-                disabled: !isPremium || bgImageUploading,
-                onChange: handleFileSelect,
-                style: { display: 'none' }
-              }),
-
-              H('button', {
-                onClick: () => isPremium && !bgImageUploading && uploadInputRef.current?.click(),
-                disabled: !isPremium || bgImageUploading,
+              bgImageUploading && H('div', {
                 style: {
-                  width: '100%',
-                  padding: '14px',
-                  background: isPremium ? '#2563eb' : '#e2e8f0',
-                  color: isPremium ? '#fff' : '#94a3b8',
-                  border: 'none',
-                  borderRadius: 12,
-                  fontSize: 15,
+                  padding: 10,
+                  background: '#dbeafe',
+                  color: '#1e40af',
+                  borderRadius: 8,
+                  fontSize: 13,
                   fontWeight: 600,
-                  cursor: isPremium && !bgImageUploading ? 'pointer' : 'not-allowed'
+                  textAlign: 'center'
                 }
-              }, bgImageUploading ? 'Uploading...' : (bgImageUrl ? 'Change Banner' : 'Upload Banner')),
-
-              bgImageUrl && isPremium && H('button', {
-                onClick: () => {
-                  if (confirm('Remove your banner image?')) {
-                    onClearBgImage?.();
-                  }
-                },
-                disabled: bgImageUploading,
-                style: {
-                  width: '100%',
-                  padding: '12px',
-                  background: '#fff',
-                  color: '#dc2626',
-                  border: '1px solid #fecaca',
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: bgImageUploading ? 'not-allowed' : 'pointer'
-                }
-              }, 'Remove Banner'),
+              }, 'Uploading...'),
 
               bgImageUploadError && H('div', {
                 style: {
@@ -1346,28 +1394,27 @@
                   fontSize: 13,
                   fontWeight: 600
                 }
-              }, statusMessage),
+              }, statusMessage)
+            ),
 
-              // Done button
-              H('button', {
-                onClick: async () => {
-                  await onSave?.();
-                  onClose?.();
-                },
-                style: {
-                  width: '100%',
-                  padding: '14px',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: 'none',
-                  borderRadius: 12,
-                  fontSize: 15,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  marginTop: 4
-                }
-              }, 'Done')
-            )
+            // Save button (blue)
+            H('button', {
+              onClick: async () => {
+                await onSave?.();
+                onClose?.();
+              },
+              style: {
+                width: '100%',
+                padding: '14px',
+                background: '#2563eb',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 12,
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }
+            }, 'Save')
           )
         ),
         document.body

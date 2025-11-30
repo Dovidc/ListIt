@@ -299,21 +299,24 @@
               }
             }, error),
 
-            // File selection view
+            // File selection view - clickable picture to change
             !previewUrl && H('div', { style: { textAlign: 'center' } },
-              // Current picture preview
+              // Current picture preview (clickable)
               H('div', {
+                onClick: () => fileInputRef.current?.click(),
                 style: {
                   width: 120,
                   height: 120,
                   borderRadius: '50%',
-                  margin: '0 auto 20px',
+                  margin: '0 auto 16px',
                   border: `4px ${borderStyleValue} ${borderColorValue}`,
                   overflow: 'hidden',
                   background: '#f1f5f9',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  position: 'relative'
                 }
               },
                 currentPictureUrl
@@ -322,7 +325,26 @@
                       alt: 'Current profile picture',
                       style: { width: '100%', height: '100%', objectFit: 'cover' }
                     })
-                  : H('span', { style: { fontSize: 40, color: '#94a3b8' } }, '👤')
+                  : H('span', { style: { fontSize: 40, color: '#94a3b8' } }, '👤'),
+                // Overlay hint
+                H('div', {
+                  style: {
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    gap: 2
+                  }
+                },
+                  H('span', { style: { fontSize: 20 } }, '📷'),
+                  currentPictureUrl ? 'Tap to change' : 'Tap to add'
+                )
               ),
               H('input', {
                 ref: fileInputRef,
@@ -330,38 +352,7 @@
                 accept: 'image/*',
                 onChange: handleFileSelect,
                 style: { display: 'none' }
-              }),
-              H('button', {
-                onClick: () => fileInputRef.current?.click(),
-                style: {
-                  width: '100%',
-                  padding: '14px 20px',
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 12,
-                  fontSize: 15,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  marginBottom: 12
-                }
-              }, currentPictureUrl ? 'Change Photo' : 'Choose Photo'),
-              currentPictureUrl && H('button', {
-                onClick: handleRemove,
-                disabled: uploading,
-                style: {
-                  width: '100%',
-                  padding: '12px 20px',
-                  background: '#fff',
-                  color: '#dc2626',
-                  border: '1px solid #fecaca',
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: uploading ? 'not-allowed' : 'pointer',
-                  opacity: uploading ? 0.6 : 1
-                }
-              }, uploading ? 'Removing...' : 'Remove Photo')
+              })
             ),
 
             // Crop view
@@ -482,7 +473,7 @@
                   style: {
                     flex: 1,
                     padding: '14px 20px',
-                    background: uploading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    background: uploading ? '#94a3b8' : '#2563eb',
                     color: '#fff',
                     border: 'none',
                     borderRadius: 12,
@@ -490,7 +481,7 @@
                     fontWeight: 600,
                     cursor: uploading ? 'not-allowed' : 'pointer'
                   }
-                }, uploading ? 'Uploading...' : 'Save Photo')
+                }, uploading ? 'Uploading...' : 'Save')
               )
             )
           ),
@@ -578,7 +569,7 @@
               style: {
                 width: '100%',
                 padding: '12px',
-                background: isPremium ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : '#e2e8f0',
+                background: isPremium ? '#2563eb' : '#e2e8f0',
                 color: isPremium ? '#fff' : '#94a3b8',
                 border: 'none',
                 borderRadius: 10,
@@ -586,7 +577,7 @@
                 fontWeight: 600,
                 cursor: isPremium ? 'pointer' : 'not-allowed'
               }
-            }, 'Save Border Style')
+            }, 'Save')
           )
         )
       );
