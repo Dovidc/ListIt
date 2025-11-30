@@ -88,9 +88,9 @@
             copied
               ? H('path', { d: 'M20 6L9 17l-5-5' }) // Checkmark
               : [
-                  H('rect', { key: 'rect', x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
-                  H('path', { key: 'path', d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' })
-                ]
+                H('rect', { key: 'rect', x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
+                H('path', { key: 'path', d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' })
+              ]
           )
         )
       );
@@ -196,25 +196,30 @@
       tier = 'basic',
       badge
     }) {
-      // Determine tier from badge code if provided
-      const effectiveTier = badge === 'trovelr_platinum' ? 'premium' : (tier || 'basic');
-      const isPremium = effectiveTier === 'premium';
-
       const Component = (onClick || as === 'button') ? 'button' : 'span';
-      const badgeLabel = isPremium ? 'Premium Supporter' : 'Trovelr Supporter';
+      const badgeLabel = 'Subscriber';
       const computedTitle = title || (since ? `${badgeLabel} since ${formatSinceLabel(since) || since}` : badgeLabel);
-      const classes = [
-        'supporter-badge',
-        `supporter-badge--${size}`,
-        isPremium ? 'supporter-badge--premium' : '',
-        (onClick || as === 'button') ? 'supporter-badge--interactive' : '',
-        className || ''
-      ].filter(Boolean).join(' ');
+
+      const sizes = {
+        sm: 16,
+        md: 18,
+        lg: 22
+      };
+      const iconSize = sizes[size] || sizes.md;
 
       const sharedProps = {
-        className: classes,
+        className: `subscriber-badge ${className || ''}`.trim(),
         title: computedTitle,
-        style,
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: onClick ? 'pointer' : 'default',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          ...style
+        },
         type: Component === 'button' ? 'button' : undefined,
         onClick: onClick ? (evt) => {
           evt.stopPropagation();
@@ -222,14 +227,72 @@
         } : undefined
       };
 
+      // Trovelr location pin badge in circle
       return H(Component, sharedProps,
-        H('span', { className: 'supporter-badge__glimmer-3' }),
-        H('span', { className: 'supporter-badge__glimmer-6' }),
-        H('span', { className: 'supporter-badge__glimmer-7' }),
-        H('span', { className: 'supporter-badge__glimmer-8' }),
-        isPremium && H('span', { className: 'supporter-badge__glimmer-4' }),
-        isPremium && H('span', { className: 'supporter-badge__glimmer-5' }),
-        H('span', { className: 'supporter-badge__label' }, badgeLabel)
+        H('svg', {
+          width: iconSize,
+          height: iconSize,
+          viewBox: '0 0 40 40',
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          className: 'subscriber-badge-icon'
+        },
+          H('defs', null,
+            H('linearGradient', { id: 'pinBodyGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#fde68a' }),
+              H('stop', { offset: '40%', stopColor: '#fbbf24' }),
+              H('stop', { offset: '100%', stopColor: '#f59e0b' })
+            ),
+            H('radialGradient', { id: 'pinCoreGrad', cx: '35%', cy: '35%', r: '60%' },
+              H('stop', { offset: '0%', stopColor: '#ffffff' }),
+              H('stop', { offset: '50%', stopColor: '#fef3c7' }),
+              H('stop', { offset: '100%', stopColor: '#fcd34d' })
+            ),
+            H('linearGradient', { id: 'circleGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#1e293b' }),
+              H('stop', { offset: '100%', stopColor: '#0f172a' })
+            ),
+            H('filter', { id: 'pinGlow', x: '-50%', y: '-50%', width: '200%', height: '200%' },
+              H('feDropShadow', { dx: '0', dy: '0', stdDeviation: '0.5', floodColor: '#fbbf24', floodOpacity: '0.6' })
+            )
+          ),
+          // Outer circle background
+          H('circle', {
+            cx: '20',
+            cy: '20',
+            r: '18',
+            fill: 'url(#circleGrad)',
+            stroke: '#fbbf24',
+            strokeWidth: '2'
+          }),
+          // Pin body (teardrop) - centered and scaled
+          H('path', {
+            d: 'M20 8c-3.3 0-6 2.7-6 6 0 4.3 6 12 6 12s6-7.7 6-12c0-3.3-2.7-6-6-6z',
+            fill: 'url(#pinBodyGrad)',
+            stroke: '#d97706',
+            strokeWidth: '0.8',
+            filter: 'url(#pinGlow)'
+          }),
+          // Inner circle
+          H('circle', {
+            cx: '20',
+            cy: '14',
+            r: '3.2',
+            fill: 'url(#pinCoreGrad)',
+            stroke: '#f59e0b',
+            strokeWidth: '0.5'
+          }),
+          // Tiny T
+          H('text', {
+            x: '20',
+            y: '16.2',
+            textAnchor: 'middle',
+            fontSize: '5',
+            fontWeight: 'bold',
+            fill: '#b45309',
+            fontFamily: 'system-ui, sans-serif'
+          }, 'T')
+        )
       );
     }
 
@@ -280,7 +343,7 @@
             H('p', { className: 'supporter-modal__body' },
               isSelf
                 ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
-                : 'Supporters keep Trovelr running and get a signature golden badge on every listing they share.'
+                : 'Supporters keep Trovelr running and get special cusomization options for their profile and listing cards.'
             ),
             // Show copy link for iOS native app users
             isIOS && !isSelf && H(CopySubscribeLink),

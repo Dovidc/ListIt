@@ -3851,6 +3851,8 @@ app.get('/api/listings', async (req, res) => {
 
       u.username AS owner_username,
 
+      u.profile_picture_url AS owner_profile_picture_url,
+
       u.supporter_badge AS owner_supporter_badge,
 
       u.supporter_since AS owner_supporter_since
@@ -3866,6 +3868,8 @@ app.get('/api/listings', async (req, res) => {
       l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold,
 
       u.username AS owner_username,
+
+      u.profile_picture_url AS owner_profile_picture_url,
 
       u.supporter_badge AS owner_supporter_badge,
 
@@ -4960,6 +4964,8 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
         u.username AS owner_username,
 
+        u.profile_picture_url AS owner_profile_picture_url,
+
         u.supporter_badge AS owner_supporter_badge,
 
         u.supporter_since AS owner_supporter_since
@@ -5483,6 +5489,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  l.price, l.created_at, l.tags, l.lat, l.lon,
                  l.inquiry_enabled,
                  u.username AS owner_username,
+                 u.profile_picture_url AS owner_profile_picture_url,
                  u.supporter_badge AS owner_supporter_badge,
                  u.supporter_since AS owner_supporter_since,
                  ST_Distance(
@@ -5562,6 +5569,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                l.price, l.created_at, l.tags, l.lat, l.lon,
                l.inquiry_enabled,
                u.username AS owner_username,
+               u.profile_picture_url AS owner_profile_picture_url,
                u.supporter_badge AS owner_supporter_badge,
                u.supporter_since AS owner_supporter_since,
                ${distanceExpr} AS distance_m

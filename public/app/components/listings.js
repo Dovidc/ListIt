@@ -1964,7 +1964,7 @@
           return '--';
         }
 
-        const sellerNode = onViewSeller
+        const sellerPill = onViewSeller
           ? H('button', {
             onClick: (e) => {
               e.preventDefault();
@@ -1972,26 +1972,37 @@
               handleShowProfilePreview(item.user_id);
             },
             style: {
-              background: 'none',
+              background: '#dbeafe',
               border: 'none',
-              color: '#2563eb',
+              color: '#1d4ed8',
               fontWeight: 600,
-              textDecoration: 'underline',
               cursor: 'pointer',
-              padding: 0,
-              font: 'inherit'
+              padding: '4px 10px',
+              borderRadius: 999,
+              fontSize: 13,
+              display: 'inline-block'
             }
           }, item.owner_username)
-          : H('span', { style: { fontWeight: 600, color: '#111' } }, item.owner_username);
+          : H('span', {
+            style: {
+              background: '#dbeafe',
+              color: '#1d4ed8',
+              fontWeight: 600,
+              padding: '4px 10px',
+              borderRadius: 999,
+              fontSize: 13,
+              display: 'inline-block'
+            }
+          }, item.owner_username);
 
-        if (!supporterData || viewContext === 'grid') {
-          return sellerNode;
+        if (!supporterData) {
+          return sellerPill;
         }
 
         return H('span', {
-          style: { display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+          style: { display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }
         },
-          sellerNode,
+          sellerPill,
           H(SupporterBadge, {
             size: 'sm',
             since: supporterData.since,
@@ -2113,7 +2124,7 @@
           (showDistance && derivedMeters != null) &&
           H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
 
-          H('div', { className: 'muted' },
+          H('div', { className: 'muted', style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
             'Seller: ',
             renderSellerInfo()
           ),

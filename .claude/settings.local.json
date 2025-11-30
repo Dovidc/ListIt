@@ -20,7 +20,9 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(node --check:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(npm run migrate:latest:*)",
+      "Bash(PGPASSWORD=postgres psql:*)"
     ],
     "deny": [],
     "ask": []
