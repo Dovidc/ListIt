@@ -1947,7 +1947,74 @@
                 onClick: handleSelfSupporterClick
               })
             ),
-            profileSupporter && H(KarmaBadge, { karma: user.karma, size: 'md' }),
+            // Stats pills (active, sold, karma)
+            H('div', {
+              style: {
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginTop: 8
+              }
+            },
+              // Active listings pill
+              H('span', {
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                  background: 'rgba(248, 250, 252, 0.05)',
+                  fontSize: 13,
+                  color: '#f8fafc',
+                  fontWeight: 600
+                }
+              }, '🛍️ ', activeItems.length, ' active'),
+              // Sold pill
+              H('span', {
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                  background: 'rgba(248, 250, 252, 0.05)',
+                  fontSize: 13,
+                  color: '#f8fafc',
+                  fontWeight: 600
+                }
+              }, '✅ ', soldItems.length, ' sold'),
+              // Karma pill (only for supporters with karma > 0)
+              profileSupporter && user.karma > 0 && H('span', {
+                style: {
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(251, 191, 36, 0.4)',
+                  background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
+                  fontSize: 13,
+                  color: '#fbbf24',
+                  fontWeight: 600
+                }
+              },
+                H('svg', {
+                  viewBox: '0 0 24 24',
+                  width: 14,
+                  height: 14,
+                  fill: 'currentColor',
+                  style: { flexShrink: 0 }
+                },
+                  H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
+                ),
+                ' ',
+                user.karma,
+                ' karma'
+              )
+            )
           )
         ),
       );
@@ -2073,13 +2140,7 @@
             className: 'row',
             style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
           },
-            H('div', { style: { fontWeight: 800 } }, 'Your listings'),
-            H('div', {
-              className: 'row',
-              style: { gap: 8, alignItems: 'center', flexWrap: 'wrap' }
-            },
-              H('div', { className: 'muted' }, `Active ${activeItems.length} - Sold ${soldItems.length}`)
-            )
+            H('div', { style: { fontWeight: 800 } }, 'Your listings')
           ),
           H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
             H('button', {
