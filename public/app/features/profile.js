@@ -1932,21 +1932,6 @@
             H('div', { style: { fontWeight: 800, fontSize: 18 } },
               user.username ? user.username : user.email
             ),
-            userJoinedText && H('div', { className: 'muted' }, `Trovelr since ${userJoinedText}`),
-            profileSupporter && H('div', {
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 8
-              }
-            },
-              H(SupporterBadge, {
-                size: 'sm',
-                since: profileSupporter.since,
-                onClick: handleSelfSupporterClick
-              })
-            ),
             // Stats pills (active, sold, karma)
             H('div', {
               style: {
@@ -2074,9 +2059,20 @@
           }
         }, profileHeader),
 
-        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 16px', justifyContent: 'flex-end' } },
-          // Premium/Supporter button for non-supporters
-          showSupporterCta && H('button', {
+        H('div', { className: 'row', style: { gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 16px', justifyContent: 'space-between' } },
+          // Left side: Supporter badge and join date
+          H('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
+            profileSupporter && H(SupporterBadge, {
+              size: 'sm',
+              since: profileSupporter.since,
+              onClick: handleSelfSupporterClick
+            }),
+            userJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${userJoinedText}`)
+          ),
+          // Right side: Action buttons
+          H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            // Premium/Supporter button for non-supporters
+            showSupporterCta && H('button', {
             className: 'btn',
             type: 'button',
             onClick: handleJoinSupporterClick,
@@ -2133,15 +2129,10 @@
             H(LogoutIcon, null),
             H('span', { style: visuallyHidden, onClick: onLogout }, 'Log out')
           )
+          )
         ),
 
         H('section', null,
-          H('div', {
-            className: 'row',
-            style: { justifyContent: 'space-between', margin: '0 0 12px', flexWrap: 'wrap', alignItems: 'center', gap: 8 }
-          },
-            H('div', { style: { fontWeight: 800 } }, 'Your listings')
-          ),
           H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
             H('button', {
               className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
