@@ -1539,6 +1539,16 @@
     });
 
     function Root() {
+      // Apply dark mode on app mount
+      useEffect(() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+        } catch (e) {}
+      }, []);
+
       return H(AuthProvider, null,
         H(ListingQueueProvider, null,
           H(App)
