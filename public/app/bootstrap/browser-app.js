@@ -174,6 +174,16 @@
       ReactDOM: runtimeReactDOM
     });
 
+    const legalComponentsFactory = bundles?.components?.legal?.createLegalComponents;
+    if (typeof legalComponentsFactory !== 'function') {
+      throw new Error('Legal components bundle failed to load.');
+    }
+    const { LegalAcceptanceModal } = legalComponentsFactory({
+      React: runtimeReact,
+      ReactDOM: runtimeReactDOM,
+      api
+    });
+
     const { ListingsGrid } = gridComponentsFactory({
       React: runtimeReact,
       components: { ImageWithSkeleton, AdTile, SupporterBadge },
@@ -515,7 +525,8 @@
           ListingModal,
           SellerProfile
         },
-        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal }
+        supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal },
+        legal: { LegalAcceptanceModal }
       },
       uploads: {
         prepareListingForModal,

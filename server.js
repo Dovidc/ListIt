@@ -2765,7 +2765,15 @@ app.get('/api/me', async (req, res) => {
 
              COALESCE(quiet_hours_end, '09:30') AS quiet_hours_end,
 
-             COALESCE(timezone_offset, 0) AS timezone_offset
+             COALESCE(timezone_offset, 0) AS timezone_offset,
+
+             tos_accepted_at,
+
+             tos_version,
+
+             privacy_accepted_at,
+
+             privacy_version
 
       FROM users
 
@@ -2852,6 +2860,423 @@ app.put('/api/me/location-preset', auth, writeLimiter, async (req, res) => {
   }
 
 });
+
+// Current legal document version (combined TOS + Privacy)
+const CURRENT_LEGAL_VERSION = '1.0';
+
+app.get('/api/legal/status', auth, async (req, res) => {
+  try {
+    const row = await db.prepare(`
+      SELECT tos_accepted_at, tos_version
+      FROM users WHERE id = ?
+    `).get(req.user.id);
+
+    if (!row) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    const needsAcceptance = !row.tos_accepted_at || row.tos_version !== CURRENT_LEGAL_VERSION;
+
+    return res.json({
+      needs_acceptance: needsAcceptance,
+      current_version: CURRENT_LEGAL_VERSION,
+      accepted_at: row.tos_accepted_at || null,
+      accepted_version: row.tos_version || null
+    });
+  } catch (e) {
+    console.error('GET /api/legal/status failed:', e);
+    return res.status(500).json({ error: 'legal_status_failed' });
+  }
+});
+
+app.post('/api/legal/accept', auth, writeLimiter, async (req, res) => {
+  try {
+    const { version } = req.body;
+
+    if (version !== CURRENT_LEGAL_VERSION) {
+      return res.status(400).json({ error: 'invalid_version' });
+    }
+
+    const now = nowIso();
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    // Update user record (using tos columns for combined document)
+    await db.prepare(`
+      UPDATE users
+      SET tos_accepted_at = ?, tos_version = ?, privacy_accepted_at = ?, privacy_version = ?
+      WHERE id = ?
+    `).run(now, CURRENT_LEGAL_VERSION, now, CURRENT_LEGAL_VERSION, req.user.id);
+
+    // Record in audit trail
+    await db.prepare(`
+      INSERT INTO legal_acceptances (user_id, document_type, document_version, accepted_at, ip_address, user_agent)
+      VALUES (?, 'terms_and_privacy', ?, ?, ?, ?)
+    `).run(req.user.id, CURRENT_LEGAL_VERSION, now, ipAddress, userAgent);
+
+    return res.json({
+      ok: true,
+      accepted_at: now,
+      version: CURRENT_LEGAL_VERSION
+    });
+  } catch (e) {
+    console.error('POST /api/legal/accept failed:', e);
+    return res.status(500).json({ error: 'legal_accept_failed' });
+  }
+});
+
+app.get('/api/legal/documents', async (_req, res) => {
+  // Return combined legal document content
+  res.json({
+    version: CURRENT_LEGAL_VERSION,
+    title: 'Terms of Service & Privacy Policy',
+    effective_date: '2024-11-30',
+    content: getCombinedLegalContent()
+  });
+});
+
+function getTosContent() {
+  return `TERMS OF SERVICE
+
+Last Updated: November 30, 2024
+
+Welcome to Trovelr. By accessing or using our mobile application and services, you agree to be bound by these Terms of Service ("Terms").
+
+1. ACCEPTANCE OF TERMS
+By creating an account or using Trovelr, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy.
+
+2. ELIGIBILITY
+You must be at least 18 years old to use Trovelr. By using our service, you represent and warrant that you meet this age requirement.
+
+3. ACCOUNT RESPONSIBILITIES
+- You are responsible for maintaining the confidentiality of your account credentials
+- You are responsible for all activities that occur under your account
+- You must provide accurate and complete information when creating an account
+- You must notify us immediately of any unauthorized use of your account
+
+4. USER CONDUCT
+You agree NOT to:
+- Post false, misleading, or fraudulent listings
+- Harass, threaten, or intimidate other users
+- Post content that is illegal, harmful, threatening, abusive, defamatory, or otherwise objectionable
+- Attempt to circumvent our content moderation systems
+- Use the platform for any illegal purpose
+- Spam or send unsolicited messages to other users
+- Create multiple accounts to evade bans or restrictions
+
+5. LISTINGS AND TRANSACTIONS
+- Trovelr is a platform that connects buyers and sellers; we are not a party to any transaction
+- You are solely responsible for the accuracy of your listings
+- All transactions are between buyers and sellers directly
+- We do not guarantee the quality, safety, or legality of items listed
+- You are responsible for complying with all applicable laws regarding your transactions
+
+6. CONTENT MODERATION
+- We use automated systems including AI-powered content moderation to screen listings and messages
+- We reserve the right to remove any content that violates these Terms
+- We may suspend or terminate accounts that violate our policies
+
+7. INTELLECTUAL PROPERTY
+- You retain ownership of content you post
+- By posting content, you grant Trovelr a non-exclusive license to use, display, and distribute that content on our platform
+- You represent that you have the right to post any content you submit
+
+8. LIMITATION OF LIABILITY
+TROVELR IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND. WE ARE NOT LIABLE FOR:
+- Any disputes between users
+- The quality, safety, or legality of items
+- Any damages arising from your use of the platform
+- Actions or content of other users
+
+9. INDEMNIFICATION
+You agree to indemnify and hold Trovelr harmless from any claims, damages, or expenses arising from your use of the platform or violation of these Terms.
+
+10. TERMINATION
+We may suspend or terminate your account at any time for violations of these Terms or for any other reason at our discretion.
+
+11. CHANGES TO TERMS
+We may update these Terms from time to time. Continued use of Trovelr after changes constitutes acceptance of the new Terms.
+
+12. GOVERNING LAW
+These Terms are governed by the laws of the jurisdiction where Trovelr operates.
+
+13. CONTACT
+For questions about these Terms, please contact support@trovelr.com.`;
+}
+
+function getPrivacyContent() {
+  return `PRIVACY POLICY
+
+Last Updated: November 30, 2024
+
+This Privacy Policy explains how Trovelr ("we", "us", or "our") collects, uses, and protects your personal information.
+
+1. INFORMATION WE COLLECT
+
+Account Information:
+- Email address (required for account creation and communication)
+- Username (displayed publicly on your listings and profile)
+- Password (stored securely using industry-standard hashing)
+
+Profile Information (optional):
+- Profile picture
+- About/bio text
+- Profile background image or video
+- Avatar customization preferences
+
+Listing Information:
+- Item photos you upload
+- Listing titles, descriptions, and prices
+- Location/city information for your listings
+- Geographic coordinates (latitude/longitude) if you enable location features
+
+Communication Data:
+- Messages you send to other users
+- Images shared in conversations
+
+Technical Information:
+- Device information for push notifications
+- iOS push notification tokens
+- Login timestamps and timezone
+- IP addresses (for security and fraud prevention)
+
+2. HOW WE USE YOUR INFORMATION
+
+We use your information to:
+- Provide and improve our marketplace services
+- Enable communication between buyers and sellers
+- Send push notifications about messages and activity
+- Moderate content to maintain a safe platform
+- Prevent fraud and enforce our Terms of Service
+- Process payments (via third-party payment processors)
+- Comply with legal obligations
+
+3. THIRD-PARTY SERVICES
+
+We use the following third-party services:
+
+OpenAI: We use OpenAI's Moderation API to automatically screen listings and messages for prohibited content (hate speech, violence, etc.). Text content is sent to OpenAI for analysis.
+
+Stripe: For payment processing related to premium features. Stripe handles payment information securely.
+
+Amazon Web Services (S3): For secure storage of images you upload.
+
+Apple Push Notification Service (APNs): To deliver push notifications to iOS devices.
+
+4. DATA SHARING
+
+We do NOT sell your personal information.
+
+We may share information:
+- With other users as necessary for marketplace functionality (e.g., your username and listings are public)
+- With service providers who help us operate the platform
+- If required by law or to protect our rights
+- In connection with a business transfer or acquisition
+
+5. DATA RETENTION
+
+- Account information is retained while your account is active
+- You may request deletion of your account and associated data
+- Some information may be retained for legal compliance or fraud prevention
+
+6. YOUR RIGHTS
+
+You have the right to:
+- Access your personal information
+- Correct inaccurate information
+- Delete your account and data
+- Opt out of push notifications
+- Export your data
+
+7. SECURITY
+
+We implement appropriate technical and organizational measures to protect your information, including:
+- Encrypted data transmission (HTTPS)
+- Secure password hashing
+- Access controls and authentication
+
+8. CHILDREN'S PRIVACY
+
+Trovelr is not intended for users under 18 years of age. We do not knowingly collect information from children.
+
+9. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of significant changes.
+
+10. CONTACT US
+
+For privacy-related questions or to exercise your rights, contact us at:
+Email: support@trovelr.com`;
+}
+
+function getCombinedLegalContent() {
+  return `TERMS OF SERVICE & PRIVACY POLICY
+
+Last Updated: November 30, 2024
+
+Welcome to Trovelr. By accessing or using our mobile application and services, you agree to be bound by these Terms of Service and Privacy Policy.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 1: TERMS OF SERVICE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ACCEPTANCE OF TERMS
+By creating an account or using Trovelr, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy.
+
+2. ELIGIBILITY
+You must be at least 18 years old to use Trovelr. By using our service, you represent and warrant that you meet this age requirement.
+
+3. ACCOUNT RESPONSIBILITIES
+• You are responsible for maintaining the confidentiality of your account credentials
+• You are responsible for all activities that occur under your account
+• You must provide accurate and complete information when creating an account
+• You must notify us immediately of any unauthorized use of your account
+
+4. USER CONDUCT
+You agree NOT to:
+• Post false, misleading, or fraudulent listings
+• Harass, threaten, or intimidate other users
+• Post content that is illegal, harmful, threatening, abusive, defamatory, or otherwise objectionable
+• Attempt to circumvent our content moderation systems
+• Use the platform for any illegal purpose
+• Spam or send unsolicited messages to other users
+• Create multiple accounts to evade bans or restrictions
+
+5. LISTINGS AND TRANSACTIONS
+• Trovelr is a platform that connects buyers and sellers; we are not a party to any transaction
+• You are solely responsible for the accuracy of your listings
+• All transactions are between buyers and sellers directly
+• We do not guarantee the quality, safety, or legality of items listed
+• You are responsible for complying with all applicable laws regarding your transactions
+
+6. CONTENT MODERATION
+• We use automated systems including AI-powered content moderation to screen listings and messages
+• We reserve the right to remove any content that violates these Terms
+• We may suspend or terminate accounts that violate our policies
+
+7. INTELLECTUAL PROPERTY
+• You retain ownership of content you post
+• By posting content, you grant Trovelr a non-exclusive license to use, display, and distribute that content on our platform
+• You represent that you have the right to post any content you submit
+
+8. LIMITATION OF LIABILITY
+TROVELR IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND. WE ARE NOT LIABLE FOR:
+• Any disputes between users
+• The quality, safety, or legality of items
+• Any damages arising from your use of the platform
+• Actions or content of other users
+
+9. INDEMNIFICATION
+You agree to indemnify and hold Trovelr harmless from any claims, damages, or expenses arising from your use of the platform or violation of these Terms.
+
+10. TERMINATION
+We may suspend or terminate your account at any time for violations of these Terms or for any other reason at our discretion.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 2: PRIVACY POLICY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This section explains how Trovelr ("we", "us", or "our") collects, uses, and protects your personal information.
+
+1. INFORMATION WE COLLECT
+
+Account Information:
+• Email address (required for account creation and communication)
+• Username (displayed publicly on your listings and profile)
+• Password (stored securely using industry-standard hashing)
+
+Profile Information (optional):
+• Profile picture
+• About/bio text
+• Profile background image or video
+• Avatar customization preferences
+
+Listing Information:
+• Item photos you upload
+• Listing titles, descriptions, and prices
+• Location/city information for your listings
+• Geographic coordinates (latitude/longitude) if you enable location features
+
+Communication Data:
+• Messages you send to other users
+• Images shared in conversations
+
+Technical Information:
+• Device information for push notifications
+• iOS push notification tokens
+• Login timestamps and timezone
+• IP addresses (for security and fraud prevention)
+
+2. HOW WE USE YOUR INFORMATION
+
+We use your information to:
+• Provide and improve our marketplace services
+• Enable communication between buyers and sellers
+• Send push notifications about messages and activity
+• Moderate content to maintain a safe platform
+• Prevent fraud and enforce our Terms of Service
+• Process payments (via third-party payment processors)
+• Comply with legal obligations
+
+3. THIRD-PARTY SERVICES
+
+We use the following third-party services:
+
+OpenAI: We use OpenAI's Moderation API to automatically screen listings and messages for prohibited content (hate speech, violence, etc.). Text content is sent to OpenAI for analysis.
+
+Stripe: For payment processing related to premium features. Stripe handles payment information securely.
+
+Amazon Web Services (S3): For secure storage of images you upload.
+
+Apple Push Notification Service (APNs): To deliver push notifications to iOS devices.
+
+4. DATA SHARING
+
+We do NOT sell your personal information.
+
+We may share information:
+• With other users as necessary for marketplace functionality (e.g., your username and listings are public)
+• With service providers who help us operate the platform
+• If required by law or to protect our rights
+• In connection with a business transfer or acquisition
+
+5. DATA RETENTION
+• Account information is retained while your account is active
+• You may request deletion of your account and associated data
+• Some information may be retained for legal compliance or fraud prevention
+
+6. YOUR RIGHTS
+
+You have the right to:
+• Access your personal information
+• Correct inaccurate information
+• Delete your account and data
+• Opt out of push notifications
+• Export your data
+
+7. SECURITY
+
+We implement appropriate technical and organizational measures to protect your information, including:
+• Encrypted data transmission (HTTPS)
+• Secure password hashing
+• Access controls and authentication
+
+8. CHILDREN'S PRIVACY
+
+Trovelr is not intended for users under 18 years of age. We do not knowingly collect information from children.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACT & CHANGES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We may update these Terms and Privacy Policy from time to time. Continued use of Trovelr after changes constitutes acceptance.
+
+For questions about these Terms or Privacy Policy, or to exercise your privacy rights, contact us at:
+Email: support@trovelr.com`;
+}
 
 app.put('/api/me/profile-about', auth, writeLimiter, async (req, res) => {
 

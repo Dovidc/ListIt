@@ -471,6 +471,16 @@
       }, meta);
     };
   
+    const getLegalStatus = (meta) => request('/api/legal/status', { method: 'GET' }, meta);
+  
+    const getLegalDocuments = (meta) => request('/api/legal/documents', { method: 'GET' }, meta);
+  
+    const acceptLegal = (version, meta) => request('/api/legal/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version })
+    }, meta);
+  
     return {
       request,
       me,
@@ -536,7 +546,10 @@
       adminGetPaymentsStatus,
       adminSetPaymentsStatus,
       signUpload,
-      finalizeUpload
+      finalizeUpload,
+      getLegalStatus,
+      getLegalDocuments,
+      acceptLegal
     };
   }
   

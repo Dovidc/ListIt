@@ -144,6 +144,7 @@
     const gridComponents = components?.grid || {};
     const listingComponents = components?.listing || {};
     const supporterComponents = components?.supporter || {};
+    const legalComponents = components?.legal || {};
 
     const { Header, GlobalLoader, ResumeOverlay, CustomDropdown } = layoutComponents;
     const { ListingsGrid } = gridComponents;
@@ -153,6 +154,7 @@
       SellerProfile
     } = listingComponents;
     const { SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponents;
+    const { LegalAcceptanceModal } = legalComponents;
 
     assertFunction(Header, 'components.layout.Header');
     assertFunction(GlobalLoader, 'components.layout.GlobalLoader');
@@ -223,6 +225,10 @@
       const [createChoiceModalOpen, setCreateChoiceModalOpen] = useState(false);
       const plusButtonTimerRef = useRef(null);
       const isLongPressRef = useRef(false);
+
+      // Legal acceptance modal state
+      const [showLegalModal, setShowLegalModal] = useState(false);
+      const [legalCheckDone, setLegalCheckDone] = useState(false);
 
       // Scroll preservation
       const browseScrollPos = useRef(0);
@@ -483,6 +489,33 @@
       useEffect(() => {
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
+      }, []);
+
+      // Check if user needs to accept legal documents
+      useEffect(() => {
+        if (!user || loadingUser || legalCheckDone) return;
+
+        let alive = true;
+        (async () => {
+          try {
+            const status = await api.getLegalStatus();
+            if (!alive) return;
+            if (status?.needs_acceptance) {
+              setShowLegalModal(true);
+            }
+            setLegalCheckDone(true);
+          } catch (err) {
+            // If the API fails, don't block the user - just log it
+            console.error('Failed to check legal status:', err);
+            if (alive) setLegalCheckDone(true);
+          }
+        })();
+
+        return () => { alive = false; };
+      }, [user, loadingUser, legalCheckDone]);
+
+      const handleLegalAccepted = useCallback(() => {
+        setShowLegalModal(false);
       }, []);
 
       // Background/foreground detection - always refresh after minimum background time
@@ -1086,6 +1119,12 @@
               onBuyerSelected: handleKarmaBuyerSelected,
               onSkip: handleKarmaSkip,
               premiumFreeForAll
+            }),
+
+            LegalAcceptanceModal && H(LegalAcceptanceModal, {
+              open: showLegalModal,
+              onAccepted: handleLegalAccepted,
+              user
             }),
 
             H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
