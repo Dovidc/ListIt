@@ -23,7 +23,7 @@
       const [loading, setLoading] = useState(true);
       const [accepting, setAccepting] = useState(false);
       const [error, setError] = useState('');
-      const [document, setDocument] = useState(null);
+      const [legalDoc, setLegalDoc] = useState(null);
       const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
       const scrollRef = useRef(null);
 
@@ -39,7 +39,7 @@
           try {
             const doc = await api.getLegalDocuments();
             if (alive) {
-              setDocument(doc);
+              setLegalDoc(doc);
               setLoading(false);
             }
           } catch (err) {
@@ -62,12 +62,12 @@
       }, []);
 
       const handleAccept = useCallback(async () => {
-        if (!document) return;
+        if (!legalDoc) return;
         setAccepting(true);
         setError('');
 
         try {
-          await api.acceptLegal(document.version);
+          await api.acceptLegal(legalDoc.version);
           if (typeof onAccepted === 'function') {
             onAccepted();
           }
@@ -76,7 +76,7 @@
         } finally {
           setAccepting(false);
         }
-      }, [document, onAccepted]);
+      }, [legalDoc, onAccepted]);
 
       if (!open) return null;
 
@@ -144,7 +144,7 @@
                 }
               }, 'Loading...'),
 
-              !loading && document && H('div', {
+              !loading && legalDoc && H('div', {
                 style: {
                   whiteSpace: 'pre-wrap',
                   fontSize: 13,
@@ -152,7 +152,7 @@
                   color: '#374151',
                   fontFamily: 'system-ui, -apple-system, sans-serif'
                 }
-              }, document.content || '')
+              }, legalDoc.content || '')
             ),
 
             // Scroll hint
