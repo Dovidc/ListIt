@@ -2428,9 +2428,15 @@ app.post('/api/register', writeLimiter, validateBody(validateRegisterRequest), a
 
     const msg = String(e);
 
-    if (msg.includes('users.email')) return res.status(409).json({ error: 'Email already registered' });
+    // SQLite: "UNIQUE constraint failed: users.email"
+    // PostgreSQL: "duplicate key value violates unique constraint \"users_email_key\""
+    if (msg.includes('users.email') || msg.includes('users_email_key')) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
 
-    if (msg.includes('users.username')) return res.status(409).json({ error: 'Username already taken' });
+    if (msg.includes('users.username') || msg.includes('users_username_key')) {
+      return res.status(409).json({ error: 'Username already taken' });
+    }
 
     console.error(e);
 
@@ -2926,12 +2932,11 @@ app.post('/api/legal/accept', auth, writeLimiter, async (req, res) => {
 });
 
 app.get('/api/legal/documents', async (_req, res) => {
-  // Return combined legal document content
   res.json({
     version: CURRENT_LEGAL_VERSION,
-    title: 'Terms of Service & Privacy Policy',
-    effective_date: '2024-11-30',
-    content: getCombinedLegalContent()
+    title: 'Privacy Policy',
+    effective_date: '2024-12-01',
+    content: getPrivacyPolicyContent()
   });
 });
 
@@ -3021,7 +3026,6 @@ Account Information:
 Profile Information (optional):
 - Profile picture
 - About/bio text
-- Profile background image or video
 - Avatar customization preferences
 
 Listing Information:
@@ -3075,18 +3079,17 @@ We may share information:
 
 5. DATA RETENTION
 
-- Account information is retained while your account is active
-- You may request deletion of your account and associated data
-- Some information may be retained for legal compliance or fraud prevention
+- Account data is retained while your account is active
+- You can delete your account at any time from your profile settings
+- When you delete your account, all your data is permanently removed
+- We do not retain your data after account deletion
 
 6. YOUR RIGHTS
 
 You have the right to:
-- Access your personal information
-- Correct inaccurate information
-- Delete your account and data
-- Opt out of push notifications
-- Export your data
+- Correction - update your information via your profile settings
+- Deletion - delete your account and all associated data from your profile settings
+- Opt-out - disable push notifications in your device settings
 
 7. SECURITY
 
@@ -3190,7 +3193,6 @@ Account Information:
 Profile Information (optional):
 • Profile picture
 • About/bio text
-• Profile background image or video
 • Avatar customization preferences
 
 Listing Information:
@@ -3275,6 +3277,133 @@ CONTACT & CHANGES
 We may update these Terms and Privacy Policy from time to time. Continued use of Trovelr after changes constitutes acceptance.
 
 For questions about these Terms or Privacy Policy, or to exercise your privacy rights, contact us at:
+Email: support@trovelr.com`;
+}
+
+function getPrivacyPolicyContent() {
+  return `PRIVACY POLICY
+
+Effective Date: December 1, 2024
+
+Trovelr ("we," "us," or "our") operates a local marketplace mobile application. This Privacy Policy explains what information we collect, how we use it, and your choices regarding your data.
+
+By using Trovelr, you agree to the collection and use of information in accordance with this policy.
+
+
+INFORMATION WE COLLECT
+
+Account Information
+When you create an account, we collect:
+• Email address - used for account verification, login, and important notifications
+• Username - displayed publicly on your listings and profile
+• Password - stored using secure one-way hashing (we cannot see your password)
+
+Profile Information (Optional)
+You may choose to provide:
+• Profile picture
+• Bio/about text
+• Avatar border customization
+
+Listing Information
+When you create listings, we collect:
+• Photos of items you upload
+• Listing title, description, and price
+• City/location name
+• Geographic coordinates (latitude/longitude) if you enable location-based features
+
+Messages
+• Text messages exchanged with other users
+• Images shared in conversations
+
+Device & Technical Information
+• Push notification tokens (iOS/Android) for delivering notifications
+• IP address (for security and fraud prevention)
+• Timezone offset
+• Login timestamps
+
+
+HOW WE USE YOUR INFORMATION
+
+We use your information to:
+• Operate the marketplace - display listings, enable messaging between users
+• Authenticate your account and maintain security
+• Send push notifications about messages and relevant activity
+• Moderate content to keep the platform safe
+• Prevent fraud, spam, and abuse
+• Improve our services
+• Comply with legal obligations
+
+
+THIRD-PARTY SERVICES
+
+We use the following third-party services to operate Trovelr:
+
+OpenAI
+We use OpenAI's content moderation API to automatically screen listings and messages for prohibited content (hate speech, violence, harassment, etc.). Text you submit may be sent to OpenAI for safety analysis.
+
+Amazon Web Services (AWS)
+Images you upload are stored securely on Amazon S3.
+
+Stripe
+If you use premium features, payment processing is handled by Stripe. We do not store your credit card information - Stripe handles all payment data securely.
+
+Apple Push Notification Service (APNs)
+Used to deliver push notifications to iOS devices.
+
+SendGrid
+Used to send transactional emails (verification codes, notifications).
+
+
+DATA SHARING
+
+We do NOT sell your personal information.
+
+Your information may be shared:
+• Publicly - your username, profile picture, and listings are visible to other users
+• With service providers - third parties who help us operate the platform (listed above)
+• For legal reasons - if required by law, court order, or to protect our rights
+• Business transfers - in connection with a merger, acquisition, or sale of assets
+
+
+DATA RETENTION
+
+• Account data is retained while your account is active
+• You can delete your account at any time from your profile settings
+• When you delete your account, all your data is permanently removed including your profile, listings, messages, and conversations
+• We do not retain your data after account deletion
+
+
+YOUR RIGHTS
+
+You have the right to:
+• Correction - update your information via your profile settings
+• Deletion - delete your account and all associated data from your profile settings
+• Opt-out - disable push notifications in your device settings
+
+
+SECURITY
+
+We implement security measures including:
+• HTTPS encryption for all data transmission
+• Secure password hashing (bcrypt)
+• Authentication tokens with expiration
+• Rate limiting to prevent abuse
+
+
+CHILDREN'S PRIVACY
+
+Trovelr is not intended for users under 18 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, please contact us.
+
+
+CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of significant changes by displaying a notice in the app. Your continued use of Trovelr after changes indicates acceptance of the updated policy.
+
+
+CONTACT US
+
+For questions about this Privacy Policy or to exercise your privacy rights:
+
 Email: support@trovelr.com`;
 }
 

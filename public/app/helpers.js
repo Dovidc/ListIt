@@ -329,15 +329,22 @@
     }
 
     let coordsPromise = null;
+    let coordsFetchedAt = null;
+    const COORDS_COOLDOWN_MS = 4 * 60 * 1000; // 4 minutes - prevents triangulation of item positions
+
     function getUserCoordsOnce() {
       if (coordsPromise) return coordsPromise;
       if (!('geolocation' in navigator)) return Promise.resolve(null);
       coordsPromise = new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
-          (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+          (p) => {
+            coordsFetchedAt = Date.now();
+            resolve({ lat: p.coords.latitude, lon: p.coords.longitude });
+          },
           () => {
             // Reset promise on failure so it can retry next time
             coordsPromise = null;
+            coordsFetchedAt = null;
             resolve(null);
           },
           { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
@@ -347,8 +354,18 @@
     }
 
     // Clear cached coordinates so next call fetches fresh GPS position
+    // Only clears if cooldown period (4 min) has passed to prevent triangulation
     function clearCoordsCache() {
-      coordsPromise = null;
+      if (!coordsFetchedAt) {
+        coordsPromise = null;
+        return;
+      }
+      const elapsed = Date.now() - coordsFetchedAt;
+      if (elapsed >= COORDS_COOLDOWN_MS) {
+        coordsPromise = null;
+        coordsFetchedAt = null;
+      }
+      // If cooldown hasn't passed, keep the cached coordinates
     }
 
     function useBodyScrollLock(active) {

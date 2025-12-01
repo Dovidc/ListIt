@@ -90,34 +90,38 @@
           H('div', {
             className: 'modal-inner legal-modal',
             style: {
-              maxWidth: 600,
-              maxHeight: '90vh',
+              width: 'calc(100% - 32px)',
+              maxWidth: 560,
+              maxHeight: '85vh',
               display: 'flex',
               flexDirection: 'column',
               padding: 0,
               overflow: 'hidden',
-              background: '#fff'
+              background: '#fff',
+              borderRadius: 12,
+              boxSizing: 'border-box'
             }
           },
             // Header
             H('div', {
               style: {
-                padding: '24px 24px 16px',
-                borderBottom: '1px solid #e5e7eb'
+                padding: '20px 20px 14px',
+                borderBottom: '1px solid #e5e7eb',
+                flexShrink: 0
               }
             },
               H('h2', {
                 style: {
                   margin: 0,
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: 700,
                   color: '#111'
                 }
-              }, 'Terms of Service & Privacy Policy'),
+              }, 'Privacy Policy'),
               H('p', {
                 style: {
-                  margin: '8px 0 0',
-                  fontSize: 14,
+                  margin: '6px 0 0',
+                  fontSize: 13,
                   color: '#6b7280'
                 }
               }, 'Please review and accept to continue using Trovelr.')
@@ -129,9 +133,13 @@
               onScroll: handleScroll,
               style: {
                 flex: 1,
-                overflow: 'auto',
-                padding: 24,
-                minHeight: 300
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                padding: '16px 20px',
+                minHeight: 200,
+                WebkitOverflowScrolling: 'touch',
+                boxSizing: 'border-box',
+                width: '100%'
               }
             },
               loading && H('div', {
@@ -147,10 +155,13 @@
               !loading && legalDoc && H('div', {
                 style: {
                   whiteSpace: 'pre-wrap',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
                   fontSize: 13,
                   lineHeight: 1.6,
                   color: '#374151',
-                  fontFamily: 'system-ui, -apple-system, sans-serif'
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                  maxWidth: '100%'
                 }
               }, legalDoc.content || '')
             ),
@@ -158,31 +169,34 @@
             // Scroll hint
             !hasScrolledToBottom && !loading && H('div', {
               style: {
-                padding: '8px 24px',
+                padding: '8px 20px',
                 background: '#fef3c7',
                 color: '#92400e',
-                fontSize: 13,
-                textAlign: 'center'
+                fontSize: 12,
+                textAlign: 'center',
+                flexShrink: 0
               }
             }, 'Please scroll to the bottom to continue'),
 
             // Error message
             error && H('div', {
               style: {
-                padding: '12px 24px',
+                padding: '10px 20px',
                 background: '#fef2f2',
                 color: '#dc2626',
-                fontSize: 14,
-                textAlign: 'center'
+                fontSize: 13,
+                textAlign: 'center',
+                flexShrink: 0
               }
             }, error),
 
             // Footer
             H('div', {
               style: {
-                padding: '16px 24px',
+                padding: '14px 20px',
                 borderTop: '1px solid #e5e7eb',
-                background: '#f9fafb'
+                background: '#f9fafb',
+                flexShrink: 0
               }
             },
               H('button', {
@@ -192,13 +206,13 @@
                 className: 'btn primary',
                 style: {
                   width: '100%',
-                  padding: '14px 24px',
-                  fontSize: 16,
+                  padding: '12px 20px',
+                  fontSize: 15,
                   fontWeight: 600,
                   opacity: canAccept ? 1 : 0.5,
                   cursor: canAccept ? 'pointer' : 'not-allowed'
                 }
-              }, accepting ? 'Saving...' : 'I Agree')
+              }, accepting ? 'Saving...' : 'I Accept')
             )
           )
         ),
