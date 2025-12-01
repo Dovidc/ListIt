@@ -8556,6 +8556,10 @@ app.get('/api/health/deps', async (_req, res) => {
   }
 });
 
+app.get('/support', (_req, res) => {
+  res.send('email support@trovelr.com for assistance.');
+});
+
 
 
 app.use((err, _req, res, _next) => {
