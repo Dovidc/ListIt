@@ -172,11 +172,20 @@
     }
 
     // --- Tiered Supporter Badge (Bronze -> Unobtainium) ---
-    function TieredSupporterBadge({ since, size = 20, onClick }) {
+    function TieredSupporterBadge({ since, size = 20, onClick, tier: tierProp }) {
       const [showTooltip, setShowTooltip] = useState(false);
       const badgeRef = useRef(null);
 
-      // Calculate tier based on months since subscription
+      // Valid tiers list
+      const validTiers = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Sapphire', 'Amethyst', 'Unobtainium'];
+
+      // Normalize provided tier prop
+      const normalizedTierProp = tierProp ? tierProp.charAt(0).toUpperCase() + tierProp.slice(1).toLowerCase() : null;
+
+      // Use provided tier if valid, otherwise default to Bronze
+      const tier = (normalizedTierProp && validTiers.includes(normalizedTierProp)) ? normalizedTierProp : 'Bronze';
+
+      // Calculate duration text for tooltip
       const sinceDate = since ? new Date(since) : null;
       const now = Date.now();
       const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
@@ -193,16 +202,7 @@
         durationText = monthsSince === 1 ? '1 month' : `${monthsSince} months`;
       }
 
-      let tier = 'Bronze';
-      if (monthsSince >= 72) tier = 'Unobtainium';
-      else if (monthsSince >= 60) tier = 'Amethyst';
-      else if (monthsSince >= 36) tier = 'Sapphire';
-      else if (monthsSince >= 24) tier = 'Diamond';
-      else if (monthsSince >= 12) tier = 'Platinum';
-      else if (monthsSince >= 6) tier = 'Gold';
-      else if (monthsSince >= 3) tier = 'Silver';
-
-      const tooltipText = `${tier} Supporter - ${durationText}`;
+      const tooltipText = `${tier} Supporter${durationText ? ` - ${durationText}` : ''}`;
 
       // Click outside to dismiss
       useEffect(() => {
@@ -343,7 +343,7 @@
           );
         }
 
-        // Gold: Laurel wreath border with ribbon at bottom
+        // Gold: Shield frame with scrollwork (same as Silver but gold colors with shine)
         if (tier === 'Gold') {
           return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
             H('defs', null,
@@ -351,22 +351,42 @@
                 H('stop', { offset: '0%', stopColor: colors.accent }),
                 H('stop', { offset: '50%', stopColor: colors.primary }),
                 H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('linearGradient', { id: 'goldShield', x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#fff9e6' }),
+                H('stop', { offset: '30%', stopColor: '#ffed4e' }),
+                H('stop', { offset: '70%', stopColor: '#ffd700' }),
+                H('stop', { offset: '100%', stopColor: '#b8860b' })
+              ),
+              H('linearGradient', { id: 'goldShine', x1: '0%', y1: '0%', x2: '100%', y2: '20%' },
+                H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '40%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '50%', stopColor: '#ffffff', stopOpacity: '0.95' }),
+                H('stop', { offset: '60%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '100%', stopColor: '#ffffff', stopOpacity: '0' })
+              ),
+              H('clipPath', { id: 'goldShieldClip' },
+                H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z' })
               )
             ),
-            H('path', { d: 'M15 50 Q12 40 18 32 Q14 38 18 45 Q14 42 15 50', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M18 45 Q13 35 22 25 Q16 33 22 42 Q16 38 18 45', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M22 38 Q18 28 28 18 Q22 27 28 35 Q22 32 22 38', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M28 30 Q26 20 38 12 Q30 20 35 28 Q28 25 28 30', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M85 50 Q88 40 82 32 Q86 38 82 45 Q86 42 85 50', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M82 45 Q87 35 78 25 Q84 33 78 42 Q84 38 82 45', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M78 38 Q82 28 72 18 Q78 27 72 35 Q78 32 78 38', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M72 30 Q74 20 62 12 Q70 20 65 28 Q72 25 72 30', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M35 88 Q50 82 65 88 L62 95 Q50 90 38 95 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
-            H('path', { d: 'M38 95 L35 100 L40 97 Z', fill: colors.secondary }),
-            H('path', { d: 'M62 95 L65 100 L60 97 Z', fill: colors.secondary }),
-            H('circle', { cx: '50', cy: '6', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '8', cy: '55', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '92', cy: '55', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z', fill: 'none', stroke: 'url(#goldShield)', strokeWidth: '3' }),
+            H('path', { d: 'M50 10 L78 19 L82 44 L70 70 L50 86 L30 70 L18 44 L22 19 Z', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.5' }),
+            H('g', { clipPath: 'url(#goldShieldClip)' },
+              H('rect', { x: '-30', y: '-10', width: '35', height: '120', fill: 'url(#goldShine)', transform: 'rotate(20)' },
+                H('animate', { attributeName: 'x', values: '-30;110;110', dur: '3s', repeatCount: 'indefinite', keyTimes: '0;0.4;1' })
+              )
+            ),
+            H('path', { d: 'M8 35 Q4 45 8 55 Q12 50 10 45 Q14 50 12 55 Q8 50 8 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('path', { d: 'M12 30 Q6 40 10 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+            H('path', { d: 'M92 35 Q96 45 92 55 Q88 50 90 45 Q86 50 88 55 Q92 50 92 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('path', { d: 'M88 30 Q94 40 90 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+            H('path', { d: 'M40 6 Q50 0 60 6', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+            H('circle', { cx: '40', cy: '6', r: '2', fill: colors.accent }),
+            H('circle', { cx: '60', cy: '6', r: '2', fill: colors.accent }),
+            H('circle', { cx: '50', cy: '3', r: '2.5', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M50 90 L54 96 L50 99 L46 96 Z', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('circle', { cx: '15', cy: '15', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '85', cy: '15', r: '1.5', fill: colors.accent }),
             ...createPin('Gold')
           );
         }
@@ -2416,14 +2436,16 @@
       const supporterData = item?.owner_supporter_badge ? {
         username: item?.owner_username ? item.owner_username : null,
         since: item?.owner_supporter_since || null,
-        badge: item?.owner_supporter_badge || null
+        badge: item?.owner_supporter_badge || null,
+        tier: item?.owner_supporter_tier || null
       } : null;
 
       const handleSupporterBadgeClick = () => {
         if (!supporterData) return;
         const payload = {
           username: supporterData.username || (item?.owner_username ? item.owner_username : 'This seller'),
-          since: supporterData.since || null
+          since: supporterData.since || null,
+          tier: supporterData.tier || null
         };
         onSupporterClick?.(payload);
       };
@@ -2495,6 +2517,7 @@
           sellerPill,
           H(TieredSupporterBadge, {
             since: supporterData.since,
+            tier: supporterData.tier,
             size: 18
           })
         );
@@ -2701,7 +2724,8 @@
         ? {
           username: sellerInfo.username,
           since: sellerInfo.supporter_since,
-          badge: sellerInfo.supporter_badge
+          badge: sellerInfo.supporter_badge,
+          tier: sellerInfo.supporter_tier
         }
         : null;
       const avatarBorderColor = sellerInfo.profile_avatar_border_color || '#ffffff';
@@ -2928,386 +2952,11 @@
                       flexWrap: 'wrap'
                     }
                   }, username,
-                    sellerSupporter && (() => {
-                      const sinceDate = sellerSupporter.since ? new Date(sellerSupporter.since) : null;
-                      const now = Date.now();
-                      const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
-                      const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
-                      const yearsSince = Math.floor(monthsSince / 12);
-                      const remainingMonths = monthsSince % 12;
-
-                      let durationText = '';
-                      if (yearsSince > 0) {
-                        durationText = yearsSince === 1
-                          ? `1 year${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`
-                          : `${yearsSince} years${remainingMonths > 0 ? ` ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`;
-                      } else {
-                        durationText = monthsSince === 1 ? '1 month' : `${monthsSince} months`;
-                      }
-
-                      let tier = 'Bronze';
-                      if (monthsSince >= 72) tier = 'Unobtainium';
-                      else if (monthsSince >= 60) tier = 'Amethyst';
-                      else if (monthsSince >= 36) tier = 'Sapphire';
-                      else if (monthsSince >= 24) tier = 'Diamond';
-                      else if (monthsSince >= 12) tier = 'Platinum';
-                      else if (monthsSince >= 6) tier = 'Gold';
-                      else if (monthsSince >= 3) tier = 'Silver';
-
-                      const [showTooltip, setShowTooltip] = React.useState(false);
-                      const badgeRef = React.useRef(null);
-                      const tooltipText = `${tier} Supporter - ${durationText}`;
-
-                      // Click outside to dismiss
-                      React.useEffect(() => {
-                        if (!showTooltip) return;
-                        const handleClickOutside = (e) => {
-                          if (badgeRef.current && !badgeRef.current.contains(e.target)) {
-                            setShowTooltip(false);
-                          }
-                        };
-                        document.addEventListener('click', handleClickOutside, true);
-                        return () => document.removeEventListener('click', handleClickOutside, true);
-                      }, [showTooltip]);
-
-                      // Color schemes for each tier (with blended colors for mid-tiers)
-                      const tierColors = {
-                        Bronze: { primary: '#cd7f32', secondary: '#b87333', accent: '#daa06d', dark: '#8b5a2b' },
-                        Silver: { primary: '#c0c0c0', secondary: '#cd7f32', accent: '#d8d8d8', dark: '#808080' }, // Silver-Bronze blend
-                        Gold: { primary: '#ffd700', secondary: '#ffb800', accent: '#ffed4e', dark: '#b8860b' },
-                        Platinum: { primary: '#00bcd4', secondary: '#ffd700', accent: '#4dd0e1', dark: '#0097a7' }, // Platinum-Gold blend
-                        Diamond: { primary: '#9c27b0', secondary: '#7b1fa2', accent: '#ce93d8', dark: '#6a1b9a' },
-                        Sapphire: { primary: '#1565c0', secondary: '#9c27b0', accent: '#42a5f5', dark: '#0d47a1' }, // Sapphire-Diamond blend
-                        Amethyst: { primary: '#7b1fa2', secondary: '#4a148c', accent: '#ba68c8', dark: '#4a148c' },
-                        Unobtainium: { primary: '#00fff7', secondary: '#ff00ff', accent: '#ffff00', dark: '#0a0a1a' } // Iridescent cosmic
-                      };
-
-                      const colors = tierColors[tier];
-
-                      // Helper to create the core location pin with tiny T
-                      const createPin = (primary, secondary, accent, dark) => [
-                        // Pin body (teardrop shape)
-                        H('path', {
-                          d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-                          fill: `url(#pinGrad-${tier})`,
-                          stroke: dark,
-                          strokeWidth: '2'
-                        }),
-                        // Pin inner circle
-                        H('circle', { cx: '50', cy: '42', r: '14', fill: accent, stroke: dark, strokeWidth: '1.5' }),
-                        // Tiny T (barely visible)
-                        H('text', {
-                          x: '50',
-                          y: '47',
-                          textAnchor: 'middle',
-                          fontSize: '12',
-                          fontWeight: 'bold',
-                          fill: dark,
-                          opacity: '0.25'
-                        }, 'T')
-                      ];
-
-                      // SVG badge definitions for each tier - same core, increasing complexity
-                      const badgeSVGs = {
-                        // Bronze: Simple - just the pin in a circle
-                        Bronze: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Bronze', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '3', opacity: '0.6' }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Silver: Pin + thin decorative outer ring (bronze-silver blend)
-                        Silver: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Silver', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1', strokeDasharray: '8 4', opacity: '0.5' }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Gold: Pin + outer ring + 4 small accent dots
-                        Gold: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Gold', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.6' }),
-                          // 4 accent dots at cardinal points
-                          H('circle', { cx: '50', cy: '4', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
-                          H('circle', { cx: '96', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
-                          H('circle', { cx: '50', cy: '96', r: '3', fill: colors.primary, className: 'badge-sparkle-particle', style: { animationDelay: '1s' } }),
-                          H('circle', { cx: '4', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Platinum: Pin + double ring + 6 particles (gold-platinum blend)
-                        Platinum: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Platinum', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', opacity: '0.5' }),
-                          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeDasharray: '4 4', opacity: '0.4' }),
-                          // 6 particles
-                          H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
-                            H('circle', { cx: '50', cy: '4', r: '2.5', fill: colors.primary }),
-                            H('circle', { cx: '90', cy: '27', r: '2', fill: colors.secondary }),
-                            H('circle', { cx: '90', cy: '73', r: '2', fill: colors.accent }),
-                            H('circle', { cx: '50', cy: '96', r: '2.5', fill: colors.primary }),
-                            H('circle', { cx: '10', cy: '73', r: '2', fill: colors.secondary }),
-                            H('circle', { cx: '10', cy: '27', r: '2', fill: colors.accent })
-                          ),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Diamond: Pin + faceted geometric ring (8 segments)
-                        Diamond: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Diamond', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          // Octagonal faceted ring
-                          H('polygon', {
-                            points: '50,2 79,14 93,43 93,57 79,86 50,98 21,86 7,57 7,43 21,14',
-                            fill: 'none',
-                            stroke: colors.primary,
-                            strokeWidth: '2'
-                          }),
-                          H('polygon', {
-                            points: '50,8 73,18 85,43 85,57 73,82 50,92 27,82 15,57 15,43 27,18',
-                            fill: 'none',
-                            stroke: colors.accent,
-                            strokeWidth: '1',
-                            opacity: '0.5'
-                          }),
-                          // Facet lines
-                          H('line', { x1: '50', y1: '2', x2: '50', y2: '15', stroke: colors.primary, strokeWidth: '1', opacity: '0.4' }),
-                          H('line', { x1: '93', y1: '50', x2: '80', y2: '50', stroke: colors.primary, strokeWidth: '1', opacity: '0.4' }),
-                          H('line', { x1: '50', y1: '98', x2: '50', y2: '85', stroke: colors.primary, strokeWidth: '1', opacity: '0.4' }),
-                          H('line', { x1: '7', y1: '50', x2: '20', y2: '50', stroke: colors.primary, strokeWidth: '1', opacity: '0.4' }),
-                          // Corner sparkles
-                          H('circle', { cx: '50', cy: '2', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-                          H('circle', { cx: '93', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.4s' } }),
-                          H('circle', { cx: '50', cy: '98', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.8s' } }),
-                          H('circle', { cx: '7', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '1.2s' } }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Sapphire: Pin + organic ring with wave-like protrusions (diamond-sapphire blend)
-                        Sapphire: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Sapphire', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '44', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-                          H('circle', { cx: '50', cy: '50', r: '40', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.4' }),
-                          // Leaf-like decorations (8 small leaves)
-                          H('path', { d: 'M50 2 Q55 8 50 14 Q45 8 50 2', fill: colors.primary, opacity: '0.7' }),
-                          H('path', { d: 'M85 15 Q86 23 78 25 Q83 18 85 15', fill: colors.secondary, opacity: '0.6' }),
-                          H('path', { d: 'M98 50 Q92 55 86 50 Q92 45 98 50', fill: colors.primary, opacity: '0.7' }),
-                          H('path', { d: 'M85 85 Q78 86 78 78 Q83 82 85 85', fill: colors.secondary, opacity: '0.6' }),
-                          H('path', { d: 'M50 98 Q45 92 50 86 Q55 92 50 98', fill: colors.primary, opacity: '0.7' }),
-                          H('path', { d: 'M15 85 Q17 78 25 78 Q18 83 15 85', fill: colors.secondary, opacity: '0.6' }),
-                          H('path', { d: 'M2 50 Q8 45 14 50 Q8 55 2 50', fill: colors.primary, opacity: '0.7' }),
-                          H('path', { d: 'M15 15 Q22 17 22 25 Q17 18 15 15', fill: colors.secondary, opacity: '0.6' }),
-                          // Sparkle accents
-                          H('circle', { cx: '50', cy: '3', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-                          H('circle', { cx: '97', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
-                          H('circle', { cx: '50', cy: '97', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '1s' } }),
-                          H('circle', { cx: '3', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Amethyst: Pin + ring with 8 ray/spike elements
-                        Amethyst: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg' },
-                          H('defs', null,
-                            H('linearGradient', { id: 'pinGrad-Amethyst', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: colors.accent }),
-                              H('stop', { offset: '50%', stopColor: colors.primary }),
-                              H('stop', { offset: '100%', stopColor: colors.secondary })
-                            )
-                          ),
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-                          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.5' }),
-                          // 8 rays/spikes
-                          H('polygon', { points: '50,0 53,12 50,8 47,12', fill: colors.primary }),
-                          H('polygon', { points: '85,15 78,24 80,20 74,22', fill: colors.secondary, opacity: '0.8' }),
-                          H('polygon', { points: '100,50 88,53 92,50 88,47', fill: colors.primary }),
-                          H('polygon', { points: '85,85 78,78 80,80 74,76', fill: colors.secondary, opacity: '0.8' }),
-                          H('polygon', { points: '50,100 47,88 50,92 53,88', fill: colors.primary }),
-                          H('polygon', { points: '15,85 22,78 20,80 26,76', fill: colors.secondary, opacity: '0.8' }),
-                          H('polygon', { points: '0,50 12,47 8,50 12,53', fill: colors.primary }),
-                          H('polygon', { points: '15,15 22,24 20,20 26,22', fill: colors.secondary, opacity: '0.8' }),
-                          // Sparkles at ray tips
-                          H('circle', { cx: '50', cy: '0', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-                          H('circle', { cx: '100', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.25s' } }),
-                          H('circle', { cx: '50', cy: '100', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
-                          H('circle', { cx: '0', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle', style: { animationDelay: '0.75s' } }),
-                          ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark)
-                        ),
-
-                        // Unobtainium: Legendary tier - iridescent cosmic shifting colors
-                        Unobtainium: H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', className: 'unobtainium-badge' },
-                          H('defs', null,
-                            // Animated iridescent gradient for pin
-                            H('linearGradient', { id: 'pinGrad-Unobtainium', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: '#00fff7' }),
-                              H('stop', { offset: '25%', stopColor: '#ff00ff' }),
-                              H('stop', { offset: '50%', stopColor: '#ffff00' }),
-                              H('stop', { offset: '75%', stopColor: '#00ff00' }),
-                              H('stop', { offset: '100%', stopColor: '#00fff7' })
-                            ),
-                            // Outer ring rainbow gradient
-                            H('linearGradient', { id: 'unobtainiumRing', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-                              H('stop', { offset: '0%', stopColor: '#ff0080' }),
-                              H('stop', { offset: '33%', stopColor: '#00ffff' }),
-                              H('stop', { offset: '66%', stopColor: '#ffff00' }),
-                              H('stop', { offset: '100%', stopColor: '#ff0080' })
-                            ),
-                            // Inner glow gradient
-                            H('radialGradient', { id: 'unobtainiumGlow', cx: '50%', cy: '50%', r: '50%' },
-                              H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0.8' }),
-                              H('stop', { offset: '50%', stopColor: '#00fff7', stopOpacity: '0.4' }),
-                              H('stop', { offset: '100%', stopColor: '#ff00ff', stopOpacity: '0' })
-                            ),
-                            // Core gem gradient
-                            H('radialGradient', { id: 'unobtainiumCore', cx: '30%', cy: '30%', r: '70%' },
-                              H('stop', { offset: '0%', stopColor: '#ffffff' }),
-                              H('stop', { offset: '30%', stopColor: '#e0ffff' }),
-                              H('stop', { offset: '60%', stopColor: '#00fff7' }),
-                              H('stop', { offset: '100%', stopColor: '#0088aa' })
-                            ),
-                            // Filter for glow effect
-                            H('filter', { id: 'unobtainiumBlur', x: '-50%', y: '-50%', width: '200%', height: '200%' },
-                              H('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '2' })
-                            )
-                          ),
-                          // Background glow pulse
-                          H('circle', { cx: '50', cy: '50', r: '44', fill: 'url(#unobtainiumGlow)', className: 'badge-sparkle-particle', style: { animationDuration: '2s' } }),
-                          // Outer iridescent ring (thick, animated)
-                          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#unobtainiumRing)', strokeWidth: '3', className: 'unobtainium-ring-outer' }),
-                          // Middle dashed ring
-                          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: '#00fff7', strokeWidth: '1.5', strokeDasharray: '6 3', opacity: '0.7', className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } }),
-                          // Inner ring
-                          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#ff00ff', strokeWidth: '1', opacity: '0.5', className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px', animationDirection: 'reverse' } }),
-                          // Outer orbiting particles (rainbow colors, fast)
-                          H('g', { className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } },
-                            H('circle', { cx: '50', cy: '0', r: '3', fill: '#ff0080', className: 'badge-sparkle-particle' }),
-                            H('circle', { cx: '93', cy: '25', r: '2.5', fill: '#ffff00', className: 'badge-sparkle-particle', style: { animationDelay: '0.15s' } }),
-                            H('circle', { cx: '100', cy: '50', r: '3', fill: '#00ff00', className: 'badge-sparkle-particle', style: { animationDelay: '0.3s' } }),
-                            H('circle', { cx: '93', cy: '75', r: '2.5', fill: '#00ffff', className: 'badge-sparkle-particle', style: { animationDelay: '0.45s' } }),
-                            H('circle', { cx: '50', cy: '100', r: '3', fill: '#0080ff', className: 'badge-sparkle-particle', style: { animationDelay: '0.6s' } }),
-                            H('circle', { cx: '7', cy: '75', r: '2.5', fill: '#8000ff', className: 'badge-sparkle-particle', style: { animationDelay: '0.75s' } }),
-                            H('circle', { cx: '0', cy: '50', r: '3', fill: '#ff00ff', className: 'badge-sparkle-particle', style: { animationDelay: '0.9s' } }),
-                            H('circle', { cx: '7', cy: '25', r: '2.5', fill: '#ff0040', className: 'badge-sparkle-particle', style: { animationDelay: '1.05s' } })
-                          ),
-                          // Inner orbiting stars (counter-rotate)
-                          H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px', animationDirection: 'reverse' } },
-                            H('polygon', { points: '50,6 51.5,10 55,10 52,12.5 53.5,16 50,14 46.5,16 48,12.5 45,10 48.5,10', fill: '#ffffff', className: 'badge-sparkle-particle' }),
-                            H('polygon', { points: '85,50 86.5,54 90,54 87,56.5 88.5,60 85,58 81.5,60 83,56.5 80,54 83.5,54', fill: '#ffff00', className: 'badge-sparkle-particle', style: { animationDelay: '0.5s' } }),
-                            H('polygon', { points: '50,85 51.5,89 55,89 52,91.5 53.5,95 50,93 46.5,95 48,91.5 45,89 48.5,89', fill: '#00ffff', className: 'badge-sparkle-particle', style: { animationDelay: '1s' } }),
-                            H('polygon', { points: '15,50 16.5,54 20,54 17,56.5 18.5,60 15,58 11.5,60 13,56.5 10,54 13.5,54', fill: '#ff00ff', className: 'badge-sparkle-particle', style: { animationDelay: '1.5s' } })
-                          ),
-                          // Pin with iridescent gradient
-                          H('path', {
-                            d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-                            fill: 'url(#pinGrad-Unobtainium)',
-                            stroke: '#ffffff',
-                            strokeWidth: '2',
-                            className: 'unobtainium-pin',
-                            filter: 'url(#unobtainiumBlur)'
-                          }),
-                          // Pin overlay (crisp)
-                          H('path', {
-                            d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-                            fill: 'url(#pinGrad-Unobtainium)',
-                            stroke: '#0a0a1a',
-                            strokeWidth: '1.5'
-                          }),
-                          // Glowing core gem
-                          H('circle', { cx: '50', cy: '42', r: '14', fill: 'url(#unobtainiumCore)', stroke: '#ffffff', strokeWidth: '1.5' }),
-                          // Inner sparkle on gem
-                          H('circle', { cx: '45', cy: '38', r: '4', fill: '#ffffff', opacity: '0.7' }),
-                          H('circle', { cx: '47', cy: '40', r: '2', fill: '#ffffff', opacity: '0.9' }),
-                          // Tiny T
-                          H('text', {
-                            x: '50',
-                            y: '47',
-                            textAnchor: 'middle',
-                            fontSize: '12',
-                            fontWeight: 'bold',
-                            fill: '#0a0a1a',
-                            opacity: '0.4'
-                          }, 'T')
-                        )
-                      };
-
-                      const glowColors = {
-                        Bronze: 'rgba(205, 127, 50, 0.6)',
-                        Silver: 'rgba(192, 192, 192, 0.6)',
-                        Gold: 'rgba(255, 215, 0, 0.6)',
-                        Platinum: 'rgba(0, 188, 212, 0.6)',
-                        Diamond: 'rgba(156, 39, 176, 0.6)',
-                        Sapphire: 'rgba(21, 101, 192, 0.6)',
-                        Amethyst: 'rgba(123, 31, 162, 0.6)',
-                        Unobtainium: 'rgba(0, 255, 247, 0.8)'
-                      };
-
-                      return H('div', { ref: badgeRef, style: { display: 'flex', gap: 4, flexWrap: 'wrap', position: 'relative' } },
-                        H('div', {
-                          className: `supporter-tier-badge supporter-tier-badge--${tier.toLowerCase()}`,
-                          title: tooltipText,
-                          onClick: (e) => { e.stopPropagation(); setShowTooltip(true); },
-                          style: showTooltip ? { transform: 'scale(1.25)' } : undefined
-                        },
-                          badgeSVGs[tier]
-                        ),
-                        showTooltip && H('div', {
-                          style: {
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            marginBottom: 8,
-                            background: 'rgba(0, 0, 0, 0.9)',
-                            color: '#fff',
-                            padding: '6px 10px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            zIndex: 1000,
-                            pointerEvents: 'none',
-                            border: `1px solid ${glowColors[tier]}`
-                          }
-                        }, tooltipText)
-                      );
-                    })(),
+                    sellerSupporter && H(TieredSupporterBadge, {
+                      size: 18,
+                      since: sellerSupporter.since,
+                      tier: sellerSupporter.tier
+                    }),
                     // Beta Tester Badge (separate from supporter badge)
                     sellerInfo?.beta_tester && (() => {
                       const [showBetaTooltip, setShowBetaTooltip] = React.useState(false);
@@ -4050,6 +3699,7 @@
             sellerSupporter && H(SupporterBadge, {
               size: 'sm',
               since: sellerSupporter.since,
+              tier: sellerSupporter.tier,
               onClick: () => onSupporterClick?.(sellerSupporter)
             }),
             sellerJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${sellerJoinedText}`)

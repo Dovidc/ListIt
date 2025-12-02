@@ -1999,7 +1999,8 @@
           : (user.email || 'This user');
         return {
           username: usernameLabel,
-          since: user.supporter_since || null
+          since: user.supporter_since || null,
+          tier: user.supporter_tier || null
         };
       }, [user]);
       const userCreatedAt = user?.created_at || null;
@@ -2012,6 +2013,7 @@
         onSupporterClick?.({
           username: profileSupporter.username,
           since: profileSupporter.since || null,
+          tier: profileSupporter.tier || null,
           isSelf: true
         });
       }, [onSupporterClick, profileSupporter]);
@@ -2560,6 +2562,7 @@
             profileSupporter && H(SupporterBadge, {
               size: 'sm',
               since: profileSupporter.since,
+              tier: profileSupporter.tier,
               onClick: handleSelfSupporterClick
             }),
             userJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${userJoinedText}`)

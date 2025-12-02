@@ -210,7 +210,7 @@
         askCreateActionEnabled,
         setAskCreateActionEnabled
       } = useAppPreferences();
-      const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, isSelf: false });
+      const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, tier: null, isSelf: false });
       const [supporterUpsellState, setSupporterUpsellState] = useState({
         open: false,
         mode: 'prompt',
@@ -295,8 +295,9 @@
         const usernameRaw = typeof payload?.username === 'string' ? payload.username.trim() : '';
         const username = usernameRaw || 'This user';
         const since = payload?.since || null;
+        const tier = payload?.tier || null;
         const isSelf = Boolean(payload?.isSelf);
-        setSupporterInfoState({ open: true, username, since, isSelf });
+        setSupporterInfoState({ open: true, username, since, tier, isSelf });
       }, []);
 
       const handleSupporterInfoClose = useCallback(() => {
@@ -1092,6 +1093,7 @@
               onClose: handleSupporterInfoClose,
               username: supporterInfoState.username,
               since: supporterInfoState.since,
+              tier: supporterInfoState.tier,
               isSelf: supporterInfoState.isSelf,
               onJoin: handleSupporterInfoJoin,
               paymentsDisabled: premiumFreeForAll

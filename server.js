@@ -4409,7 +4409,9 @@ app.get('/api/listings', async (req, res) => {
 
       u.supporter_badge AS owner_supporter_badge,
 
-      u.supporter_since AS owner_supporter_since
+      u.supporter_since AS owner_supporter_since,
+
+      u.supporter_tier AS owner_supporter_tier
 
     `;
 
@@ -4427,7 +4429,9 @@ app.get('/api/listings', async (req, res) => {
 
       u.supporter_badge AS owner_supporter_badge,
 
-      u.supporter_since AS owner_supporter_since
+      u.supporter_since AS owner_supporter_since,
+
+      u.supporter_tier AS owner_supporter_tier
 
     `;
 
@@ -5413,6 +5417,7 @@ app.get('/api/users/:userId', async (req, res) => {
              created_at,
              supporter_badge,
              supporter_since,
+             supporter_tier,
              beta_tester,
              admin_badge,
              profile_picture_url,
@@ -5445,6 +5450,8 @@ app.get('/api/users/:userId', async (req, res) => {
       supporter_badge: user.supporter_badge || null,
 
       supporter_since: user.supporter_since || null,
+
+      supporter_tier: user.supporter_tier || null,
 
       beta_tester: !!user.beta_tester,
 
@@ -5522,7 +5529,9 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
         u.supporter_badge AS owner_supporter_badge,
 
-        u.supporter_since AS owner_supporter_since
+        u.supporter_since AS owner_supporter_since,
+
+        u.supporter_tier AS owner_supporter_tier
 
       FROM listings l
 
@@ -6046,6 +6055,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  u.profile_picture_url AS owner_profile_picture_url,
                  u.supporter_badge AS owner_supporter_badge,
                  u.supporter_since AS owner_supporter_since,
+                 u.supporter_tier AS owner_supporter_tier,
                  ST_Distance(
                    COALESCE(
                      l.geog,
@@ -6126,6 +6136,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                u.profile_picture_url AS owner_profile_picture_url,
                u.supporter_badge AS owner_supporter_badge,
                u.supporter_since AS owner_supporter_since,
+               u.supporter_tier AS owner_supporter_tier,
                ${distanceExpr} AS distance_m
           FROM listings l
           JOIN users u ON u.id = l.user_id
