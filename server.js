@@ -126,7 +126,11 @@ const APP_SETTING_KEYS = {
 
 const SETTINGS_CACHE_TTL_MS = 30_000;
 const OPENAI_TIMEOUT_MS = Math.max(1000, Number(process.env.OPENAI_TIMEOUT_MS || 6000));
-const appSettingsCache = new Map();
+const appSettingsCache = createSharedCache({
+  prefix: 'app-settings',
+  ttlMs: SETTINGS_CACHE_TTL_MS,
+  maxSize: 500
+});
 
 const REQUIRED_TABLES = [
   'users',
@@ -1138,9 +1142,16 @@ function parseBooleanSetting(value) {
 
 async function getAppSettingValue(key, { useCache = true } = {}) {
   await ensureAppSettingsSchema();
-  const cacheEntry = appSettingsCache.get(key);
-  if (useCache && cacheEntry && cacheEntry.expiresAt > Date.now()) {
-    return cacheEntry;
+
+  if (useCache) {
+    try {
+      const cacheEntry = await appSettingsCache.get(key);
+      if (cacheEntry && cacheEntry.expiresAt > Date.now()) {
+        return cacheEntry;
+      }
+    } catch (err) {
+      console.warn('[app-settings] cache read failed:', err?.message || err);
+    }
   }
 
   const row = await db.prepare('SELECT value, updated_at FROM app_settings WHERE key = ?').get(key);
@@ -1153,14 +1164,22 @@ async function getAppSettingValue(key, { useCache = true } = {}) {
   };
 
   if (useCache) {
-    appSettingsCache.set(key, entry);
+    try {
+      await appSettingsCache.set(key, entry);
+    } catch (err) {
+      console.warn('[app-settings] cache write failed:', err?.message || err);
+    }
   }
 
   return entry;
 }
 
-function invalidateSettingCache(key) {
-  appSettingsCache.delete(key);
+async function invalidateSettingCache(key) {
+  try {
+    await appSettingsCache.delete(key);
+  } catch (err) {
+    console.warn('[app-settings] cache invalidate failed:', err?.message || err);
+  }
 }
 
 async function setAppSettingValue(key, value) {
@@ -1172,7 +1191,7 @@ async function setAppSettingValue(key, value) {
     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     RETURNING key
   `).run(key, value, updatedAt);
-  invalidateSettingCache(key);
+  await invalidateSettingCache(key);
   return { value, updated_at: updatedAt };
 }
 
