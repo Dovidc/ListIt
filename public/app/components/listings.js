@@ -231,179 +231,382 @@
       const colors = tierColors[tier];
 
       // Helper to create the core location pin
-      const createPin = (primary, secondary, accent, dark, tierName) => [
-        H('path', {
-          key: 'pin-body',
-          d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-          fill: `url(#pinGrad-${tierName})`,
-          stroke: dark,
-          strokeWidth: '2'
-        }),
-        H('circle', { key: 'pin-circle', cx: '50', cy: '42', r: '14', fill: accent, stroke: dark, strokeWidth: '1.5' }),
-        H('text', {
-          key: 'pin-t',
-          x: '50',
-          y: '47',
-          textAnchor: 'middle',
-          fontSize: '12',
-          fontWeight: 'bold',
-          fill: dark,
-          opacity: '0.25'
-        }, 'T')
-      ];
+      const createPin = (tierName) => {
+        const c = tierColors[tierName];
+        return [
+          H('path', {
+            key: 'pin-body',
+            d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
+            fill: `url(#pinGrad-${tierName})`,
+            stroke: c.dark,
+            strokeWidth: '2'
+          }),
+          H('circle', { key: 'pin-circle', cx: '50', cy: '42', r: '14', fill: c.accent, stroke: c.dark, strokeWidth: '1.5' }),
+          H('text', {
+            key: 'pin-t',
+            x: '50',
+            y: '47',
+            textAnchor: 'middle',
+            fontSize: '12',
+            fontWeight: 'bold',
+            fill: c.dark,
+            opacity: '0.25'
+          }, 'T')
+        ];
+      };
 
       // Badge SVGs for each tier
       const getBadgeSVG = () => {
-        const gradientDef = H('defs', { key: 'defs' },
-          H('linearGradient', { id: `pinGrad-${tier}`, x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-            H('stop', { offset: '0%', stopColor: colors.accent }),
-            H('stop', { offset: '50%', stopColor: colors.primary }),
-            H('stop', { offset: '100%', stopColor: colors.secondary })
-          )
-        );
-
+        // Bronze: Rising sun/dawn - a new beginning, warm and inviting
         if (tier === 'Bronze') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '3', opacity: '0.6' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
-          );
-        }
-
-        if (tier === 'Silver') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1', strokeDasharray: '8 4', opacity: '0.5' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
-          );
-        }
-
-        if (tier === 'Gold') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
-            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.6' }),
-            H('circle', { cx: '50', cy: '4', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '96', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '50', cy: '96', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '4', cy: '50', r: '3', fill: colors.primary, className: 'badge-sparkle-particle' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
-          );
-        }
-
-        if (tier === 'Platinum') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', opacity: '0.5' }),
-            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeDasharray: '4 4', opacity: '0.4' }),
-            H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
-              H('circle', { cx: '50', cy: '4', r: '2.5', fill: colors.primary }),
-              H('circle', { cx: '90', cy: '27', r: '2', fill: colors.secondary }),
-              H('circle', { cx: '90', cy: '73', r: '2', fill: colors.accent }),
-              H('circle', { cx: '50', cy: '96', r: '2.5', fill: colors.primary }),
-              H('circle', { cx: '10', cy: '73', r: '2', fill: colors.secondary }),
-              H('circle', { cx: '10', cy: '27', r: '2', fill: colors.accent })
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Bronze', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('linearGradient', { id: 'bronzeSunrise', x1: '0%', y1: '100%', x2: '0%', y2: '0%' },
+                H('stop', { offset: '0%', stopColor: '#8b5a2b' }),
+                H('stop', { offset: '40%', stopColor: '#cd7f32' }),
+                H('stop', { offset: '100%', stopColor: '#daa06d' })
+              ),
+              H('radialGradient', { id: 'bronzeSunGlow', cx: '50%', cy: '85%', r: '60%' },
+                H('stop', { offset: '0%', stopColor: '#daa06d', stopOpacity: '0.5' }),
+                H('stop', { offset: '100%', stopColor: colors.primary, stopOpacity: '0' })
+              )
             ),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'url(#bronzeSunGlow)' }),
+            H('path', { d: 'M4 70 Q25 68 50 70 Q75 72 96 70', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
+            H('path', { d: 'M25 70 A25 25 0 0 1 75 70', fill: 'url(#bronzeSunrise)', stroke: colors.dark, strokeWidth: '1' }),
+            H('path', { d: 'M50 45 L50 12', fill: 'none', stroke: colors.accent, strokeWidth: '2.5', strokeLinecap: 'round' }),
+            H('path', { d: 'M35 50 L15 25', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+            H('path', { d: 'M65 50 L85 25', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+            H('path', { d: 'M28 58 L8 48', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', strokeLinecap: 'round' }),
+            H('path', { d: 'M72 58 L92 48', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', strokeLinecap: 'round' }),
+            H('path', { d: 'M42 48 L32 18', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.7' }),
+            H('path', { d: 'M58 48 L68 18', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.7' }),
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
+            H('circle', { cx: '20', cy: '15', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '80', cy: '20', r: '1', fill: colors.accent }),
+            H('circle', { cx: '12', cy: '35', r: '1', fill: colors.secondary }),
+            H('circle', { cx: '88', cy: '38', r: '1.5', fill: colors.secondary }),
+            ...createPin('Bronze')
           );
         }
 
+        // Silver: Shield frame with elegant scrollwork, feathers, and shine flash
+        if (tier === 'Silver') {
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Silver', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('linearGradient', { id: 'silverShield', x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#ffffff' }),
+                H('stop', { offset: '30%', stopColor: '#e8e8e8' }),
+                H('stop', { offset: '70%', stopColor: '#c0c0c0' }),
+                H('stop', { offset: '100%', stopColor: '#a0a0a0' })
+              ),
+              H('linearGradient', { id: 'silverShine', x1: '0%', y1: '0%', x2: '100%', y2: '20%' },
+                H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '40%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '50%', stopColor: '#ffffff', stopOpacity: '0.95' }),
+                H('stop', { offset: '60%', stopColor: '#ffffff', stopOpacity: '0' }),
+                H('stop', { offset: '100%', stopColor: '#ffffff', stopOpacity: '0' })
+              ),
+              H('clipPath', { id: 'silverShieldClip' },
+                H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z' })
+              )
+            ),
+            H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z', fill: 'none', stroke: 'url(#silverShield)', strokeWidth: '3' }),
+            H('path', { d: 'M50 10 L78 19 L82 44 L70 70 L50 86 L30 70 L18 44 L22 19 Z', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.5' }),
+            H('g', { clipPath: 'url(#silverShieldClip)' },
+              H('rect', { x: '-30', y: '-10', width: '35', height: '120', fill: 'url(#silverShine)', transform: 'rotate(20)' },
+                H('animate', { attributeName: 'x', values: '-30;110;110', dur: '3s', repeatCount: 'indefinite', keyTimes: '0;0.4;1' })
+              )
+            ),
+            H('path', { d: 'M8 35 Q4 45 8 55 Q12 50 10 45 Q14 50 12 55 Q8 50 8 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('path', { d: 'M12 30 Q6 40 10 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+            H('path', { d: 'M92 35 Q96 45 92 55 Q88 50 90 45 Q86 50 88 55 Q92 50 92 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('path', { d: 'M88 30 Q94 40 90 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+            H('path', { d: 'M40 6 Q50 0 60 6', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+            H('circle', { cx: '40', cy: '6', r: '2', fill: colors.accent }),
+            H('circle', { cx: '60', cy: '6', r: '2', fill: colors.accent }),
+            H('circle', { cx: '50', cy: '3', r: '2.5', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M50 90 L54 96 L50 99 L46 96 Z', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+            H('circle', { cx: '15', cy: '15', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '85', cy: '15', r: '1.5', fill: colors.accent }),
+            ...createPin('Silver')
+          );
+        }
+
+        // Gold: Laurel wreath border with ribbon at bottom
+        if (tier === 'Gold') {
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Gold', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              )
+            ),
+            H('path', { d: 'M15 50 Q12 40 18 32 Q14 38 18 45 Q14 42 15 50', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M18 45 Q13 35 22 25 Q16 33 22 42 Q16 38 18 45', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M22 38 Q18 28 28 18 Q22 27 28 35 Q22 32 22 38', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M28 30 Q26 20 38 12 Q30 20 35 28 Q28 25 28 30', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M85 50 Q88 40 82 32 Q86 38 82 45 Q86 42 85 50', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M82 45 Q87 35 78 25 Q84 33 78 42 Q84 38 82 45', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M78 38 Q82 28 72 18 Q78 27 72 35 Q78 32 78 38', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M72 30 Q74 20 62 12 Q70 20 65 28 Q72 25 72 30', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M35 88 Q50 82 65 88 L62 95 Q50 90 38 95 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M38 95 L35 100 L40 97 Z', fill: colors.secondary }),
+            H('path', { d: 'M62 95 L65 100 L60 97 Z', fill: colors.secondary }),
+            H('circle', { cx: '50', cy: '6', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '8', cy: '55', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '92', cy: '55', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            ...createPin('Gold')
+          );
+        }
+
+        // Platinum: Crown on top with orbital rings
+        if (tier === 'Platinum') {
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Platinum', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              )
+            ),
+            H('ellipse', { cx: '50', cy: '50', rx: '46', ry: '20', fill: 'none', stroke: colors.primary, strokeWidth: '1.5', opacity: '0.4', transform: 'rotate(-20 50 50)' }),
+            H('ellipse', { cx: '50', cy: '50', rx: '46', ry: '20', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.3', transform: 'rotate(20 50 50)' }),
+            H('path', { d: 'M35 12 L38 4 L44 10 L50 2 L56 10 L62 4 L65 12 L62 14 L38 14 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.8' }),
+            H('circle', { cx: '50', cy: '5', r: '2', fill: colors.accent }),
+            H('circle', { cx: '38', cy: '7', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '62', cy: '7', r: '1.5', fill: colors.accent }),
+            H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
+              H('circle', { cx: '50', cy: '4', r: '2', fill: colors.primary }),
+              H('circle', { cx: '96', cy: '50', r: '2', fill: colors.accent }),
+              H('circle', { cx: '50', cy: '96', r: '2', fill: colors.primary }),
+              H('circle', { cx: '4', cy: '50', r: '2', fill: colors.accent })
+            ),
+            H('circle', { cx: '50', cy: '52', r: '35', fill: 'none', stroke: colors.secondary, strokeWidth: '2', opacity: '0.5' }),
+            ...createPin('Platinum')
+          );
+        }
+
+        // Diamond: Classic brilliant cut gem with sparkle
         if (tier === 'Diamond') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('polygon', { points: '50,2 79,14 93,43 93,57 79,86 50,98 21,86 7,57 7,43 21,14', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-            H('polygon', { points: '50,8 73,18 85,43 85,57 73,82 50,92 27,82 15,57 15,43 27,18', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.5' }),
-            H('circle', { cx: '50', cy: '2', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '93', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '50', cy: '98', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '7', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Diamond', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('linearGradient', { id: 'diamondGem', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#ffffff' }),
+                H('stop', { offset: '40%', stopColor: '#f3e5f5' }),
+                H('stop', { offset: '100%', stopColor: '#ce93d8' })
+              ),
+              H('linearGradient', { id: 'diamondFacetL', x1: '100%', y1: '0%', x2: '0%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#ea80fc' }),
+                H('stop', { offset: '100%', stopColor: '#e040fb' })
+              ),
+              H('linearGradient', { id: 'diamondFacetR', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#f3e5f5' }),
+                H('stop', { offset: '100%', stopColor: '#aa00ff' })
+              ),
+              H('radialGradient', { id: 'diamondGlow', cx: '50%', cy: '30%', r: '60%' },
+                H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0.4' }),
+                H('stop', { offset: '100%', stopColor: colors.primary, stopOpacity: '0' })
+              )
+            ),
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'url(#diamondGlow)' }),
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
+            H('polygon', { points: '50,8 30,28 50,35 70,28', fill: 'url(#diamondGem)', stroke: colors.dark, strokeWidth: '0.8' }),
+            H('polygon', { points: '30,28 20,45 50,35', fill: 'url(#diamondFacetL)', stroke: colors.dark, strokeWidth: '0.5' }),
+            H('polygon', { points: '70,28 80,45 50,35', fill: 'url(#diamondFacetR)', stroke: colors.dark, strokeWidth: '0.5' }),
+            H('polygon', { points: '20,45 50,85 50,35', fill: 'url(#diamondFacetL)', stroke: colors.dark, strokeWidth: '0.5' }),
+            H('polygon', { points: '80,45 50,85 50,35', fill: 'url(#diamondFacetR)', stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M20 45 L80 45', fill: 'none', stroke: colors.accent, strokeWidth: '1' }),
+            H('circle', { cx: '50', cy: '8', r: '2.5', fill: '#ffffff' }),
+            H('circle', { cx: '35', cy: '22', r: '1.5', fill: '#ffffff', opacity: '0.8' }),
+            H('circle', { cx: '65', cy: '22', r: '1.5', fill: '#ffffff', opacity: '0.8' }),
+            H('circle', { cx: '50', cy: '28', r: '2', fill: '#ffffff', opacity: '0.6' }),
+            H('path', { d: 'M50 4 L50 0', fill: 'none', stroke: '#ffffff', strokeWidth: '1.5', strokeLinecap: 'round' }),
+            H('path', { d: 'M42 6 L38 2', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeLinecap: 'round' }),
+            H('path', { d: 'M58 6 L62 2', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeLinecap: 'round' }),
+            H('circle', { cx: '15', cy: '50', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '85', cy: '50', r: '1.5', fill: colors.accent }),
+            H('circle', { cx: '50', cy: '95', r: '1.5', fill: colors.accent }),
+            ...createPin('Diamond')
           );
         }
 
+        // Sapphire: Night sky constellation - stars connected in a unique pattern
         if (tier === 'Sapphire') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '44', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-            H('circle', { cx: '50', cy: '50', r: '40', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.4' }),
-            H('path', { d: 'M50 2 Q55 8 50 14 Q45 8 50 2', fill: colors.primary, opacity: '0.7' }),
-            H('path', { d: 'M98 50 Q92 55 86 50 Q92 45 98 50', fill: colors.primary, opacity: '0.7' }),
-            H('path', { d: 'M50 98 Q45 92 50 86 Q55 92 50 98', fill: colors.primary, opacity: '0.7' }),
-            H('path', { d: 'M2 50 Q8 45 14 50 Q8 55 2 50', fill: colors.primary, opacity: '0.7' }),
-            H('circle', { cx: '50', cy: '3', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '97', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '50', cy: '97', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '3', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Sapphire', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('radialGradient', { id: 'sapphireNight', cx: '50%', cy: '50%', r: '50%' },
+                H('stop', { offset: '0%', stopColor: '#1565c0', stopOpacity: '0.3' }),
+                H('stop', { offset: '100%', stopColor: '#0d47a1', stopOpacity: '0.1' })
+              )
+            ),
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'url(#sapphireNight)' }),
+            H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
+            H('circle', { cx: '50', cy: '50', r: '43', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.3' }),
+            H('path', { d: 'M20 25 L35 40 L50 20 L70 35 L85 22', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.6' }),
+            H('path', { d: 'M35 40 L25 60 L45 75', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.6' }),
+            H('path', { d: 'M70 35 L80 55 L65 70 L45 75', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.6' }),
+            H('path', { d: 'M50 20 L55 45 L70 35', fill: 'none', stroke: colors.accent, strokeWidth: '1', strokeLinecap: 'round', opacity: '0.4' }),
+            H('circle', { cx: '20', cy: '25', r: '3', fill: colors.accent }),
+            H('circle', { cx: '35', cy: '40', r: '3.5', fill: '#ffffff' }),
+            H('circle', { cx: '50', cy: '20', r: '4', fill: colors.accent }),
+            H('circle', { cx: '70', cy: '35', r: '3', fill: '#ffffff' }),
+            H('circle', { cx: '85', cy: '22', r: '2.5', fill: colors.accent }),
+            H('circle', { cx: '25', cy: '60', r: '2.5', fill: colors.primary }),
+            H('circle', { cx: '45', cy: '75', r: '3.5', fill: colors.accent }),
+            H('circle', { cx: '80', cy: '55', r: '2.5', fill: '#ffffff' }),
+            H('circle', { cx: '65', cy: '70', r: '3', fill: colors.primary }),
+            H('circle', { cx: '55', cy: '45', r: '2', fill: colors.accent }),
+            H('circle', { cx: '12', cy: '45', r: '1', fill: colors.accent, opacity: '0.5' }),
+            H('circle', { cx: '88', cy: '42', r: '1', fill: colors.accent, opacity: '0.5' }),
+            H('circle', { cx: '15', cy: '80', r: '1', fill: '#ffffff', opacity: '0.4' }),
+            H('circle', { cx: '90', cy: '75', r: '1', fill: '#ffffff', opacity: '0.4' }),
+            H('circle', { cx: '40', cy: '12', r: '1', fill: colors.accent, opacity: '0.5' }),
+            H('circle', { cx: '75', cy: '85', r: '1', fill: colors.primary, opacity: '0.4' }),
+            H('circle', { cx: '30', cy: '88', r: '1', fill: colors.accent, opacity: '0.5' }),
+            H('circle', { cx: '60', cy: '8', r: '1', fill: '#ffffff', opacity: '0.4' }),
+            ...createPin('Sapphire')
           );
         }
 
+        // Amethyst: Gothic cathedral arch frame with hanging crystals
         if (tier === 'Amethyst') {
-          return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size },
-            gradientDef,
-            H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-            H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.5' }),
-            H('polygon', { points: '50,0 53,12 50,8 47,12', fill: colors.primary }),
-            H('polygon', { points: '100,50 88,53 92,50 88,47', fill: colors.primary }),
-            H('polygon', { points: '50,100 47,88 50,92 53,88', fill: colors.primary }),
-            H('polygon', { points: '0,50 12,47 8,50 12,53', fill: colors.primary }),
-            H('circle', { cx: '50', cy: '0', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '100', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '50', cy: '100', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '0', cy: '50', r: '2', fill: colors.accent, className: 'badge-sparkle-particle' }),
-            ...createPin(colors.primary, colors.secondary, colors.accent, colors.dark, tier)
+          return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
+            H('defs', null,
+              H('linearGradient', { id: 'pinGrad-Amethyst', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: colors.accent }),
+                H('stop', { offset: '50%', stopColor: colors.primary }),
+                H('stop', { offset: '100%', stopColor: colors.secondary })
+              ),
+              H('linearGradient', { id: 'amethystArch', x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+                H('stop', { offset: '0%', stopColor: '#e1bee7' }),
+                H('stop', { offset: '50%', stopColor: '#9c27b0' }),
+                H('stop', { offset: '100%', stopColor: '#4a148c' })
+              ),
+              H('radialGradient', { id: 'amethystGlow', cx: '50%', cy: '40%', r: '50%' },
+                H('stop', { offset: '0%', stopColor: colors.accent, stopOpacity: '0.35' }),
+                H('stop', { offset: '100%', stopColor: colors.primary, stopOpacity: '0' })
+              )
+            ),
+            H('circle', { cx: '50', cy: '50', r: '42', fill: 'url(#amethystGlow)' }),
+            H('path', { d: 'M15 85 L15 40 Q15 10 50 4 Q85 10 85 40 L85 85', fill: 'none', stroke: 'url(#amethystArch)', strokeWidth: '3', strokeLinecap: 'round' }),
+            H('path', { d: 'M20 82 L20 42 Q20 16 50 10 Q80 16 80 42 L80 82', fill: 'none', stroke: colors.accent, strokeWidth: '1', opacity: '0.4' }),
+            H('path', { d: 'M50 2 L56 10 L50 18 L44 10 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('path', { d: 'M50 2 L50 18 L44 10 Z', fill: colors.accent, opacity: '0.4' }),
+            H('path', { d: 'M25 20 L25 30', fill: 'none', stroke: colors.accent, strokeWidth: '1' }),
+            H('path', { d: 'M25 30 L28 38 L25 46 L22 38 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.3' }),
+            H('circle', { cx: '25', cy: '20', r: '2', fill: colors.accent }),
+            H('path', { d: 'M75 20 L75 30', fill: 'none', stroke: colors.accent, strokeWidth: '1' }),
+            H('path', { d: 'M75 30 L78 38 L75 46 L72 38 Z', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.3' }),
+            H('circle', { cx: '75', cy: '20', r: '2', fill: colors.accent }),
+            H('circle', { cx: '10', cy: '55', r: '3', fill: 'none', stroke: colors.primary, strokeWidth: '1.5' }),
+            H('circle', { cx: '10', cy: '55', r: '1', fill: colors.accent }),
+            H('circle', { cx: '90', cy: '55', r: '3', fill: 'none', stroke: colors.primary, strokeWidth: '1.5' }),
+            H('circle', { cx: '90', cy: '55', r: '1', fill: colors.accent }),
+            H('path', { d: 'M30 88 Q40 82 50 88 Q60 94 70 88', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+            H('path', { d: 'M25 92 L30 88 M75 92 L70 88', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round' }),
+            H('circle', { cx: '50', cy: '95', r: '2.5', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+            H('circle', { cx: '35', cy: '12', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            H('circle', { cx: '65', cy: '12', r: '1.5', fill: colors.accent, className: 'badge-sparkle-particle' }),
+            ...createPin('Amethyst')
           );
         }
 
-        // Unobtainium - the legendary tier
-        return H('svg', { viewBox: '0 0 100 100', xmlns: 'http://www.w3.org/2000/svg', width: size, height: size, className: 'unobtainium-badge' },
+        // Unobtainium: Cosmic starburst with dragon coils, nebula colors, and legendary grandeur
+        return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
           H('defs', null,
             H('linearGradient', { id: 'pinGrad-Unobtainium', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-              H('stop', { offset: '0%', stopColor: '#00fff7' }),
-              H('stop', { offset: '25%', stopColor: '#ff00ff' }),
-              H('stop', { offset: '50%', stopColor: '#ffff00' }),
-              H('stop', { offset: '75%', stopColor: '#00ff00' }),
-              H('stop', { offset: '100%', stopColor: '#00fff7' })
+              H('stop', { offset: '0%', stopColor: '#eceff1' }),
+              H('stop', { offset: '30%', stopColor: '#b0bec5' }),
+              H('stop', { offset: '60%', stopColor: '#cfd8dc' }),
+              H('stop', { offset: '100%', stopColor: '#90a4ae' })
             ),
-            H('linearGradient', { id: 'unobtainiumRing', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-              H('stop', { offset: '0%', stopColor: '#ff0080' }),
-              H('stop', { offset: '33%', stopColor: '#00ffff' }),
-              H('stop', { offset: '66%', stopColor: '#ffff00' }),
-              H('stop', { offset: '100%', stopColor: '#ff0080' })
+            H('linearGradient', { id: 'unobtainiumNebula1', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#ff6b9d' }),
+              H('stop', { offset: '100%', stopColor: '#c44569' })
             ),
-            H('radialGradient', { id: 'unobtainiumGlow', cx: '50%', cy: '50%', r: '50%' },
-              H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0.8' }),
-              H('stop', { offset: '50%', stopColor: '#00fff7', stopOpacity: '0.4' }),
-              H('stop', { offset: '100%', stopColor: '#ff00ff', stopOpacity: '0' })
+            H('linearGradient', { id: 'unobtainiumNebula2', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#4fc3f7' }),
+              H('stop', { offset: '100%', stopColor: '#0288d1' })
             ),
-            H('radialGradient', { id: 'unobtainiumCore', cx: '30%', cy: '30%', r: '70%' },
-              H('stop', { offset: '0%', stopColor: '#ffffff' }),
-              H('stop', { offset: '30%', stopColor: '#e0ffff' }),
-              H('stop', { offset: '60%', stopColor: '#00fff7' }),
-              H('stop', { offset: '100%', stopColor: '#0088aa' })
+            H('linearGradient', { id: 'unobtainiumNebula3', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#aed581' }),
+              H('stop', { offset: '100%', stopColor: '#7cb342' })
+            ),
+            H('linearGradient', { id: 'unobtainiumGold', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#ffd54f' }),
+              H('stop', { offset: '50%', stopColor: '#ffb300' }),
+              H('stop', { offset: '100%', stopColor: '#ff8f00' })
+            ),
+            H('linearGradient', { id: 'unobtainiumDragon', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#e0e0e0' }),
+              H('stop', { offset: '50%', stopColor: '#9e9e9e' }),
+              H('stop', { offset: '100%', stopColor: '#616161' })
+            ),
+            H('radialGradient', { id: 'unobtainiumCore', cx: '50%', cy: '50%', r: '50%' },
+              H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0.7' }),
+              H('stop', { offset: '40%', stopColor: '#e1bee7', stopOpacity: '0.3' }),
+              H('stop', { offset: '100%', stopColor: colors.primary, stopOpacity: '0' })
             )
           ),
-          H('circle', { cx: '50', cy: '50', r: '44', fill: 'url(#unobtainiumGlow)', className: 'badge-sparkle-particle' }),
-          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: 'url(#unobtainiumRing)', strokeWidth: '3', className: 'unobtainium-ring-outer' }),
-          H('circle', { cx: '50', cy: '50', r: '42', fill: 'none', stroke: '#00fff7', strokeWidth: '1.5', strokeDasharray: '6 3', opacity: '0.7', className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } }),
-          H('circle', { cx: '50', cy: '50', r: '38', fill: 'none', stroke: '#ff00ff', strokeWidth: '1', opacity: '0.5', className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px', animationDirection: 'reverse' } }),
-          H('g', { className: 'badge-rotate-medium', style: { transformOrigin: '50px 50px' } },
-            H('circle', { cx: '50', cy: '0', r: '3', fill: '#ff0080', className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '100', cy: '50', r: '3', fill: '#00ff00', className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '50', cy: '100', r: '3', fill: '#0080ff', className: 'badge-sparkle-particle' }),
-            H('circle', { cx: '0', cy: '50', r: '3', fill: '#ff00ff', className: 'badge-sparkle-particle' })
+          H('circle', { cx: '50', cy: '50', r: '48', fill: 'url(#unobtainiumCore)' }),
+          H('path', { d: 'M50 2 L52 20 L50 18 L48 20 Z', fill: 'url(#unobtainiumGold)', opacity: '0.8' }),
+          H('path', { d: 'M50 98 L48 80 L50 82 L52 80 Z', fill: 'url(#unobtainiumGold)', opacity: '0.8' }),
+          H('path', { d: 'M2 50 L20 48 L18 50 L20 52 Z', fill: 'url(#unobtainiumGold)', opacity: '0.8' }),
+          H('path', { d: 'M98 50 L80 52 L82 50 L80 48 Z', fill: 'url(#unobtainiumGold)', opacity: '0.8' }),
+          H('path', { d: 'M15 15 L28 25 L26 26 L25 28 Z', fill: colors.accent, opacity: '0.6' }),
+          H('path', { d: 'M85 15 L72 25 L74 26 L75 28 Z', fill: colors.accent, opacity: '0.6' }),
+          H('path', { d: 'M15 85 L28 75 L26 74 L25 72 Z', fill: colors.accent, opacity: '0.6' }),
+          H('path', { d: 'M85 85 L72 75 L74 74 L75 72 Z', fill: colors.accent, opacity: '0.6' }),
+          H('path', { d: 'M8 35 Q2 42 6 50 Q2 58 8 65 Q14 58 10 50 Q14 42 8 35', fill: 'url(#unobtainiumNebula1)', stroke: '#c44569', strokeWidth: '0.5' }),
+          H('path', { d: 'M12 30 Q4 40 8 50 Q4 60 12 70', fill: 'none', stroke: '#ff6b9d', strokeWidth: '1.5', strokeLinecap: 'round' }),
+          H('circle', { cx: '6', cy: '32', r: '2', fill: '#ff6b9d' }),
+          H('path', { d: 'M92 35 Q98 42 94 50 Q98 58 92 65 Q86 58 90 50 Q86 42 92 35', fill: 'url(#unobtainiumNebula2)', stroke: '#0288d1', strokeWidth: '0.5' }),
+          H('path', { d: 'M88 30 Q96 40 92 50 Q96 60 88 70', fill: 'none', stroke: '#4fc3f7', strokeWidth: '1.5', strokeLinecap: 'round' }),
+          H('circle', { cx: '94', cy: '32', r: '2', fill: '#4fc3f7' }),
+          H('circle', { cx: '50', cy: '50', r: '36', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
+          H('circle', { cx: '50', cy: '50', r: '33', fill: 'none', stroke: 'url(#unobtainiumGold)', strokeWidth: '1', strokeDasharray: '4 2' }),
+          H('path', { d: 'M32 12 L35 4 L42 8 L50 0 L58 8 L65 4 L68 12 L65 15 L35 15 Z', fill: 'url(#unobtainiumDragon)', stroke: colors.dark, strokeWidth: '0.5' }),
+          H('circle', { cx: '50', cy: '3', r: '3.5', fill: 'url(#unobtainiumGold)', stroke: '#ff8f00', strokeWidth: '0.5' }),
+          H('circle', { cx: '42', cy: '7', r: '2', fill: 'url(#unobtainiumNebula1)' }),
+          H('circle', { cx: '58', cy: '7', r: '2', fill: 'url(#unobtainiumNebula2)' }),
+          H('circle', { cx: '35', cy: '9', r: '1.5', fill: 'url(#unobtainiumNebula3)' }),
+          H('circle', { cx: '65', cy: '9', r: '1.5', fill: 'url(#unobtainiumGold)' }),
+          H('path', { d: 'M35 88 Q42 84 50 88 Q58 92 65 88', fill: 'none', stroke: 'url(#unobtainiumNebula3)', strokeWidth: '2.5', strokeLinecap: 'round' }),
+          H('path', { d: 'M40 92 Q50 96 60 92', fill: 'none', stroke: 'url(#unobtainiumGold)', strokeWidth: '1.5', strokeLinecap: 'round' }),
+          H('circle', { cx: '50', cy: '96', r: '3', fill: 'url(#unobtainiumGold)', stroke: '#ff8f00', strokeWidth: '0.5' }),
+          H('path', { d: 'M22 22 L26 18 L30 22 L26 26 Z', fill: 'url(#unobtainiumNebula1)', className: 'badge-sparkle-particle' }),
+          H('path', { d: 'M78 22 L74 18 L70 22 L74 26 Z', fill: 'url(#unobtainiumNebula2)', className: 'badge-sparkle-particle' }),
+          H('path', { d: 'M22 78 L26 74 L30 78 L26 82 Z', fill: 'url(#unobtainiumNebula3)', className: 'badge-sparkle-particle' }),
+          H('path', { d: 'M78 78 L74 74 L70 78 L74 82 Z', fill: 'url(#unobtainiumGold)', className: 'badge-sparkle-particle' }),
+          H('g', { className: 'badge-rotate-slow', style: { transformOrigin: '50px 50px' } },
+            H('circle', { cx: '50', cy: '6', r: '2', fill: '#ffd54f' }),
+            H('circle', { cx: '94', cy: '50', r: '2', fill: '#4fc3f7' }),
+            H('circle', { cx: '50', cy: '94', r: '2', fill: '#aed581' }),
+            H('circle', { cx: '6', cy: '50', r: '2', fill: '#ff6b9d' })
           ),
-          H('path', {
-            d: 'M50 20 C35 20 25 32 25 45 C25 58 50 80 50 80 C50 80 75 58 75 45 C75 32 65 20 50 20 Z',
-            fill: 'url(#pinGrad-Unobtainium)',
-            stroke: '#0a0a1a',
-            strokeWidth: '1.5'
-          }),
-          H('circle', { cx: '50', cy: '42', r: '14', fill: 'url(#unobtainiumCore)', stroke: '#ffffff', strokeWidth: '1.5' }),
-          H('circle', { cx: '45', cy: '38', r: '4', fill: '#ffffff', opacity: '0.7' }),
-          H('text', { x: '50', y: '47', textAnchor: 'middle', fontSize: '12', fontWeight: 'bold', fill: '#0a0a1a', opacity: '0.4' }, 'T')
+          ...createPin('Unobtainium')
         );
       };
 
