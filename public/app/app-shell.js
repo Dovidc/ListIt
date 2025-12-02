@@ -494,22 +494,15 @@
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
       }, []);
 
-      // Dismiss initial load overlay after app starts
+      // Dismiss initial load overlay after app starts (runs once on mount)
       useEffect(() => {
         if (!initialLoadRef.current) return;
         initialLoadRef.current = false;
-        const startTime = Date.now();
-        // Wait for initial content to be ready, then dismiss overlay
-        // Show for at least 1.5 seconds for smooth UX
-        const checkReady = () => {
-          const elapsed = Date.now() - startTime;
-          const remainingTime = Math.max(0, 1500 - elapsed);
-          resumeTimerRef.current = setTimeout(() => setIsResuming(false), remainingTime);
-        };
-        checkReady();
-        return () => {
-          if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-        };
+        // Show overlay for 1.5 seconds on initial load
+        setTimeout(() => {
+          setIsResuming(false);
+        }, 1500);
+        // No cleanup - this is a one-time operation that must complete
       }, []);
 
       // Check if user needs to accept legal documents
