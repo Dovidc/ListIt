@@ -50,6 +50,7 @@
       }, [active, visible]);
 
       if (!visible) return null;
+      const isMobile = window.innerWidth < 768;
       return H('div', { className: fadeOut ? 'resume-overlay fade-out' : 'resume-overlay' },
         H('div', { className: 'resume-overlay__content' },
           H('div', { className: 'resume-overlay__icon' },
@@ -59,7 +60,7 @@
               H('div', { className: 'resume-overlay__hexagon resume-overlay__hexagon--inner' })
             )
           ),
-          H('div', { className: 'resume-overlay__quote' },
+          isMobile && H('div', { className: 'resume-overlay__quote' },
             'One man\'s trash is another man\'s ',
             H('span', { style: { color: '#ffa366' } }, 'treasure')
           )

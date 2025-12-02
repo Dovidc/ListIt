@@ -604,17 +604,28 @@
       title,
       className,
       style,
-      tier = 'Bronze',
       badge
     }) {
       const Component = (onClick || as === 'button') ? 'button' : 'span';
 
-      // Normalize tier name
-      const normalizedTier = tier ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase() : 'Bronze';
-      const validTier = VALID_TIERS.includes(normalizedTier) ? normalizedTier : 'Bronze';
-      const colors = TIER_COLORS[validTier];
+      // Calculate tier from duration
+      const sinceDate = since ? new Date(since) : null;
+      const now = Date.now();
+      const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
+      const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
 
-      const badgeLabel = `${validTier} Supporter`;
+      let calculatedTier = 'Bronze';
+      if (monthsSince >= 72) calculatedTier = 'Unobtainium';
+      else if (monthsSince >= 60) calculatedTier = 'Amethyst';
+      else if (monthsSince >= 36) calculatedTier = 'Sapphire';
+      else if (monthsSince >= 24) calculatedTier = 'Diamond';
+      else if (monthsSince >= 12) calculatedTier = 'Platinum';
+      else if (monthsSince >= 6) calculatedTier = 'Gold';
+      else if (monthsSince >= 3) calculatedTier = 'Silver';
+
+      const colors = TIER_COLORS[calculatedTier];
+
+      const badgeLabel = `${calculatedTier} Supporter`;
       const computedTitle = title || (since ? `${badgeLabel} since ${formatSinceLabel(since) || since}` : badgeLabel);
 
       const sizes = {
@@ -625,7 +636,7 @@
       const iconSize = typeof size === 'number' ? size : (sizes[size] || sizes.md);
 
       const sharedProps = {
-        className: `subscriber-badge subscriber-badge--${validTier.toLowerCase()} ${className || ''}`.trim(),
+        className: `subscriber-badge subscriber-badge--${calculatedTier.toLowerCase()} ${className || ''}`.trim(),
         title: computedTitle,
         style: {
           display: 'inline-flex',
@@ -644,7 +655,7 @@
         } : undefined
       };
 
-      return H(Component, sharedProps, renderTieredBadgeSVG(validTier, iconSize, colors));
+      return H(Component, sharedProps, renderTieredBadgeSVG(calculatedTier, iconSize, colors));
     }
 
     function useModalLifecycle(open, onClose) {

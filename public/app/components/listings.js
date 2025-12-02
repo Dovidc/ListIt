@@ -172,26 +172,27 @@
     }
 
     // --- Tiered Supporter Badge (Bronze -> Unobtainium) ---
-    function TieredSupporterBadge({ since, size = 20, onClick, tier: tierProp }) {
+    function TieredSupporterBadge({ since, size = 20, onClick }) {
       const [showTooltip, setShowTooltip] = useState(false);
       const badgeRef = useRef(null);
 
-      // Valid tiers list
-      const validTiers = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Sapphire', 'Amethyst', 'Unobtainium'];
-
-      // Normalize provided tier prop
-      const normalizedTierProp = tierProp ? tierProp.charAt(0).toUpperCase() + tierProp.slice(1).toLowerCase() : null;
-
-      // Use provided tier if valid, otherwise default to Bronze
-      const tier = (normalizedTierProp && validTiers.includes(normalizedTierProp)) ? normalizedTierProp : 'Bronze';
-
-      // Calculate duration text for tooltip
+      // Calculate duration from supporter_since
       const sinceDate = since ? new Date(since) : null;
       const now = Date.now();
       const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
       const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
       const yearsSince = Math.floor(monthsSince / 12);
       const remainingMonths = monthsSince % 12;
+
+      // Calculate tier from duration
+      let tier = 'Bronze';
+      if (monthsSince >= 72) tier = 'Unobtainium';
+      else if (monthsSince >= 60) tier = 'Amethyst';
+      else if (monthsSince >= 36) tier = 'Sapphire';
+      else if (monthsSince >= 24) tier = 'Diamond';
+      else if (monthsSince >= 12) tier = 'Platinum';
+      else if (monthsSince >= 6) tier = 'Gold';
+      else if (monthsSince >= 3) tier = 'Silver';
 
       let durationText = '';
       if (yearsSince > 0) {
