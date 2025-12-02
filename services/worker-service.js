@@ -31,7 +31,10 @@ class WorkerService {
 
     // Job queue for resilience (Redis-backed when available)
     this.jobQueue = createWorkerQueue({
-      prefix: process.env.WORKER_QUEUE_PREFIX || 'listit:jobs'
+      prefix: process.env.WORKER_QUEUE_PREFIX || 'listit:jobs',
+      timeoutMs: config.WORKER_JOB_TIMEOUT_MS,
+      retryDelayMs: config.WORKER_RETRY_DELAY_MS,
+      concurrency: config.WORKER_CONCURRENCY || config.WORKER_MAX_CONCURRENCY
     });
     this.activeJobs = new Set();
     this.completedJobs = new Map();
@@ -41,11 +44,16 @@ class WorkerService {
     this.retryDelayMs = 1000;
     this.maxConcurrency = Math.max(1, Number(config.WORKER_CONCURRENCY || config.WORKER_MAX_CONCURRENCY || 4));
     this.jobTimeoutMs = Math.max(1000, Number(config.WORKER_JOB_TIMEOUT_MS || 15000));
-    this.processingInterval = Math.max(250, Number(config.WORKER_INTERVAL_MS || 1000)); // tighter loop for bursts
-    this.processing = false;
 
-    // Processing loop
-    this.processingLoop = null;
+    // Metrics
+    this.metrics = {
+      enqueued: 0,
+      processed: 0,
+      failed: 0,
+      webhookProcessed: 0,
+      pushProcessed: 0,
+      durationsMs: []
+    };
 
     // Service references (injected later)
     this.stripe = null;
@@ -57,7 +65,9 @@ class WorkerService {
     this.start = this.start.bind(this);
     this.stop = this.stop.bind(this);
     this.enqueueJob = this.enqueueJob.bind(this);
-    this.processQueue = this.processQueue.bind(this);
+    this._handleQueueJob = this._handleQueueJob.bind(this);
+    this._trackCompletion = this._trackCompletion.bind(this);
+    this._trackFailure = this._trackFailure.bind(this);
   }
 
   /**
@@ -96,14 +106,10 @@ class WorkerService {
     });
 
     // Start job processor
-    this.processingLoop = setInterval(() => {
-      this.processQueue().catch(err => {
-        console.error('[Worker] Error processing queue:', err);
-      });
-    }, this.processingInterval);
-
-    if (typeof this.processingLoop.unref === 'function') {
-      this.processingLoop.unref();
+    this.jobQueue.process(this._handleQueueJob, { concurrency: this.maxConcurrency });
+    if (typeof this.jobQueue.on === 'function') {
+      this.jobQueue.on('completed', this._trackCompletion);
+      this.jobQueue.on('failed', this._trackFailure);
     }
 
     console.log('[Worker] Service started');
@@ -113,21 +119,7 @@ class WorkerService {
    * Stop the worker service
    */
   async stop() {
-    if (this.processingLoop) {
-      clearInterval(this.processingLoop);
-      this.processingLoop = null;
-    }
-
-    // Wait for active jobs to complete (with timeout)
-    const timeout = 30000; // 30 seconds
-    const start = Date.now();
-    while (this.activeJobs.size > 0 && Date.now() - start < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    if (this.activeJobs.size > 0) {
-      console.warn(`[Worker] ${this.activeJobs.size} jobs still active after timeout`);
-    }
+    await this.jobQueue.shutdown();
 
     console.log('[Worker] Service stopped');
   }
@@ -136,7 +128,7 @@ class WorkerService {
    * Enqueue a job for processing
    */
   async enqueueJob(job) {
-    const jobId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const jobId = this.buildJobId(job);
 
     const wrappedJob = {
       id: jobId,
@@ -145,94 +137,17 @@ class WorkerService {
       retries: 0,
       maxRetries: job.maxRetries || this.maxRetries,
       createdAt: Date.now(),
-      priority: job.priority || 0
+      priority: job.priority || 0,
+      timeoutMs: job.timeoutMs || this.jobTimeoutMs,
+      retryDelayMs: job.retryDelayMs || this.retryDelayMs,
+      idempotencyKey: this.buildIdempotencyKey(job)
     };
 
     await this.jobQueue.enqueue(wrappedJob);
 
+    this.metrics.enqueued += 1;
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
-    // Kick the processor quickly instead of waiting for the next interval tick
-    this.processQueue().catch(err => {
-      console.error('[Worker] Failed to start queue processor:', err);
-    });
     return jobId;
-  }
-
-  /**
-   * Process queued jobs
-   */
-  async processQueue() {
-    if (this.processing) return;
-    this.processing = true;
-
-    try {
-      // Launch jobs up to the configured concurrency
-      while (this.activeJobs.size < this.maxConcurrency) {
-        const job = await this.jobQueue.dequeue();
-        if (!job) {
-          break;
-        }
-        if (this.activeJobs.has(job.id)) {
-          continue;
-        }
-        this.activeJobs.add(job.id);
-        this._runJob(job).catch((err) => {
-          console.error(`[Worker] Unhandled job error (${job.id}):`, err?.message || err);
-        });
-      }
-    } finally {
-      this.processing = false;
-    }
-  }
-
-  /**
-   * Run a single job with timeout and retry handling
-   */
-  async _runJob(job) {
-    const timeoutMs = Math.max(500, Number(job.timeoutMs || this.jobTimeoutMs));
-    let timer = null;
-
-    const timeoutPromise = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        reject(new Error(`job_timeout:${job.type}`));
-      }, timeoutMs);
-      if (typeof timer.unref === 'function') timer.unref();
-    });
-
-    try {
-      const result = await Promise.race([
-        this.processJob(job),
-        timeoutPromise
-      ]);
-
-      this.completedJobs.set(job.id, {
-        status: 'success',
-        completedAt: Date.now(),
-        result
-      });
-    } catch (err) {
-      console.error(`[Worker] Job failed: ${job.id}`, err?.message || err);
-
-      if (job.retries < job.maxRetries) {
-        job.retries++;
-        await this.jobQueue.requeue(job);
-        console.log(`[Worker] Job requeued: ${job.id} (attempt ${job.retries + 1}/${job.maxRetries + 1})`);
-      } else {
-        this.completedJobs.set(job.id, {
-          status: 'failed',
-          error: err?.message || 'unknown_error',
-          completedAt: Date.now()
-        });
-        console.error(`[Worker] Job failed permanently: ${job.id}`);
-      }
-    } finally {
-      if (timer) clearTimeout(timer);
-      this.activeJobs.delete(job.id);
-      // Continue draining after this job completes
-      this.processQueue().catch((err) => {
-        console.error('[Worker] Failed to continue draining queue:', err?.message || err);
-      });
-    }
   }
 
   /**
@@ -251,6 +166,85 @@ class WorkerService {
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
+  }
+
+  buildJobId(job) {
+    if (job.id) return job.id;
+    const stripeEventId = job?.payload?.id;
+    if (job.type === 'process_stripe_event' && stripeEventId) {
+      return `stripe:${stripeEventId}`;
+    }
+
+    if (job.type === 'send_push') {
+      const { userId, notification } = job.payload || {};
+      const notificationId = notification?.id || notification?.timestamp;
+      if (userId && notificationId) {
+        return `push:${userId}:${notificationId}`;
+      }
+    }
+
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  buildIdempotencyKey(job) {
+    if (job.idempotencyKey) return job.idempotencyKey;
+    if (job.type === 'process_stripe_event' && job?.payload?.id) {
+      return `stripe:${job.payload.id}`;
+    }
+    if (job.type === 'send_push' && job?.payload?.userId && job?.payload?.notification?.id) {
+      return `push:${job.payload.userId}:${job.payload.notification.id}`;
+    }
+    return null;
+  }
+
+  async _handleQueueJob(job) {
+    this.activeJobs.add(job.id);
+    const startedAt = Date.now();
+
+    try {
+      const result = await this.processJob(job);
+      this.metrics.processed += 1;
+      if (job.type === 'process_stripe_event') {
+        this.metrics.webhookProcessed += 1;
+      }
+      if (job.type === 'send_push') {
+        this.metrics.pushProcessed += 1;
+      }
+      this.completedJobs.set(job.id, {
+        status: 'success',
+        completedAt: Date.now(),
+        result
+      });
+    } catch (err) {
+      this.metrics.failed += 1;
+      this.completedJobs.set(job.id, {
+        status: 'failed',
+        error: err?.message || 'unknown_error',
+        completedAt: Date.now()
+      });
+      console.error(`[Worker] Job failed: ${job.id}`, err?.message || err);
+      throw err;
+    } finally {
+      const duration = Date.now() - startedAt;
+      this.metrics.durationsMs.push(duration);
+      if (this.metrics.durationsMs.length > 50) {
+        this.metrics.durationsMs.shift();
+      }
+      this.activeJobs.delete(job.id);
+    }
+  }
+
+  _trackCompletion(event) {
+    if (!event) return;
+    if (event.duration) {
+      this.metrics.durationsMs.push(event.duration);
+      if (this.metrics.durationsMs.length > 50) this.metrics.durationsMs.shift();
+    }
+  }
+
+  _trackFailure(event) {
+    if (!event) return;
+    console.error('[Worker] Queue failure observed:', event.err || event.failedReason || event);
   }
 
   /**
@@ -747,14 +741,25 @@ class WorkerService {
    * Get queue stats
    */
   getStats() {
+    const avgDuration = this.metrics.durationsMs.length
+      ? Math.round(this.metrics.durationsMs.reduce((sum, val) => sum + val, 0) / this.metrics.durationsMs.length)
+      : null;
+
+    const summary = {
+      activeJobs: this.activeJobs.size,
+      completedJobs: this.completedJobs.size,
+      metrics: {
+        ...this.metrics,
+        averageDurationMs: avgDuration
+      }
+    };
+
     return this.jobQueue.size().then((queued) => ({
       queueLength: queued,
-      activeJobs: this.activeJobs.size,
-      completedJobs: this.completedJobs.size
+      ...summary
     })).catch(() => ({
       queueLength: null,
-      activeJobs: this.activeJobs.size,
-      completedJobs: this.completedJobs.size
+      ...summary
     }));
   }
 
