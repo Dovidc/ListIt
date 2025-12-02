@@ -3659,61 +3659,30 @@ app.get('/api/listings/:id/potential-buyers', auth, async (req, res) => {
       return res.status(403).json({ error: 'Not your listing' });
     }
 
-    // Get all conversations for this listing
-    const conversations = await db.prepare(`
-      SELECT DISTINCT c.id as conversation_id, c.a_user_id, c.b_user_id
+    // Get all buyers with their last message time in a single query
+    const buyers = await db.prepare(`
+      SELECT
+        u.id,
+        u.username,
+        u.profile_picture_url,
+        u.supporter_badge,
+        (
+          SELECT MAX(m.created_at)
+          FROM messages m
+          WHERE m.conversation_id = c.id
+            AND m.sender_id = u.id
+        ) as last_message_at
       FROM conversations c
+      JOIN users u ON u.id = CASE
+        WHEN c.a_user_id = ? THEN c.b_user_id
+        ELSE c.a_user_id
+      END
       WHERE c.listing_id = ?
         AND (c.a_user_id = ? OR c.b_user_id = ?)
-    `).all(listingId, req.user.id, req.user.id);
+      ORDER BY last_message_at DESC NULLS LAST
+    `).all(req.user.id, listingId, req.user.id, req.user.id);
 
-    if (!conversations || conversations.length === 0) {
-      return res.json({ buyers: [] });
-    }
-
-    // Get the other user (buyer) from each conversation and their last message time
-    const buyerPromises = conversations.map(async (conv) => {
-      const buyerId = conv.a_user_id === req.user.id ? conv.b_user_id : conv.a_user_id;
-
-      // Get buyer info
-      const buyer = await db.prepare(`
-        SELECT id, username, profile_picture_url, supporter_badge
-        FROM users
-        WHERE id = ?
-      `).get(buyerId);
-
-      if (!buyer) return null;
-
-      // Get last message from this buyer in this conversation
-      const lastMessage = await db.prepare(`
-        SELECT created_at
-        FROM messages
-        WHERE conversation_id = ?
-          AND sender_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `).get(conv.conversation_id, buyerId);
-
-      return {
-        id: buyer.id,
-        username: buyer.username,
-        profile_picture_url: buyer.profile_picture_url,
-        supporter_badge: buyer.supporter_badge,
-        last_message_at: lastMessage?.created_at || null
-      };
-    });
-
-    let buyers = await Promise.all(buyerPromises);
-    buyers = buyers.filter(b => b !== null);
-
-    // Sort by most recent message first
-    buyers.sort((a, b) => {
-      if (!a.last_message_at) return 1;
-      if (!b.last_message_at) return -1;
-      return b.last_message_at.localeCompare(a.last_message_at);
-    });
-
-    res.json({ buyers });
+    res.json({ buyers: buyers || [] });
   } catch (err) {
     console.error('Get potential buyers error:', err);
     res.status(500).json({ error: 'Failed to get potential buyers' });

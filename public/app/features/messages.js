@@ -634,6 +634,7 @@
       const dropRef = useRef();
       const wsRef = useRef(null);
       const reconnectTimeoutRef = useRef(null);
+      const reconnectAttemptsRef = useRef(0);
       const msgsContainerRef = useRef(null);
       const [isAtBottom, setIsAtBottom] = useState(true);
 
@@ -669,6 +670,7 @@
 
           ws.onopen = () => {
             clearTimeout(reconnectTimeoutRef.current);
+            reconnectAttemptsRef.current = 0;
           };
 
           ws.onmessage = (event) => {
@@ -703,9 +705,17 @@
             wsRef.current = null;
 
             if (event?.code !== 1008) {
+              const baseDelay = 1000;
+              const maxDelay = 30000;
+              const attempts = reconnectAttemptsRef.current;
+              const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempts), maxDelay);
+              const jitter = exponentialDelay * 0.2 * (Math.random() * 2 - 1);
+              const delay = Math.round(exponentialDelay + jitter);
+
+              reconnectAttemptsRef.current = attempts + 1;
               reconnectTimeoutRef.current = setTimeout(() => {
                 if (user) connectWebSocket();
-              }, 3000);
+              }, delay);
             }
           };
 

@@ -145,6 +145,7 @@
 
         let ws = null;
         let reconnectTimeout = null;
+        let reconnectAttempts = 0;
 
         function connectWebSocket() {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -154,6 +155,7 @@
 
           ws.onopen = () => {
             clearTimeout(reconnectTimeout);
+            reconnectAttempts = 0;
           };
 
           ws.onmessage = (event) => {
@@ -207,9 +209,16 @@
           ws.onclose = (event) => {
             ws = null;
             if (event?.code !== 1008) {
+              const baseDelay = 1000;
+              const maxDelay = 30000;
+              const exponentialDelay = Math.min(baseDelay * Math.pow(2, reconnectAttempts), maxDelay);
+              const jitter = exponentialDelay * 0.2 * (Math.random() * 2 - 1);
+              const delay = Math.round(exponentialDelay + jitter);
+
+              reconnectAttempts++;
               reconnectTimeout = setTimeout(() => {
                 if (user) connectWebSocket();
-              }, 3000);
+              }, delay);
             }
           };
 

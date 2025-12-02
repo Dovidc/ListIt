@@ -104,7 +104,7 @@
       const parts = [];
       const locationLabel = normalizeCityStateLabel(item?.location);
       if (locationLabel) parts.push(locationLabel);
-      if (item?.owner_username) parts.push(`Seller: ${item.owner_username}`);
+      if (item?.owner_username) parts.push(item.owner_username);
       return parts.join(' • ');
     };
 
