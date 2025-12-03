@@ -1023,12 +1023,26 @@
 
 .messages-panel {
   display: grid;
-  grid-template-columns: minmax(280px, 450px) minmax(0, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 0;
   width: 100%;
   height: clamp(420px, 70vh, 640px);
   max-width: 100%;
   align-items: stretch;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(30, 41, 59, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.messages-panel .card {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  margin: 0 !important;
 }
 
 .messages-sidebar {
@@ -1038,6 +1052,11 @@
   overflow: hidden;
   min-width: 0;
   height: 100%;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.messages-thread-shell {
+  border: none !important;
 }
 
 .messages-sidebar__header {
@@ -1073,11 +1092,22 @@
     height: auto;
     max-height: none;
     gap: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+
+  .messages-panel .card {
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    background: rgba(30, 41, 59, 0.4) !important;
+    backdrop-filter: blur(12px) !important;
   }
 
   .messages-sidebar {
     max-height: none;
     height: 100%;
+    border-right: none;
   }
 
   .messages-sidebar.hide-on-mobile {
