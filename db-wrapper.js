@@ -1,25 +1,13 @@
 // db-wrapper.js
 const { Pool } = require('pg');
+const { getDatabaseConfig, assertProductionTls } = require('./lib/database-config');
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  throw new Error(
-    'ListIt now requires a PostgreSQL database. Set the DATABASE_URL environment variable to start the server.'
-  );
-}
+const poolConfig = getDatabaseConfig();
+assertProductionTls(poolConfig, process.env.NODE_ENV === 'production');
 
 console.log('Using PostgreSQL');
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  max: 75,                       // Maximum 75 connections (scales to ~1000 concurrent users)
-  min: 5,                        // Keep 5 connections alive for fast response
-  idleTimeoutMillis: 30000,      // Close idle connections after 30 seconds
-  connectionTimeoutMillis: 10000, // 10 second timeout (more forgiving under load)
-  allowExitOnIdle: false         // Keep pool alive to avoid reconnection overhead
-});
+const pool = new Pool(poolConfig);
 
 // Add pool monitoring for debugging
 pool.on('error', (err) => {

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getDatabaseConfig, assertProductionTls } = require('./lib/database-config');
 
 const ENV_CANDIDATES = ['.env.local', '.env'];
 for (const envFile of ENV_CANDIDATES) {
@@ -33,19 +34,20 @@ for (const envFile of ENV_CANDIDATES) {
   }
 }
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL must be set for migrations (see .env).');
-}
+const databaseConfig = getDatabaseConfig();
+assertProductionTls(databaseConfig, process.env.NODE_ENV === 'production');
 
 const baseConfig = {
   client: 'pg',
-  connection: {
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-  },
+  connection: databaseConfig,
   migrations: {
     directory: path.join(__dirname, 'migrations'),
     tableName: 'knex_migrations'
+  },
+  pool: {
+    min: databaseConfig.min,
+    max: databaseConfig.max,
+    idleTimeoutMillis: databaseConfig.idleTimeoutMillis
   }
 };
 

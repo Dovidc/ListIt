@@ -79,6 +79,7 @@ const { runMigrations } = require('./lib/run-migrations');
 const { createSharedCache } = require('./lib/shared-cache');
 const { getRedisClient } = require('./lib/redis-client');
 const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
+const { assertMigrationsCurrent } = require('./lib/migration-guard');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -9147,6 +9148,7 @@ app._initializeSchema = runMigrations;
 async function startServer() {
   try {
     await verifyDatabaseConnectivity();
+    await assertMigrationsCurrent();
     await assertRequiredSchema();
     await maybeCreateAdmin();
 
@@ -9182,7 +9184,9 @@ async function startServer() {
       }
     });
   } catch (err) {
-    if (String(err?.message || '').includes('relation')) {
+    if (String(err?.message || '').startsWith('pending_migrations')) {
+      console.error('[Server] Database migrations are pending. Run `npm run migrate:latest` before starting the server.');
+    } else if (String(err?.message || '').includes('relation')) {
       console.error('[Server] Failed to start: database schema missing. Run `npm run migrate:latest` before starting the server.');
     } else {
       console.error('[Server] Failed to start:', err);

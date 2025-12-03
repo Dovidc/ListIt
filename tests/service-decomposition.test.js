@@ -4,6 +4,9 @@
  * Verify that Step 1 (Decompose the monolith) is correctly implemented
  */
 
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://user:pass@localhost:5432/listit_test';
+process.env.DATABASE_SSL = process.env.DATABASE_SSL || 'false';
+
 const assert = require('assert');
 const { MessageBus, TOPICS, createMessage } = require('../lib/message-bus');
 const { ServiceOrchestrator } = require('../lib/service-orchestrator');
@@ -483,14 +486,20 @@ console.log(`Total Tests: ${testCount}`);
 console.log(`Passed: ${passedCount}`);
 console.log(`Failed: ${failedTests.length}`);
 
+const shouldExit = !process.env.JEST_WORKER_ID;
+
 if (failedTests.length > 0) {
   console.log('\nFailed Tests:');
   failedTests.forEach((test, i) => {
     console.log(`${i + 1}. ${test.name}`);
     console.log(`   ${test.error}`);
   });
-  process.exit(1);
+  if (shouldExit) {
+    process.exit(1);
+  }
 } else {
   console.log('\n✓ All tests passed! Step 1 decomposition is correctly implemented.\n');
-  process.exit(0);
+  if (shouldExit) {
+    process.exit(0);
+  }
 }
