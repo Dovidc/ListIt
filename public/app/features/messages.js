@@ -810,13 +810,13 @@
         } catch (_) {}
       }
 
-      async function fetchMsgs() {
+      async function fetchMsgs({ silent = false } = {}) {
         if (!activeId) {
           setMsgs([]);
           setLoadingMsgs(false);
           return;
         }
-        setLoadingMsgs(true);
+        if (!silent) setLoadingMsgs(true);
         try {
           const arr = await api.getMessages(activeId, { silent: true });
           setMsgs(arr);
@@ -874,7 +874,7 @@
 
         setInput('');
         setImgFiles([]);
-        await fetchMsgs();
+        await fetchMsgs({ silent: true });
         await fetchConvos();
 
         setTimeout(() => {
@@ -899,7 +899,7 @@
         if (resp?.other_user_deleted) {
           alert('Heads up: This user deleted the conversation. They may not see your new message.');
         }
-        await fetchMsgs();
+        await fetchMsgs({ silent: true });
         await fetchConvos();
       }
 
@@ -920,7 +920,7 @@
           alert('Heads up: This user deleted the conversation. They may not see your new message.');
         }
 
-        await fetchMsgs();
+        await fetchMsgs({ silent: true });
         await fetchConvos();
 
         setTimeout(() => {
