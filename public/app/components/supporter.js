@@ -658,6 +658,38 @@
       return H(Component, sharedProps, renderTieredBadgeSVG(calculatedTier, iconSize, colors));
     }
 
+    function CyclingSupporterBadge({ size = 'md', interval = 3000, style }) {
+      const [tierIndex, setTierIndex] = useState(0);
+
+      useEffect(() => {
+        const timer = setInterval(() => {
+          setTierIndex((prev) => (prev + 1) % VALID_TIERS.length);
+        }, interval);
+        return () => clearInterval(timer);
+      }, [interval]);
+
+      const currentTier = VALID_TIERS[tierIndex];
+      const colors = TIER_COLORS[currentTier];
+
+      const sizes = {
+        sm: 16,
+        md: 18,
+        lg: 22
+      };
+      const iconSize = typeof size === 'number' ? size : (sizes[size] || sizes.md);
+
+      return H('span', {
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'transform 0.3s ease',
+          ...style
+        },
+        title: `${currentTier} Supporter Badge`
+      }, renderTieredBadgeSVG(currentTier, iconSize, colors));
+    }
+
     function useModalLifecycle(open, onClose) {
       useEffect(() => {
         if (!open) return undefined;
@@ -819,27 +851,35 @@
             ),
             isPrompt
               ? H('div', { style: { display: 'grid', gap: 16 } },
-                H('p', { className: 'supporter-modal__body', style: { marginBottom: 0 } },
+                H('p', { className: 'supporter-modal__body', style: { marginBottom: 0, textAlign: 'center' } },
                   'Subscribe to unlock exclusive premium features:'
                 ),
                 // Benefits list
-                H('div', { style: { display: 'grid', gap: 10, padding: '0 4px' } },
-                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
-                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '✨'),
+                H('div', { style: { display: 'grid', gap: 14, padding: '0 4px' } },
+                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                    H(CyclingSupporterBadge, { size: 28, interval: 3000 }),
                     H('div', null,
                       H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Premium Subscriber Badge'),
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'A shimmering badge displayed on your profile card and all your listings')
                     )
                   ),
-                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
-                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '🎨'),
+                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                    H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none' },
+                      H('path', { d: 'M12 3l1.5 3.5L17 8l-2.5 2.5L15 15l-3-2-3 2 .5-4.5L7 8l3.5-1.5L12 3z', fill: '#fbbf24', stroke: '#f59e0b', strokeWidth: 1 }),
+                      H('path', { d: 'M5 5l1 2 2 .5-1.5 1.5.3 2.2L5 10l-1.8 1.2.3-2.2L2 7.5 4 7l1-2z', fill: '#fcd34d', stroke: '#f59e0b', strokeWidth: 0.5 }),
+                      H('path', { d: 'M19 5l1 2 2 .5-1.5 1.5.3 2.2-1.8-1.2-1.8 1.2.3-2.2L16 7.5l2-.5 1-2z', fill: '#fcd34d', stroke: '#f59e0b', strokeWidth: 0.5 }),
+                      H('path', { d: 'M6 16l.7 1.4 1.5.4-1 1 .2 1.6L6 19.6l-1.4.8.2-1.6-1-1 1.5-.4.7-1.4z', fill: '#fde68a', stroke: '#fbbf24', strokeWidth: 0.5 }),
+                      H('path', { d: 'M18 16l.7 1.4 1.5.4-1 1 .2 1.6-1.4-.8-1.4.8.2-1.6-1-1 1.5-.4.7-1.4z', fill: '#fde68a', stroke: '#fbbf24', strokeWidth: 0.5 })
+                    ),
                     H('div', null,
                       H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Profile Customization'),
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'Upload a custom banner image to personalize your profile')
                     )
                   ),
-                  H('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
-                    H('span', { style: { fontSize: 18, lineHeight: 1 } }, '⭐'),
+                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                    H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none' },
+                      H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24', stroke: '#f59e0b', strokeWidth: 1 })
+                    ),
                     H('div', null,
                       H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'Award karma points to buyers when you complete a sale')
@@ -851,7 +891,7 @@
                   style: {
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    justifyContent: 'center',
                     padding: '16px 20px',
                     border: '2px solid #e5e7eb',
                     borderRadius: 12,
@@ -859,21 +899,10 @@
                     marginTop: 4
                   }
                 },
-                  H('div', null,
+                  H('div', { style: { textAlign: 'center' } },
                     H('div', { style: { fontWeight: 800, fontSize: 22 } }, `${premiumText}/month`),
                     H('div', { style: { fontSize: 12, color: '#666' } }, 'Cancel anytime from your profile')
-                  ),
-                  H('span', {
-                    style: {
-                      background: 'linear-gradient(135deg, #c0c0c0, #909090)',
-                      color: 'white',
-                      padding: '6px 12px',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-                    }
-                  }, 'PREMIUM')
+                  )
                 )
               )
               : H('p', { className: 'supporter-modal__body' },

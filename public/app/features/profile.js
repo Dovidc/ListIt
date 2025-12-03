@@ -2571,18 +2571,46 @@
           H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             // Premium/Supporter button for non-supporters
             showSupporterCta && H('button', {
-            className: 'btn',
+            className: 'btn premium-badge-btn',
             type: 'button',
             onClick: handleJoinSupporterClick,
             title: 'Get Premium',
             style: {
               ...iconButtonStyle,
-              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-              border: 'none',
-              color: '#78350f'
+              background: 'linear-gradient(135deg, #fef3c7, #f59e0b)',
+              border: '2px solid #b45309',
+              borderRadius: 10,
+              boxShadow: '0 2px 6px rgba(180, 83, 9, 0.3)'
             }
           },
-            H(StarIcon, { stroke: '#78350f', fill: '#fef3c7' }),
+            H('svg', {
+              width: 20,
+              height: 20,
+              viewBox: '0 0 24 24',
+              fill: 'none'
+            },
+              // Shield/badge shape
+              H('path', {
+                d: 'M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z',
+                fill: 'url(#premiumGrad)',
+                stroke: '#92400e',
+                strokeWidth: 1.2
+              }),
+              // Star in center
+              H('polygon', {
+                points: '12,6 13.5,10 18,10 14.5,13 16,17 12,14.5 8,17 9.5,13 6,10 10.5,10',
+                fill: '#fef3c7',
+                stroke: '#78350f',
+                strokeWidth: 0.5
+              }),
+              // Gradient definition
+              H('defs', null,
+                H('linearGradient', { id: 'premiumGrad', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+                  H('stop', { offset: '0%', stopColor: '#f59e0b' }),
+                  H('stop', { offset: '100%', stopColor: '#d97706' })
+                )
+              )
+            ),
             H('span', { style: visuallyHidden }, 'Get Premium')
           ),
           H('button', {
