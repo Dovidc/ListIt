@@ -80,6 +80,7 @@ const { createSharedCache } = require('./lib/shared-cache');
 const { getRedisClient } = require('./lib/redis-client');
 const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
 const { assertMigrationsCurrent } = require('./lib/migration-guard');
+const { metrics } = require('./lib/metrics');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -201,7 +202,59 @@ async function checkRedisHealth() {
   }
 }
 
-async function getDependencyHealth() {
+function checkStripeHealth() {
+  if (!Stripe) {
+    return { ok: false, reason: 'stripe_sdk_missing' };
+  }
+  if (!stripe) {
+    return { ok: false, reason: 'not_configured' };
+  }
+  return {
+    ok: true,
+    apiVersion: process.env.STRIPE_API_VERSION || '2024-06-20'
+  };
+}
+
+function checkSendgridHealth() {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+
+  if (!apiKey || !fromEmail) {
+    return { ok: false, reason: 'missing_credentials' };
+  }
+
+  return {
+    ok: true,
+    fromEmail
+  };
+}
+
+function checkS3Health() {
+  const bucket = process.env.S3_BUCKET;
+  const region = process.env.AWS_REGION || process.env.S3_REGION;
+  const accessKey = process.env.AWS_ACCESS_KEY_ID;
+  const secretKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+  if (!bucket || !region) {
+    return { ok: false, reason: 'missing_configuration' };
+  }
+
+  if (!accessKey || !secretKey) {
+    return { ok: false, reason: 'missing_credentials' };
+  }
+
+  try {
+    // Validate that we can build an S3 client with the provided configuration
+    require('@aws-sdk/client-s3');
+  } catch (err) {
+    return { ok: false, reason: err?.message || 's3_sdk_missing' };
+  }
+
+  return { ok: true, bucket, region };
+}
+
+async function getDependencyHealth(options = {}) {
+  const includeExternal = options.includeExternal !== false;
   const status = {
     ok: true,
     db: { ok: true },
@@ -226,6 +279,23 @@ async function getDependencyHealth() {
     status.redis = { ok: false, reason: err?.message || 'redis_error' };
     status.ok = false;
   }
+
+  if (includeExternal) {
+    status.external = {
+      stripe: checkStripeHealth(),
+      sendgrid: checkSendgridHealth(),
+      s3: checkS3Health()
+    };
+
+    for (const dep of Object.values(status.external)) {
+      if (!dep.ok) {
+        status.ok = false;
+        break;
+      }
+    }
+  }
+
+  status.metrics = metrics.snapshot();
 
   return status;
 }
@@ -337,6 +407,14 @@ app.use((req, _res, next) => {
   if (!req.messageBus) {
     req.messageBus = app.locals.messageBus || sharedMessageBus;
   }
+  next();
+});
+
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    metrics.recordHttpRequest(Date.now() - startedAt, res.statusCode);
+  });
   next();
 });
 
@@ -9132,11 +9210,24 @@ if (IS_TEST) {
 
 /* ------------------------------------------------------------------ */
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now(), uptime: process.uptime() }));
+
+app.get('/api/health/liveness', (_req, res) => {
+  res.json({ ok: true, ts: Date.now(), uptime: process.uptime() });
+});
 
 app.get('/api/health/deps', async (_req, res) => {
   try {
     const status = await getDependencyHealth();
+    res.status(status.ok ? 200 : 503).json(status);
+  } catch (err) {
+    res.status(503).json({ ok: false, error: err?.message || 'health_failed' });
+  }
+});
+
+app.get('/api/health/readiness', async (_req, res) => {
+  try {
+    const status = await getDependencyHealth({ includeExternal: true });
     res.status(status.ok ? 200 : 503).json(status);
   } catch (err) {
     res.status(503).json({ ok: false, error: err?.message || 'health_failed' });

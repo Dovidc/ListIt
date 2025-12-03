@@ -22,3 +22,7 @@ The repository is preconfigured to bundle the static assets under `public/` into
 4. Open the iOS workspace at any time with `npm run open:ios` to configure signing, run on devices, or produce App Store archives.
 
 The generated native project lives in `ios/App`. Commit changes to that directory alongside web updates so the iOS container stays in sync with the bundled assets.
+
+## Observability and health checks
+
+The API exposes lightweight operational metrics through the health endpoints. See `docs/metrics.md` for details on the `/api/health/deps` and `/api/health/readiness` routes and the HTTP/message bus/worker counters they return.
