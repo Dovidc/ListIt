@@ -3486,7 +3486,7 @@ app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
   try {
     // Check if user is allowed to customize (premium or payments disabled)
     const paymentsDisabled = await arePaymentsDisabled();
-    const isPremium = req.user.supporter_tier === 'premium' || paymentsDisabled;
+    const isPremium = !!req.user.supporter_tier || req.user.supporter_badge || paymentsDisabled;
 
     if (!isPremium) {
       return res.status(403).json({ error: 'premium_required' });
@@ -3637,12 +3637,13 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
     const rawBannerUrl = req.body?.profile_bg_image_url ?? req.body?.profile_bg_video_url ?? '';
     const bgImageUrl = String(rawBannerUrl || '').trim();
 
-    // Check if user is premium subscriber
-    const userRow = await db.prepare('SELECT subscription_status, supporter_tier FROM users WHERE id = ?').get(req.user.id);
+    // Check if user is premium subscriber (any supporter tier counts)
+    const userRow = await db.prepare('SELECT subscription_status, supporter_tier, supporter_badge FROM users WHERE id = ?').get(req.user.id);
     const paymentsDisabled = Boolean(req.user?.payments_disabled);
     const isPremium = paymentsDisabled
       || userRow?.subscription_status === 'active'
-      || userRow?.supporter_tier === 'premium';
+      || !!userRow?.supporter_tier
+      || userRow?.supporter_badge;
 
     if (!isPremium) {
       return res.status(403).json({ error: 'Profile customization is only available for premium subscribers' });
@@ -3765,18 +3766,20 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
     }
 
     // Get buyer info
-    const buyer = await db.prepare('SELECT id, supporter_tier, subscription_status FROM users WHERE id = ?').get(buyerId);
+    const buyer = await db.prepare('SELECT id, supporter_tier, supporter_badge, subscription_status FROM users WHERE id = ?').get(buyerId);
     if (!buyer) {
       return res.status(404).json({ error: 'Buyer not found' });
     }
 
-    // Check if both users are premium subscribers
+    // Check if both users are premium subscribers (any supporter tier counts)
     const paymentsDisabled = Boolean(req.user?.payments_disabled);
     const sellerIsPremium = paymentsDisabled
-      || req.user.supporter_tier === 'premium'
+      || !!req.user.supporter_tier
+      || req.user.supporter_badge
       || req.user.subscription_status === 'active';
     const buyerIsPremium = paymentsDisabled
-      || buyer.supporter_tier === 'premium'
+      || !!buyer.supporter_tier
+      || buyer.supporter_badge
       || buyer.subscription_status === 'active';
     const shouldAward = sellerIsPremium && buyerIsPremium;
 

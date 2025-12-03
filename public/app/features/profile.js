@@ -1630,8 +1630,8 @@
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'Tokyo Night theme')
                 )
               ),
-              // Show cancel subscription button for premium monthly subscribers
-              user?.supporter_tier === 'premium' && user?.stripe_subscription_id && H('div', {
+              // Show cancel subscription button for subscribers with active Stripe subscription
+              user?.stripe_subscription_id && H('div', {
                 style: {
                   marginTop: 24,
                   paddingTop: 24,
@@ -1888,8 +1888,8 @@
       const [quietHoursEnd, setQuietHoursEnd] = useState(user?.quiet_hours_end || '09:30');
       const [notificationSettingsSaving, setNotificationSettingsSaving] = useState(false);
       const isPremiumUser = useMemo(() => {
-        return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
-      }, [premiumFreeForAll, user?.supporter_tier, user?.subscription_status]);
+        return premiumFreeForAll || !!user?.supporter_tier || user?.supporter_badge || user?.subscription_status === 'active';
+      }, [premiumFreeForAll, user?.supporter_tier, user?.supporter_badge, user?.subscription_status]);
 
       useEffect(() => {
         if (!user) return;
