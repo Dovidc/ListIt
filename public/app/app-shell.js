@@ -175,8 +175,8 @@
 
       const premiumFreeForAll = Boolean(user?.payments_disabled);
       const hasPremiumAccess = useMemo(() => {
-        return premiumFreeForAll || user?.supporter_tier === 'premium' || user?.subscription_status === 'active';
-      }, [premiumFreeForAll, user?.supporter_tier, user?.subscription_status]);
+        return premiumFreeForAll || !!user?.supporter_tier || user?.supporter_badge || user?.subscription_status === 'active';
+      }, [premiumFreeForAll, user?.supporter_tier, user?.supporter_badge, user?.subscription_status]);
       const appView = useAppView({ user });
       const {
         tab,
