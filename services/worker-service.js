@@ -12,6 +12,7 @@
 const { TOPICS } = require('../lib/message-bus');
 const db = require('../db-wrapper');
 const { createWorkerQueue } = require('../lib/worker-queue');
+const { metrics } = require('../lib/metrics');
 const {
   SUPPORTER_BADGE_CODE,
   SUPPORTER_BADGE_CODE_PREMIUM
@@ -146,6 +147,7 @@ class WorkerService {
     await this.jobQueue.enqueue(wrappedJob);
 
     this.metrics.enqueued += 1;
+    metrics.recordWorkerEnqueued();
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
     return jobId;
   }
@@ -204,6 +206,7 @@ class WorkerService {
     try {
       const result = await this.processJob(job);
       this.metrics.processed += 1;
+      metrics.recordWorkerProcessed(true);
       if (job.type === 'process_stripe_event') {
         this.metrics.webhookProcessed += 1;
       }
@@ -217,6 +220,7 @@ class WorkerService {
       });
     } catch (err) {
       this.metrics.failed += 1;
+      metrics.recordWorkerProcessed(false);
       this.completedJobs.set(job.id, {
         status: 'failed',
         error: err?.message || 'unknown_error',
@@ -754,10 +758,13 @@ class WorkerService {
       }
     };
 
-    return this.jobQueue.size().then((queued) => ({
-      queueLength: queued,
-      ...summary
-    })).catch(() => ({
+    return this.jobQueue.size().then((queued) => {
+      metrics.setWorkerQueueDepth(queued);
+      return {
+        queueLength: queued,
+        ...summary
+      };
+    }).catch(() => ({
       queueLength: null,
       ...summary
     }));
