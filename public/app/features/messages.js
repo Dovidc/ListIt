@@ -174,8 +174,12 @@
                   ? H('img', { src: conversation.other_user_profile_picture, alt: '' })
                   : (conversation.other_user_username ? conversation.other_user_username.charAt(0).toUpperCase() : '?')
               ),
-              H('div', { style: { fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversation.other_user_username ? conversation.other_user_username : 'Unknown'),
-              conversation.listing_title ? H('div', { className: 'muted', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, ` - ${conversation.listing_title?.slice?.(0, 20)}`) : null,
+              H('div', {
+                style: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }
+              },
+                H('div', { style: { fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversation.other_user_username ? conversation.other_user_username : 'Unknown'),
+                conversation.listing_title ? H('div', { className: 'muted', style: { fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversation.listing_title) : null
+              ),
               conversation._unread && H('span', {
                 style: {
                   marginLeft: 'auto',
