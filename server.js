@@ -300,12 +300,42 @@ const IS_TEST = process.env.NODE_ENV === 'test';
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 
+function assertDistributedMessagingPrereqs() {
+  if (!IS_PROD) return;
 
-const fallbackMessageBus = createMessageBus({ type: 'memory', name: 'server-fallback' });
-app.locals.messageBus = fallbackMessageBus;
+  const messageBusType = (process.env.MESSAGE_BUS_TYPE || 'redis').toLowerCase();
+  if (messageBusType !== 'redis') {
+    throw new Error('MESSAGE_BUS_TYPE must be "redis" in production so services can communicate across instances.');
+  }
+
+  if (!process.env.REDIS_URL) {
+    throw new Error('REDIS_URL is required in production to back the distributed message bus.');
+  }
+
+  if (!getRedisClient()) {
+    throw new Error('Redis client unavailable: ensure ioredis is installed and REDIS_URL is configured.');
+  }
+}
+
+let sharedMessageBus = null;
+try {
+  assertDistributedMessagingPrereqs();
+  sharedMessageBus = createMessageBus({
+    type: process.env.MESSAGE_BUS_TYPE,
+    redisUrl: process.env.REDIS_URL,
+    name: 'server',
+    requireExternal: IS_PROD,
+    allowMemoryFallback: !IS_PROD
+  });
+} catch (err) {
+  console.error('[bus] Message bus initialization failed:', err?.message || err);
+  process.exit(1);
+}
+
+app.locals.messageBus = sharedMessageBus;
 app.use((req, _res, next) => {
   if (!req.messageBus) {
-    req.messageBus = app.locals.messageBus || fallbackMessageBus;
+    req.messageBus = app.locals.messageBus || sharedMessageBus;
   }
   next();
 });
@@ -314,7 +344,7 @@ const EMBED_WEBSOCKET = process.env.EMBED_WEBSOCKET !== 'false';
 
 function getAppMessageBus(req) {
   if (req && req.messageBus) return req.messageBus;
-  return app.locals.messageBus || fallbackMessageBus;
+  return app.locals.messageBus || sharedMessageBus;
 }
 
 async function publishBackgroundEvent(topic, payload, { req = null, failOnError = false } = {}) {
@@ -344,7 +374,7 @@ if (process.env.EMBED_WORKER !== 'false') {
     try {
       const embeddedWorker = await createWorkerService(
         { NODE_ENV: process.env.NODE_ENV || 'development', IS_TEST },
-        fallbackMessageBus,
+        sharedMessageBus,
         { stripe, mailService, pushService, iosPushService }
       );
       await embeddedWorker.start();
@@ -9164,7 +9194,7 @@ async function startServer() {
           NODE_ENV: process.env.NODE_ENV || 'development',
           IS_TEST
         };
-        embeddedWebSocket = await createWebSocketService(wsConfig, fallbackMessageBus, { server });
+        embeddedWebSocket = await createWebSocketService(wsConfig, sharedMessageBus, { server });
         app._embeddedWebSocket = embeddedWebSocket;
       } catch (err) {
         console.error('[Server] Failed to initialize embedded WebSocket service:', err);
