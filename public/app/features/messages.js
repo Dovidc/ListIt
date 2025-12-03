@@ -257,6 +257,7 @@
 
       return H('div', {
         ref: msgsContainerRef,
+        className: 'messages-thread-content',
         style: { flex: 1, overflow: 'auto', padding: 4, minHeight: 0 },
         onScroll
       },
@@ -426,9 +427,9 @@
         })
       ),
       H('textarea', {
-        placeholder: 'Type a message...  (Tip: paste or drag images)',
+        placeholder: 'Type a message...',
         value: input,
-        rows: 2,
+        rows: 1,
         onPaste: onComposerPaste,
         onChange: (event) => setInput(event.target.value),
         onKeyDown: (event) => {
@@ -440,7 +441,7 @@
         style: {
           width: 220,
           maxWidth: '100%',
-          resize: 'vertical'
+          resize: 'none'
         }
       }),
       H('button', { className: 'btn primary', onClick: onSend }, 'Send'));
@@ -1218,7 +1219,7 @@
         }),
         H('section', {
           className: `card col messages-thread-shell ${showConversationOnMobile ? 'show-on-mobile' : 'hide-on-mobile'}`,
-          style: { padding: 12, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
+          style: { padding: 12 }
         },
           activeId && H('div', {
             className: 'messages-thread-header',

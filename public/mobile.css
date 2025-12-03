@@ -1249,3 +1249,30 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Messages panel mobile fixes */
+.messages-panel {
+  overflow: hidden !important;
+}
+
+/* When messages thread is visible, prevent parent scrolling */
+body:has(.messages-thread-shell.show-on-mobile) {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+body:has(.messages-thread-shell.show-on-mobile) main.container {
+  overflow: hidden !important;
+  height: calc(100vh - 70px) !important;
+  padding-bottom: 0 !important;
+}
+
+.messages-thread-shell textarea {
+  min-height: 44px !important;
+  height: 44px !important;
+  max-height: 44px !important;
+  resize: none !important;
+  padding: 10px 12px !important;
+}

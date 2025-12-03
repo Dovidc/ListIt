@@ -1745,54 +1745,94 @@
       const sellerName = listing?.owner_username ? listing.owner_username : 'this seller';
 
       const modal = H('div', {
-        className: 'modal open',
-        onClick: (e) => { if (e.target.classList.contains('modal')) onClose?.(); }
+        className: 'modal-overlay',
+        onClick: (e) => { if (e.target.classList.contains('modal-overlay')) onClose?.(); }
       },
-        H('div', { className: 'modal-inner', style: { maxWidth: '520px', padding: '24px', background: '#fff', color: '#111' } },
-          H('button', { className: 'close', onClick: onClose, disabled: submitting && !submitted }, 'X'),
-          H('h2', { style: { margin: '0 0 16px', fontSize: 24, fontWeight: 700 } }, `Report ${sellerName}`),
-          submitted ?
-            H('div', { className: 'muted', style: { marginBottom: 16 } }, 'Thank you. We will review this report shortly.') :
-            H('form', { onSubmit: handleSubmit, style: { display: 'grid', gap: 12 } },
-              H('div', { style: { fontWeight: 600 } }, 'Why are you reporting this seller?'),
-              REPORT_REASON_OPTIONS.map(opt => H('label', {
-                key: opt.value,
-                style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }
-              },
-                H('input', {
-                  type: 'checkbox',
-                  checked: selected.has(opt.value),
-                  disabled: submitting,
-                  onChange: () => toggleReason(opt.value)
-                }),
-                opt.label
-              )),
-              H('textarea', {
-                placeholder: 'Additional details (optional)',
-                value: details,
-                onChange: (e) => setDetails(e.target.value),
-                disabled: submitting,
-                rows: 3,
-                style: { width: '100%', fontSize: 13, padding: 8 }
-              }),
-              H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                H('span', null, `What is ${captcha.a} + ${captcha.b}?`),
-                H('input', {
-                  type: 'number',
-                  value: answer,
-                  onChange: (e) => setAnswer(e.target.value),
-                  disabled: submitting,
-                  style: { width: 80 }
-                })
-              ),
-              error && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, error),
-              H('div', { className: 'row', style: { gap: 8, marginTop: 4 } },
-                H('button', { className: 'btn primary', type: 'submit', disabled: submitting, style: { flex: 1 } }, submitting ? 'Submitting...' : 'Submit report'),
-                H('button', { className: 'btn', type: 'button', onClick: onClose, disabled: submitting, style: { flex: 1 } }, 'Cancel')
+        H('div', { className: 'modal-content', style: { maxWidth: '520px' } },
+          H('div', { className: 'modal-header' },
+            H('h2', { style: { margin: 0, fontSize: '20px', fontWeight: 600 } }, `Report ${sellerName}`),
+            H('button', { className: 'modal-close', onClick: onClose, disabled: submitting && !submitted }, '×')
+          ),
+          H('div', { className: 'modal-body' },
+            submitted ?
+              H('div', null,
+                H('div', { style: { marginBottom: '20px', color: '#6b7280' } }, 'Thank you. We will review this report shortly.'),
+                H('button', { className: 'btn primary', onClick: onClose, style: { width: '100%' } }, 'Close')
+              ) :
+              H('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', gap: '16px' } },
+                H('div', null,
+                  H('div', { style: { fontWeight: 600, marginBottom: '12px' } }, 'Why are you reporting this seller?'),
+                  H('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+                    ...REPORT_REASON_OPTIONS.map(opt => H('label', {
+                      key: opt.value,
+                      style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }
+                    },
+                      H('input', {
+                        type: 'checkbox',
+                        checked: selected.has(opt.value),
+                        disabled: submitting,
+                        onChange: () => toggleReason(opt.value),
+                        style: { cursor: 'pointer' }
+                      }),
+                      opt.label
+                    ))
+                  )
+                ),
+                H('div', null,
+                  H('textarea', {
+                    placeholder: 'Additional details (optional)',
+                    value: details,
+                    onChange: (e) => setDetails(e.target.value),
+                    disabled: submitting,
+                    rows: 3,
+                    style: {
+                      width: '100%',
+                      fontSize: '14px',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }
+                  })
+                ),
+                H('div', null,
+                  H('div', { style: { fontWeight: 600, marginBottom: '8px' } }, 'Verify you\'re human'),
+                  H('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                    H('span', { style: { fontSize: '14px' } }, `What is ${captcha.a} + ${captcha.b}?`),
+                    H('input', {
+                      type: 'number',
+                      value: answer,
+                      onChange: (e) => setAnswer(e.target.value),
+                      disabled: submitting,
+                      placeholder: 'Answer',
+                      style: {
+                        width: '100px',
+                        padding: '6px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '14px'
+                      }
+                    })
+                  )
+                ),
+                error && H('div', { style: { color: '#dc2626', fontSize: '14px', padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' } }, error),
+                H('div', { style: { display: 'flex', gap: '8px', marginTop: '8px' } },
+                  H('button', {
+                    className: 'btn primary',
+                    type: 'submit',
+                    disabled: submitting,
+                    style: { flex: 1 }
+                  }, submitting ? 'Submitting...' : 'Submit Report'),
+                  H('button', {
+                    className: 'btn',
+                    type: 'button',
+                    onClick: onClose,
+                    disabled: submitting,
+                    style: { flex: 1 }
+                  }, 'Cancel')
+                )
               )
-            ),
-          submitted && H('div', { style: { marginTop: 16 } },
-            H('button', { className: 'btn primary', onClick: onClose }, 'Close')
           )
         )
       );
@@ -1857,7 +1897,10 @@
         isPinching: false,
         lastTouchX: 0,
         lastTouchY: 0,
-        isDragging: false
+        isDragging: false,
+        isMouseDragging: false,
+        lastMouseX: 0,
+        lastMouseY: 0
       });
 
       const MIN_SCALE = 1;
@@ -2049,6 +2092,123 @@
         onError?.(e);
       }, [onError]);
 
+      // Scroll zoom for desktop only
+      const handleWheel = useCallback((e) => {
+        // Only enable scroll zoom on desktop
+        if (isMobileDevice()) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const state = stateRef.current;
+        const container = containerRef.current;
+        if (!container) return;
+
+        // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
+        const zoomDelta = -e.deltaY * 0.001;
+        let newScale = state.scale * (1 + zoomDelta);
+
+        // Clamp to min/max scale
+        newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+        // Get mouse position relative to container
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Calculate the point under the mouse in image coordinates before zoom
+        const beforeZoomX = (mouseX - rect.width / 2 - state.translateX) / state.scale;
+        const beforeZoomY = (mouseY - rect.height / 2 - state.translateY) / state.scale;
+
+        // Update scale
+        const oldScale = state.scale;
+        state.scale = newScale;
+
+        // Calculate the point under the mouse in image coordinates after zoom
+        const afterZoomX = beforeZoomX * newScale;
+        const afterZoomY = beforeZoomY * newScale;
+
+        // Adjust translation to keep the point under the mouse stationary
+        state.translateX = state.translateX - (afterZoomX - beforeZoomX * oldScale);
+        state.translateY = state.translateY - (afterZoomY - beforeZoomY * oldScale);
+
+        // Reset translation if zooming back to 1
+        if (newScale <= 1) {
+          state.translateX = 0;
+          state.translateY = 0;
+        }
+
+        clampTranslation();
+        updateTransform();
+      }, [clampTranslation, updateTransform]);
+
+      // Mouse drag for desktop only
+      const handleMouseDown = useCallback((e) => {
+        // Only enable drag on desktop when zoomed in
+        if (isMobileDevice()) return;
+
+        const state = stateRef.current;
+        if (state.scale > 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          state.isMouseDragging = true;
+          state.lastMouseX = e.clientX;
+          state.lastMouseY = e.clientY;
+          // Change cursor to grabbing
+          if (containerRef.current) {
+            containerRef.current.style.cursor = 'grabbing';
+          }
+        }
+      }, []);
+
+      const handleMouseMove = useCallback((e) => {
+        const state = stateRef.current;
+        if (state.isMouseDragging && state.scale > 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          const deltaX = e.clientX - state.lastMouseX;
+          const deltaY = e.clientY - state.lastMouseY;
+          state.translateX += deltaX;
+          state.translateY += deltaY;
+          state.lastMouseX = e.clientX;
+          state.lastMouseY = e.clientY;
+
+          clampTranslation();
+          updateTransform();
+        }
+      }, [clampTranslation, updateTransform]);
+
+      const handleMouseUp = useCallback(() => {
+        const state = stateRef.current;
+        if (state.isMouseDragging) {
+          state.isMouseDragging = false;
+          // Change cursor back to grab
+          if (containerRef.current) {
+            containerRef.current.style.cursor = state.scale > 1 ? 'grab' : 'default';
+          }
+        }
+      }, []);
+
+      const handleMouseLeave = useCallback(() => {
+        const state = stateRef.current;
+        if (state.isMouseDragging) {
+          state.isMouseDragging = false;
+          // Change cursor back
+          if (containerRef.current) {
+            containerRef.current.style.cursor = state.scale > 1 ? 'grab' : 'default';
+          }
+        }
+      }, []);
+
+      // Update cursor when scale changes
+      useEffect(() => {
+        const container = containerRef.current;
+        if (!container || isMobileDevice()) return;
+
+        const state = stateRef.current;
+        container.style.cursor = state.scale > 1 ? 'grab' : 'default';
+      }, [imgLoaded]);
+
       return H('div', {
         ref: containerRef,
         className: 'pinch-zoom-container',
@@ -2066,7 +2226,12 @@
         onTouchStart: handleTouchStart,
         onTouchMove: handleTouchMove,
         onTouchEnd: handleTouchEnd,
-        onClick: handleTap
+        onClick: handleTap,
+        onWheel: handleWheel,
+        onMouseDown: handleMouseDown,
+        onMouseMove: handleMouseMove,
+        onMouseUp: handleMouseUp,
+        onMouseLeave: handleMouseLeave
       },
         H('img', {
           ref: imgRef,
