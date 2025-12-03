@@ -1665,7 +1665,7 @@
       };
     }
 
-    const RECAPTCHA_SITE_KEY = '6LcLeyAsAAAAAHv54qIzERqdtkB4MauyMeNkuCfT';
+    const RECAPTCHA_SITE_KEY = '6LfdgSAsAAAAALd3zwHaKy5uGeFQivCfgBpFx2DL';
 
     function ReportSellerModal({ open, listing, onClose, onReported }) {
       const [selected, setSelected] = useState(() => new Set());
