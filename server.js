@@ -98,7 +98,27 @@ const {
   SUPPORTER_CANCEL_PATH
 } = require('./lib/supporter-config');
 
-
+// reCAPTCHA verification helper
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '';
+async function verifyRecaptcha(token) {
+  if (!RECAPTCHA_SECRET_KEY) {
+    console.warn('[recaptcha] No RECAPTCHA_SECRET_KEY configured, skipping verification');
+    return true; // Allow in dev if not configured
+  }
+  if (!token) return false;
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${encodeURIComponent(RECAPTCHA_SECRET_KEY)}&response=${encodeURIComponent(token)}`
+    });
+    const data = await response.json();
+    return data.success === true;
+  } catch (err) {
+    console.error('[recaptcha] Verification failed:', err?.message || err);
+    return false;
+  }
+}
 
 let cors; try { cors = require('cors'); } catch { }
 
@@ -940,11 +960,13 @@ if (helmet) {
 
       "img-src": ["'self'", "data:", "https:", "blob:"],
 
-      "script-src": ["'self'", "https://unpkg.com"],
+      "script-src": ["'self'", "https://unpkg.com", "https://www.google.com", "https://www.gstatic.com"],
 
       "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
 
       "font-src": ["https://fonts.gstatic.com"],
+
+      "frame-src": ["'self'", "https://www.google.com"],
 
       "connect-src": [
 
@@ -5058,21 +5080,14 @@ app.post('/api/reports', auth, writeLimiter, async (req, res) => {
 
 
 
-    const captcha = req.body?.captcha || {};
-
-    const a = Number(captcha?.a);
-
-    const b = Number(captcha?.b);
-
-    const answer = Number(captcha?.answer);
-
-    if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(answer) || a + b !== answer) {
-
+    // Verify reCAPTCHA
+    const recaptchaToken = req.body?.recaptchaToken || '';
+    const recaptchaValid = await verifyRecaptcha(recaptchaToken);
+    if (!recaptchaValid) {
       return res.status(400).json({ error: 'captcha_invalid' });
-
     }
 
-    const captchaQuestion = `${a}+${b}`;
+    const captchaQuestion = 'recaptcha-v2';
 
 
 

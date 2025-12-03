@@ -1665,24 +1665,58 @@
       };
     }
 
+    const RECAPTCHA_SITE_KEY = '6LcLeyAsAAAAAHv54qIzERqdtkB4MauyMeNkuCfT';
+
     function ReportSellerModal({ open, listing, onClose, onReported }) {
       const [selected, setSelected] = useState(() => new Set());
       const [details, setDetails] = useState('');
-      const [captcha, setCaptcha] = useState(() => makeReportCaptcha());
-      const [answer, setAnswer] = useState('');
+      const [recaptchaToken, setRecaptchaToken] = useState('');
       const [error, setError] = useState('');
       const [submitting, setSubmitting] = useState(false);
       const [submitted, setSubmitted] = useState(false);
+      const recaptchaRef = useRef(null);
+      const recaptchaWidgetId = useRef(null);
 
       useEffect(() => {
         if (!open) return;
         setSelected(new Set());
         setDetails('');
-        setCaptcha(makeReportCaptcha());
-        setAnswer('');
+        setRecaptchaToken('');
         setError('');
         setSubmitted(false);
+        // Reset reCAPTCHA widget if it exists
+        if (recaptchaWidgetId.current !== null && window.grecaptcha) {
+          try { window.grecaptcha.reset(recaptchaWidgetId.current); } catch (e) {}
+        }
       }, [open, listing?.id]);
+
+      // Render reCAPTCHA when modal opens
+      useEffect(() => {
+        if (!open || submitted) return;
+        const renderRecaptcha = () => {
+          if (recaptchaRef.current && window.grecaptcha && window.grecaptcha.render) {
+            // Clear any existing widget
+            recaptchaRef.current.innerHTML = '';
+            recaptchaWidgetId.current = window.grecaptcha.render(recaptchaRef.current, {
+              sitekey: RECAPTCHA_SITE_KEY,
+              callback: (token) => setRecaptchaToken(token),
+              'expired-callback': () => setRecaptchaToken('')
+            });
+          }
+        };
+        // Wait for grecaptcha to be ready
+        if (window.grecaptcha && window.grecaptcha.render) {
+          setTimeout(renderRecaptcha, 100);
+        } else {
+          const interval = setInterval(() => {
+            if (window.grecaptcha && window.grecaptcha.render) {
+              clearInterval(interval);
+              renderRecaptcha();
+            }
+          }, 100);
+          return () => clearInterval(interval);
+        }
+      }, [open, submitted]);
 
       useEffect(() => {
         if (!open) return;
@@ -1713,11 +1747,8 @@
           setError('Please include details for "Other".');
           return;
         }
-        const expected = captcha.a + captcha.b;
-        if (Number(answer) !== expected) {
-          setError('Captcha answer is incorrect.');
-          setCaptcha(makeReportCaptcha());
-          setAnswer('');
+        if (!recaptchaToken) {
+          setError('Please complete the reCAPTCHA verification.');
           return;
         }
         setSubmitting(true);
@@ -1727,14 +1758,17 @@
             listing_id: listing?.id,
             reasons,
             details: details.trim() || undefined,
-            captcha: { a: captcha.a, b: captcha.b, answer: Number(answer) }
+            recaptchaToken
           });
           setSubmitted(true);
           onReported?.();
         } catch (err) {
           setError(err.message || 'Unable to submit report.');
-          setCaptcha(makeReportCaptcha());
-          setAnswer('');
+          // Reset reCAPTCHA on error
+          setRecaptchaToken('');
+          if (recaptchaWidgetId.current !== null && window.grecaptcha) {
+            try { window.grecaptcha.reset(recaptchaWidgetId.current); } catch (e) {}
+          }
         } finally {
           setSubmitting(false);
         }
@@ -1798,23 +1832,10 @@
                 ),
                 H('div', null,
                   H('div', { style: { fontWeight: 600, marginBottom: '8px' } }, 'Verify you\'re human'),
-                  H('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-                    H('span', { style: { fontSize: '14px' } }, `What is ${captcha.a} + ${captcha.b}?`),
-                    H('input', {
-                      type: 'number',
-                      value: answer,
-                      onChange: (e) => setAnswer(e.target.value),
-                      disabled: submitting,
-                      placeholder: 'Answer',
-                      style: {
-                        width: '100px',
-                        padding: '6px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        fontSize: '14px'
-                      }
-                    })
-                  )
+                  H('div', {
+                    ref: recaptchaRef,
+                    style: { minHeight: '78px' }
+                  })
                 ),
                 error && H('div', { style: { color: '#dc2626', fontSize: '14px', padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' } }, error),
                 H('div', { style: { display: 'flex', gap: '8px', marginTop: '8px' } },
