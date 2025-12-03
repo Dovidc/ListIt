@@ -288,7 +288,7 @@
               },
                 H('div', { style: { fontWeight: 600 } }, item.username || '(no username)'),
                 H('div', { className: 'muted', style: { fontSize: 12 } }, item.email || 'No email'),
-                H('div', { className: 'muted', style: { fontSize: 12 } }, `Status: ${item.account_status || 'active'} | Reports: ${Number(item.report_count || 0)}`)
+                H('div', { className: 'muted', style: { fontSize: 12 } }, `Status: ${item.account_status || 'active'} | Reports: ${Number(item.report_count || 0)} | Open: ${Number(item.open_report_count || 0)}`)
               ))
             )
           ),

@@ -8618,7 +8618,8 @@ app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
                u.last_login_at,
 
                (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count,
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status = 'open') AS open_report_count
           FROM users u
 
          WHERE u.id = ?
@@ -8642,7 +8643,8 @@ app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
                u.last_login_at,
 
                (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count,
+               (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status = 'open') AS open_report_count
           FROM users u
 
          WHERE LOWER(u.email) LIKE @like
@@ -8679,7 +8681,9 @@ app.get('/api/admin/users/search', auth, requireAdmin, async (req, res) => {
 
       listing_count: Number(row.listing_count || 0),
 
-      report_count: Number(row.report_count || 0)
+      report_count: Number(row.report_count || 0),
+
+      open_report_count: Number(row.open_report_count || 0)
 
     }));
 
@@ -8732,7 +8736,7 @@ app.get('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
              u.is_admin,
 
              (SELECT COUNT(*) FROM listings WHERE user_id = u.id) AS listing_count,
-             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status != 'cleared') AS report_count,
+             (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id) AS report_count,
              (SELECT COUNT(*) FROM seller_reports WHERE reported_user_id = u.id AND status = 'open') AS open_report_count
 
         FROM users u
