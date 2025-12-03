@@ -256,6 +256,19 @@ test('validateConfig should fail on missing DATABASE_URL', () => {
   assert(result === false);
 });
 
+test('validateConfig should enforce Redis-backed bus in production', () => {
+  const testConfig = {
+    DB_CONN_STRING: 'postgresql://test',
+    JWT_SECRET: 'test-secret',
+    IS_PROD: true,
+    MESSAGE_BUS_TYPE: 'memory',
+    REDIS_URL: ''
+  };
+
+  const result = validateConfig(testConfig);
+  assert(result === false);
+});
+
 // ============================================================================
 // 3. SERVICE ORCHESTRATOR TESTS
 // ============================================================================
