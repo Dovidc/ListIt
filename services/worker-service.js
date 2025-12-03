@@ -19,6 +19,11 @@ const {
 const defaultMailService = require('../mail-service');
 const pushServiceModule = require('../lib/push-service');
 const iosPushServiceModule = require('../lib/ios-push-service');
+const {
+  recordWorkerEnqueued,
+  recordWorkerProcessed,
+  updateWorkerQueueDepth
+} = require('../lib/metrics');
 
 function nowIso() {
   return new Date().toISOString();
@@ -68,6 +73,7 @@ class WorkerService {
     this._handleQueueJob = this._handleQueueJob.bind(this);
     this._trackCompletion = this._trackCompletion.bind(this);
     this._trackFailure = this._trackFailure.bind(this);
+    this.refreshQueueDepth = this.refreshQueueDepth.bind(this);
   }
 
   /**
@@ -112,6 +118,8 @@ class WorkerService {
       this.jobQueue.on('failed', this._trackFailure);
     }
 
+    await this.refreshQueueDepth();
+
     console.log('[Worker] Service started');
   }
 
@@ -146,6 +154,8 @@ class WorkerService {
     await this.jobQueue.enqueue(wrappedJob);
 
     this.metrics.enqueued += 1;
+    recordWorkerEnqueued();
+    await this.refreshQueueDepth();
     console.log(`[Worker] Job queued: ${jobId} (type: ${job.type})`);
     return jobId;
   }
@@ -204,6 +214,7 @@ class WorkerService {
     try {
       const result = await this.processJob(job);
       this.metrics.processed += 1;
+      recordWorkerProcessed(true);
       if (job.type === 'process_stripe_event') {
         this.metrics.webhookProcessed += 1;
       }
@@ -223,6 +234,7 @@ class WorkerService {
         completedAt: Date.now()
       });
       console.error(`[Worker] Job failed: ${job.id}`, err?.message || err);
+      recordWorkerProcessed(false);
       throw err;
     } finally {
       const duration = Date.now() - startedAt;
@@ -231,6 +243,7 @@ class WorkerService {
         this.metrics.durationsMs.shift();
       }
       this.activeJobs.delete(job.id);
+      await this.refreshQueueDepth();
     }
   }
 
@@ -245,6 +258,16 @@ class WorkerService {
   _trackFailure(event) {
     if (!event) return;
     console.error('[Worker] Queue failure observed:', event.err || event.failedReason || event);
+  }
+
+  async refreshQueueDepth() {
+    if (!this.jobQueue || typeof this.jobQueue.size !== 'function') return;
+    try {
+      const depth = await this.jobQueue.size();
+      updateWorkerQueueDepth(depth);
+    } catch (err) {
+      console.warn('[Worker] Failed to sample queue depth:', err?.message || err);
+    }
   }
 
   /**
