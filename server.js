@@ -80,6 +80,7 @@ const { createSharedCache } = require('./lib/shared-cache');
 const { getRedisClient } = require('./lib/redis-client');
 const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
 const { assertMigrationsCurrent } = require('./lib/migration-guard');
+const { beginHttpRequest, recordHttpRequest, getMetricsSnapshot } = require('./lib/metrics');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -191,13 +192,67 @@ async function verifyDatabaseConnectivity() {
 async function checkRedisHealth() {
   const redis = getRedisClient();
   if (!redis) {
-    return { ok: false, reason: 'not_configured' };
+    return { ok: false, reason: 'not_configured', required: process.env.NODE_ENV === 'production' };
   }
   try {
     const pong = await redis.ping();
-    return { ok: pong === 'PONG' };
+    return { ok: pong === 'PONG', required: true };
   } catch (err) {
-    return { ok: false, reason: err?.message || 'redis_error' };
+    return { ok: false, reason: err?.message || 'redis_error', required: true };
+  }
+}
+
+async function checkStripeHealth() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const required = isProd && process.env.PAYMENTS_DISABLED !== '1';
+  if (!stripe) {
+    return { ok: !required, reason: 'not_configured', required };
+  }
+  try {
+    await stripe.balance.retrieve({});
+    return { ok: true, required };
+  } catch (err) {
+    return { ok: false, reason: err?.message || 'stripe_error', required };
+  }
+}
+
+async function checkSendgridHealth() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const required = isProd;
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+  if (!apiKey || !fromEmail) {
+    return { ok: !required, reason: 'not_configured', required };
+  }
+  try {
+    const sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(apiKey);
+    if (!fromEmail.includes('@')) {
+      throw new Error('invalid_from_email');
+    }
+    return { ok: true, required };
+  } catch (err) {
+    return { ok: false, reason: err?.message || 'sendgrid_error', required };
+  }
+}
+
+async function checkS3Health() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const required = isProd;
+  const bucket = process.env.S3_BUCKET;
+  const region = process.env.AWS_REGION || process.env.S3_REGION;
+  if (!bucket || !region) {
+    return { ok: !required, reason: 'not_configured', required };
+  }
+  try {
+    const { S3Client } = require('@aws-sdk/client-s3');
+    const client = new S3Client({ region });
+    if (client.config?.credentials) {
+      await client.config.credentials();
+    }
+    return { ok: true, required };
+  } catch (err) {
+    return { ok: false, reason: err?.message || 's3_error', required };
   }
 }
 
@@ -219,11 +274,29 @@ async function getDependencyHealth() {
   try {
     const redisStatus = await checkRedisHealth();
     status.redis = redisStatus;
-    if (!redisStatus.ok) {
+    if (!redisStatus.ok && redisStatus.required !== false) {
       status.ok = false;
     }
   } catch (err) {
     status.redis = { ok: false, reason: err?.message || 'redis_error' };
+    status.ok = false;
+  }
+
+  const stripeStatus = await checkStripeHealth();
+  status.stripe = stripeStatus;
+  if (!stripeStatus.ok && stripeStatus.required !== false) {
+    status.ok = false;
+  }
+
+  const sendgridStatus = await checkSendgridHealth();
+  status.sendgrid = sendgridStatus;
+  if (!sendgridStatus.ok && sendgridStatus.required !== false) {
+    status.ok = false;
+  }
+
+  const s3Status = await checkS3Health();
+  status.s3 = s3Status;
+  if (!s3Status.ok && s3Status.required !== false) {
     status.ok = false;
   }
 
@@ -337,6 +410,21 @@ app.use((req, _res, next) => {
   if (!req.messageBus) {
     req.messageBus = app.locals.messageBus || sharedMessageBus;
   }
+  next();
+});
+
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  beginHttpRequest();
+  res.on('finish', () => {
+    const routePath = req.route?.path || req.path || req.originalUrl;
+    recordHttpRequest({
+      method: req.method,
+      path: routePath,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt
+    });
+  });
   next();
 });
 
@@ -9132,15 +9220,22 @@ if (IS_TEST) {
 
 /* ------------------------------------------------------------------ */
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
-
-app.get('/api/health/deps', async (_req, res) => {
+const livenessHandler = (_req, res) => res.json({ ok: true, ts: Date.now() });
+const readinessHandler = async (_req, res) => {
   try {
     const status = await getDependencyHealth();
     res.status(status.ok ? 200 : 503).json(status);
   } catch (err) {
     res.status(503).json({ ok: false, error: err?.message || 'health_failed' });
   }
+};
+
+app.get('/api/health', livenessHandler);
+app.get('/api/health/live', livenessHandler);
+app.get('/api/health/deps', readinessHandler);
+app.get('/api/health/ready', readinessHandler);
+app.get('/api/metrics', (_req, res) => {
+  res.json(getMetricsSnapshot());
 });
 
 app.get('/support', (_req, res) => {
