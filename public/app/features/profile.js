@@ -435,13 +435,9 @@
       });
     });
 
-    const PaypalPresetModal = React.memo(function PaypalPresetModal({
+    const PresetModal = React.memo(function PresetModal({
       open,
       onClose,
-      paypalEmail,
-      onChangePaypalEmail,
-      onSavePaypal,
-      statusMessage,
       locationPreset,
       onChangeLocationPreset,
       onSaveLocation,
@@ -469,8 +465,6 @@
         setSaving(true);
         setSaveStatus('');
         try {
-          // Save all three items in sequence
-          await onSavePaypal?.();
           await onSaveLocation?.();
           await onSaveProfileAbout?.();
           setSaveStatus('Saved');
@@ -490,7 +484,7 @@
           onClick: handleOverlayClick
         },
           H('div', {
-            className: 'modal-inner payment-preset-modal',
+            className: 'modal-inner preset-modal',
             style: {
               maxWidth: '460px',
               width: 'min(460px, 92vw)',
@@ -531,25 +525,13 @@
                   gap: 8
                 }
               },
-                'Payment preset',
-                H(PaypalPresetIcon, { size: 22 })
+                'Message presets',
+                H(LocationPresetIcon, { size: 22 })
               ),
               H('p', {
                 className: 'muted',
                 style: { fontSize: 13, margin: 0 }
-              }, 'Save the payment and address info you want to share when you use the preset in messages.')
-            ),
-            H('section', { style: { display: 'grid', gap: 12 } },
-              H('label', { style: { display: 'grid', gap: 8 } },
-                H('span', { style: { fontWeight: 600 } }, 'Payment info'),
-                H('input', {
-                  value: paypalEmail,
-                  onChange: (evt) => onChangePaypalEmail?.(evt.target.value),
-                  placeholder: 'name@example.com',
-                  maxLength: 240,
-                  style: { width: '100%' }
-                })
-              )
+              }, 'Save info you want to quickly share when messaging.')
             ),
             H('section', { style: { display: 'grid', gap: 12 } },
               H('div', {
@@ -2694,13 +2676,9 @@
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
 
-        H(PaypalPresetModal, {
+        H(PresetModal, {
           open: paypalModalOpen,
           onClose: handleClosePaypalModal,
-          paypalEmail,
-          onChangePaypalEmail: handleChangePaypalEmail,
-          onSavePaypal: savePaypal,
-          statusMessage: paypalStatusMessage,
           locationPreset,
           onChangeLocationPreset: handleChangeLocationPreset,
           onSaveLocation: saveLocationPreset,

@@ -45,6 +45,17 @@
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
     const memo = typeof React.memo === 'function' ? React.memo : (component) => component;
 
+    function isMobileDevice() {
+      const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
+      if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {
+        return true;
+      }
+      if (/macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) {
+        return true;
+      }
+      return false;
+    }
+
     function PaypalPresetIcon({ size = 22, stroke = '#9ca3af', style, ...rest } = {}) {
       return H('svg', Object.assign({
         width: size,
@@ -387,6 +398,224 @@
       onRequestLocation,
       onSend
     }) {
+      const [showAttachMenu, setShowAttachMenu] = useState(false);
+      const isMobile = isMobileDevice();
+
+      // Mobile UI: plus button with popup menu, rounded input, arrow send button
+      if (isMobile) {
+        return H('div', {
+          className: 'message-composer',
+          ref: dropRef,
+          onDragOver,
+          onDrop,
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 0',
+            marginTop: 'auto'
+          }
+        },
+          // Hidden file inputs
+          H('input', {
+            type: 'file',
+            accept: 'image/*',
+            capture: 'environment',
+            ref: cameraFileRef,
+            onChange: onPickImages,
+            style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
+          }),
+          H('input', {
+            type: 'file',
+            accept: 'image/*',
+            multiple: true,
+            ref: libraryFileRef,
+            onChange: onPickImages,
+            style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
+          }),
+
+          // Plus button (attachment menu)
+          H('div', { style: { position: 'relative' } },
+            H('button', {
+              type: 'button',
+              onClick: () => setShowAttachMenu(!showAttachMenu),
+              style: {
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: 'none',
+                background: '#e5e7eb',
+                color: '#374151',
+                fontSize: 22,
+                fontWeight: 300,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0
+              },
+              title: 'Attach'
+            }, '+'),
+
+            // Attachment menu popup
+            showAttachMenu && H('div', {
+              style: {
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                marginBottom: 8,
+                background: '#fff',
+                borderRadius: 12,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                padding: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                minWidth: 160,
+                zIndex: 100
+              }
+            },
+              H('button', {
+                type: 'button',
+                onClick: () => { cameraFileRef?.current?.click(); setShowAttachMenu(false); },
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  color: '#111',
+                  textAlign: 'left'
+                }
+              }, H('span', { style: { fontSize: 18 } }, '📷'), 'Take photo'),
+              H('button', {
+                type: 'button',
+                onClick: () => { libraryFileRef?.current?.click(); setShowAttachMenu(false); },
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  color: '#111',
+                  textAlign: 'left'
+                }
+              }, H('span', { style: { fontSize: 18 } }, '🖼️'), 'Photo library'),
+              canRevealPaypal && H('button', {
+                type: 'button',
+                onClick: () => { onRevealPaypal?.(); setShowAttachMenu(false); },
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  color: '#111',
+                  textAlign: 'left'
+                }
+              }, H('span', { style: { fontSize: 18 } }, '💳'), 'Payment info')
+            )
+          ),
+
+          // Location preset button
+          canSendLocation && H('button', {
+            type: 'button',
+            onClick: onRequestLocation,
+            style: {
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              border: 'none',
+              background: '#e5e7eb',
+              color: '#374151',
+              fontSize: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0
+            },
+            title: 'Send location'
+          }, H(LocationPresetIcon, { size: 20, stroke: '#6b7280' })),
+
+          // Text input
+          H('input', {
+            type: 'text',
+            placeholder: 'Message...',
+            value: input,
+            onPaste: onComposerPaste,
+            onChange: (event) => setInput(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                onSend();
+              }
+            },
+            onFocus: () => setShowAttachMenu(false),
+            style: {
+              flex: 1,
+              minWidth: 0,
+              padding: '10px 14px',
+              border: '1px solid #e5e7eb',
+              borderRadius: 20,
+              fontSize: 16,
+              outline: 'none',
+              background: '#fff'
+            }
+          }),
+
+          // Send button (blue arrow)
+          H('button', {
+            type: 'button',
+            onClick: onSend,
+            disabled: !input.trim(),
+            style: {
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              border: 'none',
+              background: input.trim() ? '#2563eb' : '#d1d5db',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: input.trim() ? 'pointer' : 'default',
+              flexShrink: 0,
+              transition: 'background 0.15s ease'
+            },
+            title: 'Send'
+          },
+            // Arrow icon (SVG)
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2.5,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('line', { x1: 22, y1: 2, x2: 11, y2: 13 }),
+              H('polygon', { points: '22 2 15 22 11 13 2 9 22 2' })
+            )
+          )
+        );
+      }
+
+      // Desktop UI: separate attach buttons, textarea, Send button
       return H('div', {
         className: 'row',
         style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' },
@@ -1131,6 +1360,8 @@
       const { user, onViewProfile } = props;
       if (!user) return H('div', { className: 'muted' }, 'Please log in to view messages.');
 
+      const isMobile = isMobileDevice();
+
       const {
         convosDecorated,
         active,
@@ -1172,10 +1403,10 @@
       const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
 
       useEffect(() => {
-        if (activeId) {
+        if (activeId && isMobile) {
           setShowConversationOnMobile(true);
         }
-      }, [activeId]);
+      }, [activeId, isMobile]);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -1224,7 +1455,8 @@
 
       // Thread content - reusable for both desktop and mobile portal
       const threadContent = H(React.Fragment, null,
-        activeId && H('div', {
+        // Back button only on mobile
+        isMobile && activeId && H('div', {
           className: 'messages-thread-header',
           style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
         },
@@ -1346,7 +1578,7 @@
 
       // Mobile portal - render thread directly to body to escape all containers
       // Leave room for status bar at top and tab bar at bottom (unless keyboard is open)
-      const mobileThreadPortal = showConversationOnMobile && ReactDOM.createPortal(
+      const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
           style: {
@@ -1376,11 +1608,11 @@
           onSelectConversation: handleSelectConversation,
           onDeleteConversation: deleteConvo,
           onMarkAllRead: markAllAsRead,
-          className: showConversationOnMobile ? 'hide-on-mobile' : ''
+          className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
         }),
-        // Desktop thread (hidden on mobile when portal is shown)
+        // Desktop thread (always visible) / Mobile thread (hidden when portal is shown)
         H('section', {
-          className: `card col messages-thread-shell ${showConversationOnMobile ? 'hide-on-mobile' : ''}`,
+          className: `card col messages-thread-shell ${(isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''}`,
           style: { padding: 12 }
         }, threadContent),
         // Mobile portal
