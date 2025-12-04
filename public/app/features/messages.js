@@ -1307,7 +1307,7 @@
       );
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Leave room for bottom tab bar (approx 80px + safe area)
+      // Leave room for status bar at top and tab bar at bottom
       const mobileThreadPortal = showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
@@ -1317,11 +1317,14 @@
             left: 0,
             right: 0,
             bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            paddingTop: 'calc(50px + env(safe-area-inset-top, 0px))',
+            paddingLeft: 12,
+            paddingRight: 12,
+            paddingBottom: 12,
             background: '#f8fafc',
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
-            padding: 12,
             overflow: 'hidden'
           }
         }, threadContent),
