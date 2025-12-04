@@ -1168,7 +1168,7 @@
   gap: 4px;
   overflow-y: auto;
   padding-right: 4px;
-  padding-bottom: 80px;
+  padding-bottom: 100px;
   min-height: 0;
   flex: 1;
 }
@@ -1188,8 +1188,8 @@
 @media (max-width: 900px) {
   .messages-panel {
     grid-template-columns: 1fr;
-    height: calc(100vh - 240px - env(safe-area-inset-bottom, 0px)) !important;
-    max-height: calc(100vh - 240px - env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(100vh - 160px) !important;
+    max-height: calc(100vh - 160px) !important;
     gap: 0;
     background: transparent;
     border: none;
