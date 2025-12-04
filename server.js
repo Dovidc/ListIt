@@ -9259,7 +9259,7 @@ app.get('/api/health', livenessHandler);
 app.get('/api/health/live', livenessHandler);
 app.get('/api/health/deps', readinessHandler);
 app.get('/api/health/ready', readinessHandler);
-app.get('/api/metrics', (_req, res) => {
+app.get('/api/metrics', auth, requireAdmin, (_req, res) => {
   res.json(getMetricsSnapshot());
 });
 
