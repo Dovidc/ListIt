@@ -1222,6 +1222,112 @@
         setShowConversationOnMobile(false);
       }, []);
 
+      // Thread content - reusable for both desktop and mobile portal
+      const threadContent = H(React.Fragment, null,
+        activeId && H('div', {
+          className: 'messages-thread-header',
+          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
+        },
+          H('button', {
+            onClick: handleBackToList,
+            style: {
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontSize: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontWeight: 600,
+              color: '#2563eb'
+            }
+          }, '← Back to conversations')
+        ),
+        !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
+        (activeId && loadingMsgs) && H('div', {
+          className: 'muted',
+          style: { padding: '20px', textAlign: 'center' }
+        }, 'Loading messages...'),
+        (activeId && !loadingMsgs) && H(MessagesThread, {
+          messages: msgs,
+          user: currentUser,
+          ImageWithSkeleton,
+          openLightbox,
+          msgsContainerRef,
+          onScroll: checkIfAtBottom,
+          formatMessageTimestamp,
+          otherUserPicture: active?.other_user_profile_picture,
+          otherUserId: active?.other_user_id,
+          otherUserUsername: active?.other_user_username,
+          onViewProfile
+        }),
+        (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
+          previews: imgPreviews,
+          onRemove: removeImg,
+          ImageWithSkeleton
+        }),
+        activeId && H(MessageComposer, {
+          input,
+          setInput,
+          onComposerPaste,
+          onPickImages: pickImgs,
+          cameraFileRef,
+          libraryFileRef,
+          dropRef,
+          onDragOver,
+          onDrop,
+          canRevealPaypal,
+          onRevealPaypal: handleRequestPaypal,
+          canSendLocation,
+          onRequestLocation: handleRequestLocation,
+          onSend: send
+        }),
+        H(Lightbox, {
+          open: lb.open,
+          images: lb.images,
+          fallback: lb.images,
+          loading: false,
+          index: lb.index,
+          onClose: closeLightbox,
+          onIndex: setLightboxIndex
+        }),
+        H(ConfirmLocationModal, {
+          open: confirmLocationOpen,
+          address: locationPreset,
+          onCancel: handleCloseLocationConfirm,
+          onConfirm: handleConfirmLocation
+        }),
+        H(ConfirmPaypalModal, {
+          open: confirmPaypalOpen,
+          email: currentUser?.paypal_email,
+          onCancel: handleClosePaypalConfirm,
+          onConfirm: handleConfirmPaypal
+        })
+      );
+
+      // Mobile portal - render thread directly to body to escape all containers
+      // Leave room for bottom tab bar (approx 80px + safe area)
+      const mobileThreadPortal = showConversationOnMobile && ReactDOM.createPortal(
+        H('div', {
+          className: 'mobile-messages-thread-portal',
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            background: '#f8fafc',
+            zIndex: 999,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 12,
+            overflow: 'hidden'
+          }
+        }, threadContent),
+        document.body
+      );
+
       return H('div', { className: 'messages-panel' },
         H(ConversationsSidebar, {
           conversations: convosDecorated,
@@ -1231,90 +1337,13 @@
           onMarkAllRead: markAllAsRead,
           className: showConversationOnMobile ? 'hide-on-mobile' : ''
         }),
+        // Desktop thread (hidden on mobile when portal is shown)
         H('section', {
-          className: `card col messages-thread-shell ${showConversationOnMobile ? 'show-on-mobile' : 'hide-on-mobile'}`,
+          className: `card col messages-thread-shell ${showConversationOnMobile ? 'hide-on-mobile' : ''}`,
           style: { padding: 12 }
-        },
-          activeId && H('div', {
-            className: 'messages-thread-header',
-            style: { display: 'none', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
-          },
-            H('button', {
-              onClick: handleBackToList,
-              style: {
-                background: 'transparent',
-                border: 'none',
-                padding: '4px 8px',
-                cursor: 'pointer',
-                fontSize: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontWeight: 600
-              }
-            }, '← Back to conversations')
-          ),
-          !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
-          (activeId && loadingMsgs) && H('div', {
-            className: 'muted',
-            style: { padding: '20px', textAlign: 'center' }
-          }, 'Loading messages...'),
-          (activeId && !loadingMsgs) && H(MessagesThread, {
-            messages: msgs,
-            user: currentUser,
-            ImageWithSkeleton,
-            openLightbox,
-            msgsContainerRef,
-            onScroll: checkIfAtBottom,
-            formatMessageTimestamp,
-            otherUserPicture: active?.other_user_profile_picture,
-            otherUserId: active?.other_user_id,
-            otherUserUsername: active?.other_user_username,
-            onViewProfile
-          }),
-          (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
-            previews: imgPreviews,
-            onRemove: removeImg,
-            ImageWithSkeleton
-          }),
-          activeId && H(MessageComposer, {
-            input,
-            setInput,
-            onComposerPaste,
-            onPickImages: pickImgs,
-            cameraFileRef,
-            libraryFileRef,
-            dropRef,
-            onDragOver,
-            onDrop,
-            canRevealPaypal,
-            onRevealPaypal: handleRequestPaypal,
-            canSendLocation,
-            onRequestLocation: handleRequestLocation,
-            onSend: send
-          }),
-          H(Lightbox, {
-            open: lb.open,
-            images: lb.images,
-            fallback: lb.images,
-            loading: false,
-            index: lb.index,
-            onClose: closeLightbox,
-            onIndex: setLightboxIndex
-          }),
-          H(ConfirmLocationModal, {
-            open: confirmLocationOpen,
-            address: locationPreset,
-            onCancel: handleCloseLocationConfirm,
-            onConfirm: handleConfirmLocation
-          }),
-          H(ConfirmPaypalModal, {
-            open: confirmPaypalOpen,
-            email: currentUser?.paypal_email,
-            onCancel: handleClosePaypalConfirm,
-            onConfirm: handleConfirmPaypal
-          })
-        )
+        }, threadContent),
+        // Mobile portal
+        mobileThreadPortal
       );
     }
 
