@@ -9097,8 +9097,8 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
 
         JOIN users u ON u.id = r.reported_user_id
        GROUP BY r.reported_user_id, u.username, u.email, COALESCE(u.account_status, 'active')
-      HAVING COUNT(*) >= @minReports
-       ORDER BY total_reports DESC, last_report_at DESC
+      HAVING SUM(CASE WHEN r.status = 'open' THEN 1 ELSE 0 END) >= @minReports
+       ORDER BY open_reports DESC, total_reports DESC, last_report_at DESC
 
        LIMIT @limit
     `).all({ since, limit, minReports });
