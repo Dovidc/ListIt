@@ -130,7 +130,19 @@
     }
 
     function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, onMarkAllRead, className }) {
+      const [searchQuery, setSearchQuery] = useState('');
       const hasUnread = conversations.some(c => c._unread);
+
+      // Filter conversations by username or listing title
+      const filteredConversations = searchQuery.trim()
+        ? conversations.filter(c => {
+            const query = searchQuery.toLowerCase();
+            const username = (c.other_user_username || '').toLowerCase();
+            const listingTitle = (c.listing_title || '').toLowerCase();
+            return username.includes(query) || listingTitle.includes(query);
+          })
+        : conversations;
+
       return H('aside', { className: `card sidebar messages-sidebar ${className || ''}` },
         H('div', {
           className: 'messages-sidebar__header',
@@ -150,9 +162,18 @@
             title: 'Mark all conversations as read'
           }, 'Mark all read')
         ),
+        H('div', { className: 'messages-sidebar__search' },
+          H('input', {
+            type: 'text',
+            placeholder: 'Search...',
+            value: searchQuery,
+            onChange: (e) => setSearchQuery(e.target.value),
+            className: 'messages-search-input'
+          })
+        ),
         H('div', { className: 'messages-sidebar__list' },
-          ...(conversations.length
-            ? conversations.map((conversation) => H('div', {
+          ...(filteredConversations.length
+            ? filteredConversations.map((conversation) => H('div', {
                 key: conversation.id,
                 className: 'row',
                 style: {

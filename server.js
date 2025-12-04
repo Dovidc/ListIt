@@ -2951,7 +2951,14 @@ app.get('/api/me', async (req, res) => {
 
     if (!row) return res.json(null);
 
-
+    // Sliding expiration: refresh the token on every app visit
+    setAuthCookie(res, {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      is_admin: row.is_admin,
+      account_status: row.account_status
+    });
 
     const user = await mapUserWithPayments(row, {
       paypal_email: row.paypal_email,

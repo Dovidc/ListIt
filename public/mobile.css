@@ -1265,7 +1265,7 @@ body:has(.messages-thread-shell.show-on-mobile) {
 
 body:has(.messages-thread-shell.show-on-mobile) main.container {
   overflow: hidden !important;
-  height: calc(100vh - 70px) !important;
+  height: calc(100vh - 160px - env(safe-area-inset-bottom, 0px)) !important;
   padding-bottom: 0 !important;
 }
 

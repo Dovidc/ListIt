@@ -187,7 +187,7 @@
 
     // Tier color schemes - shared across all badge rendering
     const TIER_COLORS = {
-      Bronze: { primary: '#cd7f32', secondary: '#b87333', accent: '#daa06d', dark: '#8b5a2b' },
+      Copper: { primary: '#b87333', secondary: '#da8a67', accent: '#e8a878', dark: '#8b4513' },
       Silver: { primary: '#c0c0c0', secondary: '#cd7f32', accent: '#d8d8d8', dark: '#808080' },
       Gold: { primary: '#ffd700', secondary: '#ffb800', accent: '#ffed4e', dark: '#b8860b' },
       Platinum: { primary: '#00bcd4', secondary: '#ffd700', accent: '#4dd0e1', dark: '#0097a7' },
@@ -197,7 +197,7 @@
       Unobtainium: { primary: '#00fff7', secondary: '#ff00ff', accent: '#ffff00', dark: '#0a0a1a' }
     };
 
-    const VALID_TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Sapphire', 'Amethyst', 'Unobtainium'];
+    const VALID_TIERS = ['Copper', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Sapphire', 'Amethyst', 'Unobtainium'];
 
     // Render tiered badge SVG - single source of truth for all badge rendering
     function renderTieredBadgeSVG(tier, size, colors) {
@@ -223,40 +223,50 @@
         }, 'T')
       ];
 
-      // Bronze: Rising sun/dawn
-      if (tier === 'Bronze') {
+      // Copper: Shield frame with scrollwork (same design as Silver/Gold but copper colors with shine)
+      if (tier === 'Copper') {
         return H('svg', { viewBox: '0 0 100 100', width: size, height: size },
           H('defs', null,
-            H('linearGradient', { id: 'pinGrad-Bronze', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+            H('linearGradient', { id: 'pinGrad-Copper', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
               H('stop', { offset: '0%', stopColor: colors.accent }),
               H('stop', { offset: '50%', stopColor: colors.primary }),
               H('stop', { offset: '100%', stopColor: colors.secondary })
             ),
-            H('linearGradient', { id: 'bronzeSunrise', x1: '0%', y1: '100%', x2: '0%', y2: '0%' },
-              H('stop', { offset: '0%', stopColor: '#8b5a2b' }),
-              H('stop', { offset: '40%', stopColor: '#cd7f32' }),
-              H('stop', { offset: '100%', stopColor: '#daa06d' })
+            H('linearGradient', { id: 'copperShield', x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+              H('stop', { offset: '0%', stopColor: '#e8a878' }),
+              H('stop', { offset: '30%', stopColor: '#da8a67' }),
+              H('stop', { offset: '70%', stopColor: '#b87333' }),
+              H('stop', { offset: '100%', stopColor: '#8b4513' })
             ),
-            H('radialGradient', { id: 'bronzeSunGlow', cx: '50%', cy: '85%', r: '60%' },
-              H('stop', { offset: '0%', stopColor: '#daa06d', stopOpacity: '0.5' }),
-              H('stop', { offset: '100%', stopColor: colors.primary, stopOpacity: '0' })
+            H('linearGradient', { id: 'copperShine', x1: '0%', y1: '0%', x2: '100%', y2: '20%' },
+              H('stop', { offset: '0%', stopColor: '#ffffff', stopOpacity: '0' }),
+              H('stop', { offset: '40%', stopColor: '#ffffff', stopOpacity: '0' }),
+              H('stop', { offset: '50%', stopColor: '#ffffff', stopOpacity: '0.95' }),
+              H('stop', { offset: '60%', stopColor: '#ffffff', stopOpacity: '0' }),
+              H('stop', { offset: '100%', stopColor: '#ffffff', stopOpacity: '0' })
+            ),
+            H('clipPath', { id: 'copperShieldClip' },
+              H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z' })
             )
           ),
-          H('circle', { cx: '50', cy: '50', r: '46', fill: 'url(#bronzeSunGlow)' }),
-          H('path', { d: 'M4 70 Q25 68 50 70 Q75 72 96 70', fill: 'none', stroke: colors.primary, strokeWidth: '2' }),
-          H('path', { d: 'M25 70 A25 25 0 0 1 75 70', fill: 'url(#bronzeSunrise)', stroke: colors.dark, strokeWidth: '1' }),
-          H('path', { d: 'M50 45 L50 12', fill: 'none', stroke: colors.accent, strokeWidth: '2.5', strokeLinecap: 'round' }),
-          H('path', { d: 'M35 50 L15 25', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
-          H('path', { d: 'M65 50 L85 25', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
-          H('path', { d: 'M28 58 L8 48', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', strokeLinecap: 'round' }),
-          H('path', { d: 'M72 58 L92 48', fill: 'none', stroke: colors.secondary, strokeWidth: '1.5', strokeLinecap: 'round' }),
-          H('path', { d: 'M42 48 L32 18', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.7' }),
-          H('path', { d: 'M58 48 L68 18', fill: 'none', stroke: colors.accent, strokeWidth: '1.5', strokeLinecap: 'round', opacity: '0.7' }),
-          H('circle', { cx: '50', cy: '50', r: '46', fill: 'none', stroke: colors.primary, strokeWidth: '2.5' }),
-          H('circle', { cx: '20', cy: '15', r: '1.5', fill: colors.accent }),
-          H('circle', { cx: '80', cy: '20', r: '1', fill: colors.accent }),
-          H('circle', { cx: '12', cy: '35', r: '1', fill: colors.secondary }),
-          H('circle', { cx: '88', cy: '38', r: '1.5', fill: colors.secondary }),
+          H('path', { d: 'M50 4 L85 15 L90 45 L75 75 L50 95 L25 75 L10 45 L15 15 Z', fill: 'none', stroke: 'url(#copperShield)', strokeWidth: '3' }),
+          H('path', { d: 'M50 10 L78 19 L82 44 L70 70 L50 86 L30 70 L18 44 L22 19 Z', fill: 'none', stroke: colors.secondary, strokeWidth: '1', opacity: '0.5' }),
+          H('g', { clipPath: 'url(#copperShieldClip)' },
+            H('rect', { x: '-30', y: '-10', width: '35', height: '120', fill: 'url(#copperShine)', transform: 'rotate(20)' },
+              H('animate', { attributeName: 'x', values: '-30;110;110', dur: '3s', repeatCount: 'indefinite', keyTimes: '0;0.4;1' })
+            )
+          ),
+          H('path', { d: 'M8 35 Q4 45 8 55 Q12 50 10 45 Q14 50 12 55 Q8 50 8 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+          H('path', { d: 'M12 30 Q6 40 10 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+          H('path', { d: 'M92 35 Q96 45 92 55 Q88 50 90 45 Q86 50 88 55 Q92 50 92 35', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+          H('path', { d: 'M88 30 Q94 40 90 50', fill: 'none', stroke: colors.primary, strokeWidth: '1' }),
+          H('path', { d: 'M40 6 Q50 0 60 6', fill: 'none', stroke: colors.primary, strokeWidth: '2', strokeLinecap: 'round' }),
+          H('circle', { cx: '40', cy: '6', r: '2', fill: colors.accent }),
+          H('circle', { cx: '60', cy: '6', r: '2', fill: colors.accent }),
+          H('circle', { cx: '50', cy: '3', r: '2.5', fill: colors.primary, stroke: colors.dark, strokeWidth: '0.5' }),
+          H('path', { d: 'M50 90 L54 96 L50 99 L46 96 Z', fill: colors.accent, stroke: colors.secondary, strokeWidth: '0.5' }),
+          H('circle', { cx: '15', cy: '15', r: '1.5', fill: colors.accent }),
+          H('circle', { cx: '85', cy: '15', r: '1.5', fill: colors.accent }),
           ...createPin()
         );
       }
@@ -614,7 +624,7 @@
       const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
       const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
 
-      let calculatedTier = 'Bronze';
+      let calculatedTier = 'Copper';
       if (monthsSince >= 72) calculatedTier = 'Unobtainium';
       else if (monthsSince >= 60) calculatedTier = 'Amethyst';
       else if (monthsSince >= 36) calculatedTier = 'Sapphire';

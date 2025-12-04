@@ -390,6 +390,27 @@
       // Backward compatibility aliases
       const all = items;
 
+      // Return to top toast state
+      const [showReturnToTop, setShowReturnToTop] = useState(false);
+      const RETURN_TO_TOP_THRESHOLD = 90;
+
+      // Show/hide return to top based on items count
+      useEffect(() => {
+        if (tab === 'browse' && items.length >= RETURN_TO_TOP_THRESHOLD) {
+          setShowReturnToTop(true);
+        } else {
+          setShowReturnToTop(false);
+        }
+      }, [items.length, tab]);
+
+      const handleReturnToTop = useCallback(async () => {
+        setShowReturnToTop(false);
+        await refreshListings();
+        if (typeof window !== 'undefined') {
+          window.scrollTo(0, 0);
+        }
+      }, [refreshListings]);
+
       // Karma modal state
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
       const [karmaListingId, setKarmaListingId] = useState(null);
@@ -1300,6 +1321,26 @@
                         ),
 
 
+
+                        // Return to top toast
+                        showReturnToTop && H('button', {
+                          className: 'return-to-top-toast',
+                          onClick: handleReturnToTop,
+                          'aria-label': 'Return to top'
+                        },
+                          H('svg', {
+                            width: 18,
+                            height: 18,
+                            viewBox: '0 0 24 24',
+                            fill: 'none',
+                            stroke: 'currentColor',
+                            strokeWidth: 2.5,
+                            strokeLinecap: 'round',
+                            strokeLinejoin: 'round'
+                          },
+                            H('polyline', { points: '18 15 12 9 6 15' })
+                          )
+                        ),
 
                         H(ListingsGrid, {
                           items,
