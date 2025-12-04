@@ -1306,8 +1306,46 @@
         })
       );
 
+      // Track if keyboard is open (for hiding bottom tab)
+      const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+      useEffect(() => {
+        if (!showConversationOnMobile) return;
+
+        const handleFocus = () => {
+          setKeyboardOpen(true);
+          document.body.classList.add('keyboard-open');
+        };
+        const handleBlur = () => {
+          setKeyboardOpen(false);
+          document.body.classList.remove('keyboard-open');
+        };
+
+        // Listen for focus/blur on inputs within the portal
+        document.addEventListener('focusin', (e) => {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            handleFocus();
+          }
+        });
+        document.addEventListener('focusout', (e) => {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            // Small delay to check if focus moved to another input
+            setTimeout(() => {
+              const active = document.activeElement;
+              if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
+                handleBlur();
+              }
+            }, 100);
+          }
+        });
+
+        return () => {
+          document.body.classList.remove('keyboard-open');
+        };
+      }, [showConversationOnMobile]);
+
       // Mobile portal - render thread directly to body to escape all containers
-      // Leave room for status bar at top and tab bar at bottom
+      // Leave room for status bar at top and tab bar at bottom (unless keyboard is open)
       const mobileThreadPortal = showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
@@ -1316,8 +1354,8 @@
             top: 0,
             left: 0,
             right: 0,
-            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
-            paddingTop: 'calc(50px + env(safe-area-inset-top, 0px))',
+            bottom: keyboardOpen ? 0 : 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 12,

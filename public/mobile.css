@@ -1292,3 +1292,13 @@ body.dark-mode .messages-thread-shell.show-on-mobile {
   resize: none !important;
   padding: 10px 12px !important;
 }
+
+/* Hide bottom tab bar when keyboard is open */
+body.keyboard-open .mobile-dashboard {
+  display: none !important;
+}
+
+/* Mobile messages portal - dark mode support */
+body.dark-mode .mobile-messages-thread-portal {
+  background: #0f172a !important;
+}
