@@ -148,28 +148,21 @@
           className: 'messages-sidebar__header',
           style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
         },
-          'Conversations',
-          hasUnread && H('button', {
-            className: 'btn',
-            onClick: onMarkAllRead,
-            style: {
-              padding: '4px 10px',
-              fontSize: 12,
-              borderRadius: 8,
-              background: '#f3f4f6',
-              border: '1px solid #e5e7eb'
-            },
-            title: 'Mark all conversations as read'
-          }, 'Mark all read')
+          'Conversations'
         ),
-        H('div', { className: 'messages-sidebar__search' },
+        H('div', { className: 'messages-sidebar__controls' },
           H('input', {
             type: 'text',
             placeholder: 'Search...',
             value: searchQuery,
             onChange: (e) => setSearchQuery(e.target.value),
             className: 'messages-search-input'
-          })
+          }),
+          hasUnread && H('button', {
+            className: 'btn messages-mark-read-btn',
+            onClick: onMarkAllRead,
+            title: 'Mark all conversations as read'
+          }, 'Mark read')
         ),
         H('div', { className: 'messages-sidebar__list' },
           ...(filteredConversations.length
