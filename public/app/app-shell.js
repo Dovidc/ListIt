@@ -367,6 +367,7 @@
         listingError,
         loadMore,
         sentinelRef,
+        isInfiniteScrollSupported,
         reloadMineOnly,
         refreshListings,
         toggleSold,
@@ -1379,10 +1380,23 @@
                           padding: '14px 0'
                         }
                       },
-                        H('button', {
-                          className: 'btn',
-                          onClick: () => loadMore?.()
-                        }, 'Load more')
+                        H('div', {
+                          style: {
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 6
+                          }
+                        },
+                          isInfiniteScrollSupported && H('span', {
+                            className: 'muted',
+                            style: { fontSize: 12 }
+                          }, 'More listings load as you scroll; tap below to fetch now.'),
+                          H('button', {
+                            className: 'btn',
+                            onClick: () => loadMore?.()
+                          }, 'Load more')
+                        )
                       ),
 
                       // "No more results" message shown below grid

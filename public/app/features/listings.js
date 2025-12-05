@@ -407,10 +407,13 @@
       const sentinelRef = useRef(null);
       const lastLoadTimeRef = useRef(0);
       const throttleMs = 1000; // Minimum time between load attempts
+      const [isSupported, setIsSupported] = useState(typeof IntersectionObserver !== 'undefined');
 
       useEffect(() => {
         if (!enabled) return;
-        if (typeof IntersectionObserver === 'undefined') return;
+        const supported = typeof IntersectionObserver !== 'undefined';
+        setIsSupported(supported);
+        if (!supported) return;
 
         const el = sentinelRef.current;
         if (!el) return;
@@ -433,7 +436,7 @@
         return () => observer.disconnect();
       }, [enabled, onLoadMore, getIsLoading, getCursor]);
 
-      return sentinelRef;
+      return { sentinelRef, isSupported };
     }
 
     // ============================================================
@@ -650,7 +653,7 @@
       const cityOptions = useCitySearch(locationQuery);
 
       // Infinite scroll
-      const sentinelRef = useInfiniteScroll({
+      const { sentinelRef, isSupported: isInfiniteScrollSupported } = useInfiniteScroll({
         enabled: currentTab === 'browse',
         onLoadMore: pagination.loadMore,
         getIsLoading: pagination.getIsLoading,
@@ -751,7 +754,8 @@
         ensureCover: coverCache.ensureCover,
 
         // Refs
-        sentinelRef
+        sentinelRef,
+        isInfiniteScrollSupported
       };
     }
 
