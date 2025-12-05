@@ -595,10 +595,10 @@
               }
             },
             onFocus: otherUserDeleted ? undefined : (event) => {
-              // Prevent iOS from scrolling the input out of view
+              // Ensure input stays visible when keyboard opens
               setTimeout(() => {
-                event.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }, 300);
+                event.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }, 350);
             },
             style: {
               flex: 1,
@@ -1610,24 +1610,26 @@
         })
       );
 
-      // Track if keyboard is open (for hiding bottom tab)
-      // Use VisualViewport API on iOS for more reliable keyboard detection
+      // Track keyboard state and adjust portal height to stay above keyboard
+      const [keyboardHeight, setKeyboardHeight] = useState(0);
+
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
-        // Use VisualViewport API if available (more reliable on iOS)
+        // Use VisualViewport API to detect keyboard and resize portal
         if (window.visualViewport) {
-          let lastHeight = window.visualViewport.height;
-          const threshold = 150; // Keyboard is likely open if viewport shrinks by this much
+          const initialHeight = window.innerHeight;
 
           const handleViewportResize = () => {
-            const currentHeight = window.visualViewport.height;
-            const heightDiff = lastHeight - currentHeight;
+            const vv = window.visualViewport;
+            const keyboardH = initialHeight - vv.height;
 
-            if (heightDiff > threshold) {
+            if (keyboardH > 150) {
               document.body.classList.add('keyboard-open');
-            } else if (currentHeight >= lastHeight - 50) {
+              setKeyboardHeight(keyboardH);
+            } else {
               document.body.classList.remove('keyboard-open');
+              setKeyboardHeight(0);
             }
           };
 
@@ -1645,6 +1647,7 @@
             window.visualViewport.removeEventListener('resize', handleViewportResize);
             document.removeEventListener('focusin', handleFocusIn);
             document.body.classList.remove('keyboard-open');
+            setKeyboardHeight(0);
           };
         }
 
@@ -1678,6 +1681,11 @@
 
       // Mobile portal - render thread directly to body to escape all containers
       // Leave room for status bar at top and tab bar at bottom (CSS handles keyboard-open state)
+      // When keyboard is open, use keyboardHeight to position above it
+      const portalBottom = keyboardHeight > 0
+        ? `${keyboardHeight}px`
+        : 'calc(80px + env(safe-area-inset-bottom, 0px))';
+
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
@@ -1686,7 +1694,7 @@
             top: 0,
             left: 0,
             right: 0,
-            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            bottom: portalBottom,
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
