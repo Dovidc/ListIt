@@ -594,13 +594,6 @@
                 onSend();
               }
             },
-            onTouchStart: otherUserDeleted ? undefined : (event) => {
-              // Ensure focus on first touch
-              event.target.focus();
-            },
-            onClick: otherUserDeleted ? undefined : (event) => {
-              event.target.focus();
-            },
             style: {
               flex: 1,
               minWidth: 0,
@@ -612,6 +605,8 @@
               background: otherUserDeleted ? '#f3f4f6' : '#fff',
               WebkitAppearance: 'none',
               WebkitTapHighlightColor: 'transparent',
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
               touchAction: 'manipulation'
             }
           }),
@@ -965,6 +960,8 @@
       }, [isAtBottom]);
 
       const checkIfAtBottom = () => {
+        // Don't update scroll state while keyboard is opening (prevents re-render during focus)
+        if (document.body.classList.contains('keyboard-open')) return;
         const container = msgsContainerRef.current;
         if (!container) return;
         const threshold = 50;
@@ -1607,77 +1604,98 @@
         })
       );
 
-      // Track visual viewport for proper keyboard handling on iOS
-      const [keyboardVisible, setKeyboardVisible] = useState(false);
-      const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
-      const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+      // Track keyboard state and viewport height for proper positioning
+      // Uses ref-based DOM manipulation for better performance (avoids re-renders during keyboard animation)
+      const portalRef = useRef(null);
 
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
+        let animationFrameId = null;
+
+        const updatePortalHeight = () => {
+          if (window.visualViewport && portalRef.current) {
+            const height = window.visualViewport.height;
+            portalRef.current.style.height = `${height}px`;
+            portalRef.current.style.bottom = 'auto';
+          }
+        };
+
+        const resetPortalHeight = () => {
+          if (portalRef.current) {
+            portalRef.current.style.height = '';
+            portalRef.current.style.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+          }
+        };
+
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             document.body.classList.add('keyboard-open');
-            setKeyboardVisible(true);
+            // Immediately update and keep updating during keyboard animation
+            updatePortalHeight();
+            const keepUpdating = () => {
+              updatePortalHeight();
+              animationFrameId = requestAnimationFrame(keepUpdating);
+            };
+            keepUpdating();
+            // Stop after keyboard animation completes (~500ms)
+            setTimeout(() => {
+              cancelAnimationFrame(animationFrameId);
+              updatePortalHeight();
+            }, 600);
           }
         };
 
         const handleFocusOut = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            cancelAnimationFrame(animationFrameId);
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
                 document.body.classList.remove('keyboard-open');
-                setKeyboardVisible(false);
-                setViewportOffsetTop(0);
+                resetPortalHeight();
               }
             }, 150);
           }
         };
 
-        // Use visualViewport API for accurate keyboard detection on iOS
-        const handleViewportChange = () => {
-          if (window.visualViewport) {
-            setViewportHeight(window.visualViewport.height);
-            setViewportOffsetTop(window.visualViewport.offsetTop);
-          }
+        const handleViewportResize = () => {
+          updatePortalHeight();
         };
 
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('focusout', handleFocusOut);
-
         if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', handleViewportChange);
-          window.visualViewport.addEventListener('scroll', handleViewportChange);
-          handleViewportChange();
+          window.visualViewport.addEventListener('resize', handleViewportResize);
+          window.visualViewport.addEventListener('scroll', handleViewportResize);
         }
 
         return () => {
+          cancelAnimationFrame(animationFrameId);
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
           if (window.visualViewport) {
-            window.visualViewport.removeEventListener('resize', handleViewportChange);
-            window.visualViewport.removeEventListener('scroll', handleViewportChange);
+            window.visualViewport.removeEventListener('resize', handleViewportResize);
+            window.visualViewport.removeEventListener('scroll', handleViewportResize);
           }
           document.body.classList.remove('keyboard-open');
         };
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Use visualViewport height and offset when keyboard is visible for proper anchoring on iOS
+      // Height is managed via ref by the useEffect above for keyboard handling
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
+          ref: portalRef,
           className: 'mobile-messages-thread-portal',
           style: {
             position: 'fixed',
-            // When keyboard is visible on iOS, the viewport scrolls - use offsetTop to stay anchored
-            top: keyboardVisible ? viewportOffsetTop : 0,
+            top: 0,
             left: 0,
             right: 0,
-            // When keyboard is visible, use visualViewport height; otherwise leave room for tab bar
-            height: keyboardVisible ? viewportHeight : 'auto',
-            bottom: keyboardVisible ? 'auto' : 'calc(80px + env(safe-area-inset-bottom, 0px))',
-            paddingTop: keyboardVisible ? 12 : 'calc(12px + env(safe-area-inset-top, 0px))',
+            // Default height leaves room for tab bar; JS updates this when keyboard opens
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 12,
@@ -1685,7 +1703,8 @@
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            WebkitOverflowScrolling: 'touch'
           }
         }, threadContent),
         document.body
@@ -1700,9 +1719,9 @@
           onMarkAllRead: markAllAsRead,
           className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
         }),
-        // Desktop thread (always visible) / Mobile thread (hidden when portal is shown)
-        H('section', {
-          className: `card col messages-thread-shell ${(isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''}`,
+        // Desktop thread only (mobile uses portal instead)
+        !isMobile && H('section', {
+          className: 'card col messages-thread-shell',
           style: { padding: 12 }
         }, threadContent),
         // Mobile portal

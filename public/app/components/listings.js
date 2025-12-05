@@ -2914,6 +2914,14 @@
 
     // --- Profile Preview Modal (Discord-like) ---
     function ProfilePreviewModal({ sellerInfo, activeListingCount, soldListingCount, onClose, onVisitProfile, onMessage, onSupporterClick }) {
+      // Add modal-open class to body when modal opens (hides mobile tab bar)
+      useEffect(() => {
+        if (sellerInfo) {
+          document.body.classList.add('modal-open');
+          return () => document.body.classList.remove('modal-open');
+        }
+      }, [sellerInfo]);
+
       if (!sellerInfo) return null;
 
       const sellerJoinedText = sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;

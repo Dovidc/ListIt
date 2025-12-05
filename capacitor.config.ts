@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://trovelr.com',
   },
+  ios: {
+    contentInset: 'automatic',
+    scrollEnabled: true,
+    keyboardResize: 'body',
+  },
 };
 
 export default config;
