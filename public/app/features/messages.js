@@ -1611,25 +1611,26 @@
       );
 
       // Track keyboard state and adjust portal height to stay above keyboard
-      const [keyboardHeight, setKeyboardHeight] = useState(0);
+      const [viewportHeight, setViewportHeight] = useState(null);
 
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
         // Use VisualViewport API to detect keyboard and resize portal
         if (window.visualViewport) {
-          const initialHeight = window.innerHeight;
+          const fullHeight = window.innerHeight;
 
           const handleViewportResize = () => {
             const vv = window.visualViewport;
-            const keyboardH = initialHeight - vv.height;
+            const keyboardH = fullHeight - vv.height;
 
             if (keyboardH > 150) {
               document.body.classList.add('keyboard-open');
-              setKeyboardHeight(keyboardH);
+              // Set the portal height to match the visible viewport
+              setViewportHeight(vv.height);
             } else {
               document.body.classList.remove('keyboard-open');
-              setKeyboardHeight(0);
+              setViewportHeight(null);
             }
           };
 
@@ -1647,7 +1648,7 @@
             window.visualViewport.removeEventListener('resize', handleViewportResize);
             document.removeEventListener('focusin', handleFocusIn);
             document.body.classList.remove('keyboard-open');
-            setKeyboardHeight(0);
+            setViewportHeight(null);
           };
         }
 
@@ -1680,32 +1681,38 @@
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Leave room for status bar at top and tab bar at bottom (CSS handles keyboard-open state)
-      // When keyboard is open, use keyboardHeight to position above it
-      const portalBottom = keyboardHeight > 0
-        ? `${keyboardHeight}px`
-        : 'calc(80px + env(safe-area-inset-bottom, 0px))';
+      // Leave room for status bar at top and tab bar at bottom
+      // When keyboard is open, use viewportHeight to size the portal to fit above keyboard
+      const portalStyle = {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+        paddingLeft: 12,
+        paddingRight: 12,
+        paddingBottom: 12,
+        background: '#f8fafc',
+        zIndex: 999,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        WebkitOverflowScrolling: 'touch'
+      };
+
+      if (viewportHeight !== null) {
+        // Keyboard is open - set explicit height to fit above keyboard
+        portalStyle.height = `${viewportHeight}px`;
+        portalStyle.bottom = 'auto';
+      } else {
+        // Keyboard closed - leave room for tab bar
+        portalStyle.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+      }
 
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
-          style: {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: portalBottom,
-            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
-            paddingLeft: 12,
-            paddingRight: 12,
-            paddingBottom: 12,
-            background: '#f8fafc',
-            zIndex: 999,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            WebkitOverflowScrolling: 'touch'
-          }
+          style: portalStyle
         }, threadContent),
         document.body
       );
