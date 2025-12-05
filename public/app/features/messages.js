@@ -1457,18 +1457,6 @@
         }
       }, [activeId, isMobile]);
 
-      // Auto-focus the input when mobile conversation opens
-      useEffect(() => {
-        if (isMobile && showConversationOnMobile && activeId && !loadingMsgs) {
-          // Small delay to ensure the portal is rendered
-          setTimeout(() => {
-            if (mobileInputRef.current) {
-              mobileInputRef.current.focus();
-            }
-          }, 100);
-        }
-      }, [isMobile, showConversationOnMobile, activeId, loadingMsgs]);
-
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
           alert('Add your address in Profile first.');
@@ -1603,42 +1591,49 @@
       );
 
       // Track if keyboard is open (for hiding bottom tab)
-      const [keyboardOpen, setKeyboardOpen] = useState(false);
+      // Use a ref to avoid re-renders that could cause focus issues
+      const keyboardOpenRef = useRef(false);
+      const [, forceUpdate] = useState(0);
 
       useEffect(() => {
-        if (!showConversationOnMobile) return;
+        if (!isMobile || !showConversationOnMobile) return;
 
-        const handleFocus = () => {
-          setKeyboardOpen(true);
-          document.body.classList.add('keyboard-open');
-        };
-        const handleBlur = () => {
-          setKeyboardOpen(false);
-          document.body.classList.remove('keyboard-open');
-        };
-
-        // Listen for focus/blur on inputs within the portal
-        document.addEventListener('focusin', (e) => {
+        const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            handleFocus();
+            if (!keyboardOpenRef.current) {
+              keyboardOpenRef.current = true;
+              document.body.classList.add('keyboard-open');
+              forceUpdate(n => n + 1);
+            }
           }
-        });
-        document.addEventListener('focusout', (e) => {
+        };
+
+        const handleFocusOut = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             // Small delay to check if focus moved to another input
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-                handleBlur();
+                if (keyboardOpenRef.current) {
+                  keyboardOpenRef.current = false;
+                  document.body.classList.remove('keyboard-open');
+                  forceUpdate(n => n + 1);
+                }
               }
-            }, 100);
+            }, 150);
           }
-        });
+        };
+
+        document.addEventListener('focusin', handleFocusIn);
+        document.addEventListener('focusout', handleFocusOut);
 
         return () => {
+          document.removeEventListener('focusin', handleFocusIn);
+          document.removeEventListener('focusout', handleFocusOut);
           document.body.classList.remove('keyboard-open');
+          keyboardOpenRef.current = false;
         };
-      }, [showConversationOnMobile]);
+      }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
       // Leave room for status bar at top and tab bar at bottom (unless keyboard is open)
@@ -1650,7 +1645,7 @@
             top: 0,
             left: 0,
             right: 0,
-            bottom: keyboardOpen ? 0 : 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            bottom: keyboardOpenRef.current ? 0 : 'calc(80px + env(safe-area-inset-bottom, 0px))',
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,

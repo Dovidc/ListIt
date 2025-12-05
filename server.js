@@ -6856,7 +6856,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
           '"description": <=200 chars, objective tone focusing on verifiable condition/defects (including less-visible issues) and never assuming accessories unless the user hint confirms them;',
 
-          '"tags": array of 12-24 short, lowercase search terms;',
+          '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
 
           '"price_usd": fair used-market price in USD as a number;',
 
@@ -6946,7 +6946,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
         const extra = fallbackTagsFromTitleDesc(title, hint);
 
-        const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 20);
+        const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 50);
 
         return res.json({ title, description, tags: merged, suggested_price });
 
@@ -6954,7 +6954,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 
 
-      return res.json({ title, description, tags: outTags.slice(0, 24), suggested_price });
+      return res.json({ title, description, tags: outTags.slice(0, 50), suggested_price });
 
     }
 
@@ -6966,7 +6966,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
     const description = synthesizeListingDescription(title, hint);
 
-    return res.json({ title, description, tags: tags.slice(0, 20) });
+    return res.json({ title, description, tags: tags.slice(0, 50) });
 
   } catch (e) {
 
