@@ -594,13 +594,6 @@
                 onSend();
               }
             },
-            onTouchStart: otherUserDeleted ? undefined : (event) => {
-              // Ensure focus on first touch
-              event.target.focus();
-            },
-            onClick: otherUserDeleted ? undefined : (event) => {
-              event.target.focus();
-            },
             style: {
               flex: 1,
               minWidth: 0,
