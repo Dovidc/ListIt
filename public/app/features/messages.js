@@ -1605,87 +1605,105 @@
       );
 
       // Track keyboard state and viewport height for proper positioning
-      const [portalHeight, setPortalHeight] = useState(null);
+      const portalRef = useRef(null);
 
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
+        let animationFrameId = null;
+
+        const updatePortalHeight = () => {
+          if (window.visualViewport && portalRef.current) {
+            const height = window.visualViewport.height;
+            portalRef.current.style.height = `${height}px`;
+            portalRef.current.style.bottom = 'auto';
+          }
+        };
+
+        const resetPortalHeight = () => {
+          if (portalRef.current) {
+            portalRef.current.style.height = '';
+            portalRef.current.style.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+          }
+        };
+
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             document.body.classList.add('keyboard-open');
+            // Immediately update and keep updating during animation
+            updatePortalHeight();
+            const keepUpdating = () => {
+              updatePortalHeight();
+              animationFrameId = requestAnimationFrame(keepUpdating);
+            };
+            keepUpdating();
+            // Stop after keyboard animation completes (~500ms)
+            setTimeout(() => {
+              cancelAnimationFrame(animationFrameId);
+              updatePortalHeight();
+            }, 600);
           }
         };
 
         const handleFocusOut = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            cancelAnimationFrame(animationFrameId);
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
                 document.body.classList.remove('keyboard-open');
-                setPortalHeight(null);
+                resetPortalHeight();
               }
             }, 150);
           }
         };
 
-        // Use VisualViewport to track actual visible height (accounts for keyboard)
         const handleViewportResize = () => {
-          if (window.visualViewport) {
-            const vv = window.visualViewport;
-            // Set portal height to visible viewport height
-            setPortalHeight(vv.height);
-          }
+          updatePortalHeight();
         };
 
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('focusout', handleFocusOut);
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', handleViewportResize);
+          window.visualViewport.addEventListener('scroll', handleViewportResize);
         }
 
         return () => {
+          cancelAnimationFrame(animationFrameId);
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
           if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', handleViewportResize);
+            window.visualViewport.removeEventListener('scroll', handleViewportResize);
           }
           document.body.classList.remove('keyboard-open');
-          setPortalHeight(null);
         };
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Use portalHeight from VisualViewport when keyboard is open
-      const portalStyle = {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
-        paddingLeft: 12,
-        paddingRight: 12,
-        paddingBottom: 12,
-        background: '#f8fafc',
-        zIndex: 999,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        WebkitOverflowScrolling: 'touch'
-      };
-
-      if (portalHeight !== null) {
-        // Keyboard is open - use exact viewport height
-        portalStyle.height = portalHeight;
-        portalStyle.bottom = 'auto';
-      } else {
-        // Keyboard closed - leave room for tab bar
-        portalStyle.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
-      }
-
+      // Height is managed via ref by the useEffect above for keyboard handling
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
+          ref: portalRef,
           className: 'mobile-messages-thread-portal',
-          style: portalStyle
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+            paddingLeft: 12,
+            paddingRight: 12,
+            paddingBottom: 12,
+            background: '#f8fafc',
+            zIndex: 999,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            WebkitOverflowScrolling: 'touch'
+          }
         }, threadContent),
         document.body
       );

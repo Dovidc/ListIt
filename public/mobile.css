@@ -1255,6 +1255,11 @@ body {
   overflow: hidden !important;
 }
 
+/* Always hide desktop thread section on mobile - use portal instead */
+.messages-panel > .messages-thread-shell {
+  display: none !important;
+}
+
 /* When messages thread is visible, prevent parent scrolling */
 body:has(.messages-thread-shell.show-on-mobile) {
   overflow: hidden !important;
