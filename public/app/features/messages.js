@@ -396,7 +396,8 @@
       onRevealPaypal,
       canSendLocation,
       onRequestLocation,
-      onSend
+      onSend,
+      inputRef
     }) {
       const [showAttachMenu, setShowAttachMenu] = useState(false);
       const isMobile = isMobileDevice();
@@ -446,18 +447,18 @@
                 border: 'none',
                 background: '#e5e7eb',
                 color: '#374151',
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: 300,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                lineHeight: 1,
+                display: 'grid',
+                placeItems: 'center',
                 cursor: 'pointer',
                 flexShrink: 0
               },
               title: 'Attach'
             }, '+'),
 
-            // Attachment menu popup
+            // Attachment menu popup - horizontal icon row
             showAttachMenu && H('div', {
               style: {
                 position: 'absolute',
@@ -469,63 +470,55 @@
                 boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
                 padding: 8,
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-                minWidth: 160,
+                flexDirection: 'row',
+                gap: 8,
                 zIndex: 100
               }
             },
+              // Camera icon button
               H('button', {
                 type: 'button',
                 onClick: () => { cameraFileRef?.current?.click(); setShowAttachMenu(false); },
+                title: 'Take photo',
                 style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  border: 'none',
-                  background: 'transparent',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  color: '#111',
-                  textAlign: 'left'
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  display: 'grid',
+                  placeItems: 'center',
+                  cursor: 'pointer'
                 }
-              }, H('span', { style: { fontSize: 18 } }, '📷'), 'Take photo'),
+              },
+                H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+                  H('rect', { x: 3, y: 6, width: 18, height: 13, rx: 3, stroke: '#6b7280', 'stroke-width': 2 }),
+                  H('path', { d: 'M9 6l1.5-2h3L15 6', stroke: '#6b7280', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+                  H('circle', { cx: 12, cy: 12.5, r: 3, stroke: '#6b7280', 'stroke-width': 2 })
+                )
+              ),
+              // Gallery icon button
               H('button', {
                 type: 'button',
                 onClick: () => { libraryFileRef?.current?.click(); setShowAttachMenu(false); },
+                title: 'Photo library',
                 style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  border: 'none',
-                  background: 'transparent',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  color: '#111',
-                  textAlign: 'left'
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  display: 'grid',
+                  placeItems: 'center',
+                  cursor: 'pointer'
                 }
-              }, H('span', { style: { fontSize: 18 } }, '🖼️'), 'Photo library'),
-              canRevealPaypal && H('button', {
-                type: 'button',
-                onClick: () => { onRevealPaypal?.(); setShowAttachMenu(false); },
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  border: 'none',
-                  background: 'transparent',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  color: '#111',
-                  textAlign: 'left'
-                }
-              }, H('span', { style: { fontSize: 18 } }, '💳'), 'Payment info')
+              },
+                H('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' },
+                  H('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2, stroke: '#6b7280', 'stroke-width': 2 }),
+                  H('circle', { cx: 9, cy: 10, r: 2, fill: '#6b7280' }),
+                  H('path', { d: 'M7 18l4-4 3 3 4-5 3 4', stroke: '#6b7280', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+                )
+              )
             )
           ),
 
@@ -555,6 +548,7 @@
             type: 'text',
             placeholder: 'Message...',
             value: input,
+            ref: inputRef,
             onPaste: onComposerPaste,
             onChange: (event) => setInput(event.target.value),
             onKeyDown: (event) => {
@@ -1401,12 +1395,25 @@
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
       const [confirmPaypalOpen, setConfirmPaypalOpen] = useState(false);
       const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
+      const mobileInputRef = useRef(null);
 
       useEffect(() => {
         if (activeId && isMobile) {
           setShowConversationOnMobile(true);
         }
       }, [activeId, isMobile]);
+
+      // Auto-focus the input when mobile conversation opens
+      useEffect(() => {
+        if (isMobile && showConversationOnMobile && activeId && !loadingMsgs) {
+          // Small delay to ensure the portal is rendered
+          setTimeout(() => {
+            if (mobileInputRef.current) {
+              mobileInputRef.current.focus();
+            }
+          }, 100);
+        }
+      }, [isMobile, showConversationOnMobile, activeId, loadingMsgs]);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -1513,7 +1520,8 @@
           onRevealPaypal: handleRequestPaypal,
           canSendLocation,
           onRequestLocation: handleRequestLocation,
-          onSend: send
+          onSend: send,
+          inputRef: mobileInputRef
         }),
         H(Lightbox, {
           open: lb.open,
