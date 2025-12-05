@@ -397,41 +397,68 @@
       canSendLocation,
       onRequestLocation,
       onSend,
-      inputRef
+      inputRef,
+      otherUserDeleted,
+      hasImages
     }) {
       const [showAttachMenu, setShowAttachMenu] = useState(false);
       const isMobile = isMobileDevice();
+      const canSend = !otherUserDeleted && (input.trim() || hasImages);
 
       // Mobile UI: plus button with popup menu, rounded input, arrow send button
       if (isMobile) {
         return H('div', {
-          className: 'message-composer',
-          ref: dropRef,
-          onDragOver,
-          onDrop,
+          className: 'message-composer-wrapper',
           style: {
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: 8,
-            padding: '8px 0',
             marginTop: 'auto'
           }
         },
-          // Hidden file inputs
-          H('input', {
-            type: 'file',
-            accept: 'image/*',
-            capture: 'environment',
-            ref: cameraFileRef,
-            onChange: onPickImages,
-            style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
-          }),
-          H('input', {
-            type: 'file',
-            accept: 'image/*',
-            multiple: true,
-            ref: libraryFileRef,
-            onChange: onPickImages,
+          // Warning when other user deleted the conversation
+          otherUserDeleted && H('div', {
+            style: {
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontSize: 13,
+              color: '#dc2626',
+              textAlign: 'center'
+            }
+          }, 'This user deleted the conversation. You cannot send messages.'),
+
+          H('div', {
+            className: 'message-composer',
+            ref: dropRef,
+            onDragOver: otherUserDeleted ? undefined : onDragOver,
+            onDrop: otherUserDeleted ? undefined : onDrop,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 0',
+              opacity: otherUserDeleted ? 0.5 : 1
+            }
+          },
+            // Hidden file inputs
+            H('input', {
+              type: 'file',
+              accept: 'image/*',
+              capture: 'environment',
+              ref: cameraFileRef,
+              onChange: onPickImages,
+              disabled: otherUserDeleted,
+              style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
+            }),
+            H('input', {
+              type: 'file',
+              accept: 'image/*',
+              multiple: true,
+              ref: libraryFileRef,
+              onChange: onPickImages,
+              disabled: otherUserDeleted,
             style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
           }),
 
@@ -439,7 +466,8 @@
           H('div', { style: { position: 'relative' } },
             H('button', {
               type: 'button',
-              onClick: () => setShowAttachMenu(!showAttachMenu),
+              onClick: otherUserDeleted ? undefined : () => setShowAttachMenu(!showAttachMenu),
+              disabled: otherUserDeleted,
               style: {
                 width: 36,
                 height: 36,
@@ -452,7 +480,7 @@
                 lineHeight: 1,
                 display: 'grid',
                 placeItems: 'center',
-                cursor: 'pointer',
+                cursor: otherUserDeleted ? 'not-allowed' : 'pointer',
                 flexShrink: 0
               },
               title: 'Attach'
@@ -523,7 +551,7 @@
           ),
 
           // Location preset button
-          canSendLocation && H('button', {
+          canSendLocation && !otherUserDeleted && H('button', {
             type: 'button',
             onClick: onRequestLocation,
             style: {
@@ -546,13 +574,14 @@
           // Text input
           H('input', {
             type: 'text',
-            placeholder: 'Message...',
+            placeholder: otherUserDeleted ? 'Cannot send messages' : 'Message...',
             value: input,
             ref: inputRef,
-            onPaste: onComposerPaste,
-            onChange: (event) => setInput(event.target.value),
-            onKeyDown: (event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+            disabled: otherUserDeleted,
+            onPaste: otherUserDeleted ? undefined : onComposerPaste,
+            onChange: otherUserDeleted ? undefined : (event) => setInput(event.target.value),
+            onKeyDown: otherUserDeleted ? undefined : (event) => {
+              if (event.key === 'Enter' && !event.shiftKey && canSend) {
                 event.preventDefault();
                 onSend();
               }
@@ -566,26 +595,26 @@
               borderRadius: 20,
               fontSize: 16,
               outline: 'none',
-              background: '#fff'
+              background: otherUserDeleted ? '#f3f4f6' : '#fff'
             }
           }),
 
           // Send button (blue arrow)
           H('button', {
             type: 'button',
-            onClick: onSend,
-            disabled: !input.trim(),
+            onClick: canSend ? onSend : undefined,
+            disabled: !canSend,
             style: {
               width: 36,
               height: 36,
               borderRadius: '50%',
               border: 'none',
-              background: input.trim() ? '#2563eb' : '#d1d5db',
+              background: canSend ? '#2563eb' : '#d1d5db',
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: input.trim() ? 'pointer' : 'default',
+              cursor: canSend ? 'pointer' : 'default',
               flexShrink: 0,
               transition: 'background 0.15s ease'
             },
@@ -606,82 +635,107 @@
               H('polygon', { points: '22 2 15 22 11 13 2 9 22 2' })
             )
           )
+        )
         );
       }
 
       // Desktop UI: separate attach buttons, textarea, Send button
       return H('div', {
-        className: 'row',
-        style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-        ref: dropRef,
-        onDragOver,
-        onDrop
+        style: { display: 'flex', flexDirection: 'column', gap: 8 }
       },
-      H('input', {
-        type: 'file',
-        accept: 'image/*',
-        capture: 'environment',
-        ref: cameraFileRef,
-        onChange: onPickImages,
-        style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
-      }),
-      H('input', {
-        type: 'file',
-        accept: 'image/*',
-        multiple: true,
-        ref: libraryFileRef,
-        onChange: onPickImages,
-        style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
-      }),
-      H('div', {
-        className: 'row',
-        style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' }
-      },
-        H(AttachButton, {
-          onClick: () => {
-            if (cameraFileRef?.current) cameraFileRef.current.click();
-          },
-          title: 'Take a photo',
-          variant: 'camera'
-        }),
-        H(AttachButton, {
-          onClick: () => {
-            if (libraryFileRef?.current) libraryFileRef.current.click();
-          },
-          title: 'Attach from photos',
-          variant: 'library'
-        }),
-        canRevealPaypal && H(AttachButton, {
-          onClick: onRevealPaypal,
-          title: 'Reveal payment info',
-          variant: 'paypal'
-        }),
-        H(AttachButton, {
-          onClick: onRequestLocation,
-          title: 'Send saved address',
-          variant: 'location',
-          disabled: !canSendLocation
-        })
-      ),
-      H('textarea', {
-        placeholder: 'Type a message...',
-        value: input,
-        rows: 1,
-        onPaste: onComposerPaste,
-        onChange: (event) => setInput(event.target.value),
-        onKeyDown: (event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            onSend();
+        // Warning when other user deleted the conversation
+        otherUserDeleted && H('div', {
+          style: {
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 8,
+            padding: '8px 12px',
+            fontSize: 13,
+            color: '#dc2626',
+            textAlign: 'center'
           }
+        }, 'This user deleted the conversation. You cannot send messages.'),
+
+        H('div', {
+          className: 'row',
+          style: { alignItems: 'center', gap: 8, flexWrap: 'wrap', opacity: otherUserDeleted ? 0.5 : 1 },
+          ref: dropRef,
+          onDragOver: otherUserDeleted ? undefined : onDragOver,
+          onDrop: otherUserDeleted ? undefined : onDrop
         },
-        style: {
-          width: 220,
-          maxWidth: '100%',
-          resize: 'none'
-        }
-      }),
-      H('button', { className: 'btn primary', onClick: onSend }, 'Send'));
+        H('input', {
+          type: 'file',
+          accept: 'image/*',
+          capture: 'environment',
+          ref: cameraFileRef,
+          onChange: onPickImages,
+          disabled: otherUserDeleted,
+          style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
+        }),
+        H('input', {
+          type: 'file',
+          accept: 'image/*',
+          multiple: true,
+          ref: libraryFileRef,
+          onChange: onPickImages,
+          disabled: otherUserDeleted,
+          style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
+        }),
+        !otherUserDeleted && H('div', {
+          className: 'row',
+          style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+        },
+          H(AttachButton, {
+            onClick: () => {
+              if (cameraFileRef?.current) cameraFileRef.current.click();
+            },
+            title: 'Take a photo',
+            variant: 'camera'
+          }),
+          H(AttachButton, {
+            onClick: () => {
+              if (libraryFileRef?.current) libraryFileRef.current.click();
+            },
+            title: 'Attach from photos',
+            variant: 'library'
+          }),
+          canRevealPaypal && H(AttachButton, {
+            onClick: onRevealPaypal,
+            title: 'Reveal payment info',
+            variant: 'paypal'
+          }),
+          H(AttachButton, {
+            onClick: onRequestLocation,
+            title: 'Send saved address',
+            variant: 'location',
+            disabled: !canSendLocation
+          })
+        ),
+        H('textarea', {
+          placeholder: otherUserDeleted ? 'Cannot send messages' : 'Type a message...',
+          value: input,
+          rows: 1,
+          disabled: otherUserDeleted,
+          onPaste: otherUserDeleted ? undefined : onComposerPaste,
+          onChange: otherUserDeleted ? undefined : (event) => setInput(event.target.value),
+          onKeyDown: otherUserDeleted ? undefined : (event) => {
+            if (event.key === 'Enter' && !event.shiftKey && canSend) {
+              event.preventDefault();
+              onSend();
+            }
+          },
+          style: {
+            width: 220,
+            maxWidth: '100%',
+            resize: 'none'
+          }
+        }),
+        H('button', {
+          className: 'btn primary',
+          onClick: canSend ? onSend : undefined,
+          disabled: !canSend
+        }, 'Send'))
+      );
     }
 
     const ConfirmLocationModal = memo(function ConfirmLocationModal({
@@ -1521,7 +1575,9 @@
           canSendLocation,
           onRequestLocation: handleRequestLocation,
           onSend: send,
-          inputRef: mobileInputRef
+          inputRef: mobileInputRef,
+          otherUserDeleted: active?.other_user_deleted,
+          hasImages: imgPreviews.length > 0
         }),
         H(Lightbox, {
           open: lb.open,
