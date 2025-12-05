@@ -1293,14 +1293,23 @@ body.dark-mode .messages-thread-shell.show-on-mobile {
   padding: 10px 12px !important;
 }
 
-/* Hide bottom tab bar when keyboard is open */
-body.keyboard-open .mobile-dashboard {
+/* Hide bottom tab bar when keyboard is open or modal is open */
+body.keyboard-open .mobile-dashboard,
+body.modal-open .mobile-dashboard {
   display: none !important;
 }
 
 /* Extend messages portal to bottom when keyboard is open */
 body.keyboard-open .mobile-messages-thread-portal {
   bottom: 0 !important;
+}
+
+/* Fix iOS input focus issues in messages */
+.mobile-messages-thread-portal .message-composer input[type="text"] {
+  font-size: 16px !important; /* Prevents iOS zoom on focus */
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
 }
 
 /* Mobile messages portal - dark mode support */

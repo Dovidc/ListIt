@@ -594,6 +594,12 @@
                 onSend();
               }
             },
+            onFocus: otherUserDeleted ? undefined : (event) => {
+              // Prevent iOS from scrolling the input out of view
+              setTimeout(() => {
+                event.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 300);
+            },
             style: {
               flex: 1,
               minWidth: 0,
@@ -605,6 +611,8 @@
               background: otherUserDeleted ? '#f3f4f6' : '#fff',
               WebkitAppearance: 'none',
               WebkitTapHighlightColor: 'transparent',
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
               touchAction: 'manipulation'
             }
           }),
@@ -958,6 +966,8 @@
       }, [isAtBottom]);
 
       const checkIfAtBottom = () => {
+        // Don't update scroll state while keyboard is opening (prevents re-render during focus)
+        if (document.body.classList.contains('keyboard-open')) return;
         const container = msgsContainerRef.current;
         if (!container) return;
         const threshold = 50;
@@ -1601,10 +1611,44 @@
       );
 
       // Track if keyboard is open (for hiding bottom tab)
-      // Use CSS class only - no React re-renders to avoid focus issues
+      // Use VisualViewport API on iOS for more reliable keyboard detection
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
+        // Use VisualViewport API if available (more reliable on iOS)
+        if (window.visualViewport) {
+          let lastHeight = window.visualViewport.height;
+          const threshold = 150; // Keyboard is likely open if viewport shrinks by this much
+
+          const handleViewportResize = () => {
+            const currentHeight = window.visualViewport.height;
+            const heightDiff = lastHeight - currentHeight;
+
+            if (heightDiff > threshold) {
+              document.body.classList.add('keyboard-open');
+            } else if (currentHeight >= lastHeight - 50) {
+              document.body.classList.remove('keyboard-open');
+            }
+          };
+
+          // Also track focus for immediate feedback
+          const handleFocusIn = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+              document.body.classList.add('keyboard-open');
+            }
+          };
+
+          window.visualViewport.addEventListener('resize', handleViewportResize);
+          document.addEventListener('focusin', handleFocusIn);
+
+          return () => {
+            window.visualViewport.removeEventListener('resize', handleViewportResize);
+            document.removeEventListener('focusin', handleFocusIn);
+            document.body.classList.remove('keyboard-open');
+          };
+        }
+
+        // Fallback for browsers without VisualViewport
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             document.body.classList.add('keyboard-open');
@@ -1613,7 +1657,6 @@
 
         const handleFocusOut = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            // Small delay to check if focus moved to another input
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
@@ -1652,7 +1695,8 @@
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            WebkitOverflowScrolling: 'touch'
           }
         }, threadContent),
         document.body
