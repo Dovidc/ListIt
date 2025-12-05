@@ -1304,7 +1304,10 @@ body.modal-open .mobile-dashboard {
   display: none !important;
 }
 
-/* Portal height is managed by JS via VisualViewport API */
+/* When keyboard is open, extend portal to full screen (tab bar is hidden) */
+body.keyboard-open .mobile-messages-thread-portal {
+  bottom: 0 !important;
+}
 
 /* Fix iOS input focus issues in messages */
 .mobile-messages-thread-portal .message-composer input[type="text"] {

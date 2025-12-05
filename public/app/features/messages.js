@@ -1604,44 +1604,69 @@
         })
       );
 
-      // Track keyboard state and viewport height for proper positioning
-      // Uses ref-based DOM manipulation for better performance (avoids re-renders during keyboard animation)
+      // Track keyboard state for proper positioning on iOS
+      // The composer wrapper will be repositioned when keyboard opens
       const portalRef = useRef(null);
+      const composerWrapperRef = useRef(null);
+      const messagesAreaRef = useRef(null);
 
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
         let animationFrameId = null;
+        let isKeyboardOpen = false;
 
-        const updatePortalHeight = () => {
-          if (window.visualViewport && portalRef.current) {
-            const height = window.visualViewport.height;
-            portalRef.current.style.height = `${height}px`;
-            portalRef.current.style.bottom = 'auto';
-          }
-        };
+        const updateLayout = () => {
+          if (!window.visualViewport || !portalRef.current || !composerWrapperRef.current || !messagesAreaRef.current) return;
 
-        const resetPortalHeight = () => {
-          if (portalRef.current) {
-            portalRef.current.style.height = '';
-            portalRef.current.style.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+          const vv = window.visualViewport;
+          // On iOS, when keyboard opens, visualViewport.height shrinks and offsetTop increases
+          // We need to position the composer at the bottom of the visible area
+          const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+
+          if (keyboardHeight > 100) {
+            // Keyboard is likely open
+            isKeyboardOpen = true;
+            document.body.classList.add('keyboard-open');
+            // Position composer just above where the keyboard starts
+            composerWrapperRef.current.style.position = 'fixed';
+            composerWrapperRef.current.style.bottom = `${keyboardHeight}px`;
+            composerWrapperRef.current.style.left = '12px';
+            composerWrapperRef.current.style.right = '12px';
+            composerWrapperRef.current.style.paddingBottom = '8px';
+            composerWrapperRef.current.style.background = '#f8fafc';
+            composerWrapperRef.current.style.zIndex = '1001';
+            // Shrink messages area to make room for fixed composer
+            const composerHeight = composerWrapperRef.current.offsetHeight || 60;
+            messagesAreaRef.current.style.marginBottom = `${composerHeight + 8}px`;
+          } else if (isKeyboardOpen) {
+            // Keyboard closed
+            isKeyboardOpen = false;
+            document.body.classList.remove('keyboard-open');
+            // Reset composer to normal flow
+            composerWrapperRef.current.style.position = '';
+            composerWrapperRef.current.style.bottom = '';
+            composerWrapperRef.current.style.left = '';
+            composerWrapperRef.current.style.right = '';
+            composerWrapperRef.current.style.paddingBottom = '';
+            composerWrapperRef.current.style.background = '';
+            composerWrapperRef.current.style.zIndex = '';
+            messagesAreaRef.current.style.marginBottom = '';
           }
         };
 
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            document.body.classList.add('keyboard-open');
-            // Immediately update and keep updating during keyboard animation
-            updatePortalHeight();
+            // Start continuous updates during keyboard animation
             const keepUpdating = () => {
-              updatePortalHeight();
+              updateLayout();
               animationFrameId = requestAnimationFrame(keepUpdating);
             };
             keepUpdating();
-            // Stop after keyboard animation completes (~500ms)
+            // Stop continuous updates after animation completes
             setTimeout(() => {
               cancelAnimationFrame(animationFrameId);
-              updatePortalHeight();
+              updateLayout();
             }, 600);
           }
         };
@@ -1652,22 +1677,21 @@
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-                document.body.classList.remove('keyboard-open');
-                resetPortalHeight();
+                updateLayout();
               }
             }, 150);
           }
         };
 
-        const handleViewportResize = () => {
-          updatePortalHeight();
+        const handleViewportChange = () => {
+          updateLayout();
         };
 
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('focusout', handleFocusOut);
         if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', handleViewportResize);
-          window.visualViewport.addEventListener('scroll', handleViewportResize);
+          window.visualViewport.addEventListener('resize', handleViewportChange);
+          window.visualViewport.addEventListener('scroll', handleViewportChange);
         }
 
         return () => {
@@ -1675,15 +1699,115 @@
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
           if (window.visualViewport) {
-            window.visualViewport.removeEventListener('resize', handleViewportResize);
-            window.visualViewport.removeEventListener('scroll', handleViewportResize);
+            window.visualViewport.removeEventListener('resize', handleViewportChange);
+            window.visualViewport.removeEventListener('scroll', handleViewportChange);
           }
           document.body.classList.remove('keyboard-open');
         };
       }, [isMobile, showConversationOnMobile]);
 
-      // Mobile portal - render thread directly to body to escape all containers
-      // Height is managed via ref by the useEffect above for keyboard handling
+      // Build mobile-specific thread content with refs for keyboard handling
+      const mobileThreadContent = H(React.Fragment, null,
+        // Back button
+        activeId && H('div', {
+          className: 'messages-thread-header',
+          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb', flexShrink: 0 }
+        },
+          H('button', {
+            onClick: handleBackToList,
+            style: {
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontSize: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontWeight: 600,
+              color: '#2563eb'
+            }
+          }, '← Back to conversations')
+        ),
+        !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
+        // Messages area wrapper (will have margin adjusted when keyboard opens)
+        H('div', {
+          ref: messagesAreaRef,
+          style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }
+        },
+          (activeId && loadingMsgs) && H('div', {
+            className: 'muted',
+            style: { padding: '20px', textAlign: 'center' }
+          }, 'Loading messages...'),
+          (activeId && !loadingMsgs) && H(MessagesThread, {
+            messages: msgs,
+            user: currentUser,
+            ImageWithSkeleton,
+            openLightbox,
+            msgsContainerRef,
+            onScroll: checkIfAtBottom,
+            formatMessageTimestamp,
+            otherUserPicture: active?.other_user_profile_picture,
+            otherUserId: active?.other_user_id,
+            otherUserUsername: active?.other_user_username,
+            onViewProfile
+          })
+        ),
+        // Composer wrapper (will be repositioned when keyboard opens)
+        H('div', {
+          ref: composerWrapperRef,
+          style: { flexShrink: 0 }
+        },
+          (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
+            previews: imgPreviews,
+            onRemove: removeImg,
+            ImageWithSkeleton
+          }),
+          activeId && H(MessageComposer, {
+            input,
+            setInput,
+            onComposerPaste,
+            onPickImages: pickImgs,
+            cameraFileRef,
+            libraryFileRef,
+            dropRef,
+            onDragOver,
+            onDrop,
+            canRevealPaypal,
+            onRevealPaypal: handleRequestPaypal,
+            canSendLocation,
+            onRequestLocation: handleRequestLocation,
+            onSend: send,
+            inputRef: mobileInputRef,
+            otherUserDeleted: active?.other_user_deleted,
+            hasImages: imgPreviews.length > 0
+          })
+        ),
+        // Modals
+        H(Lightbox, {
+          open: lb.open,
+          images: lb.images,
+          fallback: lb.images,
+          loading: false,
+          index: lb.index,
+          onClose: closeLightbox,
+          onIndex: setLightboxIndex
+        }),
+        H(ConfirmLocationModal, {
+          open: confirmLocationOpen,
+          address: locationPreset,
+          onCancel: handleCloseLocationConfirm,
+          onConfirm: handleConfirmLocation
+        }),
+        H(ConfirmPaypalModal, {
+          open: confirmPaypalOpen,
+          email: currentUser?.paypal_email,
+          onCancel: handleClosePaypalConfirm,
+          onConfirm: handleConfirmPaypal
+        })
+      );
+
+      // Mobile portal - full screen, keyboard handling done via refs above
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           ref: portalRef,
@@ -1693,7 +1817,6 @@
             top: 0,
             left: 0,
             right: 0,
-            // Default height leaves room for tab bar; JS updates this when keyboard opens
             bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
@@ -1706,7 +1829,7 @@
             overflow: 'hidden',
             WebkitOverflowScrolling: 'touch'
           }
-        }, threadContent),
+        }, mobileThreadContent),
         document.body
       );
 
