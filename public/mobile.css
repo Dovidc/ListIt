@@ -1327,14 +1327,75 @@ body:has(.mobile-messages-thread-portal) .mobile-dashboard {
   -webkit-touch-callout: default !important;
 }
 
-/* Mobile messages portal - dark mode support */
-body.dark-mode .mobile-messages-thread-portal {
-  background: #0f172a !important;
-}
-
 /* iOS keyboard handling - use env(keyboard-inset-height) when available */
 @supports (padding-bottom: env(keyboard-inset-height)) {
   .mobile-messages-thread-portal {
     padding-bottom: calc(12px + env(keyboard-inset-height, 0px) + env(safe-area-inset-bottom, 0px)) !important;
   }
+}
+
+/* DM conversation background - subtle diagonal lines */
+.mobile-messages-thread-portal {
+  background: #f8fafc repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 28px,
+    rgba(148, 163, 184, 0.06) 28px,
+    rgba(148, 163, 184, 0.06) 29px
+  ) !important;
+}
+
+[data-theme="dark"] .mobile-messages-thread-portal,
+html[data-theme="dark"] .mobile-messages-thread-portal {
+  background: #1e293b repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 28px,
+    rgba(100, 116, 139, 0.15) 28px,
+    rgba(100, 116, 139, 0.15) 29px
+  ) !important;
+}
+
+/* Messages content area - slightly translucent for layered feel */
+.mobile-messages-thread-portal .messages-thread-content {
+  background: transparent;
+}
+
+/* Back button header - subtle background */
+.mobile-messages-thread-portal .messages-thread-header {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  margin: -12px -12px 8px -12px;
+  padding: 12px !important;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme="dark"] .mobile-messages-thread-portal .messages-thread-header,
+html[data-theme="dark"] .mobile-messages-thread-portal .messages-thread-header {
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Composer area - frosted glass effect */
+.mobile-messages-thread-portal .message-composer-wrapper {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  margin: 0 -12px -12px -12px;
+  padding: 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .mobile-messages-thread-portal .message-composer-wrapper,
+html[data-theme="dark"] .mobile-messages-thread-portal .message-composer-wrapper {
+  background: rgba(15, 23, 42, 0.9);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* When keyboard is open, remove bottom safe area from composer */
+body.keyboard-open .mobile-messages-thread-portal .message-composer-wrapper {
+  padding-bottom: 10px;
 }

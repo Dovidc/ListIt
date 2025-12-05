@@ -411,8 +411,25 @@
       hasImages
     }) {
       const [showAttachMenu, setShowAttachMenu] = useState(false);
+      const attachMenuRef = useRef(null);
       const isMobile = isMobileDevice();
       const canSend = !otherUserDeleted && (input.trim() || hasImages);
+
+      // Close attach menu when clicking outside
+      useEffect(() => {
+        if (!showAttachMenu) return;
+        const handleClickOutside = (e) => {
+          if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
+            setShowAttachMenu(false);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+          document.removeEventListener('mousedown', handleClickOutside);
+          document.removeEventListener('touchstart', handleClickOutside);
+        };
+      }, [showAttachMenu]);
 
       // Mobile UI: plus button with popup menu, rounded input, arrow send button
       if (isMobile) {
@@ -472,7 +489,7 @@
           }),
 
           // Plus button (attachment menu)
-          H('div', { style: { position: 'relative' } },
+          H('div', { ref: attachMenuRef, style: { position: 'relative' } },
             H('button', {
               type: 'button',
               onClick: otherUserDeleted ? undefined : () => setShowAttachMenu(!showAttachMenu),
@@ -792,7 +809,8 @@
       return ReactDOM.createPortal(
         H('div', {
           className: 'modal open',
-          onClick: handleOverlayClick
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
         },
           H('div', {
             className: 'modal-inner',
@@ -881,7 +899,8 @@
       return ReactDOM.createPortal(
         H('div', {
           className: 'modal open',
-          onClick: handleOverlayClick
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
         },
           H('div', {
             className: 'modal-inner',
@@ -1792,7 +1811,6 @@
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
-            background: '#f8fafc',
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
