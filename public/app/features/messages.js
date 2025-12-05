@@ -1636,7 +1636,7 @@
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Use 100dvh (dynamic viewport height) which automatically adjusts for keyboard on iOS
+      // Capacitor's keyboardResize: "body" will resize the body when keyboard opens
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
@@ -1645,11 +1645,11 @@
             top: 0,
             left: 0,
             right: 0,
-            height: '100dvh',
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
-            paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+            paddingBottom: 12,
             background: '#f8fafc',
             zIndex: 999,
             display: 'flex',
@@ -1670,9 +1670,9 @@
           onMarkAllRead: markAllAsRead,
           className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
         }),
-        // Desktop thread (always visible) / Mobile thread (hidden when portal is shown)
-        H('section', {
-          className: `card col messages-thread-shell ${(isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''}`,
+        // Desktop thread only (mobile uses portal instead)
+        !isMobile && H('section', {
+          className: 'card col messages-thread-shell',
           style: { padding: 12 }
         }, threadContent),
         // Mobile portal

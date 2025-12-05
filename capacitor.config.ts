@@ -10,7 +10,8 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: 'automatic',
-    scrollEnabled: false,
+    scrollEnabled: true,
+    keyboardResize: 'body',
   },
 };
 
