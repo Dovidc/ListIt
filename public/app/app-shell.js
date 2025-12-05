@@ -1388,10 +1388,12 @@
                             gap: 6
                           }
                         },
-                          isInfiniteScrollSupported && H('span', {
+                          H('span', {
                             className: 'muted',
                             style: { fontSize: 12 }
-                          }, 'More listings load as you scroll; tap below to fetch now.'),
+                          }, isInfiniteScrollSupported
+                            ? 'More listings load as you scroll; tap below to fetch now.'
+                            : 'Auto-loading is limited here; tap below whenever you want more.'),
                           H('button', {
                             className: 'btn',
                             onClick: () => loadMore?.()
