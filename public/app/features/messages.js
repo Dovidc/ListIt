@@ -1657,6 +1657,8 @@
 
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            // Immediately hide dashboard when input is focused (don't wait for keyboard)
+            document.body.classList.add('keyboard-open');
             // Start continuous updates during keyboard animation
             const keepUpdating = () => {
               updateLayout();
