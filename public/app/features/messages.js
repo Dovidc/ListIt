@@ -283,10 +283,19 @@
       return H('div', {
         ref: msgsContainerRef,
         className: 'messages-thread-content',
-        style: { flex: 1, overflow: 'auto', padding: 4, minHeight: 0 },
+        style: {
+          flex: 1,
+          overflow: 'auto',
+          padding: 4,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end'
+        },
         onScroll
       },
-      messages.map((message) => {
+      H('div', { style: { display: 'flex', flexDirection: 'column' } },
+        messages.map((message) => {
         const ts = formatMessageTimestamp(message.created_at || message.updated_at);
         const isMine = message.sender_id === user?.id;
         const picture = isMine ? userPicture : otherUserPicture;
@@ -353,7 +362,7 @@
             }, ts)
           )
         );
-      }));
+      })));
     }
 
     function ImagePreviewStrip({ previews, onRemove, ImageWithSkeleton }) {
@@ -584,6 +593,19 @@
             ref: inputRef,
             disabled: otherUserDeleted,
             onPaste: otherUserDeleted ? undefined : onComposerPaste,
+            onFocus: () => {
+              // Immediately hide dashboard on focus - must be 100% reliable
+              document.body.classList.add('keyboard-open');
+            },
+            onBlur: () => {
+              // Only remove class if no other input is focused
+              setTimeout(() => {
+                const active = document.activeElement;
+                if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
+                  document.body.classList.remove('keyboard-open');
+                }
+              }, 150);
+            },
             onChange: otherUserDeleted ? undefined : (event) => {
               setInput(event.target.value);
               if (showAttachMenu) setShowAttachMenu(false);
