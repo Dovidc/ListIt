@@ -1299,10 +1299,7 @@ body.modal-open .mobile-dashboard {
   display: none !important;
 }
 
-/* When keyboard is open, portal takes full height (Capacitor resizes body) */
-body.keyboard-open .mobile-messages-thread-portal {
-  bottom: 0 !important;
-}
+/* Portal height is managed by JS via VisualViewport API */
 
 /* Fix iOS input focus issues in messages */
 .mobile-messages-thread-portal .message-composer input[type="text"] {

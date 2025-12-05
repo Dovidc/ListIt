@@ -1604,7 +1604,9 @@
         })
       );
 
-      // Track keyboard state for hiding tab bar
+      // Track keyboard state and viewport height for proper positioning
+      const [portalHeight, setPortalHeight] = useState(null);
+
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
@@ -1620,43 +1622,70 @@
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
                 document.body.classList.remove('keyboard-open');
+                setPortalHeight(null);
               }
             }, 150);
           }
         };
 
+        // Use VisualViewport to track actual visible height (accounts for keyboard)
+        const handleViewportResize = () => {
+          if (window.visualViewport) {
+            const vv = window.visualViewport;
+            // Set portal height to visible viewport height
+            setPortalHeight(vv.height);
+          }
+        };
+
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('focusout', handleFocusOut);
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', handleViewportResize);
+        }
 
         return () => {
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
+          if (window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', handleViewportResize);
+          }
           document.body.classList.remove('keyboard-open');
+          setPortalHeight(null);
         };
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Capacitor's keyboardResize: "body" will resize the body when keyboard opens
+      // Use portalHeight from VisualViewport when keyboard is open
+      const portalStyle = {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+        paddingLeft: 12,
+        paddingRight: 12,
+        paddingBottom: 12,
+        background: '#f8fafc',
+        zIndex: 999,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        WebkitOverflowScrolling: 'touch'
+      };
+
+      if (portalHeight !== null) {
+        // Keyboard is open - use exact viewport height
+        portalStyle.height = portalHeight;
+        portalStyle.bottom = 'auto';
+      } else {
+        // Keyboard closed - leave room for tab bar
+        portalStyle.bottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+      }
+
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
-          style: {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
-            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
-            paddingLeft: 12,
-            paddingRight: 12,
-            paddingBottom: 12,
-            background: '#f8fafc',
-            zIndex: 999,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            WebkitOverflowScrolling: 'touch'
-          }
+          style: portalStyle
         }, threadContent),
         document.body
       );
