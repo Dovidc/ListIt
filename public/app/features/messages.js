@@ -1525,10 +1525,8 @@
       }, []);
 
       const handleConfirmLocation = useCallback(async () => {
-        const ok = await sendLocationPreset();
-        if (ok) {
-          setConfirmLocationOpen(false);
-        }
+        setConfirmLocationOpen(false);
+        await sendLocationPreset();
       }, [sendLocationPreset]);
 
       const handleRequestPaypal = useCallback(() => {
