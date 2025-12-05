@@ -1607,51 +1607,77 @@
         })
       );
 
-      // Track if keyboard is open (for hiding bottom tab)
-      // Use CSS class only - no React re-renders to avoid focus issues
+      // Track visual viewport for proper keyboard handling on iOS
+      const [keyboardVisible, setKeyboardVisible] = useState(false);
+      const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
+      const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             document.body.classList.add('keyboard-open');
+            setKeyboardVisible(true);
           }
         };
 
         const handleFocusOut = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            // Small delay to check if focus moved to another input
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
                 document.body.classList.remove('keyboard-open');
+                setKeyboardVisible(false);
+                setViewportOffsetTop(0);
               }
             }, 150);
+          }
+        };
+
+        // Use visualViewport API for accurate keyboard detection on iOS
+        const handleViewportChange = () => {
+          if (window.visualViewport) {
+            setViewportHeight(window.visualViewport.height);
+            setViewportOffsetTop(window.visualViewport.offsetTop);
           }
         };
 
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('focusout', handleFocusOut);
 
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', handleViewportChange);
+          window.visualViewport.addEventListener('scroll', handleViewportChange);
+          handleViewportChange();
+        }
+
         return () => {
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
+          if (window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', handleViewportChange);
+            window.visualViewport.removeEventListener('scroll', handleViewportChange);
+          }
           document.body.classList.remove('keyboard-open');
         };
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Leave room for status bar at top and tab bar at bottom (CSS handles keyboard-open state)
+      // Use visualViewport height and offset when keyboard is visible for proper anchoring on iOS
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
           style: {
             position: 'fixed',
-            top: 0,
+            // When keyboard is visible on iOS, the viewport scrolls - use offsetTop to stay anchored
+            top: keyboardVisible ? viewportOffsetTop : 0,
             left: 0,
             right: 0,
-            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
-            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+            // When keyboard is visible, use visualViewport height; otherwise leave room for tab bar
+            height: keyboardVisible ? viewportHeight : 'auto',
+            bottom: keyboardVisible ? 'auto' : 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            paddingTop: keyboardVisible ? 12 : 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 12,
