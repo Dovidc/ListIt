@@ -1591,20 +1591,13 @@
       );
 
       // Track if keyboard is open (for hiding bottom tab)
-      // Use a ref to avoid re-renders that could cause focus issues
-      const keyboardOpenRef = useRef(false);
-      const [, forceUpdate] = useState(0);
-
+      // Use CSS class only - no React re-renders to avoid focus issues
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
         const handleFocusIn = (e) => {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            if (!keyboardOpenRef.current) {
-              keyboardOpenRef.current = true;
-              document.body.classList.add('keyboard-open');
-              forceUpdate(n => n + 1);
-            }
+            document.body.classList.add('keyboard-open');
           }
         };
 
@@ -1614,11 +1607,7 @@
             setTimeout(() => {
               const active = document.activeElement;
               if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-                if (keyboardOpenRef.current) {
-                  keyboardOpenRef.current = false;
-                  document.body.classList.remove('keyboard-open');
-                  forceUpdate(n => n + 1);
-                }
+                document.body.classList.remove('keyboard-open');
               }
             }, 150);
           }
@@ -1631,12 +1620,11 @@
           document.removeEventListener('focusin', handleFocusIn);
           document.removeEventListener('focusout', handleFocusOut);
           document.body.classList.remove('keyboard-open');
-          keyboardOpenRef.current = false;
         };
       }, [isMobile, showConversationOnMobile]);
 
       // Mobile portal - render thread directly to body to escape all containers
-      // Leave room for status bar at top and tab bar at bottom (unless keyboard is open)
+      // Leave room for status bar at top and tab bar at bottom (CSS handles keyboard-open state)
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           className: 'mobile-messages-thread-portal',
@@ -1645,7 +1633,7 @@
             top: 0,
             left: 0,
             right: 0,
-            bottom: keyboardOpenRef.current ? 0 : 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
