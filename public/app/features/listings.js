@@ -17,7 +17,7 @@
     const createLRUCache = helpers?.createLRUCache;
     const getUserCoordsOnce = helpers?.getUserCoordsOnce;
     const fetchCoordsAndReverse = helpers?.fetchCoordsAndReverse;
-    const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 75;
+    const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 48;
 
     // Validate required helpers
     if (typeof normalizeListingsResponse !== 'function') {
@@ -176,15 +176,34 @@
       const [listings, setListings] = useState([]);
       const [hasMore, setHasMore] = useState(false);
       const [isLoading, setIsLoading] = useState(false);
+      const [error, setError] = useState(null);
 
       const cursorRef = useRef(null);
       const requestIdRef = useRef(0);
       const isLoadingRef = useRef(false);
+      const abortRef = useRef(null);
+
+      useEffect(() => {
+        return () => {
+          isLoadingRef.current = false;
+          if (abortRef.current) {
+            try { abortRef.current.abort(); } catch { }
+          }
+        };
+      }, []);
 
       const fetchPage = useCallback(async (cursor, replace) => {
         const reqId = ++requestIdRef.current;
         isLoadingRef.current = true;
         setIsLoading(true);
+        setError(null);
+
+        if (abortRef.current) {
+          try { abortRef.current.abort(); } catch { }
+        }
+
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        abortRef.current = controller;
 
         try {
           // Build base params
@@ -210,7 +229,7 @@
             }
           }
 
-          const res = await api.listAll(params);
+          const res = await api.listAll(params, controller ? { signal: controller.signal } : undefined);
 
           // Stale request check
           if (reqId !== requestIdRef.current) return;
@@ -251,15 +270,22 @@
             }
           }
         } catch (e) {
+          if (controller?.signal?.aborted || e?.name === 'AbortError') return;
           if (reqId === requestIdRef.current) {
+            const message = e?.message === 'auth'
+              ? 'Session expired. Please sign back in.'
+              : (e?.message || 'Unable to load listings.');
             console.error('Failed to load listings:', e);
-            if (replace || cursor == null) setListings([]);
+            setError(message);
             setHasMore(false);
           }
         } finally {
           if (reqId === requestIdRef.current) {
             isLoadingRef.current = false;
             setIsLoading(false);
+            if (abortRef.current === controller) {
+              abortRef.current = null;
+            }
           }
         }
       }, [query, location, sort, onCoversLoaded]);
@@ -268,6 +294,7 @@
         cursorRef.current = null;
         setListings([]);
         setHasMore(false);
+        setError(null);
         fetchPage(null, true);
       }, [fetchPage]);
 
@@ -282,6 +309,7 @@
           setListings([]);
           setHasMore(false);
         }
+        setError(null);
         await fetchPage(null, true);
       }, [fetchPage]);
 
@@ -298,7 +326,8 @@
         refresh,
         setListings,
         getIsLoading,
-        getCursor
+        getCursor,
+        error
       };
     }
 
@@ -712,6 +741,8 @@
         mine,
         hasNext: pagination.hasMore,
         isFetchingListings: pagination.isLoading,
+        listingError: pagination.error,
+        loadMore: pagination.loadMore,
 
         // Actions
         refreshListings,
