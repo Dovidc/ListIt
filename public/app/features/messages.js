@@ -574,19 +574,33 @@
           // Text input
           H('input', {
             type: 'text',
+            inputMode: 'text',
+            autoComplete: 'off',
+            autoCorrect: 'off',
+            autoCapitalize: 'sentences',
+            enterKeyHint: 'send',
             placeholder: otherUserDeleted ? 'Cannot send messages' : 'Message...',
             value: input,
             ref: inputRef,
             disabled: otherUserDeleted,
             onPaste: otherUserDeleted ? undefined : onComposerPaste,
-            onChange: otherUserDeleted ? undefined : (event) => setInput(event.target.value),
+            onChange: otherUserDeleted ? undefined : (event) => {
+              setInput(event.target.value);
+              if (showAttachMenu) setShowAttachMenu(false);
+            },
             onKeyDown: otherUserDeleted ? undefined : (event) => {
               if (event.key === 'Enter' && !event.shiftKey && canSend) {
                 event.preventDefault();
                 onSend();
               }
             },
-            onFocus: () => setShowAttachMenu(false),
+            onTouchStart: otherUserDeleted ? undefined : (event) => {
+              // Ensure focus on first touch
+              event.target.focus();
+            },
+            onClick: otherUserDeleted ? undefined : (event) => {
+              event.target.focus();
+            },
             style: {
               flex: 1,
               minWidth: 0,
@@ -595,7 +609,10 @@
               borderRadius: 20,
               fontSize: 16,
               outline: 'none',
-              background: otherUserDeleted ? '#f3f4f6' : '#fff'
+              background: otherUserDeleted ? '#f3f4f6' : '#fff',
+              WebkitAppearance: 'none',
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation'
             }
           }),
 
