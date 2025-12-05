@@ -1302,11 +1302,21 @@ body.dark-mode .messages-thread-shell.show-on-mobile {
 body.keyboard-open .mobile-dashboard,
 body.modal-open .mobile-dashboard {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
 
 /* When keyboard is open, extend portal to full screen (tab bar is hidden) */
 body.keyboard-open .mobile-messages-thread-portal {
   bottom: 0 !important;
+}
+
+/* When in DM view on mobile, always hide dashboard */
+body:has(.mobile-messages-thread-portal) .mobile-dashboard {
+  display: none !important;
 }
 
 /* Fix iOS input focus issues in messages */
@@ -1320,4 +1330,11 @@ body.keyboard-open .mobile-messages-thread-portal {
 /* Mobile messages portal - dark mode support */
 body.dark-mode .mobile-messages-thread-portal {
   background: #0f172a !important;
+}
+
+/* iOS keyboard handling - use env(keyboard-inset-height) when available */
+@supports (padding-bottom: env(keyboard-inset-height)) {
+  .mobile-messages-thread-portal {
+    padding-bottom: calc(12px + env(keyboard-inset-height, 0px) + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }

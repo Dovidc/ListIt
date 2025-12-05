@@ -1626,107 +1626,53 @@
         })
       );
 
-      // Track keyboard state for proper positioning on iOS
-      // The composer wrapper will be repositioned when keyboard opens
+      // Refs for portal elements
       const portalRef = useRef(null);
       const composerWrapperRef = useRef(null);
       const messagesAreaRef = useRef(null);
 
+      // Handle iOS keyboard - adjust portal padding to keep composer visible
       useEffect(() => {
         if (!isMobile || !showConversationOnMobile) return;
 
-        let animationFrameId = null;
-        let isKeyboardOpen = false;
+        let rafId = null;
 
-        const updateLayout = () => {
-          if (!window.visualViewport || !portalRef.current || !composerWrapperRef.current || !messagesAreaRef.current) return;
+        const adjustForKeyboard = () => {
+          if (!window.visualViewport || !portalRef.current) return;
 
           const vv = window.visualViewport;
-          // On iOS, when keyboard opens, visualViewport.height shrinks and offsetTop increases
-          // We need to position the composer at the bottom of the visible area
-          const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+          // Calculate how much the viewport has shrunk (keyboard height)
+          const keyboardHeight = window.innerHeight - vv.height;
 
           if (keyboardHeight > 100) {
-            // Keyboard is likely open
-            isKeyboardOpen = true;
-            document.body.classList.add('keyboard-open');
-            // Position composer just above where the keyboard starts
-            composerWrapperRef.current.style.position = 'fixed';
-            composerWrapperRef.current.style.bottom = `${keyboardHeight}px`;
-            composerWrapperRef.current.style.left = '12px';
-            composerWrapperRef.current.style.right = '12px';
-            composerWrapperRef.current.style.paddingBottom = '8px';
-            composerWrapperRef.current.style.background = '#f8fafc';
-            composerWrapperRef.current.style.zIndex = '1001';
-            // Shrink messages area to make room for fixed composer
-            const composerHeight = composerWrapperRef.current.offsetHeight || 60;
-            messagesAreaRef.current.style.marginBottom = `${composerHeight + 8}px`;
-          } else if (isKeyboardOpen) {
-            // Keyboard closed
-            isKeyboardOpen = false;
-            document.body.classList.remove('keyboard-open');
-            // Reset composer to normal flow
-            composerWrapperRef.current.style.position = '';
-            composerWrapperRef.current.style.bottom = '';
-            composerWrapperRef.current.style.left = '';
-            composerWrapperRef.current.style.right = '';
-            composerWrapperRef.current.style.paddingBottom = '';
-            composerWrapperRef.current.style.background = '';
-            composerWrapperRef.current.style.zIndex = '';
-            messagesAreaRef.current.style.marginBottom = '';
+            // Keyboard is open - add padding to keep composer above keyboard
+            portalRef.current.style.paddingBottom = `${keyboardHeight + 12}px`;
+          } else {
+            // Keyboard is closed - use safe area padding
+            portalRef.current.style.paddingBottom = '';
           }
         };
 
-        const handleFocusIn = (e) => {
-          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            // Immediately hide dashboard when input is focused (don't wait for keyboard)
-            document.body.classList.add('keyboard-open');
-            // Start continuous updates during keyboard animation
-            const keepUpdating = () => {
-              updateLayout();
-              animationFrameId = requestAnimationFrame(keepUpdating);
-            };
-            keepUpdating();
-            // Stop continuous updates after animation completes
-            setTimeout(() => {
-              cancelAnimationFrame(animationFrameId);
-              updateLayout();
-            }, 600);
-          }
+        const onViewportChange = () => {
+          // Cancel any pending frame
+          if (rafId) cancelAnimationFrame(rafId);
+          // Use RAF for smoother updates
+          rafId = requestAnimationFrame(adjustForKeyboard);
         };
 
-        const handleFocusOut = (e) => {
-          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            cancelAnimationFrame(animationFrameId);
-            setTimeout(() => {
-              const active = document.activeElement;
-              if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-                updateLayout();
-              }
-            }, 150);
-          }
-        };
-
-        const handleViewportChange = () => {
-          updateLayout();
-        };
-
-        document.addEventListener('focusin', handleFocusIn);
-        document.addEventListener('focusout', handleFocusOut);
         if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', handleViewportChange);
-          window.visualViewport.addEventListener('scroll', handleViewportChange);
+          window.visualViewport.addEventListener('resize', onViewportChange);
+          window.visualViewport.addEventListener('scroll', onViewportChange);
+          // Initial check
+          adjustForKeyboard();
         }
 
         return () => {
-          cancelAnimationFrame(animationFrameId);
-          document.removeEventListener('focusin', handleFocusIn);
-          document.removeEventListener('focusout', handleFocusOut);
+          if (rafId) cancelAnimationFrame(rafId);
           if (window.visualViewport) {
-            window.visualViewport.removeEventListener('resize', handleViewportChange);
-            window.visualViewport.removeEventListener('scroll', handleViewportChange);
+            window.visualViewport.removeEventListener('resize', onViewportChange);
+            window.visualViewport.removeEventListener('scroll', onViewportChange);
           }
-          document.body.classList.remove('keyboard-open');
         };
       }, [isMobile, showConversationOnMobile]);
 
@@ -1831,7 +1777,7 @@
         })
       );
 
-      // Mobile portal - full screen, keyboard handling done via refs above
+      // Mobile portal - full screen (dashboard is hidden via CSS when portal is present)
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           ref: portalRef,
@@ -1841,11 +1787,11 @@
             top: 0,
             left: 0,
             right: 0,
-            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+            bottom: 0,
             paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
-            paddingBottom: 12,
+            paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
             background: '#f8fafc',
             zIndex: 999,
             display: 'flex',
