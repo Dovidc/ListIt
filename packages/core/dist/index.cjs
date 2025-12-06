@@ -42,6 +42,10 @@ function createApiClient(options = {}) {
         requestInit.priority = meta.priority;
       }
 
+      if (meta.signal) {
+        requestInit.signal = meta.signal;
+      }
+
       const response = await fetchLike(resolveUrl(path), requestInit);
 
       if (response.status === 401) {
@@ -234,7 +238,7 @@ function createApiClient(options = {}) {
     let q = '';
     let loc = '';
     let page = 1;
-    let limit = 75;
+    let limit = 48;
     let sort = 'new';
     let cursor = null;
     let lat = null;
@@ -246,7 +250,7 @@ function createApiClient(options = {}) {
       q = typeof params.q === 'string' ? params.q : '';
       loc = typeof params.loc === 'string' ? params.loc : '';
       page = Number(params.page) || 1;
-      limit = Number(params.limit) || 75;
+      limit = Number(params.limit) || 48;
       sort = typeof params.sort === 'string' ? params.sort : 'new';
       cursor = params.cursor != null ? params.cursor : null;
       lat = Number.isFinite(params.lat) ? params.lat : null;

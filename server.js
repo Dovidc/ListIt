@@ -4481,7 +4481,7 @@ app.get('/api/listings', async (req, res) => {
     const hasUserCoords = Number.isFinite(userLat) && Number.isFinite(userLon);
     const isNearestSort = sort === 'nearest';
 
-    console.log('[listings API] lat:', req.query.lat, 'lon:', req.query.lon, 'hasUserCoords:', hasUserCoords);
+    console.log('[listings API] user coordinates provided:', hasUserCoords);
 
     // Distance calculation params (used for any sort when coords are available)
     const earthRadius = 6371000;

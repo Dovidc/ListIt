@@ -364,7 +364,10 @@
         setSort,
         hasNext,
         isFetchingListings,
+        listingError,
+        loadMore,
         sentinelRef,
+        isInfiniteScrollSupported,
         reloadMineOnly,
         refreshListings,
         toggleSold,
@@ -1338,24 +1341,69 @@
                             strokeLinecap: 'round',
                             strokeLinejoin: 'round'
                           },
-                            H('polyline', { points: '18 15 12 9 6 15' })
-                          )
-                        ),
+                          H('polyline', { points: '18 15 12 9 6 15' })
+                        )
+                      ),
 
-                        H(ListingsGrid, {
-                          items,
-                          ads,
-                          isMobile,
-                          onEnsureCover: ensureCover,
+                      listingError && H('div', {
+                        className: 'alert warning',
+                        style: {
+                          margin: '12px 0',
+                          display: 'flex',
+                          gap: 12,
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }
+                      },
+                        H('span', { style: { flex: 1 } }, listingError),
+                        H('button', {
+                          className: 'btn',
+                          onClick: () => refreshListings({ preserveExisting: true })
+                        }, 'Retry')
+                      ),
+
+                      H(ListingsGrid, {
+                        items,
+                        ads,
+                        isMobile,
+                        onEnsureCover: ensureCover,
                           onSelect: handleListingTileEvent,
-                          isLoading: isFetchingListings,
-                          hasMore: hasNext,
-                          sentinelRef
-                        }),
+                        isLoading: isFetchingListings,
+                        hasMore: hasNext,
+                        sentinelRef
+                      }),
 
-                        // "No more results" message shown below grid
-                        !isFetchingListings && !hasNext && items.length > 0 && H('div', {
+                      hasNext && !isFetchingListings && H('div', {
+                        style: {
+                          display: 'flex',
+                          justifyContent: 'center',
+                          padding: '14px 0'
+                        }
+                      },
+                        H('div', {
                           style: {
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 6
+                          }
+                        },
+                          H('span', {
+                            className: 'muted',
+                            style: { fontSize: 12 }
+                          }, isInfiniteScrollSupported
+                            ? 'More listings load as you scroll; tap below to fetch now.'
+                            : 'Auto-loading is limited here; tap below whenever you want more.'),
+                          H('button', {
+                            className: 'btn',
+                            onClick: () => loadMore?.()
+                          }, 'Load more')
+                        )
+                      ),
+
+                      // "No more results" message shown below grid
+                      !isFetchingListings && !hasNext && items.length > 0 && H('div', {
+                        style: {
                             display: 'flex',
                             justifyContent: 'center',
                             padding: '16px 0',
@@ -1363,9 +1411,9 @@
                           }
                         },
                           H('span', { className: 'muted' }, 'No more results')
-                        ),
+                      ),
 
-                        !items.length && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
+                      !items.length && !listingError && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
 
                         H(ListingModal, {
                           open: !!selectedListing,
