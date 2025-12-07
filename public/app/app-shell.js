@@ -98,7 +98,7 @@
     const { MessagesPanel, useMessageActions } = messagesFeature;
     const { AdminDashboard, useAdminListingActions } = adminFeature;
     const { ProfilePanel } = profileFeature;
-    const { ListingFormModal } = listingFormsFeature;
+    const { ListingFormModal, runAutoList } = listingFormsFeature;
     const { useAppPreferences } = preferencesFeature;
     const { usePushNotifications } = pushFeature;
     const { useAds } = adsFeature;
@@ -117,6 +117,7 @@
     assertFunction(useAdminListingActions, 'features.admin.useAdminListingActions');
     assertFunction(ProfilePanel, 'features.profile.ProfilePanel');
     assertFunction(ListingFormModal, 'features.listingForms.ListingFormModal');
+    assertFunction(runAutoList, 'features.listingForms.runAutoList');
     assertFunction(useAppPreferences, 'features.preferences.useAppPreferences');
     assertFunction(usePushNotifications, 'features.push.usePushNotifications');
     assertFunction(useAds, 'features.ads.useAds');
@@ -966,7 +967,7 @@
         return valid;
       }
 
-      function handleMobileFilesSelected(fileList) {
+      async function handleMobileFilesSelected(fileList) {
         if (!fileList || fileList.length === 0) {
           return;
         }
@@ -977,6 +978,38 @@
         if (mobileCreateMode === 'masslist') {
           setInitialMassListFiles(files);
           setShowMassList(true);
+          return;
+        }
+        if (autoListEnabled) {
+          setLoadingCount((c) => c + 1);
+          try {
+            // Bypass the edit form entirely: queue or run an auto-list job that
+            // uploads the images, applies AI suggestions, and creates the listing
+            // while we keep the editor hidden from the user.
+            const result = await runAutoList({
+              files,
+              location: '',
+              aiDescriptionEnabled,
+              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+              autoInquiryEnabled,
+              backgroundQueueEnabled,
+              enqueueListingJob,
+              onCreated: (createdListing) => {
+                if (createdListing?.id) {
+                  showRecentListingToast(createdListing);
+                }
+              }
+            });
+            if (!result?.queued) {
+              await refreshListings({ preserveExisting: true });
+              await reloadMineOnly();
+            }
+          } catch (err) {
+            console.error('Auto-list failed:', err);
+            alert(`Auto-list failed: ${err?.message || err}`);
+          } finally {
+            setLoadingCount((c) => Math.max(0, c - 1));
+          }
           return;
         }
         openListingEditor({ draft: null, files, originTab: tab });
