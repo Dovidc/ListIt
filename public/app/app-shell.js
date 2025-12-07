@@ -995,6 +995,11 @@
           return;
         }
         if (autoListEnabled) {
+          // Show the "listing in progress" toast for user feedback
+          if (typeof enqueueListingJob === 'function') {
+            enqueueListingJob(async () => {}); // No-op just to trigger toast
+          }
+
           // Fire-and-forget: enqueue job on server, don't wait for completion
           // Wrap in setTimeout to avoid blocking the UI thread on mobile
           setTimeout(async () => {
