@@ -400,7 +400,8 @@
       let hasNext = false;
       let nextCursor = null;
       if (res && typeof res === 'object') {
-        if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
+        if (typeof res.has_more === 'boolean') hasNext = res.has_more;
+        else if (typeof res.hasNext === 'boolean') hasNext = res.hasNext;
         else if (typeof res.next === 'boolean') hasNext = res.next;
         else if (Number.isFinite(res.total) && Number.isFinite(res.page)) {
           const shown = (res.page - 1) * limit + rows.length;
