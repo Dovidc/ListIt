@@ -4516,11 +4516,7 @@ app.get('/api/listings', async (req, res) => {
 
     } else {
 
-      if (Number.isFinite(rawCursorParam) && rawCursorParam > 0) {
-
-        page = rawCursorParam;
-
-      } else if (Number.isFinite(pageParam) && pageParam > 0) {
+      if (Number.isFinite(pageParam) && pageParam > 0) {
 
         page = pageParam;
 
@@ -4530,7 +4526,15 @@ app.get('/api/listings', async (req, res) => {
 
     const hasPage = page > 1;
 
-    const offset = hasPage ? (page - 1) * limit : 0;
+    // For non-cursor sorts (price_asc, price_desc), cursor IS the offset directly
+    // This handles variable page sizes correctly when scroll pace limiting kicks in
+    let offset;
+    if (!isCursorById && Number.isFinite(rawCursorParam) && rawCursorParam > 0) {
+      offset = rawCursorParam;
+    } else {
+      offset = hasPage ? (page - 1) * limit : 0;
+    }
+    console.log('[DEBUG] sort:', sort, 'isCursorById:', isCursorById, 'rawCursorParam:', rawCursorParam, 'page:', page, 'limit:', limit, 'offset:', offset);
 
 
 
@@ -4846,6 +4850,7 @@ app.get('/api/listings', async (req, res) => {
         sql += ' OFFSET @off';
 
         queryParams.off = offset;
+        console.log('[DEBUG price sort] page:', page, 'offset:', offset, 'limit:', limit);
 
       }
 
@@ -4857,11 +4862,15 @@ app.get('/api/listings', async (req, res) => {
 
       const items = has_more ? rows.slice(0, limit) : rows;
 
+      // For non-cursor sorts, return the next offset as cursor (not page number)
+      // This handles variable page sizes correctly
       const next_cursor = isCursorById
 
         ? (items.length ? items[items.length - 1].id : null)
 
-        : (has_more ? page + 1 : null);
+        : (has_more ? offset + items.length : null);
+
+      console.log('[DEBUG] returning: items.length:', items.length, 'has_more:', has_more, 'next_cursor:', next_cursor);
 
       const normalizedItems = items.map(r => {
 
