@@ -192,7 +192,7 @@
         };
       }, []);
 
-      const fetchPage = useCallback(async (cursor, replace) => {
+      const fetchPage = useCallback(async (cursor, replace, limitOverride) => {
         const reqId = ++requestIdRef.current;
         isLoadingRef.current = true;
         setIsLoading(true);
@@ -207,11 +207,12 @@
 
         try {
           // Build base params
+          const limit = Number.isFinite(limitOverride) ? limitOverride : pageSize;
           const params = {
             q: query?.trim() || '',
             loc: location?.trim() || '',
             cursor,
-            limit: pageSize,
+            limit,
             sort: sort || 'new'
           };
 
@@ -234,7 +235,7 @@
           // Stale request check
           if (reqId !== requestIdRef.current) return;
 
-          const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, pageSize);
+          const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, limit);
           const newRows = rows || [];
 
           setHasMore(!!hasNext);
@@ -256,7 +257,8 @@
 
           // Fetch covers for new listings
           if (newRows.length && typeof onCoversLoaded === 'function') {
-            const ids = (cursor == null ? newRows.slice(0, 24) : newRows).map(r => r.id);
+            const preloadCount = cursor == null ? Math.min(24, newRows.length) : newRows.length;
+            const ids = newRows.slice(0, preloadCount).map(r => r.id);
             if (ids.length) {
               try {
                 const covers = await api.getCoversBatch(ids, { silent: true });
@@ -298,9 +300,10 @@
         fetchPage(null, true);
       }, [fetchPage]);
 
-      const loadMore = useCallback(() => {
+      const loadMore = useCallback((options = {}) => {
         if (isLoadingRef.current || !cursorRef.current) return;
-        fetchPage(cursorRef.current, false);
+        const limitOverride = Number.isFinite(options?.limit) ? options.limit : undefined;
+        return fetchPage(cursorRef.current, false, limitOverride);
       }, [fetchPage]);
 
       const refresh = useCallback(async (preserveExisting = false) => {
@@ -403,11 +406,60 @@
     // Observes sentinel element for infinite scroll with throttling
     // Instagram-style: triggers early but throttles to prevent rapid calls
     // ============================================================
-    function useInfiniteScroll({ enabled, onLoadMore, getIsLoading, getCursor }) {
+    function useInfiniteScroll({ enabled, onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor }) {
       const sentinelRef = useRef(null);
       const lastLoadTimeRef = useRef(0);
       const throttleMs = 1000; // Minimum time between load attempts
       const [isSupported, setIsSupported] = useState(typeof IntersectionObserver !== 'undefined');
+      const [isPaceLimited, setIsPaceLimited] = useState(false);
+      const paceResetRef = useRef(null);
+      const fastLoadInFlightRef = useRef(false);
+      const lastScrollRef = useRef({ y: 0, t: Date.now() });
+
+      const triggerSmallBatchLoad = useCallback(() => {
+        if (fastLoadInFlightRef.current) return;
+        if (!onLoadMoreSmallBatch || getIsLoading() || !getCursor()) return;
+
+        fastLoadInFlightRef.current = true;
+        setIsPaceLimited(true);
+        if (paceResetRef.current) clearTimeout(paceResetRef.current);
+
+        Promise.resolve(onLoadMoreSmallBatch())
+          .catch(() => { /* silent - fall back to normal flow */ })
+          .finally(() => {
+            fastLoadInFlightRef.current = false;
+            paceResetRef.current = setTimeout(() => setIsPaceLimited(false), 500);
+          });
+      }, [onLoadMoreSmallBatch, getIsLoading, getCursor]);
+
+      useEffect(() => {
+        if (!enabled || typeof window === 'undefined') return;
+
+        const scrollSpeedThreshold = 2.4; // px per ms (~2400px/s)
+
+        const handleScroll = () => {
+          const now = Date.now();
+          const y = window.scrollY || 0;
+          const last = lastScrollRef.current;
+          const delta = Math.abs(y - last.y);
+          const dt = Math.max(16, now - last.t || 16);
+          const speed = delta / dt;
+          lastScrollRef.current = { y, t: now };
+
+          if (speed > scrollSpeedThreshold) {
+            setIsPaceLimited(true);
+            if (paceResetRef.current) clearTimeout(paceResetRef.current);
+            paceResetRef.current = setTimeout(() => setIsPaceLimited(false), 1200);
+            triggerSmallBatchLoad();
+          }
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+          window.removeEventListener('scroll', handleScroll);
+          if (paceResetRef.current) clearTimeout(paceResetRef.current);
+        };
+      }, [enabled, triggerSmallBatchLoad]);
 
       useEffect(() => {
         if (!enabled) return;
@@ -429,14 +481,19 @@
           if (now - lastLoadTimeRef.current < throttleMs) return;
           lastLoadTimeRef.current = now;
 
+          if (isPaceLimited && onLoadMoreSmallBatch) {
+            triggerSmallBatchLoad();
+            return;
+          }
+
           onLoadMore();
         }, { rootMargin: '400px' }); // Trigger earlier (400px) for smoother experience
 
         observer.observe(el);
         return () => observer.disconnect();
-      }, [enabled, onLoadMore, getIsLoading, getCursor]);
+      }, [enabled, onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor, isPaceLimited, triggerSmallBatchLoad]);
 
-      return { sentinelRef, isSupported };
+      return { sentinelRef, isSupported, isPaceLimited };
     }
 
     // ============================================================
@@ -652,10 +709,13 @@
       // City autocomplete
       const cityOptions = useCitySearch(locationQuery);
 
+      const fastScrollLimit = Math.max(12, Math.floor(pageSize / 3));
+
       // Infinite scroll
-      const { sentinelRef, isSupported: isInfiniteScrollSupported } = useInfiniteScroll({
+      const { sentinelRef, isSupported: isInfiniteScrollSupported, isPaceLimited } = useInfiniteScroll({
         enabled: currentTab === 'browse',
         onLoadMore: pagination.loadMore,
+        onLoadMoreSmallBatch: () => pagination.loadMore({ limit: fastScrollLimit }),
         getIsLoading: pagination.getIsLoading,
         getCursor: pagination.getCursor
       });
@@ -746,6 +806,7 @@
         isFetchingListings: pagination.isLoading,
         listingError: pagination.error,
         loadMore: pagination.loadMore,
+        isScrollPaceLimited: isPaceLimited,
 
         // Actions
         refreshListings,
