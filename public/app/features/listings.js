@@ -230,7 +230,7 @@
             }
           }
 
-          const res = await api.listAll(params, controller ? { signal: controller.signal } : undefined);
+          const res = await api.listAll(params, { signal: controller?.signal, silent: true });
 
           // Stale request check
           if (reqId !== requestIdRef.current) return;
@@ -385,7 +385,7 @@
         let alive = true;
         const timer = setTimeout(async () => {
           try {
-            const res = await api.searchCities(term);
+            const res = await api.searchCities(term, { silent: true });
             if (alive) setOptions(Array.isArray(res) ? res : []);
           } catch {
             if (alive) setOptions([]);
