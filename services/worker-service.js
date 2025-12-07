@@ -19,6 +19,7 @@ const {
 const defaultMailService = require('../mail-service');
 const pushServiceModule = require('../lib/push-service');
 const iosPushServiceModule = require('../lib/ios-push-service');
+const listingService = require('../lib/listing-service');
 const {
   recordWorkerEnqueued,
   recordWorkerProcessed,
@@ -173,6 +174,8 @@ class WorkerService {
         return await this.processStripeEvent(job.payload);
       case 'notify_nearby_listing':
         return await this.notifyNearbyListing(job.payload);
+      case 'auto_create_listing':
+        return await this.autoCreateListing(job.payload);
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
@@ -203,6 +206,9 @@ class WorkerService {
     }
     if (job.type === 'send_push' && job?.payload?.userId && job?.payload?.notification?.id) {
       return `push:${job.payload.userId}:${job.payload.notification.id}`;
+    }
+    if (job.type === 'auto_create_listing' && job?.payload?.jobId) {
+      return `auto_listing:${job.payload.jobId}`;
     }
     return null;
   }
@@ -444,6 +450,198 @@ class WorkerService {
       } catch (err) {
         console.warn('[Worker] iOS nearby push failed:', err?.message || err);
       }
+    }
+  }
+
+  /**
+   * Auto-create listing (fire-and-forget background job)
+   *
+   * Processes an auto_listing_jobs record:
+   * 1. Updates job status to 'processing'
+   * 2. Runs AI analysis if enabled
+   * 3. Creates the listing
+   * 4. Updates job with result
+   */
+  async autoCreateListing(payload) {
+    const { jobId } = payload || {};
+    if (!jobId) {
+      throw new Error('auto_create_listing: missing jobId');
+    }
+
+    console.log(`[Worker] Starting auto_create_listing for job ${jobId}`);
+
+    // Fetch the job record
+    const job = await db.prepare(`
+      SELECT * FROM auto_listing_jobs WHERE id = ?
+    `).get(jobId);
+
+    if (!job) {
+      throw new Error(`auto_create_listing: job ${jobId} not found`);
+    }
+
+    if (job.status === 'completed') {
+      console.log(`[Worker] Job ${jobId} already completed, skipping`);
+      return { listingId: job.listing_id };
+    }
+
+    if (job.status === 'failed' && job.retry_count >= 3) {
+      console.log(`[Worker] Job ${jobId} exceeded max retries, skipping`);
+      return { error: 'max_retries_exceeded' };
+    }
+
+    // Update job to processing status
+    await db.prepare(`
+      UPDATE auto_listing_jobs
+      SET status = 'processing',
+          processing_started_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(listingService.nowIso(), listingService.nowIso(), jobId);
+
+    try {
+      // Parse upload tokens
+      let uploadTokens;
+      try {
+        uploadTokens = JSON.parse(job.upload_tokens);
+      } catch {
+        throw new Error('invalid_upload_tokens');
+      }
+
+      if (!Array.isArray(uploadTokens) || !uploadTokens.length) {
+        throw new Error('no_upload_tokens');
+      }
+
+      // Resolve upload drafts
+      const drafts = await listingService.resolveUploadDrafts(job.user_id, uploadTokens);
+      if (!drafts.length) {
+        throw new Error('upload_drafts_expired');
+      }
+
+      // Get helper functions from dependencies
+      const { canonicalAssetUrl, isAllowedPublicUrl, maybeUpdateListingGeography, incrementCityCount } = this.listingHelpers || {};
+      if (!canonicalAssetUrl || !isAllowedPublicUrl) {
+        throw new Error('listing_helpers_not_configured');
+      }
+
+      // Prepare listing data
+      let title = '';
+      let description = '';
+      let tags = [];
+      let price = 0;
+
+      // Run AI analysis if enabled
+      if (job.ai_enabled && this.aiAnalyzer) {
+        try {
+          const imageUrls = drafts.map(d => canonicalAssetUrl(d.url)).filter(Boolean);
+          const aiResult = await this.aiAnalyzer({
+            images: imageUrls,
+            hint: job.hint || ''
+          });
+
+          if (aiResult) {
+            title = aiResult.title || '';
+            description = aiResult.description || '';
+            tags = aiResult.tags || [];
+            price = aiResult.suggested_price || 0;
+          }
+        } catch (aiErr) {
+          console.warn(`[Worker] AI analysis failed for job ${jobId}:`, aiErr?.message || aiErr);
+          // Fall back to hint-based description
+          title = listingService.shortTitle(job.hint || 'Item for sale');
+          description = listingService.synthesizeListingDescription(title, job.hint);
+          tags = listingService.fallbackTagsFromTitleDesc(title, job.hint);
+        }
+      } else {
+        // No AI - use hint-based fallback
+        title = listingService.shortTitle(job.hint || 'Item for sale');
+        description = listingService.synthesizeListingDescription(title, job.hint);
+        tags = listingService.fallbackTagsFromTitleDesc(title, job.hint);
+      }
+
+      // Run content moderation if moderator is configured
+      if (this.contentModerator) {
+        const imageUrls = drafts.map(d => canonicalAssetUrl(d.url)).filter(Boolean);
+        const flagged = await this.contentModerator({
+          title,
+          description,
+          imageUrls
+        });
+        if (flagged?.length) {
+          const error = new Error('moderation_flagged');
+          error.code = 'moderation_flagged';
+          error.flagged = flagged;
+          throw error;
+        }
+      }
+
+      // Create the listing
+      const listing = await listingService.createListingFromUploads({
+        userId: job.user_id,
+        uploads: drafts,
+        title,
+        description,
+        location: job.location,
+        price,
+        tags,
+        enableNearby: !!job.enable_nearby,
+        inquiryEnabled: !!job.inquiry_enabled,
+        lat: job.lat,
+        lon: job.lon,
+        canonicalAssetUrl,
+        isAllowedPublicUrl,
+        maybeUpdateListingGeography,
+        incrementCityCount
+      });
+
+      // Update job as completed
+      await db.prepare(`
+        UPDATE auto_listing_jobs
+        SET status = 'completed',
+            listing_id = ?,
+            result = ?,
+            completed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        listing.id,
+        JSON.stringify({ listingId: listing.id, title: listing.title }),
+        listingService.nowIso(),
+        listingService.nowIso(),
+        jobId
+      );
+
+      console.log(`[Worker] Auto-listing job ${jobId} completed, listing ${listing.id} created`);
+
+      // Publish nearby listing event if enabled
+      if (listing.enable_nearby && this.messageBus) {
+        this.messageBus.publish(TOPICS.NEARBY_LISTING_AVAILABLE, { listing });
+      }
+
+      return { listingId: listing.id };
+
+    } catch (err) {
+      // Update job as failed
+      const errorMsg = err?.message || 'unknown_error';
+      const newRetryCount = (job.retry_count || 0) + 1;
+      const finalStatus = newRetryCount >= 3 ? 'failed' : 'pending';
+
+      await db.prepare(`
+        UPDATE auto_listing_jobs
+        SET status = ?,
+            error = ?,
+            retry_count = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(finalStatus, errorMsg, newRetryCount, listingService.nowIso(), jobId);
+
+      console.error(`[Worker] Auto-listing job ${jobId} failed:`, errorMsg);
+
+      // Re-throw for worker retry mechanism if not at max retries
+      if (finalStatus === 'pending') {
+        throw err;
+      }
+
+      return { error: errorMsg };
     }
   }
 
@@ -745,7 +943,7 @@ class WorkerService {
   /**
    * Inject external dependencies
    */
-  setDependencies({ stripe, mailService, pushService, iosPushService } = {}) {
+  setDependencies({ stripe, mailService, pushService, iosPushService, listingHelpers, aiAnalyzer, contentModerator } = {}) {
     if (stripe) {
       this.stripe = stripe;
     }
@@ -757,6 +955,16 @@ class WorkerService {
     }
     if (iosPushService) {
       this.iosPushService = iosPushService;
+    }
+    // Listing-related dependencies for auto_create_listing
+    if (listingHelpers) {
+      this.listingHelpers = listingHelpers;
+    }
+    if (aiAnalyzer) {
+      this.aiAnalyzer = aiAnalyzer;
+    }
+    if (contentModerator) {
+      this.contentModerator = contentModerator;
     }
   }
 

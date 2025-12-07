@@ -292,6 +292,33 @@ export function createApiClient(options = {}) {
     body: JSON.stringify(payload || {})
   }, meta);
 
+  /**
+   * Enqueue a fire-and-forget auto-listing job.
+   * The listing will be created in the background even if the user closes the app.
+   */
+  const createAutoListing = (payload, meta) => request('/api/listings/auto', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  }, meta);
+
+  /**
+   * Get status of an auto-listing job.
+   */
+  const getAutoListingStatus = (jobId, meta) => request(`/api/listings/auto/${jobId}`, { method: 'GET' }, meta);
+
+  /**
+   * List all auto-listing jobs for the current user.
+   */
+  const listAutoListingJobs = (params = {}, meta) => {
+    const searchParams = new URLSearchParams();
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.offset) searchParams.set('offset', String(params.offset));
+    const query = searchParams.toString();
+    const url = '/api/listings/auto' + (query ? `?${query}` : '');
+    return request(url, { method: 'GET' }, meta);
+  };
+
   const updateListing = (id, payload, meta) => request(`/api/listings/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -513,6 +540,9 @@ export function createApiClient(options = {}) {
     listByUser,
     listMine,
     createListing,
+    createAutoListing,
+    getAutoListingStatus,
+    listAutoListingJobs,
     updateListing,
     markListingSold,
     deleteListing,

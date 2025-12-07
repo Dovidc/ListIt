@@ -487,6 +487,25 @@ if (process.env.EMBED_WORKER !== 'false') {
       );
       await embeddedWorker.start();
       app._embeddedWorker = embeddedWorker;
+
+      // Inject listing dependencies for auto_create_listing job (lazy binding)
+      // These functions are defined later in the file but accessible via closure
+      setTimeout(() => {
+        if (app._embeddedWorker) {
+          app._embeddedWorker.setDependencies({
+            listingHelpers: {
+              canonicalAssetUrl,
+              isAllowedPublicUrl,
+              maybeUpdateListingGeography,
+              incrementCityCount
+            },
+            aiAnalyzer: runAIAnalysis,
+            contentModerator: moderateListingContent
+          });
+          console.log('[Worker] Listing dependencies injected for auto_create_listing');
+        }
+      }, 100);
+
       console.log('[Worker] Embedded worker service started successfully');
     } catch (err) {
       console.error('[worker] Failed to start embedded worker:', err);
@@ -5534,7 +5553,248 @@ app.post(
 
   });
 
+/* ------------------------------------------------------------------ */
+/* Fire-and-forget Auto-listing Endpoints                             */
+/* ------------------------------------------------------------------ */
 
+/**
+ * POST /api/listings/auto
+ * Enqueue a fire-and-forget auto-listing job.
+ * The listing will be created in the background even if the user closes the app.
+ */
+app.post(
+  '/api/listings/auto',
+  auth,
+  writeLimiter,
+  (req, res, next) => {
+    if (isLockedAccount(req.user)) return respondLocked(res);
+    return next();
+  },
+  async (req, res) => {
+    try {
+      const {
+        upload_tokens,
+        location,
+        hint,
+        ai_enabled,
+        enable_nearby,
+        inquiry_enabled,
+        lat,
+        lon
+      } = req.body || {};
+
+      // Validate required fields
+      if (!location || typeof location !== 'string' || !location.trim()) {
+        return res.status(400).json({ error: 'location_required' });
+      }
+
+      const uploadTokensRaw = Array.isArray(upload_tokens)
+        ? upload_tokens
+        : (Array.isArray(req.body.uploadTokens) ? req.body.uploadTokens : []);
+
+      const uploadTokens = Array.from(new Set(
+        uploadTokensRaw
+          .map((token) => typeof token === 'string' ? token.trim() : '')
+          .filter(Boolean)
+      )).slice(0, 12);
+
+      if (!uploadTokens.length) {
+        return res.status(400).json({ error: 'upload_tokens_required' });
+      }
+
+      // Verify upload tokens exist
+      const tokenParams = { userId: req.user.id };
+      const placeholders = uploadTokens.map((_, idx) => {
+        const key = `t${idx}`;
+        tokenParams[key] = uploadTokens[idx];
+        return `@${key}`;
+      }).join(', ');
+
+      const existingDrafts = await db.prepare(`
+        SELECT COUNT(*) as cnt FROM listing_upload_drafts
+        WHERE user_id = @userId AND token IN (${placeholders})
+      `).get(tokenParams);
+
+      if (!existingDrafts || existingDrafts.cnt === 0) {
+        return res.status(400).json({ error: 'no_valid_upload_tokens' });
+      }
+
+      // Parse optional fields
+      const aiEnabled = ai_enabled !== false && ai_enabled !== 0 ? 1 : 0;
+      const enNearby = enable_nearby ? 1 : 0;
+      const inquiryEnabled = inquiry_enabled ? 1 : 0;
+      let safeLat = null;
+      let safeLon = null;
+      if (enNearby) {
+        safeLat = Number.isFinite(Number(lat)) ? Number(lat) : null;
+        safeLon = Number.isFinite(Number(lon)) ? Number(lon) : null;
+      }
+      const safeHint = typeof hint === 'string' ? hint.slice(0, 200) : '';
+
+      // Create job record
+      const now = nowIso();
+      const info = await db.prepare(`
+        INSERT INTO auto_listing_jobs (
+          user_id, upload_tokens, location, hint, ai_enabled,
+          enable_nearby, inquiry_enabled, lat, lon,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        req.user.id,
+        JSON.stringify(uploadTokens),
+        location.trim().slice(0, 80),
+        safeHint,
+        aiEnabled,
+        enNearby,
+        inquiryEnabled,
+        safeLat,
+        safeLon,
+        now,
+        now
+      );
+
+      const jobId = info.lastInsertRowid;
+
+      // Enqueue worker job
+      if (app._embeddedWorker && typeof app._embeddedWorker.enqueueJob === 'function') {
+        await app._embeddedWorker.enqueueJob({
+          type: 'auto_create_listing',
+          payload: { jobId },
+          priority: 5,
+          timeoutMs: 60000 // 60 second timeout for AI + listing creation
+        });
+        console.log(`[AutoListing] Job ${jobId} enqueued for user ${req.user.id}`);
+      } else {
+        // Worker not available - mark job as failed
+        await db.prepare(`
+          UPDATE auto_listing_jobs
+          SET status = 'failed', error = 'worker_unavailable', updated_at = ?
+          WHERE id = ?
+        `).run(nowIso(), jobId);
+        return res.status(503).json({ error: 'worker_unavailable' });
+      }
+
+      return res.status(202).json({
+        job_id: jobId,
+        status: 'pending',
+        message: 'Listing creation queued. Check status with GET /api/listings/auto/:jobId'
+      });
+
+    } catch (e) {
+      const msg = String(e?.message || e || 'db_error');
+      console.error('Auto-listing enqueue failed:', msg);
+      return res.status(500).json({ error: 'server_error', detail: msg });
+    }
+  }
+);
+
+/**
+ * GET /api/listings/auto/:jobId
+ * Poll the status of an auto-listing job.
+ */
+app.get('/api/listings/auto/:jobId', auth, async (req, res) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    if (!Number.isFinite(jobId)) {
+      return res.status(400).json({ error: 'invalid_job_id' });
+    }
+
+    const job = await db.prepare(`
+      SELECT id, user_id, status, listing_id, error, retry_count,
+             created_at, updated_at, processing_started_at, completed_at
+      FROM auto_listing_jobs
+      WHERE id = ? AND user_id = ?
+    `).get(jobId, req.user.id);
+
+    if (!job) {
+      return res.status(404).json({ error: 'job_not_found' });
+    }
+
+    const response = {
+      job_id: job.id,
+      status: job.status,
+      retry_count: job.retry_count,
+      created_at: job.created_at,
+      updated_at: job.updated_at
+    };
+
+    if (job.status === 'completed' && job.listing_id) {
+      response.listing_id = job.listing_id;
+      // Optionally fetch the listing
+      const listing = await db.prepare('SELECT * FROM listings WHERE id = ?').get(job.listing_id);
+      if (listing) {
+        if (Object.prototype.hasOwnProperty.call(listing, 'image_data')) {
+          listing.image_data = canonicalAssetUrl(listing.image_data);
+        }
+        response.listing = listing;
+      }
+    }
+
+    if (job.status === 'failed') {
+      response.error = job.error;
+    }
+
+    if (job.status === 'processing') {
+      response.processing_started_at = job.processing_started_at;
+    }
+
+    if (job.completed_at) {
+      response.completed_at = job.completed_at;
+    }
+
+    return res.json(response);
+
+  } catch (e) {
+    const msg = String(e?.message || e || 'db_error');
+    console.error('Auto-listing status check failed:', msg);
+    return res.status(500).json({ error: 'server_error', detail: msg });
+  }
+});
+
+/**
+ * GET /api/listings/auto
+ * List all auto-listing jobs for the current user.
+ */
+app.get('/api/listings/auto', auth, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const jobs = await db.prepare(`
+      SELECT id, status, listing_id, error, retry_count,
+             created_at, updated_at, completed_at
+      FROM auto_listing_jobs
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(req.user.id, limit, offset);
+
+    const total = await db.prepare(`
+      SELECT COUNT(*) as cnt FROM auto_listing_jobs WHERE user_id = ?
+    `).get(req.user.id);
+
+    return res.json({
+      jobs: (jobs || []).map(job => ({
+        job_id: job.id,
+        status: job.status,
+        listing_id: job.listing_id,
+        error: job.error,
+        retry_count: job.retry_count,
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+        completed_at: job.completed_at
+      })),
+      total: total?.cnt || 0,
+      limit,
+      offset
+    });
+
+  } catch (e) {
+    const msg = String(e?.message || e || 'db_error');
+    console.error('Auto-listing list failed:', msg);
+    return res.status(500).json({ error: 'server_error', detail: msg });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 
@@ -6991,7 +7251,110 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
 });
 
+/**
+ * Run AI analysis (server-side, for worker use)
+ * Extracted from POST /api/ai/analyze for reuse in auto_create_listing worker job
+ *
+ * @param {Object} params
+ * @param {string[]} params.images - Array of image URLs
+ * @param {string} params.hint - Optional user hint
+ * @returns {Promise<{title: string, description: string, tags: string[], suggested_price: number|undefined}>}
+ */
+async function runAIAnalysis({ images, hint }) {
+  const MAX_AI_IMAGES = 8;
+  const rawImages = Array.isArray(images) ? images.slice(0, MAX_AI_IMAGES) : [];
+  const cleanHint = String(hint || '').slice(0, 200);
 
+  const validImages = [];
+  for (const raw of rawImages) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const canonical = canonicalAssetUrl(trimmed);
+    const normalized = (typeof canonical === 'string' && canonical) ? canonical : trimmed;
+    if (!isAllowedPublicUrl(normalized)) continue;
+    validImages.push(normalized);
+  }
+
+  if (!validImages.length) {
+    throw new Error('no_valid_images');
+  }
+
+  const client = getOpenAIClient();
+  if (!client) {
+    // Fallback without AI
+    const fallbackTitle = shortTitle(cleanHint || 'Item for sale');
+    const fallbackTags = normalizeTags(fallbackTagsFromTitleDesc(fallbackTitle, cleanHint)).split(',').filter(Boolean);
+    const fallbackDesc = synthesizeListingDescription(fallbackTitle, cleanHint);
+    return { title: fallbackTitle, description: fallbackDesc, tags: fallbackTags.slice(0, 50) };
+  }
+
+  const openAIImages = await Promise.all(validImages.map((img) => toOpenAIImageUrl(img)));
+
+  // Build content for GPT
+  const content = [];
+  content.push({
+    type: 'text',
+    text: [
+      'You are a listing assistant for a local marketplace.',
+      'Analyze the item images and output STRICT JSON with:',
+      '"title": concise <=80 chars, no emojis;',
+      '"description": <=200 chars, objective tone focusing on verifiable condition/defects (including less-visible issues) and never assuming accessories unless the user hint confirms them;',
+      '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
+      '"price_usd": fair used-market price in USD as a number;',
+      'When damage, wear, or missing parts are visible, explicitly mention it in the description.',
+      'Describe only what can be confirmed from the photos or user hint; avoid promising inclusions.',
+      'If condition is unclear, say "Condition unclear" rather than guessing.',
+      'Return ONLY JSON.'
+    ].join('\n')
+  });
+
+  if (cleanHint) content.push({ type: 'text', text: `User hint: ${cleanHint}` });
+
+  for (const img of openAIImages) {
+    if (typeof img === 'string' && img.trim()) {
+      content.push({ type: 'image_url', image_url: { url: img.trim() } });
+    }
+  }
+
+  const resp = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    messages: [{ role: 'user', content }],
+    response_format: { type: 'json_object' }
+  });
+
+  const txt = resp.choices?.[0]?.message?.content || '{}';
+  let parsed = {};
+  try { parsed = JSON.parse(txt); } catch { }
+
+  let title = shortTitle(parsed.title || '');
+  let tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+  let priceNum = Number(parsed.price_usd);
+  let description = (parsed.description || '').toString().trim();
+  if (description.length > 400) description = description.slice(0, 400);
+
+  const tagStr = normalizeTags(tags);
+  const outTags = tagStr ? tagStr.split(',') : [];
+  if (!title) title = 'Item for sale';
+  if (!description) {
+    description = synthesizeListingDescription(title, cleanHint);
+  }
+
+  let suggested_price;
+  if (!Number.isNaN(priceNum)) {
+    priceNum = Math.min(Math.max(priceNum, 1), 100000);
+    suggested_price = Math.round(priceNum * 100) / 100;
+  }
+
+  if (outTags.length < 8) {
+    const extra = fallbackTagsFromTitleDesc(title, cleanHint);
+    const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 50);
+    return { title, description, tags: merged, suggested_price };
+  }
+
+  return { title, description, tags: outTags.slice(0, 50), suggested_price };
+}
 
 /* ------------------------------------------------------------------ */
 
