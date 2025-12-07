@@ -395,7 +395,8 @@
     const {
       SmartImage,
       ListingFormModal,
-      CompactListingForm
+      CompactListingForm,
+      runAutoList
     } = listingFormsFeatureFactory({
       React: runtimeReact,
       ReactDOM: runtimeReactDOM,
@@ -506,7 +507,7 @@
         messages: { MessagesPanel, useMessageActions },
         admin: { AdminDashboard, useAdminListingActions },
         profile: { ProfilePanel },
-        listingForms: { ListingFormModal },
+        listingForms: { ListingFormModal, runAutoList },
         preferences: { useAppPreferences },
         push: { usePushNotifications },
         ads: { useAds },
