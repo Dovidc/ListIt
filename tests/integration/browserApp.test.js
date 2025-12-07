@@ -108,7 +108,8 @@ describe('browser app integration', () => {
     const listingFormsFeature = {
       SmartImage: jest.fn(),
       ListingFormModal: jest.fn(),
-      CompactListingForm: jest.fn()
+      CompactListingForm: jest.fn(),
+      runAutoList: jest.fn()
     };
 
     const features = {
