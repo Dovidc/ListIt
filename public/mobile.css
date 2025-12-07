@@ -1044,6 +1044,9 @@ main {
   padding-bottom: calc(14px + env(safe-area-inset-bottom));
   z-index: 1000;
   min-height: 70px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Add padding to body so content isn't hidden behind nav */
@@ -1084,6 +1087,10 @@ body {
   transition: transform 0.1s ease;
   flex-shrink: 0;
   /* Prevent squishing */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 .mobile-dashboard__plus-btn:active {
