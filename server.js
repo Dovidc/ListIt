@@ -5850,13 +5850,13 @@ app.post(
           const token = require('crypto').randomBytes(16).toString('hex');
           await db.prepare(`
             INSERT INTO listing_upload_drafts (
-              user_id, token, url, s3_key, width, height, bytes, created_at
+              user_id, token, key, url, width, height, bytes, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             req.user.id,
             token,
-            s3Result.publicUrl,
             s3Result.Key,
+            s3Result.publicUrl,
             img.width || 0,
             img.height || 0,
             buffer.length,
