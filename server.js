@@ -5565,14 +5565,46 @@ app.post(
  */
 app.post(
   '/api/listings/auto',
-  auth,
+  // Handle sendBeacon requests that pass auth token in body
+  (req, res, next) => {
+    if (!req.user && req.body?._authToken) {
+      try {
+        const decoded = jwt.verify(req.body._authToken, JWT_SECRET);
+        if (decoded?.id) {
+          // Attach user to request for downstream middleware
+          req.beaconAuth = true;
+          req.beaconUserId = decoded.id;
+        }
+      } catch (e) {
+        // Invalid token, let auth middleware handle it
+      }
+    }
+    next();
+  },
+  // Modified auth that accepts beacon auth
+  async (req, res, next) => {
+    if (req.beaconAuth && req.beaconUserId) {
+      // Beacon auth - load user from DB
+      try {
+        const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.beaconUserId);
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      } catch (e) {
+        console.error('[BeaconAuth] Error loading user:', e);
+      }
+    }
+    // Fall back to normal auth
+    return auth(req, res, next);
+  },
   writeLimiter,
   (req, res, next) => {
     if (isLockedAccount(req.user)) return respondLocked(res);
     return next();
   },
   async (req, res) => {
-    console.log('[AutoListing API] POST /api/listings/auto called by user', req.user?.id);
+    console.log('[AutoListing API] POST /api/listings/auto called by user', req.user?.id, req.beaconAuth ? '(beacon)' : '');
     try {
       const {
         upload_tokens,

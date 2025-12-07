@@ -240,15 +240,49 @@
         // Step 4: Call the fire-and-forget API
         // This enqueues the job on the server - the listing will be created
         // even if the user closes the app
+
+        // Show toast NOW - uploads done, about to call API
+        if (typeof enqueueListingJob === 'function') {
+          try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+        }
+
         console.log('[AutoList] Calling createAutoListing with payload:', payload);
-        const result = await api.createAutoListing(payload);
+
+        // Use sendBeacon for true fire-and-forget on mobile (survives app close/screen off)
+        // sendBeacon is designed to complete even when page is unloading
+        let result = null;
+        const beaconUrl = '/api/listings/auto';
+        const beaconPayload = JSON.stringify(payload);
+
+        // Try sendBeacon first for maximum reliability on mobile
+        if (typeof navigator.sendBeacon === 'function') {
+          try {
+            // sendBeacon needs auth token in the payload since we can't set headers
+            const token = typeof api.getAuthToken === 'function' ? api.getAuthToken() : null;
+            const beaconData = new Blob([JSON.stringify({ ...payload, _authToken: token })], { type: 'application/json' });
+            const sent = navigator.sendBeacon(beaconUrl, beaconData);
+            console.log('[AutoList] sendBeacon result:', sent);
+            if (sent) {
+              // sendBeacon doesn't return response, assume success
+              // The job will be created even if we don't get confirmation
+              result = { job_id: 'beacon-' + Date.now(), beacon: true };
+            }
+          } catch (e) {
+            console.warn('[AutoList] sendBeacon failed, falling back to fetch:', e);
+          }
+        }
+
+        // Fall back to regular fetch if sendBeacon failed or unavailable
+        if (!result) {
+          result = await api.createAutoListing(payload);
+        }
 
         if (!result?.job_id) {
           console.error('[AutoList] No job_id in response:', result);
           throw new Error('Failed to enqueue auto-listing job');
         }
 
-        console.log('[AutoList] Job enqueued:', result.job_id);
+        console.log('[AutoList] Job enqueued:', result.job_id, result.beacon ? '(via beacon)' : '');
 
         // Notify caller that job was queued
         try { onJobQueued?.(result); } catch (e) { console.warn('[AutoList] onJobQueued callback error:', e); }

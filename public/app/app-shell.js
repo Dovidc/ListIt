@@ -995,13 +995,8 @@
           return;
         }
         if (autoListEnabled) {
-          // Show the "listing in progress" toast for user feedback
-          if (typeof enqueueListingJob === 'function') {
-            enqueueListingJob(async () => {}); // No-op just to trigger toast
-          }
-
           // Fire-and-forget: enqueue job on server, don't wait for completion
-          // Wrap in setTimeout to avoid blocking the UI thread on mobile
+          // Toast shows AFTER uploads complete, right before API call (minimizes failure window)
           setTimeout(async () => {
             try {
               console.log('[Mobile AutoList] Starting with', files.length, 'files');
@@ -1012,7 +1007,7 @@
                 autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
                 autoInquiryEnabled,
                 backgroundQueueEnabled,
-                enqueueListingJob,
+                enqueueListingJob, // Used to show toast right before API call
                 reloadMine: reloadMineOnly,
                 reloadAll: refreshListings,
                 onCreated: (createdListing) => {

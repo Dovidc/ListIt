@@ -583,7 +583,17 @@
       finalizeUpload,  
       getLegalStatus,  
       getLegalDocuments,  
-      acceptLegal  
+      acceptLegal,  
+      // Helper to get auth token for sendBeacon (reads from cookie)  
+      getAuthToken: () => {  
+        if (typeof document === 'undefined') return null;  
+        try {  
+          const match = document.cookie.match(/(?:^|;\s*)token=([^;]*)/);  
+          return match ? decodeURIComponent(match[1]) : null;  
+        } catch (e) {  
+          return null;  
+        }  
+      }  
     };  
   }  
     
