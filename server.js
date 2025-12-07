@@ -490,7 +490,8 @@ if (process.env.EMBED_WORKER !== 'false') {
 
       // Inject listing dependencies for auto_create_listing job (lazy binding)
       // These functions are defined later in the file but accessible via closure
-      setTimeout(() => {
+      // Use setImmediate to ensure all module code has executed
+      setImmediate(() => {
         if (app._embeddedWorker) {
           app._embeddedWorker.setDependencies({
             listingHelpers: {
@@ -504,7 +505,7 @@ if (process.env.EMBED_WORKER !== 'false') {
           });
           console.log('[Worker] Listing dependencies injected for auto_create_listing');
         }
-      }, 100);
+      });
 
       console.log('[Worker] Embedded worker service started successfully');
     } catch (err) {

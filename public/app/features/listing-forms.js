@@ -118,149 +118,192 @@
       onError,
       onJobQueued
     } = {}) {
-      const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
-      if (!validFiles.length) {
-        throw new Error('No images provided for auto-listing.');
-      }
-
-      // Step 1: Upload all images to get upload tokens
-      const uploadResults = await Promise.allSettled(validFiles.map(uploadFileDraft));
-      const uploads = uploadResults
-        .filter(r => r.status === 'fulfilled' && r.value?.uploadToken)
-        .map(r => r.value);
-      if (!uploads.length) throw new Error('No images uploaded successfully');
-
-      const uploadTokens = uploads.map((u) => u.uploadToken).filter(Boolean);
-
-      // Step 2: Determine location and coordinates
-      const manualLocation = String(location || '').trim();
-      let locAuto = manualLocation;
-      let latAuto = null;
-      let lonAuto = null;
-      let enableNearbyAuto = false;
-      let cachedCoords = null;
-
-      async function ensureCoords() {
-        if (cachedCoords) return cachedCoords;
-        cachedCoords = await fetchCoordsAndReverse();
-        return cachedCoords;
-      }
-
-      if (autoPostNearbyEnabled) {
-        try {
-          const c = await ensureCoords();
-          enableNearbyAuto = true;
-          latAuto = c.lat;
-          lonAuto = c.lon;
-          if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
-        } catch (_) {
-          enableNearbyAuto = false;
+      try {
+        const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+        if (!validFiles.length) {
+          throw new Error('No images provided for auto-listing.');
         }
-      }
 
-      if (!locAuto) {
-        try {
-          const c = await ensureCoords();
-          locAuto = formatLocationDisplay(c, c?.display || '');
-          if (enableNearbyAuto && c) {
-            latAuto = c.lat;
-            lonAuto = c.lon;
+        // Check if createAutoListing is available
+        if (typeof api.createAutoListing !== 'function') {
+          console.error('api.createAutoListing not available, falling back to legacy flow');
+          throw new Error('Auto-listing API not available');
+        }
+
+        // Step 1: Upload all images to get upload tokens
+        console.log('[AutoList] Uploading', validFiles.length, 'files...');
+        const uploadResults = await Promise.allSettled(validFiles.map(uploadFileDraft));
+        const uploads = uploadResults
+          .filter(r => r.status === 'fulfilled' && r.value?.uploadToken)
+          .map(r => r.value);
+
+        if (!uploads.length) {
+          const failedCount = uploadResults.filter(r => r.status === 'rejected').length;
+          console.error('[AutoList] All uploads failed:', uploadResults);
+          throw new Error(`Image upload failed (${failedCount} errors)`);
+        }
+
+        const uploadTokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+        console.log('[AutoList] Got', uploadTokens.length, 'upload tokens');
+
+        // Step 2: Determine location and coordinates
+        const manualLocation = String(location || '').trim();
+        let locAuto = manualLocation;
+        let latAuto = null;
+        let lonAuto = null;
+        let enableNearbyAuto = false;
+        let cachedCoords = null;
+
+        async function ensureCoords() {
+          if (cachedCoords) return cachedCoords;
+          try {
+            cachedCoords = await fetchCoordsAndReverse();
+            return cachedCoords;
+          } catch (err) {
+            console.warn('[AutoList] Failed to get coords:', err);
+            return null;
           }
-        } catch (_) { }
-      }
+        }
 
-      if (!locAuto) {
-        locAuto = 'Unknown location';
-      }
-
-      // Step 3: Build payload for fire-and-forget API
-      const payload = {
-        upload_tokens: uploadTokens,
-        location: locAuto,
-        hint: '', // Could be used for user hints in the future
-        ai_enabled: aiDescriptionEnabled !== false,
-        enable_nearby: enableNearbyAuto,
-        inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
-      };
-
-      if (enableNearbyAuto && latAuto != null && lonAuto != null) {
-        payload.lat = latAuto;
-        payload.lon = lonAuto;
-      }
-
-      // Step 4: Call the fire-and-forget API
-      // This enqueues the job on the server - the listing will be created
-      // even if the user closes the app
-      const result = await api.createAutoListing(payload);
-
-      if (!result?.job_id) {
-        throw new Error('Failed to enqueue auto-listing job');
-      }
-
-      // Notify caller that job was queued
-      onJobQueued?.(result);
-
-      // Step 5: Poll for completion (optional, for immediate feedback)
-      // Only poll if we have reload functions and want to show the result
-      const mineFn = reloadMineRef?.current ?? reloadMine;
-      const allFn = reloadAllRef?.current ?? reloadAll;
-
-      if (mineFn || allFn || onCreated) {
-        // Start polling in the background
-        pollAutoListingJob({
-          jobId: result.job_id,
-          onCompleted: async (listing) => {
-            try { await mineFn?.(); } catch { }
-            try { await allFn?.({ preserveExisting: true }); } catch { }
-            onCreated?.(listing);
-          },
-          onFailed: (error) => {
-            console.error('Auto-listing job failed:', error);
-            onError?.(new Error(error || 'Auto-listing failed'));
+        if (autoPostNearbyEnabled) {
+          try {
+            const c = await ensureCoords();
+            if (c && c.lat != null && c.lon != null) {
+              enableNearbyAuto = true;
+              latAuto = c.lat;
+              lonAuto = c.lon;
+              if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
+            }
+          } catch (err) {
+            console.warn('[AutoList] Nearby coords failed:', err);
+            enableNearbyAuto = false;
           }
-        });
-      }
+        }
 
-      return { queued: true, jobId: result.job_id };
+        if (!locAuto) {
+          try {
+            const c = await ensureCoords();
+            if (c) {
+              locAuto = formatLocationDisplay(c, c?.display || '');
+              if (enableNearbyAuto) {
+                latAuto = c.lat;
+                lonAuto = c.lon;
+              }
+            }
+          } catch (err) {
+            console.warn('[AutoList] Location lookup failed:', err);
+          }
+        }
+
+        if (!locAuto) {
+          locAuto = 'Unknown location';
+        }
+
+        // Step 3: Build payload for fire-and-forget API
+        const payload = {
+          upload_tokens: uploadTokens,
+          location: locAuto,
+          hint: '', // Could be used for user hints in the future
+          ai_enabled: aiDescriptionEnabled !== false,
+          enable_nearby: enableNearbyAuto,
+          inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
+        };
+
+        if (enableNearbyAuto && latAuto != null && lonAuto != null) {
+          payload.lat = latAuto;
+          payload.lon = lonAuto;
+        }
+
+        // Step 4: Call the fire-and-forget API
+        // This enqueues the job on the server - the listing will be created
+        // even if the user closes the app
+        console.log('[AutoList] Calling createAutoListing with payload:', payload);
+        const result = await api.createAutoListing(payload);
+
+        if (!result?.job_id) {
+          console.error('[AutoList] No job_id in response:', result);
+          throw new Error('Failed to enqueue auto-listing job');
+        }
+
+        console.log('[AutoList] Job enqueued:', result.job_id);
+
+        // Notify caller that job was queued
+        try { onJobQueued?.(result); } catch (e) { console.warn('[AutoList] onJobQueued callback error:', e); }
+
+        // Step 5: Poll for completion (optional, for immediate feedback)
+        // Only poll if we have reload functions and want to show the result
+        const mineFn = reloadMineRef?.current ?? reloadMine;
+        const allFn = reloadAllRef?.current ?? reloadAll;
+
+        if (mineFn || allFn || onCreated) {
+          // Start polling in the background
+          pollAutoListingJob({
+            jobId: result.job_id,
+            onCompleted: async (listing) => {
+              try { await mineFn?.(); } catch { }
+              try { await allFn?.({ preserveExisting: true }); } catch { }
+              try { onCreated?.(listing); } catch (e) { console.warn('[AutoList] onCreated callback error:', e); }
+            },
+            onFailed: (error) => {
+              console.error('Auto-listing job failed:', error);
+              try { onError?.(new Error(error || 'Auto-listing failed')); } catch (e) { console.warn('[AutoList] onError callback error:', e); }
+            }
+          });
+        }
+
+        return { queued: true, jobId: result.job_id };
+      } catch (err) {
+        console.error('[AutoList] Error:', err);
+        throw err;
+      }
     }
 
     // Poll for auto-listing job completion
     // This runs in the background and calls callbacks when the job completes
-    async function pollAutoListingJob({ jobId, onCompleted, onFailed, maxAttempts = 60, intervalMs = 2000 }) {
+    function pollAutoListingJob({ jobId, onCompleted, onFailed, maxAttempts = 60, intervalMs = 2000 }) {
+      if (!jobId || typeof api.getAutoListingStatus !== 'function') {
+        console.warn('[AutoList] Cannot poll - missing jobId or API method');
+        return;
+      }
+
       let attempts = 0;
+      let stopped = false;
 
       const poll = async () => {
+        if (stopped) return;
         attempts++;
+
         try {
           const status = await api.getAutoListingStatus(jobId);
 
-          if (status.status === 'completed' && status.listing) {
-            onCompleted?.(status.listing);
+          if (status?.status === 'completed' && status.listing) {
+            stopped = true;
+            try { onCompleted?.(status.listing); } catch (e) { console.warn('[AutoList] onCompleted error:', e); }
             return;
           }
 
-          if (status.status === 'failed') {
-            onFailed?.(status.error || 'Job failed');
+          if (status?.status === 'failed') {
+            stopped = true;
+            try { onFailed?.(status.error || 'Job failed'); } catch (e) { console.warn('[AutoList] onFailed error:', e); }
             return;
           }
 
           // Still pending or processing - continue polling
-          if (attempts < maxAttempts) {
+          if (attempts < maxAttempts && !stopped) {
             setTimeout(poll, intervalMs);
-          } else {
-            // Max attempts reached - job may still complete, but we stop polling
-            console.warn(`Auto-listing job ${jobId} polling timed out after ${maxAttempts} attempts`);
+          } else if (!stopped) {
+            console.warn(`[AutoList] Job ${jobId} polling timed out after ${maxAttempts} attempts`);
           }
         } catch (err) {
-          console.error('Failed to poll auto-listing status:', err);
-          if (attempts < maxAttempts) {
+          console.error('[AutoList] Poll error:', err);
+          if (attempts < maxAttempts && !stopped) {
             setTimeout(poll, intervalMs * 2); // Back off on errors
           }
         }
       };
 
       // Start polling after a short delay (give server time to start processing)
-      setTimeout(poll, 1000);
+      setTimeout(poll, 1500);
     }
 
     function SmartImage({
@@ -439,6 +482,13 @@
       const [aiErr, setAiErr] = useState('');
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
+      const mountedRef = useRef(true);
+
+      // Track mounted state to avoid setState on unmounted component
+      useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+      }, []);
 
       // Use refs to ensure background jobs always have access to latest reload functions
       const reloadMineRef = useRef(reloadMine);
@@ -608,6 +658,7 @@
 
         autoRunning.current = true;
         setAutoBusy(true);
+
         runAutoList({
           files,
           location,
@@ -618,18 +669,30 @@
           enqueueListingJob,
           reloadMineRef,
           reloadAllRef,
-          onCreated: (created) => onSaved?.(created),
-          onError: () => setAutoBusy(false)
+          onCreated: (created) => {
+            if (mountedRef.current) onSaved?.(created);
+          },
+          onError: (err) => {
+            if (mountedRef.current) setAutoBusy(false);
+          }
         }).then((result) => {
           if (result?.queued) {
+            // Job is queued on server - close the form
+            // Don't update state after this since component will unmount
             onCancel?.();
           }
         }).catch((err) => {
           console.error('Auto-list failed:', err);
-          alert(`Auto-list failed: ${err?.message || err}`);
+          if (mountedRef.current) {
+            alert(`Auto-list failed: ${err?.message || err}`);
+            setAutoBusy(false);
+          }
         }).finally(() => {
           autoRunning.current = false;
-          setAutoBusy(false);
+          // Only update state if still mounted
+          if (mountedRef.current) {
+            setAutoBusy(false);
+          }
         });
       }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved, location]);
 
