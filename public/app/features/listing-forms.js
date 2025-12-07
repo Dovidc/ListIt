@@ -97,6 +97,136 @@
       padding: '10px'
     });
 
+    // Shared helper used by mobile flows to fully create a listing without rendering
+    // the edit screen. It uploads the provided images, asks AI for metadata, applies
+    // nearby-posting preferences, and either creates the listing immediately or
+    // enqueues it as a background job. Callers can supply callbacks to react to
+    // success or failure while keeping the UI hidden.
+    async function runAutoList({
+      files,
+      location,
+      aiDescriptionEnabled,
+      autoPostNearbyEnabled,
+      autoInquiryEnabled,
+      backgroundQueueEnabled,
+      enqueueListingJob,
+      onCreated,
+      onError
+    } = {}) {
+      const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+      if (!validFiles.length) {
+        throw new Error('No images provided for auto-listing.');
+      }
+
+      // Core job that actually uploads the photos, derives metadata, and
+      // performs the create listing call. This is shared between the immediate
+      // path and the queued path below so behavior stays consistent.
+      const runAutoListJob = async () => {
+        const uploadResults = await Promise.allSettled(validFiles.map(uploadFileDraft));
+        const uploads = uploadResults
+          .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
+          .map(r => r.value);
+        if (!uploads.length) throw new Error('No images uploaded successfully');
+
+        let ai = {};
+        let aiDescription = '';
+        try {
+          const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
+          if (aiSources.length) {
+            ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
+          }
+        } catch (_) { }
+
+        const parsedPrice = Number(ai.suggested_price);
+        const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+        const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+        if (rawDescription && aiDescriptionEnabled) {
+          aiDescription = rawDescription.slice(0, 400);
+        }
+
+        const manualLocation = String(location || '').trim();
+        let locAuto = manualLocation;
+        let latAuto = null;
+        let lonAuto = null;
+        let enableNearbyAuto = 0;
+        let cachedCoords = null;
+
+        async function ensureCoords() {
+          if (cachedCoords) return cachedCoords;
+          cachedCoords = await fetchCoordsAndReverse();
+          return cachedCoords;
+        }
+
+        if (autoPostNearbyEnabled) {
+          try {
+            const c = await ensureCoords();
+            enableNearbyAuto = 1;
+            latAuto = c.lat; lonAuto = c.lon;
+            if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
+          } catch (_) {
+            enableNearbyAuto = 0;
+          }
+        }
+
+        if (!locAuto) {
+          try {
+            const c = await ensureCoords();
+            locAuto = formatLocationDisplay(c, c?.display || '');
+            if (enableNearbyAuto && c) {
+              latAuto = c.lat;
+              lonAuto = c.lon;
+            }
+          } catch (_) { }
+        }
+
+        if (!locAuto) {
+          locAuto = 'Unknown location';
+        }
+
+        const payload = {
+          title: (ai.title || 'Item for sale').toString().slice(0, 80),
+          description: aiDescription || 'No description',
+          location: locAuto || '',
+          price: safePrice,
+          tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+          enable_nearby: enableNearbyAuto,
+          upload_tokens: uploads.map((u) => u.uploadToken)
+        };
+        if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
+
+        const inquiryEnabled = typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true;
+        const created = await api.createListing(payload);
+        if (!created?.id) throw new Error('Create failed');
+        if (inquiryEnabled && created?.id) {
+          try {
+            await api.updateListing(created.id, { inquiry_enabled: 1 });
+          } catch (err) {
+            console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
+          }
+        }
+        return created;
+      };
+
+      if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
+        enqueueListingJob(async () => {
+          try {
+            const created = await runAutoListJob();
+            onCreated?.(created);
+          } catch (err) {
+            console.error('Auto-list failed:', err);
+            onError?.(err);
+            alert(`Auto-list failed: ${err?.message || err}`);
+          }
+        });
+        return { queued: true };
+      }
+
+      const created = await runAutoListJob();
+      onCreated?.(created);
+      return { queued: false, created };
+    }
+
     function SmartImage({
       src,
       alt = '',
@@ -431,123 +561,29 @@
         if (autoRunning.current) return;
 
         autoRunning.current = true;
-
-        const runAutoListJob = async () => {
-          const uploadResults = await Promise.allSettled(files.map(uploadFileDraft));
-          const uploads = uploadResults
-            .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
-            .map(r => r.value);
-          if (!uploads.length) throw new Error('No images uploaded successfully');
-
-          let ai = {};
-          let aiDescription = '';
-          try {
-            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
-            if (aiSources.length) {
-              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
-            }
-          } catch (_) { }
-
-          const parsedPrice = Number(ai.suggested_price);
-          const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-          const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-          if (rawDescription && aiDescriptionEnabled) {
-            aiDescription = rawDescription.slice(0, 400);
-          }
-
-          const manualLocation = String(location || '').trim();
-          let locAuto = manualLocation;
-          let latAuto = null;
-          let lonAuto = null;
-          let enableNearbyAuto = 0;
-          let cachedCoords = null;
-
-          async function ensureCoords() {
-            if (cachedCoords) return cachedCoords;
-            cachedCoords = await fetchCoordsAndReverse();
-            return cachedCoords;
-          }
-
-          if (autoPostNearbyEnabled) {
-            try {
-              const c = await ensureCoords();
-              enableNearbyAuto = 1;
-              latAuto = c.lat; lonAuto = c.lon;
-              if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
-            } catch (_) {
-              enableNearbyAuto = 0;
-            }
-          }
-
-          if (!locAuto) {
-            try {
-              const c = await ensureCoords();
-              locAuto = formatLocationDisplay(c, c?.display || '');
-              if (enableNearbyAuto && c) {
-                latAuto = c.lat;
-                lonAuto = c.lon;
-              }
-            } catch (_) { }
-          }
-
-          if (!locAuto) {
-            locAuto = 'Unknown location';
-          }
-
-          const payload = {
-            title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: aiDescription || 'No description',
-            location: locAuto || '',
-            price: safePrice,
-            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: enableNearbyAuto,
-            upload_tokens: uploads.map((u) => u.uploadToken)
-          };
-          if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
-
-          const created = await api.createListing(payload);
-          if (!created?.id) throw new Error('Create failed');
-          if (inquiryEnabled && created?.id) {
-            try {
-              await api.updateListing(created.id, { inquiry_enabled: 1 });
-            } catch (err) {
-              console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
-            }
-          }
-          return created;
-        };
-
-        if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
-          enqueueListingJob(async () => {
-            try {
-              const created = await runAutoListJob();
-              onSaved?.(created);
-            } catch (err) {
-              console.error('Auto-list failed:', err);
-              alert(`Auto-list failed: ${err?.message || err}`);
-            } finally {
-              autoRunning.current = false;
-            }
-          });
-          onCancel?.();
-          return;
-        }
-
         setAutoBusy(true);
-        (async () => {
-          try {
-            const created = await runAutoListJob();
-            onSaved?.(created);
-          } catch (err) {
-            console.error('Auto-list failed:', err);
-            alert(`Auto-list failed: ${err?.message || err}`);
-          } finally {
-            setAutoBusy(false);
-            autoRunning.current = false;
+        runAutoList({
+          files,
+          location,
+          aiDescriptionEnabled,
+          autoPostNearbyEnabled,
+          autoInquiryEnabled: inquiryEnabled,
+          backgroundQueueEnabled,
+          enqueueListingJob,
+          onCreated: (created) => onSaved?.(created),
+          onError: () => setAutoBusy(false)
+        }).then((result) => {
+          if (result?.queued) {
+            onCancel?.();
           }
-        })();
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
+        }).catch((err) => {
+          console.error('Auto-list failed:', err);
+          alert(`Auto-list failed: ${err?.message || err}`);
+        }).finally(() => {
+          autoRunning.current = false;
+          setAutoBusy(false);
+        });
+      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved, location]);
 
       async function submit(e) {
         e.preventDefault();
@@ -1101,7 +1137,8 @@
     return {
       SmartImage,
       ListingFormModal,
-      CompactListingForm
+      CompactListingForm,
+      runAutoList
     };
   }
 
