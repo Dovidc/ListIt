@@ -85,4 +85,41 @@ async function presignDownload({ key, expiresIn = 120 } = {}) {
   return await getSignedUrl(s3, cmd, { expiresIn });
 }
 
-module.exports = { presignUpload, presignDownload };
+/**
+ * Upload a buffer directly to S3 from the server.
+ * Used for fire-and-forget listing creation where we want to
+ * receive the image on our server first (fast) then upload to S3 (async).
+ */
+async function uploadBuffer({ buffer, filename = 'upload.bin', contentType }) {
+  const s3 = getS3();
+  const Bucket = need('S3_BUCKET');
+  const region = process.env.AWS_REGION || process.env.S3_REGION;
+  const PUBLIC_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim();
+
+  const imageRegex = /^image\/(png|jpe?g|webp|avif|heic|heif|gif)$/i;
+  if (!imageRegex.test(contentType)) {
+    throw new Error('Unsupported type');
+  }
+
+  const maxImageBytes = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
+  if (buffer.length > maxImageBytes) {
+    throw new Error('Image too large');
+  }
+
+  const Key = newKey(filename);
+  const cmd = new PutObjectCommand({
+    Bucket,
+    Key,
+    Body: buffer,
+    ContentType: contentType,
+    CacheControl: 'public, max-age=31536000, immutable',
+  });
+
+  await s3.send(cmd);
+
+  const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
+  const publicUrl = `${base.replace(/\/+$/, '')}/${Key}`;
+  return { Bucket, Key, publicUrl };
+}
+
+module.exports = { presignUpload, presignDownload, uploadBuffer };

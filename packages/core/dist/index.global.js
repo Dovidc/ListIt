@@ -305,6 +305,17 @@
     }, meta);  
     
     /**  
+     * Fire-and-forget listing with raw images.  
+     * Images are sent as base64 and uploaded server-side.  
+     * User can close app immediately after this returns.  
+     */  
+    const createAutoListingFast = (payload, meta) => request('/api/listings/auto-fast', {  
+      method: 'POST',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify(payload || {})  
+    }, meta);  
+    
+    /**  
      * Get status of an auto-listing job.  
      */  
     const getAutoListingStatus = (jobId, meta) => request(`/api/listings/auto/${jobId}`, { method: 'GET' }, meta);  
@@ -543,6 +554,7 @@
       listMine,  
       createListing,  
       createAutoListing,  
+      createAutoListingFast,  
       getAutoListingStatus,  
       listAutoListingJobs,  
       updateListing,  

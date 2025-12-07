@@ -526,12 +526,13 @@ if (process.env.EMBED_WORKER !== 'false') {
 
 let presignUpload;
 let presignDownload;
+let uploadBuffer;
 
 try {
 
-  ({ presignUpload, presignDownload } = require('./s3'));
+  ({ presignUpload, presignDownload, uploadBuffer } = require('./s3'));
 
-  console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'bucket=', process.env.S3_BUCKET);
+  console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'uploadBuffer=', typeof uploadBuffer === 'function', 'bucket=', process.env.S3_BUCKET);
 
 } catch (e) {
 
@@ -5723,6 +5724,221 @@ app.post(
     } catch (e) {
       const msg = String(e?.message || e || 'db_error');
       console.error('Auto-listing enqueue failed:', msg);
+      return res.status(500).json({ error: 'server_error', detail: msg });
+    }
+  }
+);
+
+/**
+ * POST /api/listings/auto-fast
+ * Fire-and-forget listing creation with raw images.
+ *
+ * This endpoint accepts base64-encoded images directly, uploads them to S3
+ * server-side, and creates the listing job. The user can close the app
+ * immediately after this request completes - the server handles everything.
+ *
+ * Expected body: {
+ *   images: [{ data: 'base64...', type: 'image/jpeg', name: 'photo.jpg' }],
+ *   location: 'City, State',
+ *   ai_description_enabled: true/false,
+ *   enable_nearby: true/false,
+ *   inquiry_enabled: true/false,
+ *   lat: number (optional),
+ *   lon: number (optional),
+ *   _authToken: 'jwt...' (for beacon auth)
+ * }
+ */
+app.post(
+  '/api/listings/auto-fast',
+  // Increase body size limit for base64 images (max ~10MB per image, 3 images = 30MB)
+  express.json({ limit: '50mb' }),
+  // Handle beacon auth (same as /api/listings/auto)
+  (req, res, next) => {
+    if (!req.user && req.body?._authToken) {
+      try {
+        const decoded = jwt.verify(req.body._authToken, JWT_SECRET);
+        if (decoded?.id) {
+          req.beaconAuth = true;
+          req.beaconUserId = decoded.id;
+        }
+      } catch (e) { /* invalid token */ }
+    }
+    next();
+  },
+  async (req, res, next) => {
+    if (req.beaconAuth && req.beaconUserId) {
+      try {
+        const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.beaconUserId);
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      } catch (e) {
+        console.error('[BeaconAuth] Error loading user:', e);
+      }
+    }
+    return auth(req, res, next);
+  },
+  writeLimiter,
+  (req, res, next) => {
+    if (isLockedAccount(req.user)) return respondLocked(res);
+    return next();
+  },
+  async (req, res) => {
+    const startTime = Date.now();
+    console.log('[AutoListingFast] POST /api/listings/auto-fast called by user', req.user?.id);
+
+    try {
+      const {
+        images,
+        location,
+        ai_description_enabled,
+        enable_nearby,
+        inquiry_enabled,
+        lat,
+        lon,
+        hint
+      } = req.body || {};
+
+      // Validate location
+      if (!location || typeof location !== 'string' || !location.trim()) {
+        return res.status(400).json({ error: 'location_required' });
+      }
+
+      // Validate images
+      if (!Array.isArray(images) || !images.length) {
+        return res.status(400).json({ error: 'images_required' });
+      }
+
+      // Limit to 12 images
+      const validImages = images.slice(0, 12).filter(img =>
+        img && typeof img.data === 'string' && img.data.length > 0
+      );
+
+      if (!validImages.length) {
+        return res.status(400).json({ error: 'no_valid_images' });
+      }
+
+      // Check if S3 upload is available
+      if (typeof uploadBuffer !== 'function') {
+        console.error('[AutoListingFast] uploadBuffer not available');
+        return res.status(503).json({ error: 's3_not_configured' });
+      }
+
+      console.log(`[AutoListingFast] Processing ${validImages.length} images for user ${req.user.id}`);
+
+      // Upload images to S3 and create draft records
+      const uploadTokens = [];
+      const now = nowIso();
+
+      for (let i = 0; i < validImages.length; i++) {
+        const img = validImages[i];
+        try {
+          // Decode base64
+          const base64Data = img.data.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(base64Data, 'base64');
+
+          // Determine content type
+          const contentType = img.type || 'image/jpeg';
+          const filename = img.name || `photo_${i}.jpg`;
+
+          // Upload to S3
+          const s3Result = await uploadBuffer({ buffer, filename, contentType });
+          console.log(`[AutoListingFast] Image ${i + 1} uploaded to S3: ${s3Result.Key}`);
+
+          // Create upload draft record
+          const token = require('crypto').randomBytes(16).toString('hex');
+          await db.prepare(`
+            INSERT INTO listing_upload_drafts (
+              user_id, token, url, s3_key, width, height, bytes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            req.user.id,
+            token,
+            s3Result.publicUrl,
+            s3Result.Key,
+            img.width || 0,
+            img.height || 0,
+            buffer.length,
+            now
+          );
+
+          uploadTokens.push(token);
+        } catch (uploadErr) {
+          console.error(`[AutoListingFast] Failed to upload image ${i}:`, uploadErr?.message || uploadErr);
+          // Continue with other images
+        }
+      }
+
+      if (!uploadTokens.length) {
+        return res.status(500).json({ error: 'all_uploads_failed' });
+      }
+
+      console.log(`[AutoListingFast] ${uploadTokens.length} images uploaded in ${Date.now() - startTime}ms`);
+
+      // Create job record (same as /api/listings/auto)
+      const aiEnabled = ai_description_enabled !== false && ai_description_enabled !== 0 ? 1 : 0;
+      const enNearby = enable_nearby ? 1 : 0;
+      const inquiryEn = inquiry_enabled !== false ? 1 : 0;
+      let safeLat = null;
+      let safeLon = null;
+      if (enNearby) {
+        safeLat = Number.isFinite(Number(lat)) ? Number(lat) : null;
+        safeLon = Number.isFinite(Number(lon)) ? Number(lon) : null;
+      }
+      const safeHint = typeof hint === 'string' ? hint.slice(0, 200) : '';
+
+      const info = await db.prepare(`
+        INSERT INTO auto_listing_jobs (
+          user_id, upload_tokens, location, hint, ai_enabled,
+          enable_nearby, inquiry_enabled, lat, lon,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        req.user.id,
+        JSON.stringify(uploadTokens),
+        location.trim().slice(0, 80),
+        safeHint,
+        aiEnabled,
+        enNearby,
+        inquiryEn,
+        safeLat,
+        safeLon,
+        now,
+        now
+      );
+
+      const jobId = info.lastInsertRowid;
+      console.log(`[AutoListingFast] Job ${jobId} created in ${Date.now() - startTime}ms total`);
+
+      // Enqueue worker job
+      if (app._embeddedWorker && typeof app._embeddedWorker.enqueueJob === 'function') {
+        await app._embeddedWorker.enqueueJob({
+          type: 'auto_create_listing',
+          payload: { jobId },
+          priority: 5,
+          timeoutMs: 60000
+        });
+        console.log(`[AutoListingFast] Job ${jobId} enqueued for processing`);
+      } else {
+        await db.prepare(`
+          UPDATE auto_listing_jobs
+          SET status = 'failed', error = 'worker_unavailable', updated_at = ?
+          WHERE id = ?
+        `).run(nowIso(), jobId);
+        return res.status(503).json({ error: 'worker_unavailable' });
+      }
+
+      return res.status(202).json({
+        job_id: jobId,
+        status: 'pending',
+        upload_count: uploadTokens.length,
+        processing_time_ms: Date.now() - startTime
+      });
+
+    } catch (e) {
+      const msg = String(e?.message || e || 'server_error');
+      console.error('[AutoListingFast] Error:', msg);
       return res.status(500).json({ error: 'server_error', detail: msg });
     }
   }

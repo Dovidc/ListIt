@@ -102,6 +102,66 @@
     // then a background job is enqueued on the server. The listing will be created
     // even if the user closes the app. Callers can supply callbacks to react to
     // job submission or polling for completion.
+    /**
+     * Convert a File/Blob to base64 data URL
+     */
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    /**
+     * Compress an image file to reduce upload size.
+     * Target: ~500KB for fast upload while maintaining quality.
+     */
+    async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            // Calculate dimensions
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+
+            // Draw to canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Convert to blob
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve({ blob, width, height });
+                } else {
+                  reject(new Error('Canvas toBlob failed'));
+                }
+              },
+              'image/jpeg',
+              quality
+            );
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = () => reject(new Error('Image load failed'));
+
+        // Load image from file
+        const url = URL.createObjectURL(file);
+        img.src = url;
+      });
+    }
+
     async function runAutoList({
       files,
       location,
@@ -119,7 +179,7 @@
       onJobQueued
     } = {}) {
       try {
-        console.log('[AutoList] Starting runAutoList');
+        console.log('[AutoList] Starting runAutoList (fast mode)');
 
         // Defensive: ensure files is an array
         let fileArray;
@@ -145,29 +205,58 @@
           throw new Error('No images provided for auto-listing.');
         }
 
-        // Check if createAutoListing is available
-        if (typeof api.createAutoListing !== 'function') {
-          console.error('api.createAutoListing not available, falling back to legacy flow');
-          throw new Error('Auto-listing API not available');
+        // Check if fast API is available
+        if (typeof api.createAutoListingFast !== 'function') {
+          console.error('api.createAutoListingFast not available');
+          throw new Error('Fast auto-listing API not available');
         }
 
-        // Step 1: Upload all images to get upload tokens
-        console.log('[AutoList] Uploading', validFiles.length, 'files...');
-        const uploadResults = await Promise.allSettled(validFiles.map(uploadFileDraft));
-        const uploads = uploadResults
-          .filter(r => r.status === 'fulfilled' && r.value?.uploadToken)
-          .map(r => r.value);
+        // Step 1: Convert images to base64 (fast, ~100ms per image)
+        // Compress images first to reduce upload size
+        console.log('[AutoList] Compressing and converting', validFiles.length, 'images to base64...');
+        const startTime = Date.now();
 
-        if (!uploads.length) {
-          const failedCount = uploadResults.filter(r => r.status === 'rejected').length;
-          console.error('[AutoList] All uploads failed:', uploadResults);
-          throw new Error(`Image upload failed (${failedCount} errors)`);
+        const imagePromises = validFiles.slice(0, 12).map(async (file, i) => {
+          try {
+            // Compress image first
+            const { blob, width, height } = await compressImage(file, 1200, 0.8);
+            // Convert to base64
+            const base64 = await fileToBase64(blob);
+            return {
+              data: base64,
+              type: 'image/jpeg',
+              name: file.name || `photo_${i}.jpg`,
+              width,
+              height
+            };
+          } catch (e) {
+            console.warn(`[AutoList] Failed to process image ${i}:`, e);
+            // Try without compression
+            try {
+              const base64 = await fileToBase64(file);
+              return {
+                data: base64,
+                type: file.type || 'image/jpeg',
+                name: file.name || `photo_${i}.jpg`,
+                width: 0,
+                height: 0
+              };
+            } catch (e2) {
+              console.error(`[AutoList] Failed to convert image ${i}:`, e2);
+              return null;
+            }
+          }
+        });
+
+        const imageResults = await Promise.all(imagePromises);
+        const images = imageResults.filter(Boolean);
+        console.log(`[AutoList] Converted ${images.length} images in ${Date.now() - startTime}ms`);
+
+        if (!images.length) {
+          throw new Error('Failed to process images');
         }
 
-        const uploadTokens = uploads.map((u) => u.uploadToken).filter(Boolean);
-        console.log('[AutoList] Got', uploadTokens.length, 'upload tokens');
-
-        // Step 2: Determine location and coordinates
+        // Step 2: Determine location and coordinates (should be cached, fast)
         const manualLocation = String(location || '').trim();
         let locAuto = manualLocation;
         let latAuto = null;
@@ -220,14 +309,12 @@
           locAuto = 'Unknown location';
         }
 
-        // Step 3: Build payload for fire-and-forget API
-        // AI analysis (title/tags/price) always runs - ai_description_enabled controls description only
+        // Step 3: Build payload with base64 images
         const payload = {
-          upload_tokens: uploadTokens,
+          images,
           location: locAuto,
-          hint: '', // Could be used for user hints in the future
-          ai_enabled: true, // Always analyze for title/tags/price
-          ai_description_enabled: aiDescriptionEnabled !== false, // User preference for AI description
+          hint: '',
+          ai_description_enabled: aiDescriptionEnabled !== false,
           enable_nearby: enableNearbyAuto,
           inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
         };
@@ -237,44 +324,43 @@
           payload.lon = lonAuto;
         }
 
-        // Step 4: Call the fire-and-forget API
-        // This enqueues the job on the server - the listing will be created
-        // even if the user closes the app
+        // Step 4: Send to server - this is the fire-and-forget moment
+        // Once this completes, the server has everything and will create the listing
+        console.log('[AutoList] Sending to server (fast mode)...');
 
-        // Show toast NOW - uploads done, about to call API
-        if (typeof enqueueListingJob === 'function') {
-          try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+        // Add auth token for beacon-style auth
+        const token = typeof api.getAuthToken === 'function' ? api.getAuthToken() : null;
+        if (token) {
+          payload._authToken = token;
         }
 
-        console.log('[AutoList] Calling createAutoListing with payload:', payload);
-
-        // Use sendBeacon for true fire-and-forget on mobile (survives app close/screen off)
-        // sendBeacon is designed to complete even when page is unloading
+        // Use fetch with keepalive for better reliability
         let result = null;
-        const beaconUrl = '/api/listings/auto';
-        const beaconPayload = JSON.stringify(payload);
-
-        // Try sendBeacon first for maximum reliability on mobile
-        if (typeof navigator.sendBeacon === 'function') {
-          try {
-            // sendBeacon needs auth token in the payload since we can't set headers
-            const token = typeof api.getAuthToken === 'function' ? api.getAuthToken() : null;
-            const beaconData = new Blob([JSON.stringify({ ...payload, _authToken: token })], { type: 'application/json' });
-            const sent = navigator.sendBeacon(beaconUrl, beaconData);
-            console.log('[AutoList] sendBeacon result:', sent);
-            if (sent) {
-              // sendBeacon doesn't return response, assume success
-              // The job will be created even if we don't get confirmation
-              result = { job_id: 'beacon-' + Date.now(), beacon: true };
-            }
-          } catch (e) {
-            console.warn('[AutoList] sendBeacon failed, falling back to fetch:', e);
+        try {
+          const response = await fetch('/api/listings/auto-fast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true // Allows request to complete even if page unloads
+          });
+          if (response.ok) {
+            result = await response.json();
+          } else {
+            const errText = await response.text();
+            console.error('[AutoList] Server error:', response.status, errText);
           }
+        } catch (fetchErr) {
+          console.warn('[AutoList] Fetch failed:', fetchErr);
         }
 
-        // Fall back to regular fetch if sendBeacon failed or unavailable
+        // Fallback to regular API if fetch failed
         if (!result) {
-          result = await api.createAutoListing(payload);
+          try {
+            result = await api.createAutoListingFast(payload);
+          } catch (apiErr) {
+            console.error('[AutoList] API call failed:', apiErr);
+            throw apiErr;
+          }
         }
 
         if (!result?.job_id) {
@@ -282,18 +368,22 @@
           throw new Error('Failed to enqueue auto-listing job');
         }
 
-        console.log('[AutoList] Job enqueued:', result.job_id, result.beacon ? '(via beacon)' : '');
+        const totalTime = Date.now() - startTime;
+        console.log(`[AutoList] Job ${result.job_id} created in ${totalTime}ms (server: ${result.processing_time_ms}ms)`);
+
+        // Show toast NOW - data is on server, user can close app
+        if (typeof enqueueListingJob === 'function') {
+          try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+        }
 
         // Notify caller that job was queued
         try { onJobQueued?.(result); } catch (e) { console.warn('[AutoList] onJobQueued callback error:', e); }
 
         // Step 5: Poll for completion (optional, for immediate feedback)
-        // Only poll if we have reload functions and want to show the result
         const mineFn = reloadMineRef?.current ?? reloadMine;
         const allFn = reloadAllRef?.current ?? reloadAll;
 
         if (mineFn || allFn || onCreated) {
-          // Start polling in the background
           pollAutoListingJob({
             jobId: result.job_id,
             onCompleted: async (listing) => {
