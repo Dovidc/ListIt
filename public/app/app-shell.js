@@ -597,8 +597,28 @@
             if (typeof helpers?.clearCoordsCache === 'function') {
               helpers.clearCoordsCache();
             }
+
+            // Check for pending fire-and-forget jobs that might have completed
+            let hasPendingJobs = false;
+            try {
+              const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
+              hasPendingJobs = pendingJobs.some(j => j.sent && (Date.now() - j.timestamp) < 300000); // 5 min
+            } catch (e) { /* ignore */ }
+
             await refreshListings();
             await reloadMineOnly();
+
+            // If there were pending jobs, do a delayed second refresh
+            // This catches jobs that complete after our initial refresh
+            if (hasPendingJobs) {
+              setTimeout(async () => {
+                try {
+                  console.log('[Resume] Delayed refresh for pending jobs');
+                  await refreshListings();
+                  await reloadMineOnly();
+                } catch (e) { console.warn('[Resume] Delayed refresh failed:', e); }
+              }, 5000); // Refresh again after 5 seconds
+            }
           } catch (err) {
             console.error('Error refreshing on resume:', err);
           } finally {
@@ -995,11 +1015,23 @@
           return;
         }
         if (autoListEnabled) {
-          // Fire-and-forget: enqueue job on server, don't wait for completion
-          // Toast shows AFTER uploads complete, right before API call (minimizes failure window)
+          // INSTANT toast - show immediately when user presses "use photo"
+          if (typeof enqueueListingJob === 'function') {
+            try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+          }
+
+          // Save job intent to localStorage for recovery if app closes
+          const jobId = 'pending-' + Date.now();
+          try {
+            const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
+            pendingJobs.push({ id: jobId, timestamp: Date.now(), fileCount: files.length });
+            localStorage.setItem('listit_pending_jobs', JSON.stringify(pendingJobs.slice(-10))); // Keep last 10
+          } catch (e) { /* ignore storage errors */ }
+
+          // Fire-and-forget: process in background
           setTimeout(async () => {
             try {
-              console.log('[Mobile AutoList] Starting with', files.length, 'files');
+              console.log('[Mobile AutoList] Starting job', jobId, 'with', files.length, 'files');
               const result = await runAutoList({
                 files,
                 location: '',
@@ -1007,14 +1039,21 @@
                 autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
                 autoInquiryEnabled,
                 backgroundQueueEnabled,
-                enqueueListingJob, // Used to show toast right before API call
+                enqueueListingJob,
                 reloadMine: reloadMineOnly,
                 reloadAll: refreshListings,
                 onCreated: (createdListing) => {
                   try {
                     if (createdListing?.id) {
+                      // Add to local state immediately so it appears in both views
+                      addListing(createdListing);
                       showRecentListingToast(createdListing);
                     }
+                    // Remove from pending jobs
+                    try {
+                      const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
+                      localStorage.setItem('listit_pending_jobs', JSON.stringify(pendingJobs.filter(j => j.id !== jobId)));
+                    } catch (e) { /* ignore */ }
                   } catch (e) {
                     console.warn('[Mobile AutoList] onCreated error:', e);
                   }
@@ -1024,16 +1063,16 @@
                 }
               });
               console.log('[Mobile AutoList] Result:', result);
-              if (!result?.queued) {
-                try { await refreshListings({ preserveExisting: true }); } catch (e) { console.warn('[Mobile AutoList] refresh error:', e); }
-                try { await reloadMineOnly(); } catch (e) { console.warn('[Mobile AutoList] reload error:', e); }
-              }
+
+              // Mark job as sent (even if we don't get confirmation)
+              try {
+                const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
+                const updated = pendingJobs.map(j => j.id === jobId ? { ...j, sent: true } : j);
+                localStorage.setItem('listit_pending_jobs', JSON.stringify(updated));
+              } catch (e) { /* ignore */ }
+
             } catch (err) {
               console.error('[Mobile AutoList] Failed:', err);
-              // Don't show alert on mobile - it can cause issues
-              if (!isMobile) {
-                alert(`Auto-list failed: ${err?.message || err}`);
-              }
             }
           }, 0);
           return;
