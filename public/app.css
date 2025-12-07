@@ -16,9 +16,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(120deg, #f3f4f6 15%, #e5e7eb 35%, #f3f4f6 55%);
-  background-size: 220% 220%;
-  animation: img-shimmer 1.05s ease-in-out infinite;
+  background: #f3f4f6;
   pointer-events: none;
 }
 
