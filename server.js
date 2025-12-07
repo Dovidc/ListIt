@@ -5829,7 +5829,7 @@ app.post(
 
       // Upload images to S3 and create draft records
       const uploadTokens = [];
-      const now = nowIso();
+      const nowUnix = Math.floor(Date.now() / 1000); // Unix timestamp for listing_upload_drafts
 
       for (let i = 0; i < validImages.length; i++) {
         const img = validImages[i];
@@ -5860,7 +5860,7 @@ app.post(
             img.width || 0,
             img.height || 0,
             buffer.length,
-            now
+            nowUnix
           );
 
           uploadTokens.push(token);
@@ -5877,6 +5877,7 @@ app.post(
       console.log(`[AutoListingFast] ${uploadTokens.length} images uploaded in ${Date.now() - startTime}ms`);
 
       // Create job record (same as /api/listings/auto)
+      const now = nowIso(); // ISO string for auto_listing_jobs (TEXT columns)
       const aiEnabled = ai_description_enabled !== false && ai_description_enabled !== 0 ? 1 : 0;
       const enNearby = enable_nearby ? 1 : 0;
       const inquiryEn = inquiry_enabled !== false ? 1 : 0;
