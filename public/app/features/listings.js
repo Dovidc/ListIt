@@ -405,52 +405,72 @@
     // HOOK: useInfiniteScroll
     // Observes sentinel element for infinite scroll with throttling
     // Instagram-style: triggers early but throttles to prevent rapid calls
+    // When user scrolls fast, loads smaller batches to prevent overwhelming
     // ============================================================
     function useInfiniteScroll({ enabled, onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor }) {
       const sentinelRef = useRef(null);
       const lastLoadTimeRef = useRef(0);
-      const throttleMs = 1000; // Minimum time between load attempts
+      const throttleMs = 800; // Minimum time between load attempts
       const [isSupported, setIsSupported] = useState(typeof IntersectionObserver !== 'undefined');
       const [isPaceLimited, setIsPaceLimited] = useState(false);
+      const isPaceLimitedRef = useRef(false); // Ref for immediate access in callbacks
       const paceResetRef = useRef(null);
-      const fastLoadInFlightRef = useRef(false);
-      const lastScrollRef = useRef({ y: 0, t: Date.now() });
+      const loadInFlightRef = useRef(false);
 
-      const triggerSmallBatchLoad = useCallback(() => {
-        if (fastLoadInFlightRef.current) return;
-        if (!onLoadMoreSmallBatch || getIsLoading() || !getCursor()) return;
+      // Keep ref in sync with state
+      useEffect(() => {
+        isPaceLimitedRef.current = isPaceLimited;
+      }, [isPaceLimited]);
 
-        fastLoadInFlightRef.current = true;
-        setIsPaceLimited(true);
-        if (paceResetRef.current) clearTimeout(paceResetRef.current);
+      // Unified load function that respects pace limiting
+      const doLoad = useCallback((forceSmallBatch = false) => {
+        if (loadInFlightRef.current) return;
+        if (getIsLoading() || !getCursor()) return;
 
-        Promise.resolve(onLoadMoreSmallBatch())
-          .catch(() => { /* silent - fall back to normal flow */ })
+        const now = Date.now();
+        if (now - lastLoadTimeRef.current < throttleMs) return;
+        lastLoadTimeRef.current = now;
+
+        loadInFlightRef.current = true;
+
+        // Use small batch if pace limited or forced
+        const useSmall = (forceSmallBatch || isPaceLimitedRef.current) && onLoadMoreSmallBatch;
+        const loadFn = useSmall ? onLoadMoreSmallBatch : onLoadMore;
+
+        Promise.resolve(loadFn())
+          .catch(() => { /* silent */ })
           .finally(() => {
-            fastLoadInFlightRef.current = false;
-            paceResetRef.current = setTimeout(() => setIsPaceLimited(false), 500);
+            loadInFlightRef.current = false;
           });
-      }, [onLoadMoreSmallBatch, getIsLoading, getCursor]);
+      }, [onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor]);
 
+      // Scroll speed detection
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
-        const scrollSpeedThreshold = 2.4; // px per ms (~2400px/s)
+        const scrollSpeedThreshold = 1.2; // px per ms (~1200px/s) - detect fast scrolling
+        let lastY = window.scrollY || 0;
+        let lastT = Date.now();
 
         const handleScroll = () => {
           const now = Date.now();
           const y = window.scrollY || 0;
-          const last = lastScrollRef.current;
-          const delta = Math.abs(y - last.y);
-          const dt = Math.max(16, now - last.t || 16);
+          const delta = Math.abs(y - lastY);
+          const dt = Math.max(16, now - lastT);
           const speed = delta / dt;
-          lastScrollRef.current = { y, t: now };
+          lastY = y;
+          lastT = now;
 
           if (speed > scrollSpeedThreshold) {
+            // Fast scrolling detected - enter pace limited mode
+            isPaceLimitedRef.current = true;
             setIsPaceLimited(true);
             if (paceResetRef.current) clearTimeout(paceResetRef.current);
-            paceResetRef.current = setTimeout(() => setIsPaceLimited(false), 1200);
-            triggerSmallBatchLoad();
+            // Stay in limited mode for 2.5 seconds after fast scroll stops
+            paceResetRef.current = setTimeout(() => {
+              isPaceLimitedRef.current = false;
+              setIsPaceLimited(false);
+            }, 2500);
           }
         };
 
@@ -459,8 +479,9 @@
           window.removeEventListener('scroll', handleScroll);
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
         };
-      }, [enabled, triggerSmallBatchLoad]);
+      }, [enabled]);
 
+      // Intersection observer for triggering loads
       useEffect(() => {
         if (!enabled) return;
         const supported = typeof IntersectionObserver !== 'undefined';
@@ -476,22 +497,13 @@
           if (getIsLoading()) return;
           if (!getCursor()) return;
 
-          // Throttle rapid scroll triggers
-          const now = Date.now();
-          if (now - lastLoadTimeRef.current < throttleMs) return;
-          lastLoadTimeRef.current = now;
-
-          if (isPaceLimited && onLoadMoreSmallBatch) {
-            triggerSmallBatchLoad();
-            return;
-          }
-
-          onLoadMore();
+          // Use ref for immediate pace check (avoids stale closure)
+          doLoad(isPaceLimitedRef.current);
         }, { rootMargin: '400px' }); // Trigger earlier (400px) for smoother experience
 
         observer.observe(el);
         return () => observer.disconnect();
-      }, [enabled, onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor, isPaceLimited, triggerSmallBatchLoad]);
+      }, [enabled, doLoad, getIsLoading, getCursor]);
 
       return { sentinelRef, isSupported, isPaceLimited };
     }

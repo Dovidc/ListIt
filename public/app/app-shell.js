@@ -1374,46 +1374,19 @@
                         sentinelRef
                       }),
 
-                      isScrollPaceLimited && H('div', {
+                      // Mini geometric loader while loading more
+                      (isFetchingListings || isScrollPaceLimited) && hasNext && H('div', {
                         style: {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 10,
-                          padding: '8px 0',
-                          color: '#2563eb',
-                          fontWeight: 600
+                          padding: '16px 0'
                         }
                       },
-                        H('div', { className: 'spinner', style: { width: 16, height: 16, borderWidth: 2 } }),
-                        H('span', null, 'Catching up—loading a smaller batch. Scroll steadily to keep things smooth.')
-                      ),
-
-                      hasNext && !isFetchingListings && H('div', {
-                        style: {
-                          display: 'flex',
-                          justifyContent: 'center',
-                          padding: '14px 0'
-                        }
-                      },
-                        H('div', {
-                          style: {
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: 6
-                          }
-                        },
-                          H('span', {
-                            className: 'muted',
-                            style: { fontSize: 12 }
-                          }, isInfiniteScrollSupported
-                            ? 'More listings load as you scroll; tap below to fetch now.'
-                            : 'Auto-loading is limited here; tap below whenever you want more.'),
-                          H('button', {
-                            className: 'btn',
-                            onClick: () => loadMore?.()
-                          }, 'Load more')
+                        H('div', { className: 'mini-geometric-loader' },
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--outer' }),
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--middle' }),
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--inner' })
                         )
                       ),
 

@@ -1805,7 +1805,7 @@
             left: 0,
             right: 0,
             bottom: 0,
-            paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+            paddingTop: 'calc(4px + env(safe-area-inset-top, 0px))',
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',

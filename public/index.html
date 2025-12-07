@@ -278,6 +278,63 @@
       }
     }
 
+    /* Mini geometric loader for infinite scroll */
+    .mini-geometric-loader {
+      position: relative;
+      width: 36px;
+      height: 36px;
+    }
+
+    .mini-geometric-loader__hex {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      border: 2px solid;
+      border-radius: 3px;
+    }
+
+    .mini-geometric-loader__hex--outer {
+      width: 32px;
+      height: 32px;
+      margin-left: -16px;
+      margin-top: -16px;
+      border-color: #2563eb;
+      animation: hex-rotate 3s linear infinite, mini-hex-pulse 1.5s ease-in-out infinite;
+    }
+
+    .mini-geometric-loader__hex--middle {
+      width: 22px;
+      height: 22px;
+      margin-left: -11px;
+      margin-top: -11px;
+      border-color: #3b82f6;
+      animation: hex-rotate-reverse 2.5s linear infinite, mini-hex-pulse 1.5s ease-in-out infinite 0.2s;
+    }
+
+    .mini-geometric-loader__hex--inner {
+      width: 12px;
+      height: 12px;
+      margin-left: -6px;
+      margin-top: -6px;
+      border-color: #60a5fa;
+      animation: hex-rotate 2s linear infinite, mini-hex-pulse 1.5s ease-in-out infinite 0.4s;
+    }
+
+    @keyframes hex-rotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes hex-rotate-reverse {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(-360deg); }
+    }
+
+    @keyframes mini-hex-pulse {
+      0%, 100% { opacity: 0.6; border-radius: 3px; }
+      50% { opacity: 1; border-radius: 50%; }
+    }
+
     .modal-inner img {
       display: block;
       max-width: 95vw;
