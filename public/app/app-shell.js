@@ -995,7 +995,6 @@
           return;
         }
         if (autoListEnabled) {
-          setLoadingCount((c) => c + 1);
           try {
             // Bypass the edit form entirely: queue or run an auto-list job that
             // uploads the images, applies AI suggestions, and creates the listing
@@ -1023,8 +1022,6 @@
           } catch (err) {
             console.error('Auto-list failed:', err);
             alert(`Auto-list failed: ${err?.message || err}`);
-          } finally {
-            setLoadingCount((c) => Math.max(0, c - 1));
           }
           return;
         }

@@ -125,7 +125,8 @@
       // Core job that actually uploads the photos, derives metadata, and
       // performs the create listing call. This is shared between the immediate
       // path and the queued path below so behavior stays consistent.
-      const runAutoListJob = async () => {
+      const runAutoListJob = async ({ silent = false } = {}) => {
+        const apiMeta = silent ? { silent: true } : {};
         const uploadResults = await Promise.allSettled(validFiles.map(uploadFileDraft));
         const uploads = uploadResults
           .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
@@ -200,11 +201,11 @@
         if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
 
         const inquiryEnabled = typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true;
-        const created = await api.createListing(payload);
+        const created = await api.createListing(payload, apiMeta);
         if (!created?.id) throw new Error('Create failed');
         if (inquiryEnabled && created?.id) {
           try {
-            await api.updateListing(created.id, { inquiry_enabled: 1 });
+            await api.updateListing(created.id, { inquiry_enabled: 1 }, apiMeta);
           } catch (err) {
             console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
           }
@@ -215,7 +216,7 @@
       if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
         enqueueListingJob(async () => {
           try {
-            const created = await runAutoListJob();
+            const created = await runAutoListJob({ silent: true });
             // Refresh listings directly (like MassList does)
             // Support both refs (from CompactListingForm) and direct functions (from app-shell)
             const mineFn = reloadMineRef?.current ?? reloadMine;

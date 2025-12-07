@@ -71,7 +71,7 @@
 
       if (!uploadDraftCache.has(file)) {
         const uploadPromise = s3UploadLimiter(async () => {
-          const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
+          const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size }, { silent: true });
           if (sig?.error) throw new Error(sig.error);
           if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
 
