@@ -110,6 +110,10 @@
       autoInquiryEnabled,
       backgroundQueueEnabled,
       enqueueListingJob,
+      reloadMineRef,
+      reloadAllRef,
+      reloadMine,
+      reloadAll,
       onCreated,
       onError
     } = {}) {
@@ -212,6 +216,12 @@
         enqueueListingJob(async () => {
           try {
             const created = await runAutoListJob();
+            // Refresh listings directly (like MassList does)
+            // Support both refs (from CompactListingForm) and direct functions (from app-shell)
+            const mineFn = reloadMineRef?.current ?? reloadMine;
+            const allFn = reloadAllRef?.current ?? reloadAll;
+            try { await mineFn?.(); } catch { }
+            try { await allFn?.({ preserveExisting: true }); } catch { }
             onCreated?.(created);
           } catch (err) {
             console.error('Auto-list failed:', err);
@@ -326,7 +336,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [] }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -350,6 +360,8 @@
           autoInquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob,
+          reloadMine,
+          reloadAll,
           showTags,
           setShowTags,
           initialFiles
@@ -364,6 +376,8 @@
           autoInquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob,
+          reloadMine,
+          reloadAll,
           initialFiles
         });
 
@@ -378,7 +392,7 @@
       );
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, showTags, setShowTags, initialFiles = [] }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, showTags, setShowTags, initialFiles = [] }) {
       const fileRef = useRef();
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [existingUrls, setExistingUrls] = useState([]);
@@ -399,6 +413,12 @@
       const [aiErr, setAiErr] = useState('');
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
+
+      // Use refs to ensure background jobs always have access to latest reload functions
+      const reloadMineRef = useRef(reloadMine);
+      const reloadAllRef = useRef(reloadAll);
+      useEffect(() => { reloadMineRef.current = reloadMine; }, [reloadMine]);
+      useEffect(() => { reloadAllRef.current = reloadAll; }, [reloadAll]);
 
       const hasFixedGps = !!draft?.lat;
       const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
@@ -570,6 +590,8 @@
           autoInquiryEnabled: inquiryEnabled,
           backgroundQueueEnabled,
           enqueueListingJob,
+          reloadMineRef,
+          reloadAllRef,
           onCreated: (created) => onSaved?.(created),
           onError: () => setAutoBusy(false)
         }).then((result) => {
@@ -666,6 +688,10 @@
             enqueueListingJob(async () => {
               try {
                 const created = await runCreate();
+                // Refresh listings directly (like MassList does) instead of relying on callback chain
+                // Use refs to get the latest function references
+                try { await reloadMineRef?.current?.(); } catch { }
+                try { await reloadAllRef?.current?.({ preserveExisting: true }); } catch { }
                 onSaved?.(created);
               } catch (err) {
                 console.error('Create/save failed:', err);

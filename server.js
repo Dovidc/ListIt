@@ -2205,7 +2205,12 @@ function authFromReq(req) {
 
   if (!t) return null;
 
-  try { return jwt.verify(t, JWT_SECRET); } catch { return null; }
+  try {
+    return jwt.verify(t, JWT_SECRET);
+  } catch (err) {
+    console.warn('[Auth] JWT verification failed:', err?.message || err);
+    return null;
+  }
 
 }
 
@@ -2270,7 +2275,7 @@ async function getUserWithStatus(userId) {
 
   } catch (err) {
 
-    console.error('getUserWithStatus failed:', err);
+    console.error('[Auth] getUserWithStatus DB query failed for userId:', userId, 'error:', err?.message || err);
 
     return null;
 
@@ -2403,14 +2408,17 @@ async function auth(req, res, next) {
 
   const session = authFromReq(req);
 
-  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (!session) {
+    console.warn('[Auth] No valid session token for request:', req.method, req.path);
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
 
   try {
 
     const row = await getUserWithStatus(session.id);
 
     if (!row) {
-
+      console.warn('[Auth] User not found for session id:', session.id, 'on request:', req.method, req.path);
       clearAuthCookie(res);
 
       return res.status(401).json({ error: 'Not authenticated' });
@@ -4534,7 +4542,6 @@ app.get('/api/listings', async (req, res) => {
     } else {
       offset = hasPage ? (page - 1) * limit : 0;
     }
-    console.log('[DEBUG] sort:', sort, 'isCursorById:', isCursorById, 'rawCursorParam:', rawCursorParam, 'page:', page, 'limit:', limit, 'offset:', offset);
 
 
 
@@ -4850,7 +4857,6 @@ app.get('/api/listings', async (req, res) => {
         sql += ' OFFSET @off';
 
         queryParams.off = offset;
-        console.log('[DEBUG price sort] page:', page, 'offset:', offset, 'limit:', limit);
 
       }
 
@@ -4869,8 +4875,6 @@ app.get('/api/listings', async (req, res) => {
         ? (items.length ? items[items.length - 1].id : null)
 
         : (has_more ? offset + items.length : null);
-
-      console.log('[DEBUG] returning: items.length:', items.length, 'has_more:', has_more, 'next_cursor:', next_cursor);
 
       const normalizedItems = items.map(r => {
 

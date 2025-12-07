@@ -812,6 +812,19 @@
         }, 5000);
       }, []);
 
+      // Stable callback for when a listing is created/saved
+      // This is used by both inline and background queue creation
+      const handleListingSaved = useCallback(async (createdListing) => {
+        if (createdListing?.id) {
+          addListing(createdListing);
+          showRecentListingToast(createdListing);
+        }
+        // Note: reloadMine/reloadAll are now called directly in the background queue job
+        // (similar to how MassList works) to ensure they use stable function references
+        await reloadMineOnly();
+        await refreshListings({ preserveExisting: true });
+      }, [addListing, reloadMineOnly, refreshListings, showRecentListingToast]);
+
       const dismissEditToast = useCallback(() => {
         setShowEditToast(false);
         if (editToastTimeoutRef.current) {
@@ -995,6 +1008,8 @@
               autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob,
+              reloadMine: reloadMineOnly,
+              reloadAll: refreshListings,
               onCreated: (createdListing) => {
                 if (createdListing?.id) {
                   showRecentListingToast(createdListing);
@@ -1218,20 +1233,15 @@
                   isOpen: editorState.isOpen,
                   draft: editing,
                   onClose: closeEditor,
-                  onSaved: async (createdListing) => {
-                    if (createdListing?.id) {
-                      addListing(createdListing);
-                      showRecentListingToast(createdListing);
-                    }
-                    await reloadMineOnly();
-                    await refreshListings({ preserveExisting: true });
-                  },
+                  onSaved: handleListingSaved,
                   autoListEnabled,
                   aiDescriptionEnabled,
                   autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
                   autoInquiryEnabled,
                   backgroundQueueEnabled,
                   enqueueListingJob,
+                  reloadMine: reloadMineOnly,
+                  reloadAll: refreshListings,
                   initialFiles: initialListingFiles
                 })
                 : (
