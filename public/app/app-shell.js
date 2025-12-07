@@ -372,6 +372,7 @@
         isInfiniteScrollSupported,
         reloadMineOnly,
         refreshListings,
+        addListing,
         toggleSold,
         cityOptions,
         items,
@@ -1218,12 +1219,12 @@
                   draft: editing,
                   onClose: closeEditor,
                   onSaved: async (createdListing) => {
-                    await refreshListings({ preserveExisting: true });
-                    await reloadMineOnly();
-                    // Show edit toast only for new listings (createdListing is only passed for new listings, not edits)
                     if (createdListing?.id) {
+                      addListing(createdListing);
                       showRecentListingToast(createdListing);
                     }
+                    await reloadMineOnly();
+                    await refreshListings({ preserveExisting: true });
                   },
                   autoListEnabled,
                   aiDescriptionEnabled,
