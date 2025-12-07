@@ -774,6 +774,23 @@
         await pagination.refresh(options.preserveExisting);
       }, [pagination.refresh, coverCache.clear]);
 
+      const addListing = useCallback((listing) => {
+        if (!listing?.id) return;
+
+        myListings.setListings(prev => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          const filtered = safePrev.filter(it => it?.id !== listing.id);
+          return [listing, ...filtered];
+        });
+
+        pagination.setListings(prev => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          const filtered = safePrev.filter(it => it?.id !== listing.id);
+          const merged = [listing, ...filtered];
+          return merged.length > 500 ? merged.slice(0, 500) : merged;
+        });
+      }, [myListings.setListings, pagination.setListings]);
+
       const toggleSold = useCallback(async (listing, makeSold) => {
         try {
           await api.markListingSold(listing.id, makeSold);
@@ -823,6 +840,7 @@
         // Actions
         refreshListings,
         reloadMineOnly: myListings.refresh,
+        addListing,
         toggleSold,
         ensureCover: coverCache.ensureCover,
 
