@@ -995,34 +995,47 @@
           return;
         }
         if (autoListEnabled) {
-          try {
-            // Bypass the edit form entirely: queue or run an auto-list job that
-            // uploads the images, applies AI suggestions, and creates the listing
-            // while we keep the editor hidden from the user.
-            const result = await runAutoList({
-              files,
-              location: '',
-              aiDescriptionEnabled,
-              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-              autoInquiryEnabled,
-              backgroundQueueEnabled,
-              enqueueListingJob,
-              reloadMine: reloadMineOnly,
-              reloadAll: refreshListings,
-              onCreated: (createdListing) => {
-                if (createdListing?.id) {
-                  showRecentListingToast(createdListing);
+          // Fire-and-forget: enqueue job on server, don't wait for completion
+          // Wrap in setTimeout to avoid blocking the UI thread on mobile
+          setTimeout(async () => {
+            try {
+              console.log('[Mobile AutoList] Starting with', files.length, 'files');
+              const result = await runAutoList({
+                files,
+                location: '',
+                aiDescriptionEnabled,
+                autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+                autoInquiryEnabled,
+                backgroundQueueEnabled,
+                enqueueListingJob,
+                reloadMine: reloadMineOnly,
+                reloadAll: refreshListings,
+                onCreated: (createdListing) => {
+                  try {
+                    if (createdListing?.id) {
+                      showRecentListingToast(createdListing);
+                    }
+                  } catch (e) {
+                    console.warn('[Mobile AutoList] onCreated error:', e);
+                  }
+                },
+                onError: (err) => {
+                  console.error('[Mobile AutoList] Job error:', err);
                 }
+              });
+              console.log('[Mobile AutoList] Result:', result);
+              if (!result?.queued) {
+                try { await refreshListings({ preserveExisting: true }); } catch (e) { console.warn('[Mobile AutoList] refresh error:', e); }
+                try { await reloadMineOnly(); } catch (e) { console.warn('[Mobile AutoList] reload error:', e); }
               }
-            });
-            if (!result?.queued) {
-              await refreshListings({ preserveExisting: true });
-              await reloadMineOnly();
+            } catch (err) {
+              console.error('[Mobile AutoList] Failed:', err);
+              // Don't show alert on mobile - it can cause issues
+              if (!isMobile) {
+                alert(`Auto-list failed: ${err?.message || err}`);
+              }
             }
-          } catch (err) {
-            console.error('Auto-list failed:', err);
-            alert(`Auto-list failed: ${err?.message || err}`);
-          }
+          }, 0);
           return;
         }
         openListingEditor({ draft: null, files, originTab: tab });

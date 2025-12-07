@@ -119,7 +119,28 @@
       onJobQueued
     } = {}) {
       try {
-        const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+        console.log('[AutoList] Starting runAutoList');
+
+        // Defensive: ensure files is an array
+        let fileArray;
+        try {
+          if (files instanceof FileList) {
+            fileArray = Array.from(files);
+          } else if (Array.isArray(files)) {
+            fileArray = files;
+          } else if (files && typeof files[Symbol.iterator] === 'function') {
+            fileArray = Array.from(files);
+          } else {
+            fileArray = files ? [files] : [];
+          }
+        } catch (e) {
+          console.error('[AutoList] Error converting files:', e);
+          fileArray = [];
+        }
+
+        const validFiles = fileArray.filter(f => f && (f instanceof Blob || f instanceof File || f.uri));
+        console.log('[AutoList] Valid files:', validFiles.length);
+
         if (!validFiles.length) {
           throw new Error('No images provided for auto-listing.');
         }
@@ -262,14 +283,25 @@
 
     // Poll for auto-listing job completion
     // This runs in the background and calls callbacks when the job completes
+    // Returns a stop function that can be called to cancel polling
     function pollAutoListingJob({ jobId, onCompleted, onFailed, maxAttempts = 60, intervalMs = 2000 }) {
       if (!jobId || typeof api.getAutoListingStatus !== 'function') {
         console.warn('[AutoList] Cannot poll - missing jobId or API method');
-        return;
+        return () => {};
       }
 
       let attempts = 0;
       let stopped = false;
+      let timeoutId = null;
+
+      // Return stop function
+      const stop = () => {
+        stopped = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
 
       const poll = async () => {
         if (stopped) return;
@@ -292,20 +324,22 @@
 
           // Still pending or processing - continue polling
           if (attempts < maxAttempts && !stopped) {
-            setTimeout(poll, intervalMs);
+            timeoutId = setTimeout(poll, intervalMs);
           } else if (!stopped) {
             console.warn(`[AutoList] Job ${jobId} polling timed out after ${maxAttempts} attempts`);
           }
         } catch (err) {
           console.error('[AutoList] Poll error:', err);
           if (attempts < maxAttempts && !stopped) {
-            setTimeout(poll, intervalMs * 2); // Back off on errors
+            timeoutId = setTimeout(poll, intervalMs * 2); // Back off on errors
           }
         }
       };
 
       // Start polling after a short delay (give server time to start processing)
-      setTimeout(poll, 1500);
+      timeoutId = setTimeout(poll, 1500);
+
+      return stop;
     }
 
     function SmartImage({

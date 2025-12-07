@@ -1016,6 +1016,12 @@
       }
 
       // Auto-list effect - uses fire-and-forget API for durable background processing
+      const mountedRef = useRef(true);
+      useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+      }, []);
+
       useEffect(() => {
         if (!autoListEnabled) return;
         if (draft) return;
@@ -1025,7 +1031,8 @@
         autoRunning.current = true;
 
         // Fire-and-forget auto-list: upload images, then enqueue server-side job
-        (async () => {
+        // Use setTimeout to avoid blocking the main thread on mobile
+        setTimeout(async () => {
           try {
             console.log('[ListingForm AutoList] Starting fire-and-forget flow with', files.length, 'files');
 
@@ -1110,16 +1117,22 @@
             console.log('[ListingForm AutoList] Job enqueued:', result.job_id);
 
             // Success - close the form, job will complete in background
-            onSaved?.();
-            onCancel?.();
+            // Only call callbacks if still mounted
+            if (mountedRef.current) {
+              try { onSaved?.(); } catch (e) { console.warn('[ListingForm AutoList] onSaved error:', e); }
+              try { onCancel?.(); } catch (e) { console.warn('[ListingForm AutoList] onCancel error:', e); }
+            }
 
           } catch (err) {
             console.error('[ListingForm AutoList] Error:', err);
-            alert(`Auto-list failed: ${err?.message || err}`);
+            // Don't show alert on mobile - can cause crashes
+            if (mountedRef.current && typeof window !== 'undefined' && !isMobileDevice()) {
+              alert(`Auto-list failed: ${err?.message || err}`);
+            }
           } finally {
             autoRunning.current = false;
           }
-        })();
+        }, 0);
       }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, draft, files, onCancel, onSaved]);
 
       // UPDATED: Submit function that handles image changes properly
