@@ -1311,8 +1311,7 @@
                                 { value: 'new', label: 'Newest' },
                                 { value: 'nearest', label: 'Nearest' },
                                 { value: 'price_asc', label: 'Price: Low' },
-                                { value: 'price_desc', label: 'Price: High' },
-                                { value: 'city', label: 'City' }
+                                { value: 'price_desc', label: 'Price: High' }
                               ],
                               style: { width: '100%' }
                             })
