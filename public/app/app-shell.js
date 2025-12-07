@@ -396,15 +396,26 @@
 
       // Return to top toast state
       const [showReturnToTop, setShowReturnToTop] = useState(false);
-      const RETURN_TO_TOP_THRESHOLD = 90;
+      const RETURN_TO_TOP_ITEM_THRESHOLD = 90;
+      const RETURN_TO_TOP_SCROLL_THRESHOLD = 600; // pixels from top
 
-      // Show/hide return to top based on items count
+      // Show/hide return to top based on items count AND scroll position
       useEffect(() => {
-        if (tab === 'browse' && items.length >= RETURN_TO_TOP_THRESHOLD) {
-          setShowReturnToTop(true);
-        } else {
+        if (tab !== 'browse' || items.length < RETURN_TO_TOP_ITEM_THRESHOLD) {
           setShowReturnToTop(false);
+          return;
         }
+
+        const handleScroll = () => {
+          const scrollY = window.scrollY || window.pageYOffset || 0;
+          setShowReturnToTop(scrollY > RETURN_TO_TOP_SCROLL_THRESHOLD);
+        };
+
+        // Check initial position
+        handleScroll();
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
       }, [items.length, tab]);
 
       const handleReturnToTop = useCallback(async () => {
@@ -1327,8 +1338,8 @@
 
 
                         // Return to top toast
-                        showReturnToTop && H('button', {
-                          className: 'return-to-top-toast',
+                        H('button', {
+                          className: showReturnToTop ? 'return-to-top-toast visible' : 'return-to-top-toast',
                           onClick: handleReturnToTop,
                           'aria-label': 'Return to top'
                         },

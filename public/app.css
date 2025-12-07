@@ -1053,28 +1053,25 @@
   color: #fff;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-  animation: return-to-top-drop 0.3s ease-out;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease, box-shadow 0.15s ease;
 }
 
-.return-to-top-toast:hover {
+.return-to-top-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.return-to-top-toast.visible:hover {
   transform: scale(1.08);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
 }
 
-.return-to-top-toast:active {
+.return-to-top-toast.visible:active {
   transform: scale(0.95);
-}
-
-@keyframes return-to-top-drop {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .messages-panel {
