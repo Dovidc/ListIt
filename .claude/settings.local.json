@@ -22,7 +22,9 @@
       "Bash(node --check:*)",
       "Bash(npm ls:*)",
       "Bash(npm run migrate:latest:*)",
-      "Bash(PGPASSWORD=postgres psql:*)"
+      "Bash(PGPASSWORD=postgres psql:*)",
+      "Bash(npm run build:core:browser:*)",
+      "Bash(npm run:*)"
     ],
     "deny": [],
     "ask": []

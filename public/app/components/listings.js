@@ -1015,7 +1015,7 @@
         finally { setGeoBusy(false); }
       }
 
-      // Auto-list effect
+      // Auto-list effect - uses fire-and-forget API for durable background processing
       useEffect(() => {
         if (!autoListEnabled) return;
         if (draft) return;
@@ -1024,122 +1024,101 @@
 
         autoRunning.current = true;
 
-        const runAutoListJob = async () => {
-          const uploadResults = await Promise.allSettled(files.map(uploadFileDraft));
-          const uploads = uploadResults
-            .filter(r => r.status === 'fulfilled' && r.value?.publicUrl)
-            .map(r => r.value);
-          if (!uploads.length) throw new Error('No images uploaded successfully');
-
-          let ai = {};
-          let aiDescription = '';
-          try {
-            const aiSources = uploads.map((u) => u.publicUrl).filter(Boolean).slice(0, AI_IMAGE_LIMIT);
-            if (aiSources.length) {
-              ai = await api.aiAnalyze({ images: aiSources, hint: '' }, { silent: true }) || {};
-            }
-          } catch (_) { }
-
-          const parsedPrice = Number(ai.suggested_price);
-          const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
-
-          const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-          if (rawDescription && aiDescriptionEnabled) {
-            aiDescription = rawDescription.slice(0, 400);
-          }
-
-          // Nearby preference (sub-toggle)
-          const manualLocation = String(location || '').trim();
-          let locAuto = manualLocation;
-          let latAuto = null;
-          let lonAuto = null;
-          let enableNearbyAuto = 0;
-          let cachedCoords = null;
-
-          async function ensureCoords() {
-            if (cachedCoords) return cachedCoords;
-            cachedCoords = await fetchCoordsAndReverseInternal();
-            return cachedCoords;
-          }
-
-          if (autoPostNearbyEnabled) {
-            try {
-              const c = await ensureCoords();
-              enableNearbyAuto = 1;
-              latAuto = c.lat; lonAuto = c.lon;
-              if (!locAuto) locAuto = formatLocationDisplay(c, c?.display || '');
-            } catch (_) {
-              enableNearbyAuto = 0;
-            }
-          }
-
-          if (!locAuto) {
-            try {
-              const c = await ensureCoords();
-              locAuto = formatLocationDisplay(c, c?.display || '');
-              if (enableNearbyAuto && c) {
-                latAuto = c.lat;
-                lonAuto = c.lon;
-              }
-            } catch (_) { }
-          }
-
-          if (!locAuto) {
-            locAuto = 'Unknown location';
-          }
-
-          const payload = {
-            title: (ai.title || 'Item for sale').toString().slice(0, 80),
-            description: aiDescription || 'No description',
-            location: locAuto || '',
-            price: safePrice,
-            tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-            enable_nearby: enableNearbyAuto,
-            upload_tokens: uploads.map((u) => u.uploadToken)
-          };
-          if (enableNearbyAuto) { payload.lat = latAuto; payload.lon = lonAuto; }
-
-          const created = await api.createListing(payload);
-          if (!created?.id) throw new Error('Create failed');
-          if (inquiryEnabled && created?.id) {
-            try {
-              await api.updateListing(created.id, { inquiry_enabled: 1 });
-            } catch (err) {
-              console.error('Failed to mark auto-listed item as inquiry-enabled:', err);
-            }
-          }
-        };
-
-        if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
-          enqueueListingJob(async () => {
-            try {
-              await runAutoListJob();
-              onSaved?.();
-            } catch (err) {
-              console.error('Auto-list failed:', err);
-              alert(`Auto-list failed: ${err?.message || err}`);
-            } finally {
-              autoRunning.current = false;
-            }
-          });
-          onCancel?.();
-          return;
-        }
-
-        setAutoBusy(true);
+        // Fire-and-forget auto-list: upload images, then enqueue server-side job
         (async () => {
           try {
-            await runAutoListJob();
+            console.log('[ListingForm AutoList] Starting fire-and-forget flow with', files.length, 'files');
+
+            // Step 1: Upload all images to get upload tokens
+            const uploadResults = await Promise.allSettled(files.map(uploadFileDraft));
+            const uploads = uploadResults
+              .filter(r => r.status === 'fulfilled' && r.value?.uploadToken)
+              .map(r => r.value);
+
+            if (!uploads.length) {
+              throw new Error('No images uploaded successfully');
+            }
+
+            const uploadTokens = uploads.map((u) => u.uploadToken).filter(Boolean);
+            console.log('[ListingForm AutoList] Got', uploadTokens.length, 'upload tokens');
+
+            // Step 2: Get location (for server-side use)
+            const manualLocation = String(location || '').trim();
+            let locAuto = manualLocation;
+            let latAuto = null;
+            let lonAuto = null;
+            let enableNearbyAuto = false;
+
+            if (autoPostNearbyEnabled) {
+              try {
+                const c = await fetchCoordsAndReverseInternal();
+                if (c && c.lat != null && c.lon != null) {
+                  enableNearbyAuto = true;
+                  latAuto = c.lat;
+                  lonAuto = c.lon;
+                  if (!locAuto) locAuto = formatLocationDisplay(c, c?.display || '');
+                }
+              } catch (e) {
+                console.warn('[ListingForm AutoList] Nearby coords failed:', e);
+              }
+            }
+
+            if (!locAuto) {
+              try {
+                const c = await fetchCoordsAndReverseInternal();
+                if (c) {
+                  locAuto = formatLocationDisplay(c, c?.display || '');
+                }
+              } catch (_) { }
+            }
+
+            if (!locAuto) {
+              locAuto = 'Unknown location';
+            }
+
+            // Step 3: Build fire-and-forget payload
+            const payload = {
+              upload_tokens: uploadTokens,
+              location: locAuto,
+              hint: '', // Could include user hints in future
+              ai_enabled: aiDescriptionEnabled !== false,
+              enable_nearby: enableNearbyAuto,
+              inquiry_enabled: !!inquiryEnabled
+            };
+
+            if (enableNearbyAuto && latAuto != null && lonAuto != null) {
+              payload.lat = latAuto;
+              payload.lon = lonAuto;
+            }
+
+            // Step 4: Call fire-and-forget API
+            console.log('[ListingForm AutoList] Calling createAutoListing');
+
+            if (typeof api.createAutoListing !== 'function') {
+              throw new Error('createAutoListing API not available');
+            }
+
+            const result = await api.createAutoListing(payload);
+
+            if (!result?.job_id) {
+              console.error('[ListingForm AutoList] No job_id in response:', result);
+              throw new Error('Failed to enqueue auto-listing job');
+            }
+
+            console.log('[ListingForm AutoList] Job enqueued:', result.job_id);
+
+            // Success - close the form, job will complete in background
             onSaved?.();
+            onCancel?.();
+
           } catch (err) {
-            console.error('Auto-list failed:', err);
+            console.error('[ListingForm AutoList] Error:', err);
             alert(`Auto-list failed: ${err?.message || err}`);
           } finally {
-            setAutoBusy(false);
             autoRunning.current = false;
           }
         })();
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved]);
+      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, draft, files, onCancel, onSaved]);
 
       // UPDATED: Submit function that handles image changes properly
       // Update the submit function (remove the duplicate and fix it):

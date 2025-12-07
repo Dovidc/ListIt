@@ -5572,6 +5572,7 @@ app.post(
     return next();
   },
   async (req, res) => {
+    console.log('[AutoListing API] POST /api/listings/auto called by user', req.user?.id);
     try {
       const {
         upload_tokens,
@@ -5583,6 +5584,7 @@ app.post(
         lat,
         lon
       } = req.body || {};
+      console.log('[AutoListing API] Request body:', { upload_tokens: upload_tokens?.length, location, ai_enabled, enable_nearby });
 
       // Validate required fields
       if (!location || typeof location !== 'string' || !location.trim()) {
@@ -5655,6 +5657,7 @@ app.post(
       );
 
       const jobId = info.lastInsertRowid;
+      console.log(`[AutoListing API] Job record created with id ${jobId}`);
 
       // Enqueue worker job
       if (app._embeddedWorker && typeof app._embeddedWorker.enqueueJob === 'function') {
