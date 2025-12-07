@@ -1450,38 +1450,60 @@
           try {
             const upload = await uploadFileDraft(file);
 
-            let ai = {};
-            let aiDescription = '';
-            try {
-              ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent: true }) || {};
-            } catch (_) {
-              /* ignore AI failure; fallback below */
-            }
+            // Use fire-and-forget API so AI analysis runs server-side
+            // even if the app is closed
+            if (typeof api.createAutoListing === 'function') {
+              const payload = {
+                upload_tokens: [upload.uploadToken],
+                location: normalizedLocation,
+                hint: '',
+                ai_enabled: true,
+                ai_description_enabled: aiDescriptionEnabled !== false,
+                enable_nearby: autoPostNearbyEnabled && sharedNearby.ok,
+                inquiry_enabled: autoInquiryEnabled
+              };
+              if (autoPostNearbyEnabled && sharedNearby.ok) {
+                payload.lat = sharedNearby.lat;
+                payload.lon = sharedNearby.lon;
+              }
 
-            const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-            const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-            if (rawDescription && aiDescriptionEnabled) {
-              aiDescription = rawDescription.slice(0, 400);
-            }
-            const payload = {
-              title: (ai.title || 'Item for sale').toString().slice(0, 80),
-              description: aiDescription || 'No description',
-              location: normalizedLocation,
-              price: safePrice,
-              tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
-              enable_nearby: (autoPostNearbyEnabled && sharedNearby.ok) ? 1 : 0,
-              upload_tokens: [upload.uploadToken]
-            };
-            if (autoInquiryEnabled) payload.inquiry_enabled = 1;
-            if (autoPostNearbyEnabled && sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
-
-            const created = await api.createListing(payload);
-            if (!created?.id) throw new Error('create_failed');
-            if (autoInquiryEnabled && created?.id) {
+              const result = await api.createAutoListing(payload);
+              if (!result?.job_id) throw new Error('create_failed');
+            } else {
+              // Fallback to legacy client-side flow if API not available
+              let ai = {};
+              let aiDescription = '';
               try {
-                await api.updateListing(created.id, { inquiry_enabled: 1 });
-              } catch (err) {
-                console.error('Failed to mark mass-listed item as inquiry-enabled:', err);
+                ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent: true }) || {};
+              } catch (_) {
+                /* ignore AI failure; fallback below */
+              }
+
+              const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
+              const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
+              if (rawDescription && aiDescriptionEnabled) {
+                aiDescription = rawDescription.slice(0, 400);
+              }
+              const payload = {
+                title: (ai.title || 'Item for sale').toString().slice(0, 80),
+                description: aiDescription || 'No description',
+                location: normalizedLocation,
+                price: safePrice,
+                tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
+                enable_nearby: (autoPostNearbyEnabled && sharedNearby.ok) ? 1 : 0,
+                upload_tokens: [upload.uploadToken]
+              };
+              if (autoInquiryEnabled) payload.inquiry_enabled = 1;
+              if (autoPostNearbyEnabled && sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
+
+              const created = await api.createListing(payload);
+              if (!created?.id) throw new Error('create_failed');
+              if (autoInquiryEnabled && created?.id) {
+                try {
+                  await api.updateListing(created.id, { inquiry_enabled: 1 });
+                } catch (err) {
+                  console.error('Failed to mark mass-listed item as inquiry-enabled:', err);
+                }
               }
             }
 
