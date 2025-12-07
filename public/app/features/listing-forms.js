@@ -200,11 +200,13 @@
         }
 
         // Step 3: Build payload for fire-and-forget API
+        // AI analysis (title/tags/price) always runs - ai_description_enabled controls description only
         const payload = {
           upload_tokens: uploadTokens,
           location: locAuto,
           hint: '', // Could be used for user hints in the future
-          ai_enabled: aiDescriptionEnabled !== false,
+          ai_enabled: true, // Always analyze for title/tags/price
+          ai_description_enabled: aiDescriptionEnabled !== false, // User preference for AI description
           enable_nearby: enableNearbyAuto,
           inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
         };

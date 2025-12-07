@@ -529,8 +529,9 @@ class WorkerService {
       let tags = [];
       let price = 0;
 
-      // Run AI analysis if enabled
-      if (job.ai_enabled && this.aiAnalyzer) {
+      // AI analysis ALWAYS runs for title/tags/price
+      // job.ai_enabled only controls whether to use AI description
+      if (this.aiAnalyzer) {
         try {
           const imageUrls = drafts.map(d => canonicalAssetUrl(d.url)).filter(Boolean);
           const aiResult = await this.aiAnalyzer({
@@ -539,20 +540,28 @@ class WorkerService {
           });
 
           if (aiResult) {
+            // Always use AI for title, tags, and price
             title = aiResult.title || '';
-            description = aiResult.description || '';
             tags = aiResult.tags || [];
             price = aiResult.suggested_price || 0;
+
+            // Only use AI description if user preference allows it
+            if (job.ai_enabled && aiResult.description) {
+              description = aiResult.description;
+            } else {
+              // Use synthesized description based on AI title
+              description = listingService.synthesizeListingDescription(title, job.hint);
+            }
           }
         } catch (aiErr) {
           console.warn(`[Worker] AI analysis failed for job ${jobId}:`, aiErr?.message || aiErr);
-          // Fall back to hint-based description
+          // Fall back to hint-based content
           title = listingService.shortTitle(job.hint || 'Item for sale');
           description = listingService.synthesizeListingDescription(title, job.hint);
           tags = listingService.fallbackTagsFromTitleDesc(title, job.hint);
         }
       } else {
-        // No AI - use hint-based fallback
+        // No AI analyzer available - use hint-based fallback
         title = listingService.shortTitle(job.hint || 'Item for sale');
         description = listingService.synthesizeListingDescription(title, job.hint);
         tags = listingService.fallbackTagsFromTitleDesc(title, job.hint);

@@ -5579,12 +5579,13 @@ app.post(
         location,
         hint,
         ai_enabled,
+        ai_description_enabled, // Controls whether to use AI-generated description
         enable_nearby,
         inquiry_enabled,
         lat,
         lon
       } = req.body || {};
-      console.log('[AutoListing API] Request body:', { upload_tokens: upload_tokens?.length, location, ai_enabled, enable_nearby });
+      console.log('[AutoListing API] Request body:', { upload_tokens: upload_tokens?.length, location, ai_enabled, ai_description_enabled, enable_nearby });
 
       // Validate required fields
       if (!location || typeof location !== 'string' || !location.trim()) {
@@ -5623,7 +5624,10 @@ app.post(
       }
 
       // Parse optional fields
-      const aiEnabled = ai_enabled !== false && ai_enabled !== 0 ? 1 : 0;
+      // ai_enabled in DB controls AI description (AI analysis always runs for title/tags/price)
+      // Prefer ai_description_enabled if provided, fall back to ai_enabled for backwards compatibility
+      const aiDescPref = ai_description_enabled !== undefined ? ai_description_enabled : ai_enabled;
+      const aiEnabled = aiDescPref !== false && aiDescPref !== 0 ? 1 : 0;
       const enNearby = enable_nearby ? 1 : 0;
       const inquiryEnabled = inquiry_enabled ? 1 : 0;
       let safeLat = null;
