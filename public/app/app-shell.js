@@ -366,6 +366,7 @@
         isFetchingListings,
         listingError,
         loadMore,
+        isScrollPaceLimited,
         sentinelRef,
         isInfiniteScrollSupported,
         reloadMineOnly,
@@ -1372,6 +1373,21 @@
                         hasMore: hasNext,
                         sentinelRef
                       }),
+
+                      isScrollPaceLimited && H('div', {
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 10,
+                          padding: '8px 0',
+                          color: '#2563eb',
+                          fontWeight: 600
+                        }
+                      },
+                        H('div', { className: 'spinner', style: { width: 16, height: 16, borderWidth: 2 } }),
+                        H('span', null, 'Catching up—loading a smaller batch. Scroll steadily to keep things smooth.')
+                      ),
 
                       hasNext && !isFetchingListings && H('div', {
                         style: {
