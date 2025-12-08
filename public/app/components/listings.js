@@ -1358,8 +1358,8 @@
           )
         ),
 
-        H('div', { className: 'card', style: { padding: 12, background: '#fafafa' } },
-          H('div', { style: { fontWeight: 600, marginBottom: 6 } }, 'Search tags (private, optional)'),
+        H('div', { className: 'card search-tags-card', style: { padding: 12 } },
+          H('div', { className: 'search-tags-title', style: { fontWeight: 600, marginBottom: 6 } }, 'Search tags (private, optional)'),
           H('div', { className: 'muted', style: { marginBottom: 6 } }, 'Not shown publicly; help others find your item. Example:"car, suv, 4x4".'),
           H('input', { placeholder: 'e.g. car, suv, 4x4', value: tags, onChange: e => setTags(e.target.value) })
         ),

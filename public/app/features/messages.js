@@ -225,17 +225,19 @@
                   marginLeft: conversation._unread ? 6 : 'auto',
                   width: 22,
                   height: 22,
-                  lineHeight: '20px',
                   borderRadius: 10,
                   border: '1px solid #fee2e2',
                   background: '#fff5f5',
                   color: '#b91c1c',
-                  fontWeight: 800,
-                  display: 'grid',
-                  placeItems: 'center',
-                  cursor: 'pointer'
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  padding: 0
                 }
-              }, 'x')
+              }, '×')
             ))
             : [H('div', { key: 'empty', className: 'muted messages-sidebar__empty' }, 'No conversations yet')])
         )

@@ -124,7 +124,37 @@
         return () => window.removeEventListener('keydown', handleEsc);
       }, [isOpen, onClose]);
 
-      function getFriendlyError(message) {
+      function getFriendlyIssue(issue) {
+        const field = issue.path || 'field';
+        const msg = (issue.message || '').toLowerCase();
+
+        if (field === 'email') {
+          if (msg.includes('invalid') || msg.includes('valid email')) {
+            return 'Please enter a valid email address.';
+          }
+          return 'Please check your email address.';
+        }
+        if (field === 'password') {
+          if (msg.includes('at least') || msg.includes('minimum') || msg.includes('characters')) {
+            return 'Password must be at least 8 characters.';
+          }
+          return 'Please check your password.';
+        }
+        if (field === 'username') {
+          if (msg.includes('at least') || msg.includes('minimum') || msg.includes('characters')) {
+            return 'Username must be at least 3 characters.';
+          }
+          return 'Please check your username.';
+        }
+        return issue.message || 'Please check your input.';
+      }
+
+      function getFriendlyError(message, issues) {
+        // Handle validation errors with specific issues
+        if (message === 'invalid_request' && issues && issues.length > 0) {
+          return issues.map(getFriendlyIssue).join(' ');
+        }
+
         switch (message) {
           case 'auth':
           case 'Invalid credentials':
@@ -155,6 +185,8 @@
             return 'That reset code expired. Request a new one.';
           case 'reset_failed':
             return 'We could not update your password. Try again.';
+          case 'invalid_request':
+            return 'Please check your input and try again.';
           default:
             return message || 'An error occurred';
         }
@@ -194,11 +226,12 @@
           }
         } catch (err) {
           const message = err?.message;
+          const issues = err?.issues;
           if (message === 'email_unverified') {
             setInfo('We just emailed you a new code. It may take a moment to arrive.');
             handled = true;
           } else {
-            setError(getFriendlyError(message));
+            setError(getFriendlyError(message, issues));
             handled = true;
           }
         } finally {
@@ -281,6 +314,7 @@
           }
         } catch (err) {
           const message = err?.message;
+          const issues = err?.issues;
 
           if (mode === 'login' && message === 'email_unverified') {
             const normalizedEmail = email.trim();
@@ -302,17 +336,17 @@
             }
 
             if (message === 'invalid_code') {
-              setError(getFriendlyError(message));
+              setError(getFriendlyError(message, issues));
               return;
             }
           }
 
           if (mode === 'reset-confirm' && (message === 'invalid_token' || message === 'token_expired')) {
-            setError(getFriendlyError(message));
+            setError(getFriendlyError(message, issues));
             return;
           }
 
-          setError(getFriendlyError(message));
+          setError(getFriendlyError(message, issues));
         } finally {
           setLoading(false);
         }

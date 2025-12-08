@@ -131,7 +131,37 @@
                 }
             };
 
-            function getFriendlyError(message) {
+            function getFriendlyIssue(issue) {
+                const field = issue.path || 'field';
+                const msg = (issue.message || '').toLowerCase();
+
+                if (field === 'email') {
+                    if (msg.includes('invalid') || msg.includes('valid email')) {
+                        return 'Please enter a valid email address.';
+                    }
+                    return 'Please check your email address.';
+                }
+                if (field === 'password') {
+                    if (msg.includes('at least') || msg.includes('minimum') || msg.includes('characters')) {
+                        return 'Password must be at least 8 characters.';
+                    }
+                    return 'Please check your password.';
+                }
+                if (field === 'username') {
+                    if (msg.includes('at least') || msg.includes('minimum') || msg.includes('characters')) {
+                        return 'Username must be at least 3 characters.';
+                    }
+                    return 'Please check your username.';
+                }
+                return issue.message || 'Please check your input.';
+            }
+
+            function getFriendlyError(message, issues) {
+                // Handle validation errors with specific issues
+                if (message === 'invalid_request' && issues && issues.length > 0) {
+                    return issues.map(getFriendlyIssue).join(' ');
+                }
+
                 switch (message) {
                     case 'auth':
                     case 'Invalid credentials':
@@ -150,6 +180,8 @@
                         return 'Invalid code. Please try again.';
                     case 'verification_expired':
                         return 'Code expired. We sent a new one.';
+                    case 'invalid_request':
+                        return 'Please check your input and try again.';
                     default:
                         return message || 'An error occurred.';
                 }
@@ -213,6 +245,7 @@
 
                 } catch (err) {
                     const msg = err?.message;
+                    const issues = err?.issues;
                     if (mode === 'login' && msg === 'email_unverified') {
                         setPendingEmail(email.trim());
                         setPendingPassword(password);
@@ -220,7 +253,7 @@
                         setInfo('Please verify your email.');
                         return;
                     }
-                    setError(getFriendlyError(msg));
+                    setError(getFriendlyError(msg, issues));
                 } finally {
                     setLoading(false);
                 }

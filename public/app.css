@@ -59,23 +59,15 @@
   color: #22c55e;
 }
 
-header .container {
-  position: relative;
-}
-
 .brand-copy {
   display: grid;
   gap: 2px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .brand-title {
   font-weight: 500;
-  font-size: 1rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 0.9rem;
+  letter-spacing: 0.15em;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #64748b;
 }
@@ -90,6 +82,21 @@ header .container {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #64748b;
+}
+
+/* Nav unread dot (desktop) */
+.nav-unread-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+[data-theme="dark"] .nav-unread-dot {
+  box-shadow: 0 0 0 2px var(--bg-primary, #1a1b26);
 }
 
 /* Ad card */
@@ -561,6 +568,22 @@ header .container {
   flex-direction: column;
 }
 
+[data-theme="dark"] .modal-inner.listing-modal {
+  background: var(--bg-secondary, #24283b);
+}
+
+[data-theme="dark"] .modal-inner.listing-modal .card {
+  background: var(--bg-secondary, #24283b);
+  color: #fff;
+}
+
+[data-theme="dark"] .modal-inner.listing-modal .card .muted,
+[data-theme="dark"] .modal-inner.listing-modal .card p,
+[data-theme="dark"] .modal-inner.listing-modal .card span,
+[data-theme="dark"] .modal-inner.listing-modal .card div {
+  color: #e2e8f0 !important;
+}
+
 /* Make the card behave like a normal sheet inside the modal */
 .modal-inner.listing-modal .card {
   width: 100%;
@@ -675,6 +698,134 @@ header .container {
     padding: 0;
     background: transparent;
   }
+}
+
+/* Listing form dark mode (desktop only) */
+[data-theme="dark"] .listing-form-screen__content {
+  background: var(--bg-secondary, #24283b);
+}
+
+[data-theme="dark"] .listing-form-screen__header {
+  border-bottom-color: var(--border-color, #414868);
+}
+
+[data-theme="dark"] .listing-form-screen__title {
+  color: var(--text-primary, #c0caf5);
+}
+
+[data-theme="dark"] .listing-form-screen__dismiss {
+  background: var(--bg-tertiary, #414868);
+  border-color: var(--border-color, #414868);
+  color: var(--text-primary, #c0caf5);
+}
+
+[data-theme="dark"] .listing-form-screen__dismiss:hover,
+[data-theme="dark"] .listing-form-screen__dismiss:focus {
+  background: var(--bg-primary, #1a1b26);
+}
+
+[data-theme="dark"] .listing-form-screen section h2 {
+  color: var(--text-primary, #c0caf5) !important;
+}
+
+[data-theme="dark"] .listing-form-screen label {
+  color: var(--text-secondary, #a9b1d6) !important;
+}
+
+[data-theme="dark"] .listing-form-screen input,
+[data-theme="dark"] .listing-form-screen textarea,
+[data-theme="dark"] .listing-form-screen select {
+  background: var(--bg-tertiary, #414868) !important;
+  color: var(--text-primary, #c0caf5) !important;
+  border-color: var(--border-color, #414868) !important;
+}
+
+[data-theme="dark"] .listing-form-screen input::placeholder,
+[data-theme="dark"] .listing-form-screen textarea::placeholder {
+  color: var(--text-muted, #565f89) !important;
+}
+
+[data-theme="dark"] .listing-form-screen button,
+[data-theme="dark"] .compact-listing-form button {
+  background: var(--bg-tertiary, #414868) !important;
+  color: var(--text-primary, #c0caf5) !important;
+  border-color: var(--border-color, #414868) !important;
+}
+
+[data-theme="dark"] .listing-form-screen button.btn.primary,
+[data-theme="dark"] .compact-listing-form button[type="submit"] {
+  background: var(--accent-blue, #7aa2f7) !important;
+  color: var(--bg-primary, #1a1b26) !important;
+  border-color: var(--accent-blue, #7aa2f7) !important;
+}
+
+[data-theme="dark"] .compact-listing-form section {
+  color: var(--text-primary, #c0caf5) !important;
+}
+
+[data-theme="dark"] .compact-listing-form h2 {
+  color: var(--text-primary, #c0caf5) !important;
+}
+
+[data-theme="dark"] .compact-listing-form label {
+  color: var(--text-secondary, #a9b1d6) !important;
+}
+
+[data-theme="dark"] .compact-listing-form input,
+[data-theme="dark"] .compact-listing-form textarea,
+[data-theme="dark"] .compact-listing-form select {
+  background: var(--bg-tertiary, #414868) !important;
+  color: var(--text-primary, #c0caf5) !important;
+  border-color: var(--border-color, #414868) !important;
+}
+
+[data-theme="dark"] .compact-listing-form input::placeholder,
+[data-theme="dark"] .compact-listing-form textarea::placeholder {
+  color: var(--text-muted, #565f89) !important;
+}
+
+[data-theme="dark"] .compact-listing-form p {
+  color: var(--text-muted, #565f89) !important;
+}
+
+[data-theme="dark"] .compact-listing-form span {
+  color: var(--text-secondary, #a9b1d6) !important;
+}
+
+/* Listing edit modal form (in listings.js) dark mode */
+[data-theme="dark"] .modal-inner .card {
+  background: var(--bg-tertiary, #414868) !important;
+  border-color: var(--border-color, #414868) !important;
+}
+
+[data-theme="dark"] .modal-inner .card input,
+[data-theme="dark"] .modal-inner .card textarea,
+[data-theme="dark"] .modal-inner .card select {
+  background: var(--bg-secondary, #24283b) !important;
+  color: var(--text-primary, #c0caf5) !important;
+  border-color: var(--border-color, #414868) !important;
+}
+
+[data-theme="dark"] .modal-inner .card input::placeholder,
+[data-theme="dark"] .modal-inner .card textarea::placeholder {
+  color: var(--text-muted, #565f89) !important;
+}
+
+[data-theme="dark"] .modal-inner .card .muted {
+  color: var(--text-muted, #565f89) !important;
+}
+
+[data-theme="dark"] .modal-inner .card div {
+  color: var(--text-primary, #c0caf5) !important;
+}
+
+/* Search tags card in listing form */
+.search-tags-card {
+  background: #fafafa;
+}
+
+[data-theme="dark"] .search-tags-card {
+  background: var(--bg-tertiary, #414868) !important;
 }
 
 /* Lightbox overlay */
