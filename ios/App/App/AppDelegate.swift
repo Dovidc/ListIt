@@ -6,15 +6,17 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
-    var pendingNotificationData: [AnyHashable: Any]? = nil
+    var pendingConversationId: String? = nil
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Set notification delegate
+        // Set notification delegate BEFORE anything else
         UNUserNotificationCenter.current().delegate = self
 
-        // Check if launched from notification
+        // Check if launched from notification (cold start)
         if let notification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
-            pendingNotificationData = notification
+            if let convoId = notification["conversation_id"] {
+                pendingConversationId = "\(convoId)"
+            }
         }
 
         return true
@@ -24,24 +26,52 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
-        // Store the notification data to be picked up by JS
+        // Get conversation_id from payload
         if let conversationId = userInfo["conversation_id"] {
-            UserDefaults.standard.set(conversationId, forKey: "pendingConversationId")
-            UserDefaults.standard.synchronize()
+            let convoIdStr = "\(conversationId)"
+            pendingConversationId = convoIdStr
 
-            // Try to navigate immediately if webview is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if let rootVC = self.window?.rootViewController as? CAPBridgeViewController {
-                    let js = "localStorage.setItem('pendingConversationId', '\(conversationId)'); window.ListItApp?.AppNav?.openConversation?.(\(conversationId));"
-                    rootVC.bridge?.webView?.evaluateJavaScript(js, completionHandler: nil)
+            // Try multiple times with increasing delays
+            navigateToConversation(convoIdStr, attempt: 1)
+        }
+
+        completionHandler()
+    }
+
+    private func navigateToConversation(_ conversationId: String, attempt: Int) {
+        let delay = Double(attempt) * 0.5 // 0.5s, 1s, 1.5s, 2s
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let rootVC = self.window?.rootViewController as? CAPBridgeViewController,
+                  let webView = rootVC.bridge?.webView else {
+                // Retry if webview not ready (up to 4 attempts)
+                if attempt < 4 {
+                    self.navigateToConversation(conversationId, attempt: attempt + 1)
+                }
+                return
+            }
+
+            let js = """
+                (function() {
+                    localStorage.setItem('pendingConversationId', '\(conversationId)');
+                    if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.openConversation) {
+                        window.ListItApp.AppNav.openConversation(\(conversationId));
+                        return 'navigated';
+                    }
+                    return 'not_ready';
+                })();
+            """
+
+            webView.evaluateJavaScript(js) { result, error in
+                if let result = result as? String, result == "not_ready", attempt < 4 {
+                    // App not ready yet, retry
+                    self.navigateToConversation(conversationId, attempt: attempt + 1)
+                } else {
+                    // Success or gave up
+                    self.pendingConversationId = nil
                 }
             }
         }
-
-        // Also notify Capacitor
-        NotificationCenter.default.post(name: Notification.Name("pushNotificationActionPerformed"), object: nil, userInfo: userInfo)
-
-        completionHandler()
     }
 
     // Called when notification arrives while app is in foreground
@@ -61,21 +91,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // Check for pending notification navigation when app becomes active
+        if let convoId = pendingConversationId {
+            navigateToConversation(convoId, attempt: 1)
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

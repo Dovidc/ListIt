@@ -1,5 +1,9 @@
 {
   "appId": "com.yourcompany.listit",
   "appName": "Trovelr",
-  "webDir": "public"
+  "webDir": "public",
+  "ios": {
+    "backgroundColor": "#ffffff",
+    "contentInset": "always"
+  }
 }
