@@ -1794,7 +1794,7 @@
         })
       );
 
-      // Mobile portal - full screen (dashboard is hidden via CSS when portal is present)
+      // Mobile portal - full screen edge-to-edge (dashboard is hidden via CSS when portal is present)
       const mobileThreadPortal = isMobile && showConversationOnMobile && ReactDOM.createPortal(
         H('div', {
           ref: portalRef,
@@ -1805,10 +1805,10 @@
             left: 0,
             right: 0,
             bottom: 0,
-            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingTop: 0,
             paddingLeft: 12,
             paddingRight: 12,
-            paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+            paddingBottom: 12,
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
