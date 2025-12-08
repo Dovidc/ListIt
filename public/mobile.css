@@ -20,6 +20,11 @@
   font-size: 0.95rem;
 }
 
+/* Hide entire header on mobile - navigation is in bottom dashboard */
+header {
+  display: none !important;
+}
+
 .brand-tagline {
   font-size: 0.7rem;
 }
