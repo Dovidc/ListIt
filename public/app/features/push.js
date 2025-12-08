@@ -166,7 +166,13 @@
               // Navigate to relevant screen based on notification data
               const data = action.notification?.data;
               if (data?.conversation_id) {
-                window.ListItApp?.AppNav?.setTab?.('messages');
+                // Open the specific conversation
+                if (typeof window.ListItApp?.AppNav?.openConversation === 'function') {
+                  window.ListItApp.AppNav.openConversation(data.conversation_id);
+                } else {
+                  // Fallback to just switching tabs
+                  window.ListItApp?.AppNav?.setTab?.('messages');
+                }
               }
             });
             listenersRef.current.push(actionListener);
