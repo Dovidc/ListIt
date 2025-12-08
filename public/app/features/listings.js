@@ -444,7 +444,7 @@
           });
       }, [onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor]);
 
-      // Scroll-based loading (works on Capacitor iOS where IntersectionObserver may fail)
+      // Scroll-based loading with polling fallback for Capacitor iOS
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
@@ -452,9 +452,21 @@
         let lastY = window.scrollY || 0;
         let lastT = Date.now();
 
+        const checkScrollPosition = () => {
+          // Check if near bottom of page and trigger load
+          const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+          const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+          const clientHeight = window.innerHeight || document.documentElement.clientHeight;
+          const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+          if (distanceFromBottom < 800) {
+            doLoad(isPaceLimitedRef.current);
+          }
+        };
+
         const handleScroll = () => {
           const now = Date.now();
-          const y = window.scrollY || 0;
+          const y = window.scrollY || window.pageYOffset || 0;
           const delta = Math.abs(y - lastY);
           const dt = Math.max(16, now - lastT);
           const speed = delta / dt;
@@ -473,21 +485,20 @@
             }, 2500);
           }
 
-          // Fallback: Check if near bottom of page and trigger load
-          // This helps on Capacitor iOS where IntersectionObserver may not work
-          const scrollHeight = document.documentElement.scrollHeight;
-          const scrollTop = window.scrollY || document.documentElement.scrollTop;
-          const clientHeight = window.innerHeight;
-          const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-          if (distanceFromBottom < 800) {
-            doLoad(isPaceLimitedRef.current);
-          }
+          checkScrollPosition();
         };
 
+        // Use scroll event
         window.addEventListener('scroll', handleScroll, { passive: true });
+        document.addEventListener('scroll', handleScroll, { passive: true });
+
+        // Polling fallback for Capacitor iOS where scroll events may not fire
+        const pollInterval = setInterval(checkScrollPosition, 500);
+
         return () => {
           window.removeEventListener('scroll', handleScroll);
+          document.removeEventListener('scroll', handleScroll);
+          clearInterval(pollInterval);
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
         };
       }, [enabled, doLoad]);

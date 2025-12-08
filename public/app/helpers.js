@@ -44,54 +44,49 @@
     }) {
       const [scrollTop, setScrollTop] = useState(0);
       const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
-      const lastUpdateRef = useRef(0);
-      const pendingUpdateRef = useRef(null);
-      const throttleMs = 16; // ~60fps max update rate
+      const lastValueRef = useRef(0);
 
       useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        const updateScrollTop = (value) => {
-          const now = Date.now();
-          const timeSinceLastUpdate = now - lastUpdateRef.current;
-
-          if (timeSinceLastUpdate >= throttleMs) {
-            // Update immediately
-            lastUpdateRef.current = now;
-            setScrollTop(value);
-          } else {
-            // Schedule update for later
-            if (pendingUpdateRef.current) {
-              cancelAnimationFrame(pendingUpdateRef.current);
-            }
-            pendingUpdateRef.current = requestAnimationFrame(() => {
-              lastUpdateRef.current = Date.now();
-              setScrollTop(window.scrollY);
-              pendingUpdateRef.current = null;
-            });
-          }
+        const getScrollTop = () => {
+          // Try multiple ways to get scroll position for Capacitor iOS compatibility
+          return window.scrollY ||
+                 window.pageYOffset ||
+                 document.documentElement.scrollTop ||
+                 document.body.scrollTop ||
+                 0;
         };
 
-        const onScroll = () => {
-          updateScrollTop(window.scrollY);
+        const updateScroll = () => {
+          const value = getScrollTop();
+          // Only update state if value changed (prevents unnecessary re-renders)
+          if (value !== lastValueRef.current) {
+            lastValueRef.current = value;
+            setScrollTop(value);
+          }
         };
 
         const onResize = () => {
-          setViewportHeight(window.innerHeight);
+          setViewportHeight(window.innerHeight || document.documentElement.clientHeight);
         };
 
-        window.addEventListener('scroll', onScroll, { passive: true });
+        // Listen to scroll events
+        window.addEventListener('scroll', updateScroll, { passive: true });
+        document.addEventListener('scroll', updateScroll, { passive: true });
         window.addEventListener('resize', onResize, { passive: true });
 
+        // Polling fallback for Capacitor iOS where scroll events don't fire
+        const pollInterval = setInterval(updateScroll, 100);
+
         // Initial check
-        setScrollTop(window.scrollY);
+        updateScroll();
 
         return () => {
-          window.removeEventListener('scroll', onScroll);
+          window.removeEventListener('scroll', updateScroll);
+          document.removeEventListener('scroll', updateScroll);
           window.removeEventListener('resize', onResize);
-          if (pendingUpdateRef.current) {
-            cancelAnimationFrame(pendingUpdateRef.current);
-          }
+          clearInterval(pollInterval);
         };
       }, []);
 
