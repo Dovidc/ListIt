@@ -49,18 +49,25 @@
       useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        const getScrollTop = () => {
-          // Try multiple ways to get scroll position for Capacitor iOS compatibility
-          return window.scrollY ||
-                 window.pageYOffset ||
-                 document.documentElement.scrollTop ||
-                 document.body.scrollTop ||
-                 0;
+        // On mobile, main.container is the scroll container (position: fixed, overflow-y: auto)
+        // On desktop, window is the scroll container
+        const getScrollContainer = () => {
+          const mainContainer = document.querySelector('main.container');
+          if (mainContainer) {
+            const style = window.getComputedStyle(mainContainer);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              return mainContainer;
+            }
+          }
+          return null;
         };
 
+        const scrollContainer = getScrollContainer();
+
         const updateScroll = () => {
-          const value = getScrollTop();
-          // Only update state if value changed (prevents unnecessary re-renders)
+          const value = scrollContainer
+            ? scrollContainer.scrollTop
+            : (window.scrollY || window.pageYOffset || 0);
           if (value !== lastValueRef.current) {
             lastValueRef.current = value;
             setScrollTop(value);
@@ -71,22 +78,24 @@
           setViewportHeight(window.innerHeight || document.documentElement.clientHeight);
         };
 
-        // Listen to scroll events
-        window.addEventListener('scroll', updateScroll, { passive: true });
-        document.addEventListener('scroll', updateScroll, { passive: true });
+        // Listen to scroll events on the correct container
+        if (scrollContainer) {
+          scrollContainer.addEventListener('scroll', updateScroll, { passive: true });
+        } else {
+          window.addEventListener('scroll', updateScroll, { passive: true });
+        }
         window.addEventListener('resize', onResize, { passive: true });
-
-        // Polling fallback for Capacitor iOS where scroll events don't fire
-        const pollInterval = setInterval(updateScroll, 100);
 
         // Initial check
         updateScroll();
 
         return () => {
-          window.removeEventListener('scroll', updateScroll);
-          document.removeEventListener('scroll', updateScroll);
+          if (scrollContainer) {
+            scrollContainer.removeEventListener('scroll', updateScroll);
+          } else {
+            window.removeEventListener('scroll', updateScroll);
+          }
           window.removeEventListener('resize', onResize);
-          clearInterval(pollInterval);
         };
       }, []);
 

@@ -444,19 +444,41 @@
           });
       }, [onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor]);
 
-      // Scroll-based loading with polling fallback for Capacitor iOS
+      // Scroll-based loading - uses main.container on mobile (which has overflow-y: auto)
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
-        const scrollSpeedThreshold = 1.2; // px per ms (~1200px/s) - detect fast scrolling
-        let lastY = window.scrollY || 0;
+        // Find the actual scroll container (main.container on mobile, window on desktop)
+        const getScrollContainer = () => {
+          const mainContainer = document.querySelector('main.container');
+          if (mainContainer) {
+            const style = window.getComputedStyle(mainContainer);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              return mainContainer;
+            }
+          }
+          return null;
+        };
+
+        const scrollContainer = getScrollContainer();
+
+        const scrollSpeedThreshold = 1.2;
+        let lastY = 0;
         let lastT = Date.now();
 
         const checkScrollPosition = () => {
-          // Check if near bottom of page and trigger load
-          const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-          const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-          const clientHeight = window.innerHeight || document.documentElement.clientHeight;
+          let scrollHeight, scrollTop, clientHeight;
+
+          if (scrollContainer) {
+            scrollHeight = scrollContainer.scrollHeight;
+            scrollTop = scrollContainer.scrollTop;
+            clientHeight = scrollContainer.clientHeight;
+          } else {
+            scrollHeight = document.documentElement.scrollHeight;
+            scrollTop = window.scrollY || window.pageYOffset || 0;
+            clientHeight = window.innerHeight;
+          }
+
           const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
           if (distanceFromBottom < 800) {
@@ -466,7 +488,7 @@
 
         const handleScroll = () => {
           const now = Date.now();
-          const y = window.scrollY || window.pageYOffset || 0;
+          const y = scrollContainer ? scrollContainer.scrollTop : (window.scrollY || 0);
           const delta = Math.abs(y - lastY);
           const dt = Math.max(16, now - lastT);
           const speed = delta / dt;
@@ -474,11 +496,9 @@
           lastT = now;
 
           if (speed > scrollSpeedThreshold) {
-            // Fast scrolling detected - enter pace limited mode
             isPaceLimitedRef.current = true;
             setIsPaceLimited(true);
             if (paceResetRef.current) clearTimeout(paceResetRef.current);
-            // Stay in limited mode for 2.5 seconds after fast scroll stops
             paceResetRef.current = setTimeout(() => {
               isPaceLimitedRef.current = false;
               setIsPaceLimited(false);
@@ -488,17 +508,19 @@
           checkScrollPosition();
         };
 
-        // Use scroll event
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        document.addEventListener('scroll', handleScroll, { passive: true });
-
-        // Polling fallback for Capacitor iOS where scroll events may not fire
-        const pollInterval = setInterval(checkScrollPosition, 500);
+        // Listen on the correct scroll container
+        if (scrollContainer) {
+          scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+        } else {
+          window.addEventListener('scroll', handleScroll, { passive: true });
+        }
 
         return () => {
-          window.removeEventListener('scroll', handleScroll);
-          document.removeEventListener('scroll', handleScroll);
-          clearInterval(pollInterval);
+          if (scrollContainer) {
+            scrollContainer.removeEventListener('scroll', handleScroll);
+          } else {
+            window.removeEventListener('scroll', handleScroll);
+          }
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
         };
       }, [enabled, doLoad]);
