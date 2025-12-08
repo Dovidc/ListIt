@@ -1342,13 +1342,12 @@
                           className: 'mobile-home-title',
                           style: {
                             margin: '0 0 12px 0',
-                            fontSize: '1.75rem',
-                            fontWeight: 800,
-                            letterSpacing: '-0.02em',
-                            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            backgroundClip: 'text'
+                            fontSize: '0.7rem',
+                            fontWeight: 400,
+                            letterSpacing: '0.25em',
+                            textAlign: 'center',
+                            color: '#94a3b8',
+                            opacity: 0.8
                           }
                         }, 'Trovelr'),
                         H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },

@@ -101,10 +101,7 @@ body.dark-mode main.container {
 /* Mobile home page Trovelr title - dark mode support */
 html[data-theme="dark"] .mobile-home-title,
 body.dark-mode .mobile-home-title {
-  background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%) !important;
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  background-clip: text !important;
+  color: #94a3b8 !important;
 }
 
 /* public/mobile.css */
