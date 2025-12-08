@@ -163,16 +163,25 @@
 
             // Listen for notification taps
             const actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              console.log('[Push] Notification tapped:', JSON.stringify(action));
               // Navigate to relevant screen based on notification data
               const data = action.notification?.data;
-              if (data?.conversation_id) {
+              console.log('[Push] Notification data:', JSON.stringify(data));
+              const conversationId = data?.conversation_id;
+              console.log('[Push] conversation_id:', conversationId, 'openConversation available:', typeof window.ListItApp?.AppNav?.openConversation);
+
+              if (conversationId) {
                 // Open the specific conversation
                 if (typeof window.ListItApp?.AppNav?.openConversation === 'function') {
-                  window.ListItApp.AppNav.openConversation(data.conversation_id);
+                  console.log('[Push] Calling openConversation with:', conversationId);
+                  window.ListItApp.AppNav.openConversation(conversationId);
                 } else {
+                  console.log('[Push] openConversation not available, falling back to setTab');
                   // Fallback to just switching tabs
                   window.ListItApp?.AppNav?.setTab?.('messages');
                 }
+              } else {
+                console.log('[Push] No conversation_id in notification data');
               }
             });
             listenersRef.current.push(actionListener);
