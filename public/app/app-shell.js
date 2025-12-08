@@ -1337,6 +1337,20 @@
                     })
                     : H(React.Fragment, null,
                       tab === 'browse' && H(React.Fragment, null,
+                        // Mobile-only Trovelr branding above search
+                        isMobile && H('h1', {
+                          className: 'mobile-home-title',
+                          style: {
+                            margin: '0 0 12px 0',
+                            fontSize: '1.75rem',
+                            fontWeight: 800,
+                            letterSpacing: '-0.02em',
+                            background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text'
+                          }
+                        }, 'Trovelr'),
                         H('div', { className: 'row', style: { justifyContent: 'space-between', margin: '12px 0 18px', flexWrap: 'wrap' } },
                           H('div', {
                             style: {

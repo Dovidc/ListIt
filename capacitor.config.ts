@@ -5,11 +5,11 @@ const config: CapacitorConfig = {
   appName: 'ListIt',
   webDir: 'public',
   bundledWebRuntime: false,
-  server: {
-    url: 'https://trovelr.com',
-  },
+  // server: {
+  //   url: 'https://trovelr.com',
+  // },
   ios: {
-    contentInset: 'automatic',
+    contentInset: 'never',
     scrollEnabled: true,
     keyboardResize: 'native',
   },

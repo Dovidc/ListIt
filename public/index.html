@@ -3,20 +3,26 @@
 
 <head>
   <meta charset="UTF-8" />
+  <!-- Theme color for iOS status bar - updated dynamically by JS -->
+  <meta name="theme-color" content="#0f172a" id="theme-color-meta" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <!-- Apply dark mode FIRST before any styles to prevent flash -->
   <script>
     (function() {
       try {
         var theme = localStorage.getItem('theme');
+        var themeColorMeta = document.getElementById('theme-color-meta');
         if (theme === 'dark') {
           document.documentElement.setAttribute('data-theme', 'dark');
-          document.documentElement.style.background = '#1a1b26';
+          document.documentElement.style.background = '#0f172a';
           document.documentElement.style.colorScheme = 'dark';
+          if (themeColorMeta) themeColorMeta.content = '#0f172a';
         }
       } catch (e) {}
     })();
   </script>
-  <style>/* Critical - prevent flash */html,body{background:#fff}[data-theme="dark"],[data-theme="dark"] html,[data-theme="dark"] body{background:#1a1b26!important;color:#c0caf5!important}</style>
+  <style>/* Critical - prevent flash */html,body{background:#0f172a;margin:0;padding:0;min-height:100vh}[data-theme="dark"],[data-theme="dark"] html,[data-theme="dark"] body{background:#0f172a!important;color:#e2e8f0!important}</style>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <!-- Optional override that native shells can fill with an absolute API origin -->
   <meta name="listit-api-base" content="https://trovelr.com" />
@@ -54,7 +60,7 @@
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       color: #111;
       background: #fff;
-      padding-top: calc(60px + env(safe-area-inset-top));
+      padding-top: 0;
     }
 
     header {
@@ -62,13 +68,13 @@
       top: 0;
       left: 0;
       right: 0;
-      height: calc(50px + env(safe-area-inset-top));
+      height: 50px;
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       background: rgba(255, 255, 255, 0.95);
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
       z-index: 100;
-      padding-top: env(safe-area-inset-top);
+      padding-top: 0;
       display: flex;
       align-items: center;
       padding-left: 16px;
@@ -1596,7 +1602,18 @@
   </script>
 
   <!-- Mobile-only overrides (kept after app.css) -->
-  <link rel="stylesheet" href="/mobile.css?v=resume-fade-1" media="screen and (max-width: 720px)" />
+  <link rel="stylesheet" href="/mobile.css?v=edge-to-edge-fix-1" media="screen and (max-width: 720px)" />
+
+  <script>
+    // Force scroll to absolute top on load (for edge-to-edge mobile layout)
+    window.addEventListener('DOMContentLoaded', () => {
+      const main = document.querySelector('main.container');
+      if (main) main.scrollTop = 0;
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  </script>
 </head>
 
 <body>

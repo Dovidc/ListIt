@@ -1560,7 +1560,7 @@
         // Back button only on mobile
         isMobile && activeId && H('div', {
           className: 'messages-thread-header',
-          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
+          style: { marginBottom: 8, paddingBottom: 8, paddingTop: 100, borderBottom: '1px solid #e5e7eb' }
         },
           H('button', {
             onClick: handleBackToList,
@@ -1805,7 +1805,6 @@
             left: 0,
             right: 0,
             bottom: 0,
-            paddingTop: 0,
             paddingLeft: 12,
             paddingRight: 12,
             paddingBottom: 12,

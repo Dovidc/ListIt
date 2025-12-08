@@ -1444,12 +1444,15 @@
       });
 
       useEffect(() => {
+        const themeColorMeta = document.getElementById('theme-color-meta');
         if (isDarkMode) {
           document.documentElement.setAttribute('data-theme', 'dark');
           localStorage.setItem('theme', 'dark');
+          if (themeColorMeta) themeColorMeta.content = '#0f172a';
         } else {
           document.documentElement.removeAttribute('data-theme');
           localStorage.setItem('theme', 'light');
+          if (themeColorMeta) themeColorMeta.content = '#ffffff';
         }
       }, [isDarkMode]);
 
