@@ -550,6 +550,30 @@
         // No cleanup - this is a one-time operation that must complete
       }, []);
 
+      // Check for pending push notification navigation (iOS cold start)
+      useEffect(() => {
+        const checkPendingNotification = () => {
+          try {
+            const pendingConvoId = localStorage.getItem('pendingConversationId');
+            if (pendingConvoId) {
+              localStorage.removeItem('pendingConversationId');
+              const convoId = Number(pendingConvoId) || pendingConvoId;
+              // Delay to ensure app is fully loaded
+              setTimeout(() => {
+                setActiveConvoId(convoId);
+                onTabChange('messages');
+              }, 500);
+            }
+          } catch (e) {
+            // Ignore localStorage errors
+          }
+        };
+        // Check immediately and again after a short delay
+        checkPendingNotification();
+        const timer = setTimeout(checkPendingNotification, 1000);
+        return () => clearTimeout(timer);
+      }, [setActiveConvoId, onTabChange]);
+
       // Check if user needs to accept legal documents
       useEffect(() => {
         if (!user || loadingUser || legalCheckDone) return;

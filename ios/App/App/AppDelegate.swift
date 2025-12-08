@@ -1,14 +1,53 @@
 import UIKit
 import Capacitor
+import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
+    var pendingNotificationData: [AnyHashable: Any]? = nil
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Set notification delegate
+        UNUserNotificationCenter.current().delegate = self
+
+        // Check if launched from notification
+        if let notification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            pendingNotificationData = notification
+        }
+
         return true
+    }
+
+    // Called when notification is tapped (app in background or closed)
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+
+        // Store the notification data to be picked up by JS
+        if let conversationId = userInfo["conversation_id"] {
+            UserDefaults.standard.set(conversationId, forKey: "pendingConversationId")
+            UserDefaults.standard.synchronize()
+
+            // Try to navigate immediately if webview is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if let rootVC = self.window?.rootViewController as? CAPBridgeViewController {
+                    let js = "localStorage.setItem('pendingConversationId', '\(conversationId)'); window.ListItApp?.AppNav?.openConversation?.(\(conversationId));"
+                    rootVC.bridge?.webView?.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
+        }
+
+        // Also notify Capacitor
+        NotificationCenter.default.post(name: Notification.Name("pushNotificationActionPerformed"), object: nil, userInfo: userInfo)
+
+        completionHandler()
+    }
+
+    // Called when notification arrives while app is in foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show the notification even when app is in foreground
+        completionHandler([.banner, .sound, .badge])
     }
 
     // MARK: - Push Notifications
