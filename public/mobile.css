@@ -27,37 +27,22 @@ header {
 
 /* Remove body padding-top since header is hidden on mobile */
 /* Add safe-area-inset-top so content stays below status bar but background extends to edge */
-html {
-  background: #0f172a !important;
-  min-height: 100% !important;
-  height: 100% !important;
-}
-
-html:not([data-theme="dark"]):not(.dark-mode) {
+html,
+body {
   background: #fff !important;
+  min-height: 100% !important;
 }
 
 html[data-theme="dark"],
-[data-theme="dark"],
+html[data-theme="dark"] body,
+body.dark-mode,
 html.dark-mode,
-body.dark-mode {
+html.dark-mode body {
   background: #0f172a !important;
 }
 
 body {
   padding-top: env(safe-area-inset-top, 0px) !important;
-  background: #0f172a !important;
-  min-height: 100vh !important;
-}
-
-body:not(.dark-mode) {
-  background: #fff !important;
-}
-
-html[data-theme="dark"] body,
-html.dark-mode body,
-body.dark-mode {
-  background: #0f172a !important;
 }
 
 .brand-tagline {

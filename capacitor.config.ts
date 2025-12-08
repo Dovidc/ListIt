@@ -11,8 +11,7 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: 'automatic',
     scrollEnabled: true,
-    keyboardResize: 'none',
-    backgroundColor: '#0f172a',
+    keyboardResize: 'native',
   },
 };
 
