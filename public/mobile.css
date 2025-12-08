@@ -29,16 +29,20 @@ header {
 /* Add safe-area-inset-top so content stays below status bar but background extends to edge */
 html {
   background: #fff !important;
+  min-height: 100% !important;
 }
 
 html[data-theme="dark"],
-[data-theme="dark"] {
-  background: #1a1b26 !important;
+[data-theme="dark"],
+html.dark-mode,
+body.dark-mode {
+  background: #0f172a !important;
 }
 
 body {
   padding-top: env(safe-area-inset-top, 0px) !important;
   background: inherit !important;
+  min-height: 100vh !important;
 }
 
 .brand-tagline {
@@ -455,6 +459,7 @@ textarea {
 
 main.container {
   padding-bottom: 140px;
+  min-height: calc(100vh - env(safe-area-inset-top, 0px));
 }
 
 label {
