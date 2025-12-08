@@ -12,7 +12,6 @@ const config: CapacitorConfig = {
     contentInset: 'always',
     scrollEnabled: true,
     keyboardResize: 'body',
-    backgroundColor: '#ffffff',
     allowsLinkPreview: false,
   },
 };

@@ -12,15 +12,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Set notification delegate BEFORE anything else
         UNUserNotificationCenter.current().delegate = self
 
-        // Set window background to white to prevent black bars in safe areas
-        window?.backgroundColor = .white
+        // Let the webview control the background color - don't set window background
 
-        // Check if launched from notification (cold start)
-        if let notification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
-            if let convoId = notification["conversation_id"] {
-                pendingConversationId = "\(convoId)"
-            }
-        }
+        // Note: Cold start notification taps are handled by userNotificationCenter:didReceive
+        // We don't need to check launchOptions here as that delegate method handles all cases
 
         return true
     }
@@ -106,10 +101,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Check for pending notification navigation when app becomes active
-        if let convoId = pendingConversationId {
-            navigateToConversation(convoId, attempt: 1)
-        }
+        // Notification navigation is handled by userNotificationCenter:didReceive
+        // No need to check pendingConversationId here
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
