@@ -444,7 +444,7 @@
           });
       }, [onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor]);
 
-      // Scroll speed detection
+      // Scroll-based loading (works on Capacitor iOS where IntersectionObserver may fail)
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
@@ -472,6 +472,17 @@
               setIsPaceLimited(false);
             }, 2500);
           }
+
+          // Fallback: Check if near bottom of page and trigger load
+          // This helps on Capacitor iOS where IntersectionObserver may not work
+          const scrollHeight = document.documentElement.scrollHeight;
+          const scrollTop = window.scrollY || document.documentElement.scrollTop;
+          const clientHeight = window.innerHeight;
+          const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+          if (distanceFromBottom < 800) {
+            doLoad(isPaceLimitedRef.current);
+          }
         };
 
         window.addEventListener('scroll', handleScroll, { passive: true });
@@ -479,7 +490,7 @@
           window.removeEventListener('scroll', handleScroll);
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
         };
-      }, [enabled]);
+      }, [enabled, doLoad]);
 
       // Intersection observer for triggering loads
       useEffect(() => {
