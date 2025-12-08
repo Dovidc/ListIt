@@ -12,6 +12,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Set notification delegate BEFORE anything else
         UNUserNotificationCenter.current().delegate = self
 
+        // Set window background to white to prevent black bars in safe areas
+        window?.backgroundColor = .white
+
         // Check if launched from notification (cold start)
         if let notification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             if let convoId = notification["conversation_id"] {
@@ -39,6 +42,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     private func navigateToConversation(_ conversationId: String, attempt: Int) {
+        // Clear immediately on first attempt to prevent re-triggering
+        if attempt == 1 {
+            self.pendingConversationId = nil
+        }
+
         let delay = Double(attempt) * 0.5 // 0.5s, 1s, 1.5s, 2s
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -66,10 +74,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 if let result = result as? String, result == "not_ready", attempt < 4 {
                     // App not ready yet, retry
                     self.navigateToConversation(conversationId, attempt: attempt + 1)
-                } else {
-                    // Success or gave up
-                    self.pendingConversationId = nil
                 }
+                // No need to clear pendingConversationId here - already cleared on first attempt
             }
         }
     }

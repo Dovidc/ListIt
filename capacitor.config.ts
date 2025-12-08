@@ -9,9 +9,11 @@ const config: CapacitorConfig = {
     url: 'https://trovelr.com',
   },
   ios: {
-    contentInset: 'automatic',
+    contentInset: 'always',
     scrollEnabled: true,
     keyboardResize: 'body',
+    backgroundColor: '#ffffff',
+    allowsLinkPreview: false,
   },
 };
 

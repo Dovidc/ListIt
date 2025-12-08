@@ -1246,7 +1246,7 @@
     padding: 12px !important;
     padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
     padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
-    background: red !important;
+    background: #f8fafc !important;
     z-index: 9999 !important;
     overflow: hidden !important;
   }

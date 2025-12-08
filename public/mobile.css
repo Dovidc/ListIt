@@ -34,9 +34,28 @@ body {
   background: #fff;
 }
 
-/* Prevent black flash on iOS scroll bounce */
+/* iOS edge-to-edge: extend background into safe areas */
 html {
   background: #fff;
+  /* Cover entire viewport including safe areas */
+  min-height: 100%;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+}
+
+body {
+  /* Extend into safe area insets */
+  min-height: 100%;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+}
+
+/* Dark mode safe area background */
+[data-theme="dark"] html,
+[data-theme="dark"] body,
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background: #1a1b26;
 }
 
 * {
