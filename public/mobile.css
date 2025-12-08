@@ -25,6 +25,11 @@ header {
   display: none !important;
 }
 
+/* Remove body padding-top since header is hidden on mobile */
+body {
+  padding-top: 0 !important;
+}
+
 .brand-tagline {
   font-size: 0.7rem;
 }
