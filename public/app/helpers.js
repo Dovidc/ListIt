@@ -425,7 +425,7 @@
           : []
     );
 
-    const pageSize = 20;
+    const pageSize = 35;
 
     function selectPrimaryListingImage(listing, fallback) {
       if (!listing) return fallback || null;

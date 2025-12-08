@@ -142,7 +142,8 @@
       style,
       isLoading = false,
       hasMore = false,
-      sentinelRef
+      sentinelRef,
+      disableVirtualization = false
     }) {
       // Merge items and ads
       const entries = useMemo(() => {
@@ -198,18 +199,25 @@
         ? (containerWidth - (cols - 1) * resolvedGap) / cols
         : 0;
 
-      // Use virtualization hook
+      // Calculate total height from all items (needed for proper scrolling)
+      const rowCount = Math.ceil(entries.length / cols);
+      const totalHeight = rowCount * itemWidth + (rowCount > 0 ? (rowCount - 1) * resolvedGap : 0);
+
+      // Use virtualization hook for determining which items to render
       const {
-        startIndex,
-        endIndex,
-        totalHeight
+        startIndex: virtualStartIndex,
+        endIndex: virtualEndIndex
       } = useVirtualGrid({
         totalItems: entries.length,
         columnCount: cols,
         itemHeight: itemWidth,
         gap: resolvedGap,
-        buffer: 6 // slightly larger buffer for smoother scrolling
+        buffer: 6
       });
+
+      // When virtualization is disabled, render all items
+      const startIndex = disableVirtualization ? 0 : virtualStartIndex;
+      const endIndex = disableVirtualization ? entries.length : virtualEndIndex;
 
       // Generate visible items
       const visibleItems = [];
