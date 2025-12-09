@@ -1491,7 +1491,7 @@ function fallbackTagsFromTitleDesc(title, desc) {
 
 }
 
-function synthesizeListingDescription(title, hint) {
+function synthesizeListingDescription(_title, hint) {
 
   const cleanHint = (hint || '').toString().trim().replace(/\s+/g, ' ');
 
@@ -1501,9 +1501,8 @@ function synthesizeListingDescription(title, hint) {
 
   }
 
-  const base = shortTitle(title || 'Item for sale');
-
-  return `${base}. Condition unclear; please verify details.`.slice(0, 200);
+  // AI descriptions disabled - use simple placeholder
+  return 'No description';
 
 }
 
@@ -5612,13 +5611,12 @@ app.post(
         location,
         hint,
         ai_enabled,
-        ai_description_enabled, // Controls whether to use AI-generated description
         enable_nearby,
         inquiry_enabled,
         lat,
         lon
       } = req.body || {};
-      console.log('[AutoListing API] Request body:', { upload_tokens: upload_tokens?.length, location, ai_enabled, ai_description_enabled, enable_nearby });
+      console.log('[AutoListing API] Request body:', { upload_tokens: upload_tokens?.length, location, ai_enabled, enable_nearby });
 
       // Validate required fields
       if (!location || typeof location !== 'string' || !location.trim()) {
@@ -5657,10 +5655,8 @@ app.post(
       }
 
       // Parse optional fields
-      // ai_enabled in DB controls AI description (AI analysis always runs for title/tags/price)
-      // Prefer ai_description_enabled if provided, fall back to ai_enabled for backwards compatibility
-      const aiDescPref = ai_description_enabled !== undefined ? ai_description_enabled : ai_enabled;
-      const aiEnabled = aiDescPref !== false && aiDescPref !== 0 ? 1 : 0;
+      // AI descriptions are disabled
+      const aiEnabled = 0;
       const enNearby = enable_nearby ? 1 : 0;
       const inquiryEnabled = inquiry_enabled ? 1 : 0;
       let safeLat = null;
@@ -5740,7 +5736,6 @@ app.post(
  * Expected body: {
  *   images: [{ data: 'base64...', type: 'image/jpeg', name: 'photo.jpg' }],
  *   location: 'City, State',
- *   ai_description_enabled: true/false,
  *   enable_nearby: true/false,
  *   inquiry_enabled: true/false,
  *   lat: number (optional),
@@ -5792,7 +5787,6 @@ app.post(
       const {
         images,
         location,
-        ai_description_enabled,
         enable_nearby,
         inquiry_enabled,
         lat,
@@ -5878,7 +5872,8 @@ app.post(
 
       // Create job record (same as /api/listings/auto)
       const now = nowIso(); // ISO string for auto_listing_jobs (TEXT columns)
-      const aiEnabled = ai_description_enabled !== false && ai_description_enabled !== 0 ? 1 : 0;
+      // AI descriptions are disabled
+      const aiEnabled = 0;
       const enNearby = enable_nearby ? 1 : 0;
       const inquiryEn = inquiry_enabled !== false ? 1 : 0;
       let safeLat = null;
@@ -7384,17 +7379,9 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
           '"title": concise <=80 chars, no emojis;',
 
-          '"description": <=200 chars, objective tone focusing on verifiable condition/defects (including less-visible issues) and never assuming accessories unless the user hint confirms them;',
-
           '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
 
           '"price_usd": fair used-market price in USD as a number;',
-
-          'When damage, wear, or missing parts are visible, explicitly mention it in the description.',
-
-          'Describe only what can be confirmed from the photos or user hint; avoid promising inclusions.',
-
-          'If condition is unclear, say "Condition unclear" rather than guessing.',
 
           'Return ONLY JSON.'
 
@@ -7440,9 +7427,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
       let priceNum = Number(parsed.price_usd);
 
-      let description = (parsed.description || '').toString().trim();
-
-      if (description.length > 400) description = description.slice(0, 400);
+      // AI descriptions disabled
 
 
 
@@ -7451,12 +7436,6 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
       const outTags = tagStr ? tagStr.split(',') : [];
 
       if (!title) title = 'Item for sale';
-
-      if (!description) {
-
-        description = synthesizeListingDescription(title, hint);
-
-      }
 
 
 
@@ -7478,13 +7457,13 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
         const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 50);
 
-        return res.json({ title, description, tags: merged, suggested_price });
+        return res.json({ title, tags: merged, suggested_price });
 
       }
 
 
 
-      return res.json({ title, description, tags: outTags.slice(0, 50), suggested_price });
+      return res.json({ title, tags: outTags.slice(0, 50), suggested_price });
 
     }
 
@@ -7494,9 +7473,8 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
     const tags = normalizeTags(fallbackTagsFromTitleDesc(title, hint)).split(',').filter(Boolean);
 
-    const description = synthesizeListingDescription(title, hint);
-
-    return res.json({ title, description, tags: tags.slice(0, 50) });
+    // AI descriptions disabled
+    return res.json({ title, tags: tags.slice(0, 50) });
 
   } catch (e) {
 
@@ -7542,8 +7520,8 @@ async function runAIAnalysis({ images, hint }) {
     // Fallback without AI
     const fallbackTitle = shortTitle(cleanHint || 'Item for sale');
     const fallbackTags = normalizeTags(fallbackTagsFromTitleDesc(fallbackTitle, cleanHint)).split(',').filter(Boolean);
-    const fallbackDesc = synthesizeListingDescription(fallbackTitle, cleanHint);
-    return { title: fallbackTitle, description: fallbackDesc, tags: fallbackTags.slice(0, 50) };
+    // AI descriptions disabled
+    return { title: fallbackTitle, tags: fallbackTags.slice(0, 50) };
   }
 
   const openAIImages = await Promise.all(validImages.map((img) => toOpenAIImageUrl(img)));
@@ -7556,12 +7534,8 @@ async function runAIAnalysis({ images, hint }) {
       'You are a listing assistant for a local marketplace.',
       'Analyze the item images and output STRICT JSON with:',
       '"title": concise <=80 chars, no emojis;',
-      '"description": <=200 chars, objective tone focusing on verifiable condition/defects (including less-visible issues) and never assuming accessories unless the user hint confirms them;',
       '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
       '"price_usd": fair used-market price in USD as a number;',
-      'When damage, wear, or missing parts are visible, explicitly mention it in the description.',
-      'Describe only what can be confirmed from the photos or user hint; avoid promising inclusions.',
-      'If condition is unclear, say "Condition unclear" rather than guessing.',
       'Return ONLY JSON.'
     ].join('\n')
   });
@@ -7588,15 +7562,11 @@ async function runAIAnalysis({ images, hint }) {
   let title = shortTitle(parsed.title || '');
   let tags = Array.isArray(parsed.tags) ? parsed.tags : [];
   let priceNum = Number(parsed.price_usd);
-  let description = (parsed.description || '').toString().trim();
-  if (description.length > 400) description = description.slice(0, 400);
+  // AI descriptions disabled
 
   const tagStr = normalizeTags(tags);
   const outTags = tagStr ? tagStr.split(',') : [];
   if (!title) title = 'Item for sale';
-  if (!description) {
-    description = synthesizeListingDescription(title, cleanHint);
-  }
 
   let suggested_price;
   if (!Number.isNaN(priceNum)) {
@@ -7607,10 +7577,10 @@ async function runAIAnalysis({ images, hint }) {
   if (outTags.length < 8) {
     const extra = fallbackTagsFromTitleDesc(title, cleanHint);
     const merged = normalizeTags([...outTags, ...extra]).split(',').filter(Boolean).slice(0, 50);
-    return { title, description, tags: merged, suggested_price };
+    return { title, tags: merged, suggested_price };
   }
 
-  return { title, description, tags: outTags.slice(0, 50), suggested_price };
+  return { title, tags: outTags.slice(0, 50), suggested_price };
 }
 
 /* ------------------------------------------------------------------ */

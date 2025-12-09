@@ -57,14 +57,12 @@
         setEnabled: noop
       }), [noop]);
     }
-    const useAiDescriptionToggle = createStoredToggle('listit_ai_descriptions');
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
     const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
     const useCreateActionToggle = createStoredToggle('listit_ask_create_action', false);
 
     function useAppPreferences() {
       const autoList = useAlwaysOnAutoList();
-      const aiDescription = useAiDescriptionToggle();
       const autoNearby = useAutoPostNearbyToggle();
       const inquiryText = useInquiryTextToggle();
       const createAction = useCreateActionToggle();
@@ -72,8 +70,6 @@
       return {
         autoListEnabled: autoList.enabled,
         setAutoListEnabled: autoList.setEnabled,
-        aiDescriptionEnabled: aiDescription.enabled,
-        setAiDescriptionEnabled: aiDescription.setEnabled,
         autoPostNearbyEnabled: autoNearby.enabled,
         setAutoPostNearbyEnabled: autoNearby.setEnabled,
         autoInquiryEnabled: inquiryText.enabled,

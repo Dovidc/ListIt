@@ -165,7 +165,6 @@
     async function runAutoList({
       files,
       location,
-      aiDescriptionEnabled,
       autoPostNearbyEnabled,
       autoInquiryEnabled,
       backgroundQueueEnabled,
@@ -314,7 +313,6 @@
           images,
           location: locAuto,
           hint: '',
-          ai_description_enabled: aiDescriptionEnabled !== false,
           enable_nearby: enableNearbyAuto,
           inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
         };
@@ -565,7 +563,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [] }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [] }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -584,7 +582,6 @@
           onCancel: onClose,
           onSaved: (createdListing) => { onSaved?.(createdListing); onClose(); },
           autoListEnabled,
-          aiDescriptionEnabled,
           autoPostNearbyEnabled,
           autoInquiryEnabled,
           backgroundQueueEnabled,
@@ -600,7 +597,6 @@
           onCancel: onClose,
           onSaved: (createdListing) => { onSaved?.(createdListing); onClose(); },
           autoListEnabled,
-          aiDescriptionEnabled,
           autoPostNearbyEnabled,
           autoInquiryEnabled,
           backgroundQueueEnabled,
@@ -621,7 +617,7 @@
       );
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, showTags, setShowTags, initialFiles = [] }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, showTags, setShowTags, initialFiles = [] }) {
       const fileRef = useRef();
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [existingUrls, setExistingUrls] = useState([]);
@@ -771,13 +767,7 @@
           if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
             setPriceVal(String(res.suggested_price));
           }
-          if (typeof res.description === 'string' && res.description.trim()) {
-            if (aiDescriptionEnabled) {
-              setDescription(res.description.trim().slice(0, 400));
-            } else {
-              setAiErr('Enable AI descriptions in your profile to apply AI-written descriptions.');
-            }
-          }
+          // AI descriptions disabled
         } catch (e) {
           setAiErr(e.message || 'AI failed');
         } finally {
@@ -822,7 +812,6 @@
         runAutoList({
           files,
           location,
-          aiDescriptionEnabled,
           autoPostNearbyEnabled,
           autoInquiryEnabled: inquiryEnabled,
           backgroundQueueEnabled,
@@ -854,7 +843,7 @@
             setAutoBusy(false);
           }
         });
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved, location]);
+      }, [autoListEnabled, autoPostNearbyEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved, location]);
 
       async function submit(e) {
         e.preventDefault();

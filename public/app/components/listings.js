@@ -832,21 +832,6 @@
       });
     }
 
-    // --- AI description help modal (matches Auto-list styling) ---
-    function AiDescriptionHelpModal({ onClose }) {
-      return H(InfoHelpModal, {
-        onClose,
-        title: 'About AI descriptions',
-        intro: 'When enabled, AI descriptions will:',
-        bullets: [
-          'Analyze your uploaded photos to draft a description for you.',
-          'Include the AI-written text right in the description field.',
-
-        ],
-        footer: 'The more photos you upload, the better the AI can understand your item.'
-      });
-    }
-
     function InquiryHelpModal({ onClose }) {
       return H(InfoHelpModal, {
         onClose,
@@ -860,7 +845,7 @@
     }
 
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, aiDescriptionEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -980,13 +965,7 @@
           if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
             setPriceVal(String(res.suggested_price));
           }
-          if (typeof res.description === 'string' && res.description.trim()) {
-            if (aiDescriptionEnabled) {
-              setDescription(res.description.trim().slice(0, 400));
-            } else {
-              setAiErr('Enable AI descriptions in your profile to apply AI-written descriptions.');
-            }
-          }
+          // AI descriptions disabled
         } catch (e) {
           setAiErr(e.message || 'AI failed');
         } finally {
@@ -1084,13 +1063,11 @@
             }
 
             // Step 3: Build fire-and-forget payload
-            // AI analysis (title/tags/price) always runs - ai_description_enabled controls description only
             const payload = {
               upload_tokens: uploadTokens,
               location: locAuto,
               hint: '', // Could include user hints in future
               ai_enabled: true, // Always analyze for title/tags/price
-              ai_description_enabled: !!aiDescriptionEnabled, // User preference for AI description
               enable_nearby: enableNearbyAuto,
               inquiry_enabled: !!inquiryEnabled
             };
@@ -1133,7 +1110,7 @@
             autoRunning.current = false;
           }
         }, 0);
-      }, [autoListEnabled, autoPostNearbyEnabled, aiDescriptionEnabled, inquiryEnabled, draft, files, onCancel, onSaved]);
+      }, [autoListEnabled, autoPostNearbyEnabled, inquiryEnabled, draft, files, onCancel, onSaved]);
 
       // UPDATED: Submit function that handles image changes properly
       // Update the submit function (remove the duplicate and fix it):
@@ -1373,7 +1350,7 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1458,7 +1435,6 @@
                 location: normalizedLocation,
                 hint: '',
                 ai_enabled: true,
-                ai_description_enabled: aiDescriptionEnabled !== false,
                 enable_nearby: autoPostNearbyEnabled && sharedNearby.ok,
                 inquiry_enabled: autoInquiryEnabled
               };
@@ -1494,7 +1470,6 @@
             } else {
               // Fallback to legacy client-side flow if API not available
               let ai = {};
-              let aiDescription = '';
               try {
                 ai = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent: true }) || {};
               } catch (_) {
@@ -1502,13 +1477,10 @@
               }
 
               const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-              const rawDescription = (typeof ai.description === 'string' ? ai.description.trim() : '');
-              if (rawDescription && aiDescriptionEnabled) {
-                aiDescription = rawDescription.slice(0, 400);
-              }
+              // AI descriptions disabled - always use 'No description'
               const payload = {
                 title: (ai.title || 'Item for sale').toString().slice(0, 80),
-                description: aiDescription || 'No description',
+                description: 'No description',
                 location: normalizedLocation,
                 price: safePrice,
                 tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
@@ -4126,7 +4098,6 @@
       MultiFilePicker,
       InfoHelpModal,
       AutoListHelpModal,
-      AiDescriptionHelpModal,
       ListingForm,
       MassListModal,
       ReportSellerModal,

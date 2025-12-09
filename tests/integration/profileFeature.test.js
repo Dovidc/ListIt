@@ -131,7 +131,6 @@ describe('profile feature integration', () => {
       ImageWithSkeleton: jest.fn(),
       InfoHelpModal: jest.fn(),
       AutoListHelpModal: jest.fn(),
-      AiDescriptionHelpModal: jest.fn(),
       ListingModal: jest.fn()
     };
     const appNav = { setUser: jest.fn() };
@@ -155,8 +154,6 @@ describe('profile feature integration', () => {
       autoListEnabled: true,
       autoInquiryEnabled: false,
       setAutoInquiryEnabled: jest.fn(),
-      aiDescriptionEnabled: false,
-      setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: false,
       setAutoPostNearbyEnabled: jest.fn(),
       onViewSeller: jest.fn(),
@@ -182,9 +179,6 @@ describe('profile feature integration', () => {
     expect(props.setAutoInquiryEnabled).toHaveBeenCalledWith(true);
 
     checkboxes[1].props.onChange({ target: { checked: true } });
-    expect(props.setAiDescriptionEnabled).toHaveBeenCalledWith(true);
-
-    checkboxes[2].props.onChange({ target: { checked: true } });
     expect(props.setAutoPostNearbyEnabled).toHaveBeenCalledWith(true);
 
     const logoutButton = nodes.find((node) => node?.props?.children === 'Log out');
@@ -265,7 +259,6 @@ describe('profile feature integration', () => {
       ImageWithSkeleton: jest.fn(),
       InfoHelpModal: jest.fn(),
       AutoListHelpModal: jest.fn(),
-      AiDescriptionHelpModal: jest.fn(),
       ListingModal: jest.fn()
     };
 
@@ -285,8 +278,6 @@ describe('profile feature integration', () => {
       autoListEnabled: true,
       autoInquiryEnabled: false,
       setAutoInquiryEnabled: jest.fn(),
-      aiDescriptionEnabled: false,
-      setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: false,
       setAutoPostNearbyEnabled: jest.fn(),
       onViewSeller: jest.fn(),

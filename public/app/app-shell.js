@@ -202,8 +202,6 @@
       const cameraInputRef = useRef(null);
       const {
         autoListEnabled,
-        aiDescriptionEnabled,
-        setAiDescriptionEnabled,
         autoPostNearbyEnabled,
         setAutoPostNearbyEnabled,
         autoInquiryEnabled,
@@ -1165,7 +1163,6 @@
               const result = await runAutoList({
                 files,
                 location: '',
-                aiDescriptionEnabled,
                 autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
                 autoInquiryEnabled,
                 backgroundQueueEnabled,
@@ -1414,7 +1411,6 @@
                   onClose: closeEditor,
                   onSaved: handleListingSaved,
                   autoListEnabled,
-                  aiDescriptionEnabled,
                   autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
                   autoInquiryEnabled,
                   backgroundQueueEnabled,
@@ -1821,8 +1817,6 @@
                         onLogout: logoutFromProfile,
                         onAdminDelete: handleAdminDelete,
                         autoListEnabled,
-                        aiDescriptionEnabled,
-                        setAiDescriptionEnabled,
                         autoPostNearbyEnabled,
                         setAutoPostNearbyEnabled,
                         autoInquiryEnabled,
@@ -1852,7 +1846,6 @@
               user,
               onLockedAction: showLockedBanner,
               autoPostNearbyEnabled,
-              aiDescriptionEnabled,
               autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob,

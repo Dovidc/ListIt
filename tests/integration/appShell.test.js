@@ -98,8 +98,6 @@ describe('app shell integration', () => {
 
     const preferences = {
       autoListEnabled: true,
-      aiDescriptionEnabled: true,
-      setAiDescriptionEnabled: jest.fn(),
       autoPostNearbyEnabled: true,
       setAutoPostNearbyEnabled: jest.fn()
     };
@@ -360,7 +358,6 @@ describe('app shell integration', () => {
       isOpen: true,
       draft: dependencies.__mocks.listingsResult.editing,
       autoListEnabled: dependencies.__mocks.preferences.autoListEnabled,
-      aiDescriptionEnabled: dependencies.__mocks.preferences.aiDescriptionEnabled,
       autoPostNearbyEnabled: true,
       backgroundQueueEnabled: dependencies.__mocks.queueState.backgroundQueueEnabled,
       enqueueListingJob: dependencies.__mocks.queueState.enqueueListingJob

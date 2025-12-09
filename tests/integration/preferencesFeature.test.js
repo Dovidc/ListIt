@@ -104,7 +104,6 @@ describe('preferences feature integration', () => {
   test('useAppPreferences exposes toggles backed by localStorage', () => {
     const store = {
       listit_auto_list: '1',
-      listit_ai_descriptions: '0',
       listit_auto_post_nearby: '1'
     };
 
@@ -129,30 +128,24 @@ describe('preferences feature integration', () => {
     let preferences = renderHook();
 
     expect(preferences.autoListEnabled).toBe(true);
-    expect(preferences.aiDescriptionEnabled).toBe(false);
     expect(preferences.autoPostNearbyEnabled).toBe(true);
 
     runEffects(react.effects);
 
     expect(global.localStorage.getItem).not.toHaveBeenCalledWith('listit_auto_list');
-    expect(global.localStorage.getItem).toHaveBeenCalledWith('listit_ai_descriptions');
     expect(global.localStorage.getItem).toHaveBeenCalledWith('listit_auto_post_nearby');
 
     expect(global.localStorage.setItem).toHaveBeenCalledWith('listit_auto_list', '1');
-    expect(global.localStorage.setItem).toHaveBeenCalledWith('listit_ai_descriptions', '0');
     expect(global.localStorage.setItem).toHaveBeenCalledWith('listit_auto_post_nearby', '1');
 
-    preferences.setAiDescriptionEnabled(true);
     preferences.setAutoPostNearbyEnabled(false);
 
     preferences = renderHook();
 
-    expect(preferences.aiDescriptionEnabled).toBe(true);
     expect(preferences.autoPostNearbyEnabled).toBe(false);
 
     runEffects(react.effects);
 
-    expect(global.localStorage.setItem).toHaveBeenCalledWith('listit_ai_descriptions', '1');
     expect(global.localStorage.setItem).toHaveBeenCalledWith('listit_auto_post_nearby', '0');
   });
 });

@@ -27,7 +27,6 @@
       ImageWithSkeleton,
       InfoHelpModal,
       AutoListHelpModal,
-      AiDescriptionHelpModal,
       ListingModal,
       ProfilePictureUploadModal,
       ListingsGrid,
@@ -43,9 +42,6 @@
     }
     if (typeof AutoListHelpModal !== 'function') {
       throw new Error('Profile feature requires AutoListHelpModal component.');
-    }
-    if (typeof AiDescriptionHelpModal !== 'function') {
-      throw new Error('Profile feature requires AiDescriptionHelpModal component.');
     }
     if (typeof ListingModal !== 'function') {
       throw new Error('Profile feature requires ListingModal component.');
@@ -1424,8 +1420,6 @@
       onRequestHelp,
       autoInquiryEnabled,
       setAutoInquiryEnabled,
-      aiDescriptionEnabled,
-      setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
       askCreateActionEnabled,
@@ -1551,29 +1545,6 @@
                   className: 'help-btn',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('inquiry'); },
                   title: 'Inquiry mode info',
-                  style: {
-                    marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
-                    borderRadius: 12, cursor: 'pointer'
-                  }
-                }, '?')
-              ),
-              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!aiDescriptionEnabled,
-                  onChange: (e) => setAiDescriptionEnabled?.(e.target.checked)
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'AI descriptions'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'fill description for you')
-                ),
-                H('button', {
-                  type: 'button',
-                  className: 'help-btn',
-                  onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('ai'); },
-                  title: 'AI description tips',
                   style: {
                     marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
                     borderRadius: 12, cursor: 'pointer'
@@ -1845,8 +1816,6 @@
       onDelete,
       onLogout,
       onAdminDelete,
-      aiDescriptionEnabled,
-      setAiDescriptionEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
       autoInquiryEnabled,
@@ -2689,7 +2658,6 @@
         ),
 
         helpModal === 'auto' && H(AutoListHelpModal, { onClose: () => setHelpModal(null) }),
-        helpModal === 'ai' && H(AiDescriptionHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'nearby' && H(AutoPostNearbyHelpModal, { onClose: () => setHelpModal(null) }),
         helpModal === 'inquiry' && H(InquiryHelpModal, { onClose: () => setHelpModal(null) }),
 
@@ -2731,8 +2699,6 @@
           onRequestHelp: setHelpModal,
           autoInquiryEnabled,
           setAutoInquiryEnabled,
-          aiDescriptionEnabled,
-          setAiDescriptionEnabled,
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,

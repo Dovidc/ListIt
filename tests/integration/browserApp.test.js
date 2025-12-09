@@ -95,7 +95,6 @@ describe('browser app integration', () => {
       MultiFilePicker: jest.fn(),
       InfoHelpModal: jest.fn(),
       AutoListHelpModal: jest.fn(),
-      AiDescriptionHelpModal: jest.fn(),
       ListingForm: jest.fn(),
       MassListModal: jest.fn(),
       ReportSellerModal: jest.fn(),

@@ -38,7 +38,7 @@
       return ctx;
     }
 
-    function ListingQueueToast({ message = 'listings in progres', icon = '✓', className = '' } = {}) {
+    function ListingQueueToast({ message = 'listing in progress', icon = '✓', className = '' } = {}) {
       const { showQueueToast, queuePendingCount } = useListingQueueState();
       const toastClass = `listing-queue-toast${showQueueToast ? ' show' : ''}${className ? ` ${className}` : ''}`;
 
