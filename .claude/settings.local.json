@@ -24,7 +24,8 @@
       "Bash(npm run migrate:latest:*)",
       "Bash(PGPASSWORD=postgres psql:*)",
       "Bash(npm run build:core:browser:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

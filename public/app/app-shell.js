@@ -1847,11 +1847,28 @@
             document.documentElement.setAttribute('data-theme', 'dark');
           }
           // Configure iOS status bar based on theme
-          if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
-            const StatusBar = window.Capacitor.Plugins.StatusBar;
-            // 'Dark' style = light/white icons (for dark backgrounds)
-            // 'Light' style = dark/black icons (for light backgrounds)
-            StatusBar.setStyle({ style: isDark ? 'Dark' : 'Light' }).catch(() => {});
+          console.log('Checking Capacitor...', window.Capacitor);
+          console.log('isNativePlatform:', window.Capacitor?.isNativePlatform?.());
+          console.log('Plugins:', window.Capacitor?.Plugins);
+          if (window.Capacitor?.isNativePlatform?.()) {
+            try {
+              const { StatusBar } = window.Capacitor.Plugins;
+              console.log('StatusBar plugin:', StatusBar);
+              if (StatusBar) {
+                // Capacitor StatusBar naming is counterintuitive:
+                // 'Light' = light/white TEXT (use on dark backgrounds)
+                // 'Dark' = dark/black TEXT (use on light backgrounds)
+                const style = isDark ? 'Light' : 'Dark';
+                console.log('Setting status bar style to:', style);
+                StatusBar.setStyle({ style }).then(() => {
+                  console.log('StatusBar style set successfully');
+                }).catch(err => {
+                  console.log('StatusBar setStyle error:', err);
+                });
+              }
+            } catch (e) {
+              console.log('StatusBar error:', e);
+            }
           }
         } catch (e) {}
       }, []);
