@@ -9908,6 +9908,14 @@ async function startServer() {
     await assertRequiredSchema();
     await maybeCreateAdmin();
 
+    // Enable PostGIS spatial features if available
+    await configureSpatialFeatures();
+    if (GEO_FEATURES.postgisNearby) {
+      console.log(`[Server] PostGIS enabled (${GEO_FEATURES.reason})`);
+    } else {
+      console.log(`[Server] PostGIS not available (${GEO_FEATURES.reason}), using Haversine fallback`);
+    }
+
     const server = require('http').createServer(app);
     let embeddedWebSocket = null;
 
