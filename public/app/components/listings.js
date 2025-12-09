@@ -1373,7 +1373,7 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadAll, reloadMine, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function MassListModal({ onClose, onDone, reloadAll, reloadMine, addListing, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1498,6 +1498,10 @@
 
               const created = await api.createListing(payload);
               if (!created?.id) throw new Error('create_failed');
+              // Immediately add to home page
+              if (typeof addListing === 'function') {
+                addListing(created);
+              }
               if (autoInquiryEnabled && created?.id) {
                 try {
                   await api.updateListing(created.id, { inquiry_enabled: 1 });

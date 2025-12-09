@@ -1663,6 +1663,7 @@
               onDone: () => { setInitialMassListFiles([]); setMobileCreateMode('list'); },
               reloadAll: refreshListings,
               reloadMine: reloadMineOnly,
+              addListing,
               user,
               onLockedAction: showLockedBanner,
               autoPostNearbyEnabled,
