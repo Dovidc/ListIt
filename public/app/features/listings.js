@@ -448,8 +448,7 @@
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
-        // Find the actual scroll container (main.container on mobile, window on desktop)
-        const getScrollContainer = () => {
+        const findScrollContainer = () => {
           const mainContainer = document.querySelector('main.container');
           if (mainContainer) {
             const style = window.getComputedStyle(mainContainer);
@@ -460,24 +459,19 @@
           return null;
         };
 
-        const scrollContainer = getScrollContainer();
-
+        const scrollContainerRef = { current: findScrollContainer() };
         const scrollSpeedThreshold = 1.2;
-        let lastY = 0;
-        let lastT = Date.now();
+        const lastYRef = { current: 0 };
+        const lastTRef = { current: Date.now() };
+        const rafRef = { current: null };
 
         const checkScrollPosition = () => {
-          let scrollHeight, scrollTop, clientHeight;
+          const container = scrollContainerRef.current || findScrollContainer();
+          scrollContainerRef.current = container;
 
-          if (scrollContainer) {
-            scrollHeight = scrollContainer.scrollHeight;
-            scrollTop = scrollContainer.scrollTop;
-            clientHeight = scrollContainer.clientHeight;
-          } else {
-            scrollHeight = document.documentElement.scrollHeight;
-            scrollTop = window.scrollY || window.pageYOffset || 0;
-            clientHeight = window.innerHeight;
-          }
+          const scrollHeight = container ? container.scrollHeight : document.documentElement.scrollHeight;
+          const scrollTop = container ? container.scrollTop : (window.scrollY || window.pageYOffset || 0);
+          const clientHeight = container ? container.clientHeight : window.innerHeight;
 
           const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
@@ -486,16 +480,20 @@
           }
         };
 
-        const handleScroll = () => {
-          const now = Date.now();
-          const y = scrollContainer ? scrollContainer.scrollTop : (window.scrollY || 0);
-          const delta = Math.abs(y - lastY);
-          const dt = Math.max(16, now - lastT);
-          const speed = delta / dt;
-          lastY = y;
-          lastT = now;
+        const measureScroll = () => {
+          rafRef.current = null;
+          const container = scrollContainerRef.current || findScrollContainer();
+          scrollContainerRef.current = container;
 
-          if (speed > scrollSpeedThreshold) {
+          const now = Date.now();
+          const y = container ? container.scrollTop : (window.scrollY || 0);
+          const delta = Math.abs(y - lastYRef.current);
+          const dt = Math.max(16, now - lastTRef.current);
+          const speed = delta / dt;
+          lastYRef.current = y;
+          lastTRef.current = now;
+
+          if (speed > scrollSpeedThreshold && !isPaceLimitedRef.current) {
             isPaceLimitedRef.current = true;
             setIsPaceLimited(true);
             if (paceResetRef.current) clearTimeout(paceResetRef.current);
@@ -508,18 +506,30 @@
           checkScrollPosition();
         };
 
-        // Listen on the correct scroll container
-        if (scrollContainer) {
-          scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-        } else {
-          window.addEventListener('scroll', handleScroll, { passive: true });
-        }
+        const scheduleMeasure = () => {
+          if (rafRef.current != null) return;
+          rafRef.current = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame(measureScroll)
+            : setTimeout(measureScroll, 16);
+        };
+
+        const scrollTarget = scrollContainerRef.current || window;
+        scrollTarget.addEventListener('scroll', scheduleMeasure, { passive: true });
+        window.addEventListener('resize', scheduleMeasure, { passive: true });
+
+        // Initial check to capture current position
+        scheduleMeasure();
 
         return () => {
-          if (scrollContainer) {
-            scrollContainer.removeEventListener('scroll', handleScroll);
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.removeEventListener('scroll', scheduleMeasure);
           } else {
-            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('scroll', scheduleMeasure);
+          }
+          window.removeEventListener('resize', scheduleMeasure);
+          if (rafRef.current != null) {
+            const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
+            cancel(rafRef.current);
           }
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
         };
