@@ -2597,36 +2597,23 @@
           marginLeft: 'auto'
         }
       },
-        // Message icon
+        // Message pill
         H('button', {
           key: 'm',
-          className: 'listing-action-icon listing-action-message',
+          className: 'listing-action-pill listing-action-message',
           onClick: () => onMessage?.(item),
-          title: 'Message seller',
           style: {
-            background: 'transparent',
+            background: '#3b82f6',
+            color: '#fff',
             border: 'none',
-            padding: 6,
-            borderRadius: 6,
+            padding: '4px 10px',
+            borderRadius: 999,
             cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            fontSize: 12,
+            fontWeight: 600,
+            whiteSpace: 'nowrap'
           }
-        },
-          H('svg', {
-            width: 18,
-            height: 18,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
-          },
-            H('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' })
-          )
-        ),
+        }, 'Message seller'),
         // Report icon (only if logged in)
         canReport && H('button', {
           key: 'report',
