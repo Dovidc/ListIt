@@ -1469,6 +1469,31 @@
 
               const result = await api.createAutoListing(payload);
               if (!result?.job_id) throw new Error('create_failed');
+
+              // Poll for job completion to get the created listing
+              if (typeof api.getAutoListingStatus === 'function' && typeof addListing === 'function') {
+                const pollJob = async () => {
+                  const maxAttempts = 30;
+                  const intervalMs = 2000;
+                  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                    try {
+                      const status = await api.getAutoListingStatus(result.job_id);
+                      if (status?.status === 'completed' && status.listing) {
+                        addListing(status.listing);
+                        return;
+                      }
+                      if (status?.status === 'failed') {
+                        return;
+                      }
+                    } catch (e) {
+                      console.warn('[MassList] Poll error:', e);
+                    }
+                    await new Promise(r => setTimeout(r, intervalMs));
+                  }
+                };
+                // Fire and forget - don't block the main loop
+                pollJob().catch(() => {});
+              }
             } else {
               // Fallback to legacy client-side flow if API not available
               let ai = {};
