@@ -631,6 +631,24 @@
   color: #059669 !important;
 }
 
+/* Message icon - blue */
+.listing-action-message {
+  color: #3b82f6;
+}
+
+.listing-action-message:hover {
+  color: #2563eb !important;
+}
+
+/* Report icon - gray, red on hover */
+.listing-action-report {
+  color: #9ca3af;
+}
+
+.listing-action-report:hover {
+  color: #ef4444 !important;
+}
+
 /* Make the card behave like a normal sheet inside the modal */
 .modal-inner.listing-modal .card {
   width: 100%;

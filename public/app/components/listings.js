@@ -2585,22 +2585,80 @@
       const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
       const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
 
-      // Build controls for non-owner actions (Message, Report)
-      const viewerControls = [];
-      if (!user || user.id !== item.user_id) {
-        viewerControls.push(H('button', {
+      // Build viewer action icons (Message, Report) for non-owners
+      const isViewer = !user || user.id !== item.user_id;
+      const canReport = user && user.id !== item.user_id;
+      const viewerActions = isViewer ? H('div', {
+        className: 'listing-viewer-actions',
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginLeft: 'auto'
+        }
+      },
+        // Message icon
+        H('button', {
           key: 'm',
-          className: 'btn primary',
-          onClick: () => onMessage?.(item)
-        }, 'Message seller'));
-      }
-      if (user && user.id !== item.user_id) {
-        viewerControls.push(H('button', {
+          className: 'listing-action-icon listing-action-message',
+          onClick: () => onMessage?.(item),
+          title: 'Message seller',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            H('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' })
+          )
+        ),
+        // Report icon (only if logged in)
+        canReport && H('button', {
           key: 'report',
-          className: 'btn',
-          onClick: () => setShowReport(true)
-        }, 'Report seller'));
-      }
+          className: 'listing-action-icon listing-action-report',
+          onClick: () => setShowReport(true),
+          title: 'Report seller',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            H('path', { d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z' }),
+            H('line', { x1: 4, y1: 22, x2: 4, y2: 15 })
+          )
+        )
+      ) : null;
 
       // Build owner action icons (Edit, Sold, Delete)
       const isSold = !!item?.sold;
@@ -2938,15 +2996,10 @@
           H('div', { className: 'distance' }, fmtDistance(derivedMeters) + ' away'),
 
           H('div', { className: 'muted', style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
-            'Seller: ',
             renderSellerInfo(),
-            ownerActions
+            ownerActions,
+            viewerActions
           ),
-
-          viewerControls.length > 0 && H('div', {
-            className: 'row',
-            style: { marginTop: 8, justifyContent: 'flex-start', gap: 8 }
-          }, ...viewerControls),
 
           adminControls.length > 0 && H('div', {
             className: 'row',

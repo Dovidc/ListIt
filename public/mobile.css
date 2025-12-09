@@ -1427,7 +1427,7 @@ body:has(.mobile-messages-thread-portal) .mobile-dashboard {
     rgba(148, 163, 184, 0.06) 28px,
     rgba(148, 163, 184, 0.06) 29px
   ) !important;
-  padding-top: 60px !important;
+  padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
 }
 
 [data-theme="dark"] .mobile-messages-thread-portal,
