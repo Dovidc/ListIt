@@ -368,6 +368,7 @@
         listingError,
         loadMore,
         isScrollPaceLimited,
+        isScrollPenalty,
         sentinelRef,
         isInfiniteScrollSupported,
         reloadMineOnly,
@@ -1699,8 +1700,33 @@
                         sentinelRef
                       }),
 
-                      // Mini geometric loader while loading more
-                      (isFetchingListings || isScrollPaceLimited) && hasNext && H('div', {
+                      // Scroll penalty message - shown when user scrolls too fast
+                      isScrollPenalty && hasNext && H('div', {
+                        style: {
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '24px 0',
+                          gap: 12
+                        }
+                      },
+                        H('div', { className: 'mini-geometric-loader' },
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--outer' }),
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--middle' }),
+                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--inner' })
+                        ),
+                        H('span', {
+                          style: {
+                            fontSize: 14,
+                            color: 'var(--text-muted, #6b7280)',
+                            fontWeight: 500
+                          }
+                        }, 'scroll slower please')
+                      ),
+
+                      // Mini geometric loader while loading more (only show if not in penalty)
+                      !isScrollPenalty && (isFetchingListings || isScrollPaceLimited) && hasNext && H('div', {
                         style: {
                           display: 'flex',
                           alignItems: 'center',

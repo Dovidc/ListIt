@@ -417,12 +417,25 @@
       const paceResetRef = useRef(null);
       const loadInFlightRef = useRef(false);
 
+      // Scroll penalty state - triggers 4-second delay when user scrolls too fast
+      const [isScrollPenalty, setIsScrollPenalty] = useState(false);
+      const scrollPenaltyPendingRef = useRef(false); // Flag: next load should have penalty
+      const penaltyTimeoutRef = useRef(null);
+
       // Keep ref in sync with state
       useEffect(() => {
         isPaceLimitedRef.current = isPaceLimited;
       }, [isPaceLimited]);
 
-      // Unified load function that respects pace limiting
+      // Store refs to load functions so timeout can access latest versions
+      const onLoadMoreRef = useRef(onLoadMore);
+      const onLoadMoreSmallBatchRef = useRef(onLoadMoreSmallBatch);
+      useEffect(() => {
+        onLoadMoreRef.current = onLoadMore;
+        onLoadMoreSmallBatchRef.current = onLoadMoreSmallBatch;
+      }, [onLoadMore, onLoadMoreSmallBatch]);
+
+      // Unified load function that respects pace limiting and scroll penalty
       const doLoad = useCallback((forceSmallBatch = false) => {
         if (loadInFlightRef.current) return;
         if (getIsLoading() || !getCursor()) return;
@@ -431,18 +444,45 @@
         if (now - lastLoadTimeRef.current < throttleMs) return;
         lastLoadTimeRef.current = now;
 
-        loadInFlightRef.current = true;
+        // Helper to execute the actual load
+        const executeLoad = (useSmallBatch) => {
+          const useSmall = (useSmallBatch || isPaceLimitedRef.current) && onLoadMoreSmallBatchRef.current;
+          const loadFn = useSmall ? onLoadMoreSmallBatchRef.current : onLoadMoreRef.current;
 
-        // Use small batch if pace limited or forced
-        const useSmall = (forceSmallBatch || isPaceLimitedRef.current) && onLoadMoreSmallBatch;
-        const loadFn = useSmall ? onLoadMoreSmallBatch : onLoadMore;
+          loadInFlightRef.current = true;
+          Promise.resolve(loadFn())
+            .catch(() => { /* silent */ })
+            .finally(() => {
+              loadInFlightRef.current = false;
+            });
+        };
 
-        Promise.resolve(loadFn())
-          .catch(() => { /* silent */ })
-          .finally(() => {
-            loadInFlightRef.current = false;
-          });
-      }, [onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor]);
+        // Check if scroll penalty should be applied
+        if (scrollPenaltyPendingRef.current) {
+          scrollPenaltyPendingRef.current = false;
+          setIsScrollPenalty(true);
+          loadInFlightRef.current = true;
+
+          // Show penalty for 4 seconds, then load
+          const shouldUseSmallBatch = forceSmallBatch;
+          const loadFnToUse = shouldUseSmallBatch || isPaceLimitedRef.current
+            ? onLoadMoreSmallBatchRef.current
+            : onLoadMoreRef.current;
+
+          penaltyTimeoutRef.current = setTimeout(() => {
+            setIsScrollPenalty(false);
+            loadInFlightRef.current = true;
+            Promise.resolve(loadFnToUse())
+              .catch(() => { /* silent */ })
+              .finally(() => {
+                loadInFlightRef.current = false;
+              });
+          }, 4000);
+          return;
+        }
+
+        executeLoad(forceSmallBatch);
+      }, [getIsLoading, getCursor]);
 
       // Scroll-based loading - uses main.container on mobile (which has overflow-y: auto)
       useEffect(() => {
@@ -496,6 +536,8 @@
           if (speed > scrollSpeedThreshold && !isPaceLimitedRef.current) {
             isPaceLimitedRef.current = true;
             setIsPaceLimited(true);
+            // Set penalty flag - next load will trigger 4-second delay
+            scrollPenaltyPendingRef.current = true;
             if (paceResetRef.current) clearTimeout(paceResetRef.current);
             paceResetRef.current = setTimeout(() => {
               isPaceLimitedRef.current = false;
@@ -532,6 +574,7 @@
             cancel(rafRef.current);
           }
           if (paceResetRef.current) clearTimeout(paceResetRef.current);
+          if (penaltyTimeoutRef.current) clearTimeout(penaltyTimeoutRef.current);
         };
       }, [enabled, doLoad]);
 
@@ -559,7 +602,7 @@
         return () => observer.disconnect();
       }, [enabled, doLoad, getIsLoading, getCursor]);
 
-      return { sentinelRef, isSupported, isPaceLimited };
+      return { sentinelRef, isSupported, isPaceLimited, isScrollPenalty };
     }
 
     // ============================================================
@@ -778,7 +821,7 @@
       const fastScrollLimit = Math.max(12, Math.floor(pageSize / 3));
 
       // Infinite scroll
-      const { sentinelRef, isSupported: isInfiniteScrollSupported, isPaceLimited } = useInfiniteScroll({
+      const { sentinelRef, isSupported: isInfiniteScrollSupported, isPaceLimited, isScrollPenalty } = useInfiniteScroll({
         enabled: currentTab === 'browse',
         onLoadMore: pagination.loadMore,
         onLoadMoreSmallBatch: () => pagination.loadMore({ limit: fastScrollLimit }),
@@ -890,6 +933,7 @@
         listingError: pagination.error,
         loadMore: pagination.loadMore,
         isScrollPaceLimited: isPaceLimited,
+        isScrollPenalty,
 
         // Actions
         refreshListings,
