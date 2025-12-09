@@ -605,6 +605,32 @@
   border-color: rgba(167, 139, 250, 0.5) !important;
 }
 
+/* Listing owner action icons */
+.listing-action-icon:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme="dark"] .listing-action-icon:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.listing-action-icon:active {
+  transform: scale(0.92);
+}
+
+/* Mark as sold icon - gray by default, green when sold or on hover */
+.listing-action-sold {
+  color: #6b7280;
+}
+
+.listing-action-sold.is-sold {
+  color: #059669;
+}
+
+.listing-action-sold:hover {
+  color: #059669 !important;
+}
+
 /* Make the card behave like a normal sheet inside the modal */
 .modal-inner.listing-modal .card {
   width: 100%;

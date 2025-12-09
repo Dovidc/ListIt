@@ -2585,64 +2585,148 @@
       const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
       const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
 
-      const controls = [];
+      // Build controls for non-owner actions (Message, Report)
+      const viewerControls = [];
       if (!user || user.id !== item.user_id) {
-        controls.push(H('button', {
+        viewerControls.push(H('button', {
           key: 'm',
           className: 'btn primary',
           onClick: () => onMessage?.(item)
         }, 'Message seller'));
       }
       if (user && user.id !== item.user_id) {
-        controls.push(H('button', {
+        viewerControls.push(H('button', {
           key: 'report',
           className: 'btn',
           onClick: () => setShowReport(true)
         }, 'Report seller'));
       }
-      if (canEdit) {
-        controls.push(H('button', {
-          key: 'e',
-          className: 'btn',
-          onClick: () => onEdit?.(item),
-          style: {
-            background: '#3b82f6',
-            color: '#fff',
-            borderColor: '#3b82f6'
-          }
-        }, 'Edit'));
-        if (onToggleSold) {
-          const isSold = !!item?.sold;
-          controls.push(H('button', {
-            key: 'sold-toggle',
-            className: 'btn',
-            onClick: async () => {
-              if (soldBusy) return;
-              try {
-                setSoldBusy(true);
-                await onToggleSold(item, !isSold);
-              } finally {
-                setSoldBusy(false);
-              }
-            },
-            disabled: soldBusy,
-            style: {
-              background: isSold ? '#D1FAE5' : '#059669',
-              color: isSold ? '#047857' : '#fff',
-              borderColor: '#059669'
-            }
-          }, isSold ? 'Mark as unsold' : 'Mark as sold'));
+
+      // Build owner action icons (Edit, Sold, Delete)
+      const isSold = !!item?.sold;
+      const ownerActions = canEdit ? H('div', {
+        className: 'listing-owner-actions',
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginLeft: 'auto'
         }
-        controls.push(H('button', {
+      },
+        // Edit icon
+        H('button', {
+          key: 'e',
+          className: 'listing-action-icon',
+          onClick: () => onEdit?.(item),
+          title: 'Edit listing',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            color: '#3b82f6',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            H('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
+            H('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })
+          )
+        ),
+        // Sold toggle icon
+        onToggleSold && H('button', {
+          key: 'sold-toggle',
+          className: 'listing-action-icon listing-action-sold' + (isSold ? ' is-sold' : ''),
+          onClick: async () => {
+            if (soldBusy) return;
+            try {
+              setSoldBusy(true);
+              await onToggleSold(item, !isSold);
+            } finally {
+              setSoldBusy(false);
+            }
+          },
+          disabled: soldBusy,
+          title: isSold ? 'Mark as unsold' : 'Mark as sold',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: soldBusy ? 'wait' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: soldBusy ? 0.5 : 1
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: isSold ? 'currentColor' : 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            H('path', { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14' }),
+            H('polyline', { points: '22 4 12 14.01 9 11.01' })
+          )
+        ),
+        // Delete icon
+        H('button', {
           key: 'd',
-          className: 'btn danger',
-          onClick: () => onDelete?.(item)
-        }, 'Remove Listing'));
-      }
+          className: 'listing-action-icon',
+          onClick: () => onDelete?.(item),
+          title: 'Remove listing',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            color: '#ef4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            H('polyline', { points: '3 6 5 6 21 6' }),
+            H('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })
+          )
+        )
+      ) : null;
+
+      // Admin delete (keep as button for visibility)
+      const adminControls = [];
       if (user?.is_admin) {
-        controls.push(H('button', {
+        adminControls.push(H('button', {
           key: 'admin-del',
           className: 'btn danger',
+          style: { fontSize: 12, padding: '4px 10px' },
           onClick: async () => {
             if (!confirm('Admin: Delete this listing?')) return;
             await api.adminDeleteListing(item.id);
@@ -2855,13 +2939,19 @@
 
           H('div', { className: 'muted', style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
             'Seller: ',
-            renderSellerInfo()
+            renderSellerInfo(),
+            ownerActions
           ),
 
-          H('div', {
+          viewerControls.length > 0 && H('div', {
             className: 'row',
             style: { marginTop: 8, justifyContent: 'flex-start', gap: 8 }
-          }, ...controls)
+          }, ...viewerControls),
+
+          adminControls.length > 0 && H('div', {
+            className: 'row',
+            style: { marginTop: 6, justifyContent: 'flex-start', gap: 8 }
+          }, ...adminControls)
         ),
 
         showReport && H(ReportSellerModal, {
