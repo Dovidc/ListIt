@@ -266,7 +266,7 @@
         async function ensureCoords() {
           if (cachedCoords) return cachedCoords;
           try {
-            cachedCoords = await fetchCoordsAndReverse();
+            cachedCoords = await fetchCoordsAndReverse({ silent: true });
             return cachedCoords;
           } catch (err) {
             console.warn('[AutoList] Failed to get coords:', err);
@@ -430,7 +430,7 @@
         attempts++;
 
         try {
-          const status = await api.getAutoListingStatus(jobId);
+          const status = await api.getAutoListingStatus(jobId, { silent: true });
 
           if (status?.status === 'completed' && status.listing) {
             stopped = true;

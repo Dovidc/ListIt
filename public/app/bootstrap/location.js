@@ -16,12 +16,12 @@
       return display || safeFallback;
     }
 
-    async function fetchCoordsAndReverse() {
+    async function fetchCoordsAndReverse({ silent = false } = {}) {
       if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
       const { coords } = await new Promise((res, rej) =>
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
       );
-      const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+      const r = await api.reverseGeocode(coords.latitude, coords.longitude, { silent });
       const fallback = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
       return {
         lat: r?.lat ?? coords.latitude,

@@ -692,16 +692,16 @@
       );
     }
 
-    async function fetchCoordsAndReverseInternal() {
+    async function fetchCoordsAndReverseInternal({ silent = true } = {}) {
       if (typeof fetchCoordsAndReverse === 'function') {
-        return fetchCoordsAndReverse();
+        return fetchCoordsAndReverse({ silent });
       }
 
       if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
       const { coords } = await new Promise((res, rej) =>
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
       );
-      const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+      const r = await api.reverseGeocode(coords.latitude, coords.longitude, { silent });
       const fallback = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
       return {
         lat: r?.lat ?? coords.latitude,
@@ -1443,7 +1443,7 @@
                 payload.lon = sharedNearby.lon;
               }
 
-              const result = await api.createAutoListing(payload);
+              const result = await api.createAutoListing(payload, { silent: true });
               if (!result?.job_id) throw new Error('create_failed');
 
               // Poll for job completion to get the created listing
@@ -1453,7 +1453,7 @@
                   const intervalMs = 2000;
                   for (let attempt = 0; attempt < maxAttempts; attempt++) {
                     try {
-                      const status = await api.getAutoListingStatus(result.job_id);
+                      const status = await api.getAutoListingStatus(result.job_id, { silent: true });
                       if (status?.status === 'completed' && status.listing) {
                         addListing(status.listing);
                         return;
@@ -1490,7 +1490,7 @@
               if (autoInquiryEnabled) payload.inquiry_enabled = 1;
               if (autoPostNearbyEnabled && sharedNearby.ok) { payload.lat = sharedNearby.lat; payload.lon = sharedNearby.lon; }
 
-              const created = await api.createListing(payload);
+              const created = await api.createListing(payload, { silent: true });
               if (!created?.id) throw new Error('create_failed');
               // Immediately add to home page
               if (typeof addListing === 'function') {
@@ -1498,7 +1498,7 @@
               }
               if (autoInquiryEnabled && created?.id) {
                 try {
-                  await api.updateListing(created.id, { inquiry_enabled: 1 });
+                  await api.updateListing(created.id, { inquiry_enabled: 1 }, { silent: true });
                 } catch (err) {
                   console.error('Failed to mark mass-listed item as inquiry-enabled:', err);
                 }
