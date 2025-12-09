@@ -1373,7 +1373,7 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadAll, reloadMine, addListing, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, aiDescriptionEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1525,8 +1525,9 @@
 
         await Promise.allSettled(jobs);
 
+        // Note: addListing is called for each created listing above,
+        // so we don't need reloadAll which would replace the listings array
         try { await reloadMine(); } catch { }
-        try { await reloadAll({ preserveExisting: true }); } catch { }
 
         return { total, created: total - failedCount, failed: failedCount };
       };
