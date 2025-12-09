@@ -4630,8 +4630,7 @@ app.get('/api/listings', async (req, res) => {
             COS(@userLat * @deg2rad) * COS(l.lat * @deg2rad) *
             POWER(SIN(((@deg2rad * (l.lon - @userLon)) / 2)), 2)
           )))
-        ELSE NULL END AS distance_m,
-        l.lat, l.lon`;
+        ELSE NULL END AS distance_m`;
     }
 
     switch (sort) {
