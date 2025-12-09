@@ -2604,7 +2604,12 @@
         controls.push(H('button', {
           key: 'e',
           className: 'btn',
-          onClick: () => onEdit?.(item)
+          onClick: () => onEdit?.(item),
+          style: {
+            background: '#3b82f6',
+            color: '#fff',
+            borderColor: '#3b82f6'
+          }
         }, 'Edit'));
         if (onToggleSold) {
           const isSold = !!item?.sold;
