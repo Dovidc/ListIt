@@ -1485,13 +1485,10 @@
                       if (status?.status === 'failed') {
                         return;
                       }
-                    } catch (e) {
-                      console.warn('[MassList] Poll error:', e);
-                    }
+                    } catch (e) { /* ignore poll errors */ }
                     await new Promise(r => setTimeout(r, intervalMs));
                   }
                 };
-                // Fire and forget - don't block the main loop
                 pollJob().catch(() => {});
               }
             } else {

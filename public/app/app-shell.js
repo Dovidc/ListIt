@@ -385,6 +385,81 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
+      // Search dropdown state
+      const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+      const searchInputRef = useRef(null);
+      const searchDropdownRef = useRef(null);
+
+      // Categories for search dropdown
+      const searchCategories = [
+        'Appliances', 'Tech', 'Furniture', 'Clothing', 'Electronics',
+        'Books', 'Sports', 'Toys', 'Tools', 'Garden', 'Auto', 'Art'
+      ];
+
+      // State to track recent searches (triggers re-render when updated)
+      const [recentSearches, setRecentSearches] = useState(() => {
+        try {
+          const stored = JSON.parse(localStorage.getItem('listit_recent_searches') || '[]');
+          return stored.sort((a, b) => b.count - a.count).slice(0, 5);
+        } catch { return []; }
+      });
+
+      // Save a search to history
+      const saveSearchToHistory = useCallback((term) => {
+        if (!term || !term.trim()) return;
+        const normalized = term.trim().toLowerCase();
+        try {
+          const stored = JSON.parse(localStorage.getItem('listit_recent_searches') || '[]');
+          const existing = stored.find(s => s.term.toLowerCase() === normalized);
+          if (existing) {
+            existing.count = (existing.count || 1) + 1;
+            existing.term = term.trim(); // Keep original casing
+          } else {
+            stored.push({ term: term.trim(), count: 1 });
+          }
+          // Keep only last 20 unique searches
+          const sorted = stored.sort((a, b) => b.count - a.count).slice(0, 20);
+          localStorage.setItem('listit_recent_searches', JSON.stringify(sorted));
+          // Update state to trigger re-render
+          setRecentSearches(sorted.slice(0, 5));
+        } catch { }
+      }, []);
+
+      // Handle search submission with history tracking
+      const handleSearchSubmit = useCallback((customQuery) => {
+        const searchTerm = customQuery !== undefined ? customQuery : query;
+        if (searchTerm && searchTerm.trim()) {
+          saveSearchToHistory(searchTerm);
+        }
+        setSearchDropdownOpen(false);
+        submitSearch(customQuery);
+      }, [query, submitSearch, saveSearchToHistory]);
+
+      // Handle clicking a suggestion
+      const handleSearchSuggestionClick = useCallback((term) => {
+        setQuery(term);
+        setSearchDropdownOpen(false);
+        saveSearchToHistory(term);
+        submitSearch(term);
+      }, [setQuery, submitSearch, saveSearchToHistory]);
+
+      // Close dropdown when clicking outside
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (searchDropdownOpen &&
+              searchInputRef.current && !searchInputRef.current.contains(e.target) &&
+              searchDropdownRef.current && !searchDropdownRef.current.contains(e.target)) {
+            setSearchDropdownOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+          document.removeEventListener('mousedown', handleClickOutside);
+          document.removeEventListener('touchstart', handleClickOutside);
+        };
+      }, [searchDropdownOpen]);
+
       // Edit listing toast state
       const [recentlyCreatedListing, setRecentlyCreatedListing] = useState(null);
       const [showEditToast, setShowEditToast] = useState(false);
@@ -461,6 +536,10 @@
         } else {
           // Non-premium users or unmarking sold - proceed normally
           await toggleSold?.(listing, makeSold);
+          // Close the listing modal after marking as sold (non-premium flow)
+          if (makeSold) {
+            setSelectedListing(null);
+          }
         }
       }, [user, toggleSold, hasPremiumAccess]);
 
@@ -1387,15 +1466,20 @@
                               }
                             },
                               H('input', {
+                                ref: searchInputRef,
                                 placeholder: 'Search...',
                                 enterKeyHint: 'search',
                                 value: query,
                                 onChange: e => setQuery(e.target.value),
+                                onFocus: () => setSearchDropdownOpen(true),
                                 onKeyDown: e => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
                                     e.target.blur();
-                                    submitSearch();
+                                    handleSearchSubmit();
+                                  } else if (e.key === 'Escape') {
+                                    setSearchDropdownOpen(false);
+                                    e.target.blur();
                                   }
                                 },
                                 style: {
@@ -1406,7 +1490,7 @@
                               // Clear button - only show when there's text
                               query && query.trim() && H('button', {
                                 type: 'button',
-                                onClick: () => { setQuery(''); submitSearch(''); },
+                                onClick: () => { setQuery(''); handleSearchSubmit(''); },
                                 title: 'Clear search',
                                 style: {
                                   position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)',
@@ -1422,7 +1506,7 @@
                               // Search button
                               H('button', {
                                 type: 'button',
-                                onClick: () => submitSearch(),
+                                onClick: () => handleSearchSubmit(),
                                 title: 'Search',
                                 style: {
                                   position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
@@ -1434,6 +1518,81 @@
                                 H('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
                                   H('circle', { cx: 11, cy: 11, r: 8 }),
                                   H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
+                                )
+                              ),
+                              // Search dropdown
+                              searchDropdownOpen && H('div', {
+                                ref: searchDropdownRef,
+                                className: 'search-dropdown',
+                                style: {
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  right: 0,
+                                  marginTop: 4,
+                                  background: 'var(--card-bg, #fff)',
+                                  borderRadius: 12,
+                                  boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                                  zIndex: 100,
+                                  overflow: 'hidden',
+                                  border: '1px solid var(--border-color, #e5e7eb)'
+                                }
+                              },
+                                // Recent searches section
+                                (() => {
+                                  if (!recentSearches.length) return null;
+                                  return H('div', { style: { padding: '8px 12px', borderBottom: '2px solid var(--border-color, #e5e7eb)' } },
+                                    H('div', { style: { fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' } }, 'Recent'),
+                                    H('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                                      ...recentSearches.map(s => H('button', {
+                                        key: s.term,
+                                        onClick: () => handleSearchSuggestionClick(s.term),
+                                        style: {
+                                          background: 'none',
+                                          border: 'none',
+                                          padding: '6px 8px',
+                                          textAlign: 'left',
+                                          cursor: 'pointer',
+                                          borderRadius: 6,
+                                          fontSize: 14,
+                                          color: 'var(--text-color, #1f2937)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 8
+                                        },
+                                        onMouseEnter: e => e.target.style.background = 'var(--hover-bg, #f3f4f6)',
+                                        onMouseLeave: e => e.target.style.background = 'none'
+                                      },
+                                        H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: '#9ca3af', strokeWidth: 2 },
+                                          H('circle', { cx: 12, cy: 12, r: 10 }),
+                                          H('polyline', { points: '12 6 12 12 16 14' })
+                                        ),
+                                        s.term
+                                      ))
+                                    )
+                                  );
+                                })(),
+                                // Categories section
+                                H('div', { style: { padding: '8px 12px' } },
+                                  H('div', { style: { fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' } }, 'Categories'),
+                                  H('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+                                    ...searchCategories.map(cat => H('button', {
+                                      key: cat,
+                                      onClick: () => handleSearchSuggestionClick(cat),
+                                      className: 'search-category-pill',
+                                      style: {
+                                        background: 'var(--pill-bg, #f3f4f6)',
+                                        border: 'none',
+                                        padding: '5px 12px',
+                                        borderRadius: 999,
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                        color: 'var(--text-color, #374151)',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.15s ease'
+                                      }
+                                    }, cat))
+                                  )
                                 )
                               )
                             ),

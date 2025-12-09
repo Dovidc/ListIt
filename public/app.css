@@ -1,4 +1,25 @@
-﻿@keyframes img-shimmer {
+/* Search dropdown styles */
+.search-dropdown {
+  --card-bg: #fff;
+  --border-color: #e5e7eb;
+  --text-color: #1f2937;
+  --hover-bg: #f3f4f6;
+  --pill-bg: #f3f4f6;
+}
+
+[data-theme="dark"] .search-dropdown {
+  --card-bg: #1e293b;
+  --border-color: #334155;
+  --text-color: #e2e8f0;
+  --hover-bg: #334155;
+  --pill-bg: #334155;
+}
+
+.search-category-pill:hover {
+  background: var(--hover-bg, #e5e7eb) !important;
+}
+
+@keyframes img-shimmer {
   0% {
     background-position: 0% 50%;
   }
@@ -618,9 +639,9 @@
   transform: scale(0.92);
 }
 
-/* Mark as sold icon - gray by default, green when sold or on hover */
+/* Mark as sold icon - green always */
 .listing-action-sold {
-  color: #6b7280;
+  color: #059669;
 }
 
 .listing-action-sold.is-sold {
