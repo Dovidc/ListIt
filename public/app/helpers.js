@@ -45,13 +45,13 @@
       const [scrollTop, setScrollTop] = useState(0);
       const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
       const lastValueRef = useRef(0);
+      const scrollContainerRef = useRef(null);
+      const rafRef = useRef(null);
 
       useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        // On mobile, main.container is the scroll container (position: fixed, overflow-y: auto)
-        // On desktop, window is the scroll container
-        const getScrollContainer = () => {
+        const findScrollContainer = () => {
           const mainContainer = document.querySelector('main.container');
           if (mainContainer) {
             const style = window.getComputedStyle(mainContainer);
@@ -62,42 +62,59 @@
           return null;
         };
 
-        const scrollContainer = getScrollContainer();
+        scrollContainerRef.current = findScrollContainer();
 
-        const updateScroll = () => {
-          const value = scrollContainer
-            ? scrollContainer.scrollTop
+        const measure = () => {
+          rafRef.current = null;
+          const container = scrollContainerRef.current || findScrollContainer();
+          scrollContainerRef.current = container;
+
+          const nextScrollTop = container
+            ? container.scrollTop
             : (window.scrollY || window.pageYOffset || 0);
-          if (value !== lastValueRef.current) {
-            lastValueRef.current = value;
-            setScrollTop(value);
+
+          const nextViewportHeight = container
+            ? container.clientHeight
+            : (window.innerHeight || document.documentElement.clientHeight || viewportHeight);
+
+          if (Math.abs(nextScrollTop - lastValueRef.current) > 2) {
+            lastValueRef.current = nextScrollTop;
+            setScrollTop(nextScrollTop);
+          }
+
+          if (Math.abs(nextViewportHeight - viewportHeight) > 1) {
+            setViewportHeight(nextViewportHeight);
           }
         };
 
-        const onResize = () => {
-          setViewportHeight(window.innerHeight || document.documentElement.clientHeight);
+        const scheduleMeasure = () => {
+          if (rafRef.current != null) return;
+          rafRef.current = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame(measure)
+            : setTimeout(measure, 16);
         };
 
-        // Listen to scroll events on the correct container
-        if (scrollContainer) {
-          scrollContainer.addEventListener('scroll', updateScroll, { passive: true });
-        } else {
-          window.addEventListener('scroll', updateScroll, { passive: true });
-        }
-        window.addEventListener('resize', onResize, { passive: true });
+        const scrollTarget = scrollContainerRef.current || window;
+        scrollTarget.addEventListener('scroll', scheduleMeasure, { passive: true });
+        window.addEventListener('resize', scheduleMeasure, { passive: true });
 
-        // Initial check
-        updateScroll();
+        // Initial measurement
+        scheduleMeasure();
 
         return () => {
-          if (scrollContainer) {
-            scrollContainer.removeEventListener('scroll', updateScroll);
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.removeEventListener('scroll', scheduleMeasure);
           } else {
-            window.removeEventListener('scroll', updateScroll);
+            window.removeEventListener('scroll', scheduleMeasure);
           }
-          window.removeEventListener('resize', onResize);
+          window.removeEventListener('resize', scheduleMeasure);
+          if (rafRef.current != null) {
+            const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
+            cancel(rafRef.current);
+            rafRef.current = null;
+          }
         };
-      }, []);
+      }, [viewportHeight]);
 
       // Calculate grid dimensions
       const safeCols = Math.max(1, Math.floor(columnCount));
