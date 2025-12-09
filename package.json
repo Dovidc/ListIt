@@ -25,6 +25,7 @@
     "@aws-sdk/s3-request-presigner": "^3.940.0",
     "@capacitor/core": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.4",
+    "@capacitor/status-bar": "^6.0.3",
     "@sendgrid/mail": "^8.1.2",
     "apn": "^2.2.0",
     "bcryptjs": "^3.0.2",

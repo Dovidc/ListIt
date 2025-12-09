@@ -1454,6 +1454,13 @@
           localStorage.setItem('theme', 'light');
           if (themeColorMeta) themeColorMeta.content = '#ffffff';
         }
+        // Update iOS status bar style based on theme
+        if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
+          const StatusBar = window.Capacitor.Plugins.StatusBar;
+          // Style.Dark = light text (for dark backgrounds)
+          // Style.Light = dark text (for light backgrounds)
+          StatusBar.setStyle({ style: isDarkMode ? 'DARK' : 'LIGHT' }).catch(() => {});
+        }
       }, [isDarkMode]);
 
       const hasDom = typeof document !== 'undefined' && document.body;

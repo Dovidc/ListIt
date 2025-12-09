@@ -1818,12 +1818,20 @@
     });
 
     function Root() {
-      // Apply dark mode on app mount
+      // Apply dark mode on app mount and configure status bar
       useEffect(() => {
         try {
           const theme = localStorage.getItem('theme');
-          if (theme === 'dark') {
+          const isDark = theme === 'dark';
+          if (isDark) {
             document.documentElement.setAttribute('data-theme', 'dark');
+          }
+          // Configure iOS status bar based on theme
+          if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
+            const StatusBar = window.Capacitor.Plugins.StatusBar;
+            // Style.Dark = light text (for dark backgrounds)
+            // Style.Light = dark text (for light backgrounds)
+            StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' }).catch(() => {});
           }
         } catch (e) {}
       }, []);
