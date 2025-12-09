@@ -7377,7 +7377,7 @@ app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
 
           'Analyze the item images and output STRICT JSON with:',
 
-          '"title": concise <=80 chars, no emojis;',
+          '"title": concise <=80 chars, no emojis. Identify the actual product/brand name - do NOT describe logos or visual elements. For example: "Razer Laptop" not "Laptop with Green Snake Logo", "Nike Shoes" not "Shoes with Swoosh", "Apple iPhone" not "Phone with Apple Logo";',
 
           '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
 
@@ -7533,7 +7533,7 @@ async function runAIAnalysis({ images, hint }) {
     text: [
       'You are a listing assistant for a local marketplace.',
       'Analyze the item images and output STRICT JSON with:',
-      '"title": concise <=80 chars, no emojis;',
+      '"title": concise <=80 chars, no emojis. Identify the actual product/brand name - do NOT describe logos or visual elements. For example: "Razer Laptop" not "Laptop with Green Snake Logo", "Nike Shoes" not "Shoes with Swoosh", "Apple iPhone" not "Phone with Apple Logo";',
       '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
       '"price_usd": fair used-market price in USD as a number;',
       'Return ONLY JSON.'
