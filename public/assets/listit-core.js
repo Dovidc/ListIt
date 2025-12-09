@@ -1,11 +1,10 @@
 (() => {
   const exports = {};
   class ApiError extends Error {
-    constructor(message, issues) {
+    constructor(message) {
       super(message);
       this.name = 'ApiError';
       this.responseText = undefined;
-      this.issues = issues || null;
     }
   }
   
@@ -75,12 +74,11 @@
           }
   
           const message = payload && typeof payload === 'object' && payload.error ? payload.error : 'request_failed';
-          const issues = payload && typeof payload === 'object' && Array.isArray(payload.issues) ? payload.issues : null;
           if (message === 'account_locked') {
             onAccountLocked?.();
           }
-
-          throw new ApiError(message, issues);
+  
+          throw new ApiError(message);
         }
   
         const text = await response.text();

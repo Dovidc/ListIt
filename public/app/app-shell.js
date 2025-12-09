@@ -408,25 +408,44 @@
           return;
         }
 
+        // On mobile, main.container is the scroll container (position: fixed with overflow-y: auto)
+        // On desktop, window is the scroll container
+        const getScrollContainer = () => {
+          if (isMobile) {
+            return document.querySelector('main.container');
+          }
+          return window;
+        };
+
         const handleScroll = () => {
-          const scrollY = window.scrollY || window.pageYOffset || 0;
+          const container = getScrollContainer();
+          const scrollY = container === window
+            ? (window.scrollY || window.pageYOffset || 0)
+            : (container?.scrollTop || 0);
           setShowReturnToTop(scrollY > RETURN_TO_TOP_SCROLL_THRESHOLD);
         };
 
         // Check initial position
         handleScroll();
 
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-      }, [items.length, tab]);
+        const container = getScrollContainer();
+        if (container) {
+          container.addEventListener('scroll', handleScroll, { passive: true });
+          return () => container.removeEventListener('scroll', handleScroll);
+        }
+      }, [items.length, tab, isMobile]);
 
       const handleReturnToTop = useCallback(async () => {
         setShowReturnToTop(false);
         await refreshListings();
-        if (typeof window !== 'undefined') {
-          window.scrollTo(0, 0);
+        // Scroll the correct container to top
+        if (isMobile) {
+          const container = document.querySelector('main.container');
+          if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-      }, [refreshListings]);
+      }, [refreshListings, isMobile]);
 
       // Karma modal state
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
@@ -1829,9 +1848,9 @@
           // Configure iOS status bar based on theme
           if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
             const StatusBar = window.Capacitor.Plugins.StatusBar;
-            // Style.Dark = light text (for dark backgrounds)
-            // Style.Light = dark text (for light backgrounds)
-            StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' }).catch(() => {});
+            // 'Dark' style = light/white icons (for dark backgrounds)
+            // 'Light' style = dark/black icons (for light backgrounds)
+            StatusBar.setStyle({ style: isDark ? 'Dark' : 'Light' }).catch(() => {});
           }
         } catch (e) {}
       }, []);

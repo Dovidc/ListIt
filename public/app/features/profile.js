@@ -1457,9 +1457,9 @@
         // Update iOS status bar style based on theme
         if (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
           const StatusBar = window.Capacitor.Plugins.StatusBar;
-          // Style.Dark = light text (for dark backgrounds)
-          // Style.Light = dark text (for light backgrounds)
-          StatusBar.setStyle({ style: isDarkMode ? 'DARK' : 'LIGHT' }).catch(() => {});
+          // 'Dark' style = light/white icons (for dark backgrounds)
+          // 'Light' style = dark/black icons (for light backgrounds)
+          StatusBar.setStyle({ style: isDarkMode ? 'Dark' : 'Light' }).catch(() => {});
         }
       }, [isDarkMode]);
 
