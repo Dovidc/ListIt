@@ -240,20 +240,27 @@
       // Wrapper for tab changes to save scroll position
       const onTabChange = useCallback((newTab) => {
         if (tab === 'browse') {
-          browseScrollPos.current = window.scrollY;
+          // On mobile, main.container is the scroll container
+          const scrollContainer = isMobile ? document.querySelector('main.container') : null;
+          browseScrollPos.current = scrollContainer ? scrollContainer.scrollTop : window.scrollY;
         }
         handleTabChange(newTab);
-      }, [tab, handleTabChange]);
+      }, [tab, handleTabChange, isMobile]);
 
       // Restore scroll position when returning to browse
       React.useLayoutEffect(() => {
+        // On mobile, main.container is the scroll container; on desktop, window is
+        const scrollContainer = isMobile ? document.querySelector('main.container') : null;
+
         if (tab === 'browse' && prevTabRef.current !== 'browse') {
           window.scrollTo(0, browseScrollPos.current);
+          if (scrollContainer) scrollContainer.scrollTop = browseScrollPos.current;
         } else if (tab !== 'browse') {
           window.scrollTo(0, 0);
+          if (scrollContainer) scrollContainer.scrollTop = 0;
         }
         prevTabRef.current = tab;
-      }, [tab]);
+      }, [tab, isMobile]);
 
       const setSupporterPromptSeen = useCallback(() => {
         try {
@@ -648,9 +655,11 @@
           try {
             // Check localStorage first (iOS cold start)
             const pendingConvoId = localStorage.getItem('pendingConversationId');
+            console.log('[App] checkPendingNotification - localStorage:', pendingConvoId, 'hash:', window.location.hash);
             if (pendingConvoId) {
               localStorage.removeItem('pendingConversationId');
               const convoId = Number(pendingConvoId) || pendingConvoId;
+              console.log('[App] Opening conversation from localStorage:', convoId);
               // Delay to ensure app is fully loaded
               setTimeout(() => {
                 setActiveConvoId(convoId);
@@ -664,6 +673,7 @@
             const match = hash.match(/^#messages\/(\d+)$/);
             if (match) {
               const convoId = Number(match[1]);
+              console.log('[App] Opening conversation from URL hash:', convoId);
               // Clear the hash to avoid re-triggering
               window.history.replaceState(null, '', window.location.pathname + window.location.search);
               setTimeout(() => {
@@ -672,7 +682,7 @@
               }, 500);
             }
           } catch (e) {
-            // Ignore localStorage/URL errors
+            console.error('[App] checkPendingNotification error:', e);
           }
         };
         // Check immediately and again after a short delay
