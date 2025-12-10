@@ -25,7 +25,8 @@
       "Bash(PGPASSWORD=postgres psql:*)",
       "Bash(npm run build:core:browser:*)",
       "Bash(npm run:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm audit:*)"
     ],
     "deny": [],
     "ask": []

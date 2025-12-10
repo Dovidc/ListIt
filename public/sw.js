@@ -57,7 +57,8 @@ function buildNotification(payload = {}) {
     } else {
       options.body = preview || 'You have a new message.';
     }
-    options.data.url = '/#messages';
+    const conversationId = payload.conversation_id;
+    options.data.url = conversationId ? `/#messages/${conversationId}` : '/#messages';
   } else if (type === 'nearby_listing') {
     title = 'Nearby listing on ListIt';
     const parts = [];
