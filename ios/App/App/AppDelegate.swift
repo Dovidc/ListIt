@@ -24,11 +24,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
-        // Get conversation_id from payload
-        if let conversationId = userInfo["conversation_id"] {
-            let convoIdStr = "\(conversationId)"
-            pendingConversationId = convoIdStr
+        print("[AppDelegate] Notification tapped! userInfo keys: \(userInfo.keys)")
+        print("[AppDelegate] Full userInfo: \(userInfo)")
 
+        // Get conversation_id from payload - check multiple possible locations
+        var conversationId: String? = nil
+
+        // Direct key
+        if let convoId = userInfo["conversation_id"] {
+            conversationId = "\(convoId)"
+            print("[AppDelegate] Found conversation_id at root: \(conversationId!)")
+        }
+        // Inside "aps" dictionary
+        else if let aps = userInfo["aps"] as? [String: Any], let convoId = aps["conversation_id"] {
+            conversationId = "\(convoId)"
+            print("[AppDelegate] Found conversation_id in aps: \(conversationId!)")
+        }
+        // Inside custom data dictionary
+        else if let data = userInfo["data"] as? [String: Any], let convoId = data["conversation_id"] {
+            conversationId = "\(convoId)"
+            print("[AppDelegate] Found conversation_id in data: \(conversationId!)")
+        }
+        else {
+            print("[AppDelegate] No conversation_id found in payload")
+        }
+
+        if let convoIdStr = conversationId {
+            pendingConversationId = convoIdStr
             // Try multiple times with increasing delays
             navigateToConversation(convoIdStr, attempt: 1)
         }
@@ -37,6 +59,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     private func navigateToConversation(_ conversationId: String, attempt: Int) {
+        print("[AppDelegate] navigateToConversation called - conversationId: \(conversationId), attempt: \(attempt)")
+
         // Clear immediately on first attempt to prevent re-triggering
         if attempt == 1 {
             self.pendingConversationId = nil
@@ -47,30 +71,49 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard let rootVC = self.window?.rootViewController as? CAPBridgeViewController,
                   let webView = rootVC.bridge?.webView else {
+                print("[AppDelegate] WebView not ready, attempt \(attempt)")
                 // Retry if webview not ready (up to 4 attempts)
                 if attempt < 4 {
                     self.navigateToConversation(conversationId, attempt: attempt + 1)
+                } else {
+                    print("[AppDelegate] Gave up after 4 attempts")
                 }
                 return
             }
 
+            print("[AppDelegate] WebView ready, injecting JS for conversation \(conversationId)")
+
             let js = """
                 (function() {
+                    var log = function(msg) {
+                        console.log('[Native] ' + msg);
+                        if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.addDebugLog) {
+                            window.ListItApp.AppNav.addDebugLog('[Native] ' + msg);
+                        }
+                    };
+                    log('Setting pendingConversationId: \(conversationId)');
                     localStorage.setItem('pendingConversationId', '\(conversationId)');
                     if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.openConversation) {
+                        log('Calling openConversation(\(conversationId))');
                         window.ListItApp.AppNav.openConversation(\(conversationId));
                         return 'navigated';
                     }
+                    log('openConversation not available yet');
                     return 'not_ready';
                 })();
             """
 
             webView.evaluateJavaScript(js) { result, error in
+                if let error = error {
+                    print("[AppDelegate] JS error: \(error)")
+                }
+                if let result = result {
+                    print("[AppDelegate] JS result: \(result)")
+                }
                 if let result = result as? String, result == "not_ready", attempt < 4 {
                     // App not ready yet, retry
                     self.navigateToConversation(conversationId, attempt: attempt + 1)
                 }
-                // No need to clear pendingConversationId here - already cleared on first attempt
             }
         }
     }
