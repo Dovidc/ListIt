@@ -32,4 +32,12 @@ describe('ephemeral token store', () => {
     expect(store.read('second@example.com')).toBe('second-token');
     expect(store.read('third@example.com')).toBe('third-token');
   });
+
+  it('redacts raw values when storeRaw is disabled', () => {
+    const store = mailService.__createEphemeralStore(60000, { maxEntries: 2, storeRaw: false });
+
+    store.remember('user@example.com', 'should-not-be-stored');
+
+    expect(store.read('user@example.com')).toBeNull();
+  });
 });

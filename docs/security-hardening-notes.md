@@ -14,4 +14,4 @@
 
 **Impact.** This created two risks: unbounded memory growth proportional to the number of unique addresses and exposure of sensitive secrets if the process memory or logs were inspected.
 
-**Resolution.** Both caches now use a bounded, expiring in-memory store. Entries automatically expire after an hour (reset tokens) or 30 minutes (verification codes), and the cache only retains plaintext values during automated tests. This prevents long-lived plaintext secrets and caps memory usage. 【F:mail-service.js†L1-L119】
+**Resolution.** Both caches now use a bounded, expiring in-memory store. Entries automatically expire after an hour (reset tokens) or 30 minutes (verification codes), and the cache only retains plaintext values during automated tests; in all other environments, raw values are redacted before storage. This prevents long-lived plaintext secrets and caps memory usage. 【F:mail-service.js†L1-L119】
