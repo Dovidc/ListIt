@@ -188,5 +188,6 @@ module.exports = {
   sendVerificationEmail,
   __getLastToken: getLastToken,
   __getLastVerificationCode: getLastVerificationCode,
-  __reset: resetLog
+  __reset: resetLog,
+  __createEphemeralStore: createEphemeralStore
 };
