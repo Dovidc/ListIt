@@ -7,6 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     var window: UIWindow?
     var pendingConversationId: String? = nil
+    var pendingDebugLogs: [String] = []  // Store logs before webview is ready
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Set notification delegate BEFORE anything else
@@ -20,12 +21,52 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         return true
     }
 
+    private func addNativeDebugLog(_ message: String) {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm:ss a"
+        let timestamp = formatter.string(from: Date())
+        let logEntry = "[\(timestamp)] [Native] \(message)"
+
+        print(logEntry)
+        pendingDebugLogs.append(logEntry)
+
+        // Keep only last 20 logs
+        if pendingDebugLogs.count > 20 {
+            pendingDebugLogs = Array(pendingDebugLogs.suffix(20))
+        }
+
+        // Try to flush to webview if available
+        flushDebugLogsToWebView()
+    }
+
+    private func flushDebugLogsToWebView() {
+        guard !pendingDebugLogs.isEmpty,
+              let rootVC = self.window?.rootViewController as? CAPBridgeViewController,
+              let webView = rootVC.bridge?.webView else {
+            return
+        }
+
+        let logsJson = pendingDebugLogs.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ",")
+        let js = """
+            (function() {
+                var newLogs = [\(logsJson)];
+                var logs = [];
+                try { logs = JSON.parse(localStorage.getItem('debugLogs') || '[]'); } catch(e) {}
+                logs = logs.concat(newLogs);
+                if (logs.length > 20) logs = logs.slice(-20);
+                localStorage.setItem('debugLogs', JSON.stringify(logs));
+            })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+        pendingDebugLogs = []
+    }
+
     // Called when notification is tapped (app in background or closed)
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+        let keysStr = userInfo.keys.map { String(describing: $0) }.joined(separator: ", ")
 
-        print("[AppDelegate] Notification tapped! userInfo keys: \(userInfo.keys)")
-        print("[AppDelegate] Full userInfo: \(userInfo)")
+        addNativeDebugLog("didReceive CALLED - keys: \(keysStr)")
 
         // Get conversation_id from payload - check multiple possible locations
         var conversationId: String? = nil
@@ -33,20 +74,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Direct key
         if let convoId = userInfo["conversation_id"] {
             conversationId = "\(convoId)"
-            print("[AppDelegate] Found conversation_id at root: \(conversationId!)")
+            addNativeDebugLog("Found conversation_id at root: \(conversationId!)")
         }
         // Inside "aps" dictionary
         else if let aps = userInfo["aps"] as? [String: Any], let convoId = aps["conversation_id"] {
             conversationId = "\(convoId)"
-            print("[AppDelegate] Found conversation_id in aps: \(conversationId!)")
+            addNativeDebugLog("Found conversation_id in aps: \(conversationId!)")
         }
         // Inside custom data dictionary
         else if let data = userInfo["data"] as? [String: Any], let convoId = data["conversation_id"] {
             conversationId = "\(convoId)"
-            print("[AppDelegate] Found conversation_id in data: \(conversationId!)")
+            addNativeDebugLog("Found conversation_id in data: \(conversationId!)")
         }
         else {
-            print("[AppDelegate] No conversation_id found in payload")
+            addNativeDebugLog("No conversation_id found in payload")
         }
 
         if let convoIdStr = conversationId {
@@ -59,7 +100,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     private func navigateToConversation(_ conversationId: String, attempt: Int) {
-        print("[AppDelegate] navigateToConversation called - conversationId: \(conversationId), attempt: \(attempt)")
+        addNativeDebugLog("navigateToConversation attempt \(attempt) for \(conversationId)")
 
         // Clear immediately on first attempt to prevent re-triggering
         if attempt == 1 {
@@ -71,56 +112,41 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard let rootVC = self.window?.rootViewController as? CAPBridgeViewController,
                   let webView = rootVC.bridge?.webView else {
-                print("[AppDelegate] WebView not ready, attempt \(attempt)")
+                self.addNativeDebugLog("WebView not ready, attempt \(attempt)")
                 // Retry if webview not ready (up to 4 attempts)
                 if attempt < 4 {
                     self.navigateToConversation(conversationId, attempt: attempt + 1)
                 } else {
-                    print("[AppDelegate] Gave up after 4 attempts")
+                    self.addNativeDebugLog("Gave up after 4 attempts")
                 }
                 return
             }
 
-            print("[AppDelegate] WebView ready, injecting JS for conversation \(conversationId)")
+            self.addNativeDebugLog("WebView ready, injecting JS")
+
+            // First flush any pending debug logs
+            self.flushDebugLogsToWebView()
 
             let js = """
                 (function() {
-                    var log = function(msg) {
-                        console.log('[Native] ' + msg);
-                        // Always persist to localStorage for cold start debugging
-                        var ts = new Date().toLocaleTimeString();
-                        var logs = [];
-                        try { logs = JSON.parse(localStorage.getItem('debugLogs') || '[]'); } catch(e) {}
-                        logs.push('[' + ts + '] [Native] ' + msg);
-                        if (logs.length > 20) logs = logs.slice(-20);
-                        localStorage.setItem('debugLogs', JSON.stringify(logs));
-                        // Also call live addDebugLog if available
-                        if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.addDebugLog) {
-                            window.ListItApp.AppNav.addDebugLog('[Native] ' + msg);
-                        }
-                    };
-                    log('Setting pendingConversationId: \(conversationId)');
                     localStorage.setItem('pendingConversationId', '\(conversationId)');
                     if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.openConversation) {
-                        log('Calling openConversation(\(conversationId))');
                         window.ListItApp.AppNav.openConversation(\(conversationId));
                         return 'navigated';
                     }
-                    log('openConversation not available yet');
                     return 'not_ready';
                 })();
             """
 
             webView.evaluateJavaScript(js) { result, error in
                 if let error = error {
-                    print("[AppDelegate] JS error: \(error)")
+                    self.addNativeDebugLog("JS error: \(error.localizedDescription)")
                 }
-                if let result = result {
-                    print("[AppDelegate] JS result: \(result)")
-                }
-                if let result = result as? String, result == "not_ready", attempt < 4 {
-                    // App not ready yet, retry
-                    self.navigateToConversation(conversationId, attempt: attempt + 1)
+                if let result = result as? String {
+                    self.addNativeDebugLog("JS result: \(result)")
+                    if result == "not_ready" && attempt < 4 {
+                        self.navigateToConversation(conversationId, attempt: attempt + 1)
+                    }
                 }
             }
         }
