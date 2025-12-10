@@ -87,6 +87,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 (function() {
                     var log = function(msg) {
                         console.log('[Native] ' + msg);
+                        // Always persist to localStorage for cold start debugging
+                        var ts = new Date().toLocaleTimeString();
+                        var logs = [];
+                        try { logs = JSON.parse(localStorage.getItem('debugLogs') || '[]'); } catch(e) {}
+                        logs.push('[' + ts + '] [Native] ' + msg);
+                        if (logs.length > 20) logs = logs.slice(-20);
+                        localStorage.setItem('debugLogs', JSON.stringify(logs));
+                        // Also call live addDebugLog if available
                         if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.addDebugLog) {
                             window.ListItApp.AppNav.addDebugLog('[Native] ' + msg);
                         }

@@ -226,6 +226,26 @@
       const [showLegalModal, setShowLegalModal] = useState(false);
       const [legalCheckDone, setLegalCheckDone] = useState(false);
 
+      // Debug overlay for notification testing
+      // Load persisted logs from localStorage on init (for cold start debugging)
+      const [debugLogs, setDebugLogs] = useState(() => {
+        try {
+          const saved = localStorage.getItem('debugLogs');
+          return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+      });
+      const [showDebugOverlay, setShowDebugOverlay] = useState(false);
+      const addDebugLog = useCallback((msg) => {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = `[${timestamp}] ${msg}`;
+        setDebugLogs(prev => {
+          const newLogs = [...prev.slice(-19), logEntry];
+          // Persist to localStorage for cold start debugging
+          try { localStorage.setItem('debugLogs', JSON.stringify(newLogs)); } catch {}
+          return newLogs;
+        });
+      }, []);
+
       // Scroll preservation
       const browseScrollPos = useRef(0);
       const prevTabRef = useRef(tab);
@@ -621,18 +641,25 @@
         AppNav.setTab = onTabChange;
         AppNav.notifyLocked = showLockedBanner;
         AppNav.openConversation = (conversationId) => {
+          addDebugLog(`openConversation called: ${conversationId}`);
           if (conversationId) {
             setActiveConvoId(conversationId);
             onTabChange('messages');
+            addDebugLog(`Navigated to messages for convo ${conversationId}`);
           }
         };
+        // Expose debug log function globally for native code
+        AppNav.addDebugLog = addDebugLog;
+        AppNav.showDebugOverlay = () => setShowDebugOverlay(true);
         return () => {
           AppNav.setUser = () => { };
           AppNav.setTab = () => { };
           AppNav.notifyLocked = () => { };
           AppNav.openConversation = () => { };
+          AppNav.addDebugLog = () => { };
+          AppNav.showDebugOverlay = () => { };
         };
-      }, [setUser, onTabChange, showLockedBanner, setActiveConvoId]);
+      }, [setUser, onTabChange, showLockedBanner, setActiveConvoId, addDebugLog]);
       useEffect(() => {
         AppNav.incLoad = () => setLoadingCount(c => c + 1);
         AppNav.decLoad = () => setLoadingCount(c => Math.max(0, c - 1));
@@ -642,12 +669,13 @@
       useEffect(() => {
         if (!initialLoadRef.current) return;
         initialLoadRef.current = false;
+        addDebugLog('App initialized - debug overlay ready');
         // Show overlay for 1.5 seconds on initial load
         setTimeout(() => {
           setIsResuming(false);
         }, 1500);
         // No cleanup - this is a one-time operation that must complete
-      }, []);
+      }, [addDebugLog]);
 
       // Check for pending push notification navigation (iOS cold start or web notification click)
       useEffect(() => {
@@ -655,15 +683,20 @@
           try {
             // Check localStorage first (iOS cold start)
             const pendingConvoId = localStorage.getItem('pendingConversationId');
-            console.log('[App] checkPendingNotification - localStorage:', pendingConvoId, 'hash:', window.location.hash);
+            const logMsg = `checkPending - ls: ${pendingConvoId}, hash: ${window.location.hash}`;
+            console.log('[App]', logMsg);
+            addDebugLog(logMsg);
             if (pendingConvoId) {
               localStorage.removeItem('pendingConversationId');
               const convoId = Number(pendingConvoId) || pendingConvoId;
-              console.log('[App] Opening conversation from localStorage:', convoId);
+              const openMsg = `Opening convo from localStorage: ${convoId}`;
+              console.log('[App]', openMsg);
+              addDebugLog(openMsg);
               // Delay to ensure app is fully loaded
               setTimeout(() => {
                 setActiveConvoId(convoId);
                 onTabChange('messages');
+                addDebugLog(`Navigated to convo ${convoId}`);
               }, 500);
               return;
             }
@@ -673,39 +706,46 @@
             const match = hash.match(/^#messages\/(\d+)$/);
             if (match) {
               const convoId = Number(match[1]);
-              console.log('[App] Opening conversation from URL hash:', convoId);
+              const hashMsg = `Opening convo from hash: ${convoId}`;
+              console.log('[App]', hashMsg);
+              addDebugLog(hashMsg);
               // Clear the hash to avoid re-triggering
               window.history.replaceState(null, '', window.location.pathname + window.location.search);
               setTimeout(() => {
                 setActiveConvoId(convoId);
                 onTabChange('messages');
+                addDebugLog(`Navigated to convo ${convoId}`);
               }, 500);
             }
           } catch (e) {
             console.error('[App] checkPendingNotification error:', e);
+            addDebugLog(`Error: ${e.message}`);
           }
         };
         // Check immediately and again after a short delay
         checkPendingNotification();
         const timer = setTimeout(checkPendingNotification, 1000);
         return () => clearTimeout(timer);
-      }, [setActiveConvoId, onTabChange]);
+      }, [setActiveConvoId, onTabChange, addDebugLog]);
 
       // Listen for service worker messages (web push notification click while app is open)
       useEffect(() => {
         const handleServiceWorkerMessage = (event) => {
+          addDebugLog(`SW message: ${JSON.stringify(event.data)}`);
           if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.conversation_id) {
             const convoId = Number(event.data.conversation_id) || event.data.conversation_id;
+            addDebugLog(`SW: navigating to convo ${convoId}`);
             setActiveConvoId(convoId);
             onTabChange('messages');
           }
         };
 
         if ('serviceWorker' in navigator) {
+          addDebugLog('SW message listener registered');
           navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
           return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
         }
-      }, [setActiveConvoId, onTabChange]);
+      }, [setActiveConvoId, onTabChange, addDebugLog]);
 
       // Check if user needs to accept legal documents
       useEffect(() => {
@@ -1959,6 +1999,55 @@
               },
                 H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.profile())
               )
+            ),
+
+            // Debug overlay button and panel
+            H('button', {
+              type: 'button',
+              onClick: () => setShowDebugOverlay(prev => !prev),
+              style: {
+                position: 'fixed',
+                bottom: '80px',
+                right: '10px',
+                zIndex: 10000,
+                padding: '8px 12px',
+                backgroundColor: '#333',
+                color: '#0f0',
+                border: '1px solid #0f0',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontFamily: 'monospace'
+              }
+            }, 'DBG'),
+
+            showDebugOverlay && H('div', {
+              style: {
+                position: 'fixed',
+                top: '50px',
+                left: '10px',
+                right: '10px',
+                bottom: '140px',
+                zIndex: 9999,
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                color: '#0f0',
+                padding: '10px',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                overflowY: 'auto',
+                borderRadius: '8px',
+                border: '1px solid #0f0'
+              }
+            },
+              H('div', { style: { marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                H('span', { style: { fontWeight: 'bold' } }, 'Debug Logs:'),
+                H('button', {
+                  onClick: () => { setDebugLogs([]); try { localStorage.removeItem('debugLogs'); } catch {} },
+                  style: { padding: '4px 8px', fontSize: '10px', backgroundColor: '#600', color: '#fff', border: 'none', borderRadius: '3px' }
+                }, 'Clear')
+              ),
+              debugLogs.length === 0
+                ? H('div', { style: { color: '#666' } }, 'No logs yet. Tap a notification to see logs.')
+                : debugLogs.map((log, i) => H('div', { key: i, style: { marginBottom: '4px', wordBreak: 'break-all' } }, log))
             )
           )
         )
