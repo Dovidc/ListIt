@@ -35,6 +35,7 @@ class WorkerService {
   constructor(config, messageBus) {
     this.config = config;
     this.messageBus = messageBus;
+    this.environment = config?.NODE_ENV || process.env.NODE_ENV || 'development';
 
     // Job queue for resilience (Redis-backed when available)
     this.queueOptions = {
@@ -104,6 +105,30 @@ class WorkerService {
     }
   }
 
+  initializeJobQueue() {
+    const redisUrl = process.env.REDIS_URL || null;
+    try {
+      this.jobQueue = createWorkerQueue(this.queueOptions);
+    } catch (err) {
+      const message = err?.message || err;
+      console.error(`[Worker] Failed to initialize worker queue (redisUrl=${redisUrl || 'unset'}, prefix=${this.queueOptions.prefix}): ${message}`);
+      throw err;
+    }
+  }
+
+  async ensureJobQueueInitialized() {
+    if (this.jobQueue) return;
+
+    const isTestMode = this.config?.IS_TEST || this.environment === 'test';
+    const isDevelopment = this.environment === 'development';
+
+    if (!isDevelopment && !isTestMode) {
+      throw new Error('Worker queue not initialized; start the service before enqueueing jobs.');
+    }
+
+    this.initializeJobQueue();
+  }
+
   /**
    * Start the worker service
    */
@@ -115,13 +140,7 @@ class WorkerService {
 
     await this.validateRedisReadiness();
 
-    try {
-      this.jobQueue = createWorkerQueue(this.queueOptions);
-    } catch (err) {
-      const message = err?.message || err;
-      console.error(`[Worker] Failed to initialize worker queue (redisUrl=${redisUrl || 'unset'}, prefix=${this.queueOptions.prefix}): ${message}`);
-      throw err;
-    }
+    this.initializeJobQueue();
 
     // Subscribe to relevant topics
     this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
@@ -179,9 +198,7 @@ class WorkerService {
    * Enqueue a job for processing
    */
   async enqueueJob(job) {
-    if (!this.jobQueue) {
-      throw new Error('Worker queue not initialized; start the service before enqueueing jobs.');
-    }
+    await this.ensureJobQueueInitialized();
     const jobId = this.buildJobId(job);
 
     const wrappedJob = {
