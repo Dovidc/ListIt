@@ -21,7 +21,7 @@ function getSendgridClient(apiKey) {
   return sgMailClient;
 }
 
-function createEphemeralStore(ttlMs, { maxEntries = MAX_CACHE_SIZE } = {}) {
+function createEphemeralStore(ttlMs, { maxEntries = MAX_CACHE_SIZE, storeRaw = IS_TEST } = {}) {
   const entries = new Map();
   const timers = new Map();
 
@@ -73,7 +73,7 @@ function createEphemeralStore(ttlMs, { maxEntries = MAX_CACHE_SIZE } = {}) {
     }
 
     const entry = { expiresAt: Date.now() + ttlMs };
-    if (IS_TEST) entry.raw = rawValue;
+    if (storeRaw) entry.raw = rawValue;
     entries.set(key, entry);
     scheduleExpiry(key);
   }
@@ -188,5 +188,6 @@ module.exports = {
   sendVerificationEmail,
   __getLastToken: getLastToken,
   __getLastVerificationCode: getLastVerificationCode,
-  __reset: resetLog
+  __reset: resetLog,
+  __createEphemeralStore: createEphemeralStore
 };
