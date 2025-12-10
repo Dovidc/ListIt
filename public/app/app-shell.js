@@ -642,10 +642,11 @@
         // No cleanup - this is a one-time operation that must complete
       }, []);
 
-      // Check for pending push notification navigation (iOS cold start)
+      // Check for pending push notification navigation (iOS cold start or web notification click)
       useEffect(() => {
         const checkPendingNotification = () => {
           try {
+            // Check localStorage first (iOS cold start)
             const pendingConvoId = localStorage.getItem('pendingConversationId');
             if (pendingConvoId) {
               localStorage.removeItem('pendingConversationId');
@@ -655,15 +656,45 @@
                 setActiveConvoId(convoId);
                 onTabChange('messages');
               }, 500);
+              return;
+            }
+
+            // Check URL hash (web push notification click: /#messages/{conversationId})
+            const hash = window.location.hash;
+            const match = hash.match(/^#messages\/(\d+)$/);
+            if (match) {
+              const convoId = Number(match[1]);
+              // Clear the hash to avoid re-triggering
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+              setTimeout(() => {
+                setActiveConvoId(convoId);
+                onTabChange('messages');
+              }, 500);
             }
           } catch (e) {
-            // Ignore localStorage errors
+            // Ignore localStorage/URL errors
           }
         };
         // Check immediately and again after a short delay
         checkPendingNotification();
         const timer = setTimeout(checkPendingNotification, 1000);
         return () => clearTimeout(timer);
+      }, [setActiveConvoId, onTabChange]);
+
+      // Listen for service worker messages (web push notification click while app is open)
+      useEffect(() => {
+        const handleServiceWorkerMessage = (event) => {
+          if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.conversation_id) {
+            const convoId = Number(event.data.conversation_id) || event.data.conversation_id;
+            setActiveConvoId(convoId);
+            onTabChange('messages');
+          }
+        };
+
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+          return () => navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+        }
       }, [setActiveConvoId, onTabChange]);
 
       // Check if user needs to accept legal documents

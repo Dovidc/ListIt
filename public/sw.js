@@ -98,7 +98,8 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = event.notification.data && event.notification.data.url ? event.notification.data.url : '/';
+  const data = event.notification.data || {};
+  const target = data.url || '/';
   const destination = (() => {
     try {
       return new URL(target, self.location.origin).href;
@@ -116,10 +117,24 @@ self.addEventListener('notificationclick', (event) => {
     }
 
     const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+    // If app is already open, post a message to navigate
     for (const client of windowClients) {
       try {
         if ('focus' in client) await client.focus();
       } catch {}
+
+      // Post message to the client to handle navigation
+      const conversationId = data.conversation_id;
+      if (conversationId) {
+        client.postMessage({
+          type: 'NOTIFICATION_CLICK',
+          conversation_id: conversationId
+        });
+        return;
+      }
+
+      // Fallback to URL navigation if no conversation_id
       if ('navigate' in client && client.url !== destination) {
         try {
           await client.navigate(destination);
@@ -128,6 +143,7 @@ self.addEventListener('notificationclick', (event) => {
       return;
     }
 
+    // No existing window, open a new one
     if (self.clients.openWindow) {
       await self.clients.openWindow(destination);
     }
