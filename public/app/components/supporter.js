@@ -957,8 +957,20 @@
       const [buyers, setBuyers] = useState([]);
       const [loading, setLoading] = useState(false);
       const [selecting, setSelecting] = useState(false);
+      const [closing, setClosing] = useState(false);
 
       useModalLifecycle(open, onClose);
+
+      // Reset closing state when modal opens
+      useEffect(() => {
+        if (open) setClosing(false);
+      }, [open]);
+
+      const safeClose = useCallback(() => {
+        if (closing || busy || selecting) return;
+        setClosing(true);
+        onClose?.();
+      }, [closing, busy, selecting, onClose]);
 
       useEffect(() => {
         if (!open || !listingId) {
@@ -984,13 +996,13 @@
       }, [open, listingId]);
 
       const handleOverlay = (evt) => {
-        if (evt.target === evt.currentTarget && !busy && !selecting) {
-          onClose?.();
+        if (evt.target === evt.currentTarget) {
+          safeClose();
         }
       };
 
       const handleSelectBuyer = async (buyerId) => {
-        if (selecting || busy) return;
+        if (selecting || busy || closing) return;
         setSelecting(true);
 
         try {
@@ -1018,12 +1030,13 @@
       };
 
       const handleSkip = () => {
-        if (busy || selecting) return;
-        // Call onSkip if provided, otherwise fall back to onClose
+        if (busy || selecting || closing) return;
+        // Call onSkip if provided, otherwise fall back to safeClose
         if (onSkip) {
+          setClosing(true);
           onSkip();
         } else {
-          onClose?.();
+          safeClose();
         }
       };
 
@@ -1035,13 +1048,14 @@
             className: 'supporter-modal__card',
             role: 'dialog',
             'aria-modal': 'true',
-            'aria-label': 'Select buyer for karma'
+            'aria-label': 'Select buyer for karma',
+            onClick: (e) => e.stopPropagation()
           },
             H('button', {
               type: 'button',
               className: 'supporter-modal__close',
-              onClick: () => !busy && !selecting && onClose?.(),
-              disabled: busy || selecting
+              onClick: safeClose,
+              disabled: busy || selecting || closing
             }, '×'),
             H('h2', { className: 'supporter-modal__title' }, 'Who bought this item?'),
             H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
@@ -1121,7 +1135,7 @@
                 type: 'button',
                 className: 'btn',
                 onClick: handleSkip,
-                disabled: busy || selecting,
+                disabled: busy || selecting || closing,
                 style: {
                   fontSize: 13,
                   padding: '6px 12px',
