@@ -403,88 +403,51 @@
 
     // ============================================================
     // HOOK: useInfiniteScroll
-    // Observes sentinel element for infinite scroll with throttling
-    // Instagram-style: triggers early but throttles to prevent rapid calls
-    // When user scrolls fast, loads smaller batches to prevent overwhelming
+    // Infinite scroll with throttling to prevent crashes from rapid scrolling
+    // Key protection: minimum 1 second between API calls
     // ============================================================
-    function useInfiniteScroll({ enabled, onLoadMore, onLoadMoreSmallBatch, getIsLoading, getCursor }) {
+    function useInfiniteScroll({ enabled, onLoadMore, getIsLoading, getCursor }) {
       const sentinelRef = useRef(null);
-      const lastLoadTimeRef = useRef(0);
-      const throttleMs = 800; // Minimum time between load attempts
       const [isSupported, setIsSupported] = useState(typeof IntersectionObserver !== 'undefined');
-      const [isPaceLimited, setIsPaceLimited] = useState(false);
-      const isPaceLimitedRef = useRef(false); // Ref for immediate access in callbacks
-      const paceResetRef = useRef(null);
+
+      // Throttle state - prevents rapid-fire API calls that can crash the app
+      const lastLoadTimeRef = useRef(0);
       const loadInFlightRef = useRef(false);
+      const throttleMs = 1000; // Minimum 1 second between load attempts - prevents crashes
 
-      // Scroll penalty state - triggers 4-second delay when user scrolls too fast
-      const [isScrollPenalty, setIsScrollPenalty] = useState(false);
-      const scrollPenaltyPendingRef = useRef(false); // Flag: next load should have penalty
-      const penaltyTimeoutRef = useRef(null);
-
-      // Keep ref in sync with state
-      useEffect(() => {
-        isPaceLimitedRef.current = isPaceLimited;
-      }, [isPaceLimited]);
-
-      // Store refs to load functions so timeout can access latest versions
+      // Store ref to load function so callbacks can access latest version
       const onLoadMoreRef = useRef(onLoadMore);
-      const onLoadMoreSmallBatchRef = useRef(onLoadMoreSmallBatch);
       useEffect(() => {
         onLoadMoreRef.current = onLoadMore;
-        onLoadMoreSmallBatchRef.current = onLoadMoreSmallBatch;
-      }, [onLoadMore, onLoadMoreSmallBatch]);
+      }, [onLoadMore]);
 
-      // Unified load function that respects pace limiting and scroll penalty
-      const doLoad = useCallback((forceSmallBatch = false) => {
-        if (loadInFlightRef.current) return;
-        if (getIsLoading() || !getCursor()) return;
+      // Throttled load function - enforces minimum time between API calls
+      const doLoad = useCallback(() => {
+        // Already loading - skip
+        if (loadInFlightRef.current || getIsLoading()) return;
 
+        // No more items to load
+        if (!getCursor()) return;
+
+        // Throttle check - enforce minimum time between loads to prevent crashes
         const now = Date.now();
-        if (now - lastLoadTimeRef.current < throttleMs) return;
-        lastLoadTimeRef.current = now;
-
-        // Helper to execute the actual load
-        const executeLoad = (useSmallBatch) => {
-          const useSmall = (useSmallBatch || isPaceLimitedRef.current) && onLoadMoreSmallBatchRef.current;
-          const loadFn = useSmall ? onLoadMoreSmallBatchRef.current : onLoadMoreRef.current;
-
-          loadInFlightRef.current = true;
-          Promise.resolve(loadFn())
-            .catch(() => { /* silent */ })
-            .finally(() => {
-              loadInFlightRef.current = false;
-            });
-        };
-
-        // Check if scroll penalty should be applied
-        if (scrollPenaltyPendingRef.current) {
-          scrollPenaltyPendingRef.current = false;
-          setIsScrollPenalty(true);
-          loadInFlightRef.current = true;
-
-          // Show penalty for 4 seconds, then load
-          const shouldUseSmallBatch = forceSmallBatch;
-          const loadFnToUse = shouldUseSmallBatch || isPaceLimitedRef.current
-            ? onLoadMoreSmallBatchRef.current
-            : onLoadMoreRef.current;
-
-          penaltyTimeoutRef.current = setTimeout(() => {
-            setIsScrollPenalty(false);
-            loadInFlightRef.current = true;
-            Promise.resolve(loadFnToUse())
-              .catch(() => { /* silent */ })
-              .finally(() => {
-                loadInFlightRef.current = false;
-              });
-          }, 4000);
+        const timeSinceLastLoad = now - lastLoadTimeRef.current;
+        if (timeSinceLastLoad < throttleMs) {
           return;
         }
 
-        executeLoad(forceSmallBatch);
+        // Execute load
+        lastLoadTimeRef.current = now;
+        loadInFlightRef.current = true;
+
+        Promise.resolve(onLoadMoreRef.current())
+          .catch(() => { /* silent */ })
+          .finally(() => {
+            loadInFlightRef.current = false;
+          });
       }, [getIsLoading, getCursor]);
 
-      // Scroll-based loading - uses main.container on mobile (which has overflow-y: auto)
+      // Scroll-based loading - attaches to both window and main.container for mobile support
       useEffect(() => {
         if (!enabled || typeof window === 'undefined') return;
 
@@ -500,12 +463,10 @@
         };
 
         const scrollContainerRef = { current: findScrollContainer() };
-        const scrollSpeedThreshold = 1.2;
-        const lastYRef = { current: 0 };
-        const lastTRef = { current: Date.now() };
         const rafRef = { current: null };
 
         const checkScrollPosition = () => {
+          rafRef.current = null;
           const container = scrollContainerRef.current || findScrollContainer();
           scrollContainerRef.current = container;
 
@@ -516,69 +477,42 @@
           const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
           if (distanceFromBottom < 800) {
-            doLoad(isPaceLimitedRef.current);
+            doLoad();
           }
         };
 
-        const measureScroll = () => {
-          rafRef.current = null;
-          const container = scrollContainerRef.current || findScrollContainer();
-          scrollContainerRef.current = container;
-
-          const now = Date.now();
-          const y = container ? container.scrollTop : (window.scrollY || 0);
-          const delta = Math.abs(y - lastYRef.current);
-          const dt = Math.max(16, now - lastTRef.current);
-          const speed = delta / dt;
-          lastYRef.current = y;
-          lastTRef.current = now;
-
-          if (speed > scrollSpeedThreshold && !isPaceLimitedRef.current) {
-            isPaceLimitedRef.current = true;
-            setIsPaceLimited(true);
-            // Set penalty flag - next load will trigger 4-second delay
-            scrollPenaltyPendingRef.current = true;
-            if (paceResetRef.current) clearTimeout(paceResetRef.current);
-            paceResetRef.current = setTimeout(() => {
-              isPaceLimitedRef.current = false;
-              setIsPaceLimited(false);
-            }, 2500);
-          }
-
-          checkScrollPosition();
-        };
-
-        const scheduleMeasure = () => {
+        const scheduleCheck = () => {
           if (rafRef.current != null) return;
           rafRef.current = typeof requestAnimationFrame === 'function'
-            ? requestAnimationFrame(measureScroll)
-            : setTimeout(measureScroll, 16);
+            ? requestAnimationFrame(checkScrollPosition)
+            : setTimeout(checkScrollPosition, 16);
         };
 
-        const scrollTarget = scrollContainerRef.current || window;
-        scrollTarget.addEventListener('scroll', scheduleMeasure, { passive: true });
-        window.addEventListener('resize', scheduleMeasure, { passive: true });
+        // Attach to both window AND main.container to handle all scroll scenarios
+        const mainContainer = document.querySelector('main.container');
+        window.addEventListener('scroll', scheduleCheck, { passive: true });
+        if (mainContainer) {
+          mainContainer.addEventListener('scroll', scheduleCheck, { passive: true });
+        }
+        window.addEventListener('resize', scheduleCheck, { passive: true });
 
-        // Initial check to capture current position
-        scheduleMeasure();
+        // Initial check
+        scheduleCheck();
 
         return () => {
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.removeEventListener('scroll', scheduleMeasure);
-          } else {
-            window.removeEventListener('scroll', scheduleMeasure);
+          window.removeEventListener('scroll', scheduleCheck);
+          if (mainContainer) {
+            mainContainer.removeEventListener('scroll', scheduleCheck);
           }
-          window.removeEventListener('resize', scheduleMeasure);
+          window.removeEventListener('resize', scheduleCheck);
           if (rafRef.current != null) {
             const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
             cancel(rafRef.current);
           }
-          if (paceResetRef.current) clearTimeout(paceResetRef.current);
-          if (penaltyTimeoutRef.current) clearTimeout(penaltyTimeoutRef.current);
         };
       }, [enabled, doLoad]);
 
-      // Intersection observer for triggering loads
+      // Intersection observer as backup trigger
       useEffect(() => {
         if (!enabled) return;
         const supported = typeof IntersectionObserver !== 'undefined';
@@ -591,18 +525,14 @@
         const observer = new IntersectionObserver(entries => {
           const entry = entries[0];
           if (!entry?.isIntersecting) return;
-          if (getIsLoading()) return;
-          if (!getCursor()) return;
-
-          // Use ref for immediate pace check (avoids stale closure)
-          doLoad(isPaceLimitedRef.current);
-        }, { rootMargin: '400px' }); // Trigger earlier (400px) for smoother experience
+          doLoad();
+        }, { rootMargin: '400px' });
 
         observer.observe(el);
         return () => observer.disconnect();
-      }, [enabled, doLoad, getIsLoading, getCursor]);
+      }, [enabled, doLoad]);
 
-      return { sentinelRef, isSupported, isPaceLimited, isScrollPenalty };
+      return { sentinelRef, isSupported };
     }
 
     // ============================================================
@@ -818,13 +748,10 @@
       // City autocomplete
       const cityOptions = useCitySearch(locationQuery);
 
-      const fastScrollLimit = Math.max(12, Math.floor(pageSize / 3));
-
       // Infinite scroll
-      const { sentinelRef, isSupported: isInfiniteScrollSupported, isPaceLimited, isScrollPenalty } = useInfiniteScroll({
+      const { sentinelRef, isSupported: isInfiniteScrollSupported } = useInfiniteScroll({
         enabled: currentTab === 'browse',
         onLoadMore: pagination.loadMore,
-        onLoadMoreSmallBatch: () => pagination.loadMore({ limit: fastScrollLimit }),
         getIsLoading: pagination.getIsLoading,
         getCursor: pagination.getCursor
       });
@@ -932,8 +859,6 @@
         isFetchingListings: pagination.isLoading,
         listingError: pagination.error,
         loadMore: pagination.loadMore,
-        isScrollPaceLimited: isPaceLimited,
-        isScrollPenalty,
 
         // Actions
         refreshListings,

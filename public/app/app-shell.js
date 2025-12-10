@@ -365,8 +365,6 @@
         isFetchingListings,
         listingError,
         loadMore,
-        isScrollPaceLimited,
-        isScrollPenalty,
         sentinelRef,
         isInfiniteScrollSupported,
         reloadMineOnly,
@@ -1696,60 +1694,8 @@
                         sentinelRef
                       }),
 
-                      // Scroll penalty message - shown when user scrolls too fast
-                      isScrollPenalty && hasNext && H('div', {
-                        style: {
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '24px 0',
-                          gap: 12
-                        }
-                      },
-                        H('div', { className: 'mini-geometric-loader' },
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--outer' }),
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--middle' }),
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--inner' })
-                        ),
-                        H('span', {
-                          style: {
-                            fontSize: 14,
-                            color: 'var(--text-muted, #6b7280)',
-                            fontWeight: 500
-                          }
-                        }, 'scroll slower please')
-                      ),
-
-                      // Mini geometric loader while loading more (only show if not in penalty)
-                      !isScrollPenalty && (isFetchingListings || isScrollPaceLimited) && hasNext && H('div', {
-                        style: {
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '16px 0'
-                        }
-                      },
-                        H('div', { className: 'mini-geometric-loader' },
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--outer' }),
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--middle' }),
-                          H('div', { className: 'mini-geometric-loader__hex mini-geometric-loader__hex--inner' })
-                        )
-                      ),
-
-                      // "No more results" message shown below grid
-                      !isFetchingListings && !hasNext && items.length > 0 && H('div', {
-                        style: {
-                            display: 'flex',
-                            justifyContent: 'center',
-                            padding: '16px 0',
-                            minHeight: 40
-                          }
-                        },
-                          H('span', { className: 'muted' }, 'No more results')
-                      ),
-
-                      !items.length && !listingError && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
+                      // Empty state message when no listings
+                      !items.length && !isFetchingListings && !listingError && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
 
                         H(ListingModal, {
                           open: !!selectedListing,

@@ -257,9 +257,10 @@
         }
       }, [startIndex, endIndex, entries, onEnsureCover]);
 
-      // Calculate loading indicator height
+      // Calculate loading indicator height - always show footer area when there are items
       const loaderHeight = 60;
-      const extraHeight = (isLoading || hasMore) ? loaderHeight : 0;
+      const hasItems = entries.length > 0;
+      const extraHeight = hasItems ? loaderHeight : 0;
 
       return H('section', {
         ref: containerRef,
@@ -287,8 +288,8 @@
             })
           );
         }),
-        // Loading indicator at bottom of grid (Instagram-style)
-        (isLoading || hasMore) && H('div', {
+        // Footer at bottom of grid - shows spinner when loading, "No more listings" when done
+        hasItems && H('div', {
           style: {
             position: 'absolute',
             bottom: 0,
@@ -302,7 +303,13 @@
         },
           isLoading
             ? H('div', { className: 'spinner' })
-            : null
+            : (!hasMore && H('span', {
+                style: {
+                  color: '#888',
+                  fontSize: 14,
+                  fontWeight: 500
+                }
+              }, 'No more listings'))
         ),
         // Sentinel for infinite scroll - placed at very bottom
         sentinelRef && H('div', {
