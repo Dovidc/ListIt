@@ -19,6 +19,8 @@ class WebSocketService {
   constructor(config, messageBus, options = {}) {
     this.config = config;
     this.messageBus = messageBus;
+    this.nodeEnv = config.NODE_ENV || process.env.NODE_ENV || 'development';
+    this.requireRedis = this.nodeEnv === 'production' && !config.IS_TEST;
 
     // Store for user sessions (userId -> Set of WebSocket connections)
     this.userSessions = new Map();
@@ -83,8 +85,20 @@ class WebSocketService {
             this.messageBus.subscribe(TOPICS.MESSAGE_SENT, this.handleMessageEvent)
           );
 
-          // Optional Redis bridge for cross-instance delivery
-          this.setupRedisBridge().catch((err) => {
+          const redisBridge = this.setupRedisBridge();
+          if (this.requireRedis) {
+            redisBridge
+              .then(() => resolve())
+              .catch((err) => {
+                console.error('[WebSocket] Redis bridge required but failed to initialize:', err?.message || err);
+                this.stop()
+                  .catch(() => {})
+                  .finally(() => reject(err));
+              });
+            return;
+          }
+
+          redisBridge.catch((err) => {
             console.warn('[WebSocket] Redis bridge disabled:', err?.message || err);
           });
 
@@ -370,7 +384,7 @@ class WebSocketService {
   }
 
   async setupRedisBridge() {
-    const base = getRedisClient();
+    const base = getRedisClient({ NODE_ENV: this.nodeEnv, requireExternal: this.requireRedis });
     if (!base) {
       throw new Error('Redis not configured for WebSocket delivery');
     }
