@@ -1422,8 +1422,6 @@
       setAutoInquiryEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
-      askCreateActionEnabled,
-      setAskCreateActionEnabled,
       onRequestDeleteAccount,
       onRequestCancelSubscription,
       isMobile,
@@ -1573,19 +1571,6 @@
                     borderRadius: 12, cursor: 'pointer'
                   }
                 }, '?')
-              ),
-              H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
-                H('input', {
-                  type: 'checkbox',
-                  className: 'toggle-input',
-                  checked: !!askCreateActionEnabled,
-                  onChange: (e) => setAskCreateActionEnabled?.(e.target.checked)
-                }),
-                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-                H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Ask before creating'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Choose Camera or Gallery')
-                )
               ),
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
@@ -1823,9 +1808,7 @@
       onViewSeller,
       onToggleSold,
       onSupporterClick,
-      onJoinSupporterProgram,
-      askCreateActionEnabled,
-      setAskCreateActionEnabled
+      onJoinSupporterProgram
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
@@ -2705,9 +2688,7 @@
           onRequestCancelSubscription: handleRequestCancelSubscription,
           isMobile,
           user,
-          subscriptionStatus,
-          askCreateActionEnabled,
-          setAskCreateActionEnabled
+          subscriptionStatus
         }),
 
         H(NotificationSettingsModal, {

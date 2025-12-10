@@ -205,9 +205,7 @@
         autoPostNearbyEnabled,
         setAutoPostNearbyEnabled,
         autoInquiryEnabled,
-        setAutoInquiryEnabled,
-        askCreateActionEnabled,
-        setAskCreateActionEnabled
+        setAutoInquiryEnabled
       } = useAppPreferences();
       const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, tier: null, isSelf: false });
       const [supporterUpsellState, setSupporterUpsellState] = useState({
@@ -221,7 +219,6 @@
         notice: ''
       });
       const supporterQueryHandledRef = useRef(false);
-      const [createChoiceModalOpen, setCreateChoiceModalOpen] = useState(false);
       const plusButtonTimerRef = useRef(null);
       const isLongPressRef = useRef(false);
 
@@ -1260,13 +1257,8 @@
 
       const handlePlusClick = useCallback((e) => {
         if (isLongPressRef.current) return;
-
-        if (askCreateActionEnabled) {
-          setCreateChoiceModalOpen(true);
-        } else {
-          handleMobileCaptureClick('camera');
-        }
-      }, [askCreateActionEnabled, handleMobileCaptureClick]);
+        handleMobileCaptureClick('camera');
+      }, [handleMobileCaptureClick]);
 
       const mobileNavIcons = {
         browse: () => H('svg', {
@@ -1770,9 +1762,7 @@
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldWithKarma,
                         onSupporterClick: handleSupporterBadgeClick,
-                        onJoinSupporterProgram: handleSupporterPromptCta,
-                        askCreateActionEnabled,
-                        setAskCreateActionEnabled
+                        onJoinSupporterProgram: handleSupporterPromptCta
                       }),
 
                       (tab === 'admin') &&
@@ -1833,33 +1823,6 @@
                 )
               ),
               H('span', { className: 'edit-listing-toast__text' }, 'Edit recent listing?')
-            ),
-
-            createChoiceModalOpen && H('div', {
-              className: 'modal open',
-              style: { zIndex: 9999 },
-              onClick: (e) => { if (e.target === e.currentTarget) setCreateChoiceModalOpen(false); }
-            },
-              H('div', { className: 'modal-inner', style: { maxWidth: 300, padding: 24, textAlign: 'center', borderRadius: 16 } },
-                H('h3', { style: { marginTop: 0, marginBottom: 20 } }, 'Create Listing'),
-                H('div', { style: { display: 'grid', gap: 12 } },
-                  H('button', {
-                    className: 'btn primary',
-                    style: { justifyContent: 'center' },
-                    onClick: () => { setCreateChoiceModalOpen(false); handleMobileCaptureClick('camera'); }
-                  }, 'Take Photo'),
-                  H('button', {
-                    className: 'btn',
-                    style: { justifyContent: 'center' },
-                    onClick: () => { setCreateChoiceModalOpen(false); handleMobileCaptureClick('gallery'); }
-                  }, 'Choose from Gallery')
-                ),
-                H('button', {
-                  className: 'btn',
-                  style: { marginTop: 16, border: 'none', background: 'transparent', width: '100%', color: '#666' },
-                  onClick: () => setCreateChoiceModalOpen(false)
-                }, 'Cancel')
-              )
             ),
 
             // Hidden inputs for camera/gallery
