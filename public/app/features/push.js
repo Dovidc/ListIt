@@ -163,28 +163,36 @@
 
             // Helper to handle notification tap
             function handleNotificationTap(action) {
+              const addLog = window.ListItApp?.AppNav?.addDebugLog || console.log;
+              addLog('[Push] handleNotificationTap called');
               console.log('[Push] Notification tapped:', JSON.stringify(action));
+
               // Try multiple possible data locations
               const notification = action.notification || action;
               const data = notification?.data || notification?.payload || action?.data || {};
+              addLog('[Push] data keys: ' + Object.keys(data).join(', '));
               console.log('[Push] Notification data:', JSON.stringify(data));
 
               // conversation_id might be a number or string
               const conversationId = data?.conversation_id || data?.conversationId;
+              addLog('[Push] conversation_id: ' + conversationId);
               console.log('[Push] conversation_id:', conversationId, 'openConversation available:', typeof window.ListItApp?.AppNav?.openConversation);
 
               if (conversationId) {
                 // Open the specific conversation - use slight delay to ensure app is ready
                 setTimeout(() => {
                   if (typeof window.ListItApp?.AppNav?.openConversation === 'function') {
+                    addLog('[Push] Calling openConversation(' + conversationId + ')');
                     console.log('[Push] Calling openConversation with:', conversationId);
                     window.ListItApp.AppNav.openConversation(Number(conversationId) || conversationId);
                   } else {
+                    addLog('[Push] openConversation not available, falling back');
                     console.log('[Push] openConversation not available, falling back to setTab');
                     window.ListItApp?.AppNav?.setTab?.('messages');
                   }
                 }, 100);
               } else {
+                addLog('[Push] No conversation_id found');
                 console.log('[Push] No conversation_id in notification data, keys:', Object.keys(data));
               }
             }
@@ -195,15 +203,20 @@
 
             // Check for cold start - app launched from notification tap
             try {
+              const addLog = window.ListItApp?.AppNav?.addDebugLog || console.log;
               const delivered = await PushNotifications.getDeliveredNotifications();
+              addLog('[Push] Cold start check: ' + (delivered?.notifications?.length || 0) + ' delivered');
               console.log('[Push] Delivered notifications on launch:', JSON.stringify(delivered));
               if (delivered?.notifications?.length > 0) {
                 // Handle the first notification
+                addLog('[Push] Handling cold start notification');
                 handleNotificationTap({ notification: delivered.notifications[0] });
                 // Clear delivered notifications
                 await PushNotifications.removeAllDeliveredNotifications();
               }
             } catch (e) {
+              const addLog = window.ListItApp?.AppNav?.addDebugLog || console.log;
+              addLog('[Push] Cold start check failed: ' + e.message);
               console.log('[Push] getDeliveredNotifications not available or failed:', e);
             }
 

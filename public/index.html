@@ -20,6 +20,47 @@
           if (themeColorMeta) themeColorMeta.content = '#0f172a';
         }
       } catch (e) {}
+
+      // EARLY Capacitor push notification listener - must be registered before React loads
+      // to catch cold start notification taps
+      function setupEarlyPushListener() {
+        if (!window.Capacitor) return;
+        var platform = window.Capacitor.getPlatform && window.Capacitor.getPlatform();
+        if (platform !== 'ios' && platform !== 'android') return;
+
+        var PushNotifications = window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+        if (!PushNotifications || !PushNotifications.addListener) return;
+
+        console.log('[EarlyPush] Setting up early push listener');
+
+        // Store for later - React will check this
+        window.__earlyPushAction = null;
+
+        PushNotifications.addListener('pushNotificationActionPerformed', function(action) {
+          console.log('[EarlyPush] Notification tapped:', JSON.stringify(action));
+
+          // Extract conversation_id
+          var notification = action.notification || action;
+          var data = notification && (notification.data || notification.payload) || action.data || {};
+          var conversationId = data.conversation_id || data.conversationId;
+
+          console.log('[EarlyPush] conversation_id:', conversationId);
+
+          if (conversationId) {
+            // Store in localStorage for the app to pick up
+            localStorage.setItem('pendingConversationId', String(conversationId));
+            console.log('[EarlyPush] Stored pendingConversationId:', conversationId);
+          }
+
+          // Also store the full action for React to process if needed
+          window.__earlyPushAction = action;
+        });
+      }
+
+      // Try immediately and also after a short delay (Capacitor may not be ready yet)
+      setupEarlyPushListener();
+      setTimeout(setupEarlyPushListener, 100);
+      setTimeout(setupEarlyPushListener, 500);
     })();
   </script>
   <style>/* Critical - prevent flash */html,body{background:#0f172a;margin:0;padding:0;min-height:100vh}[data-theme="dark"],[data-theme="dark"] html,[data-theme="dark"] body{background:#0f172a!important;color:#e2e8f0!important}</style>
