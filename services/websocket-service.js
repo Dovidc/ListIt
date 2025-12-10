@@ -91,7 +91,9 @@ class WebSocketService {
               .then(() => resolve())
               .catch((err) => {
                 console.error('[WebSocket] Redis bridge required but failed to initialize:', err?.message || err);
-                reject(err);
+                this.stop()
+                  .catch(() => {})
+                  .finally(() => reject(err));
               });
             return;
           }
