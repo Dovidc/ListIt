@@ -57,7 +57,7 @@ function buildNotification(payload = {}) {
     } else {
       options.body = preview || 'You have a new message.';
     }
-    const conversationId = payload.conversation_id;
+    const conversationId = payload.conversation_id || payload.conversationId;
     options.data.url = conversationId ? `/#messages/${conversationId}` : '/#messages';
   } else if (type === 'nearby_listing') {
     title = 'Nearby listing on ListIt';
@@ -125,7 +125,7 @@ self.addEventListener('notificationclick', (event) => {
       } catch {}
 
       // Post message to the client to handle navigation
-      const conversationId = data.conversation_id;
+      const conversationId = data.conversation_id || data.conversationId;
       if (conversationId) {
         client.postMessage({
           type: 'NOTIFICATION_CLICK',
