@@ -375,10 +375,16 @@
     }
 
     // Clear cached coordinates so next call fetches fresh GPS position
-    // Only clears if cooldown period (4 min) has passed to prevent triangulation
-    function clearCoordsCache() {
+    // Only clears if cooldown period has passed to prevent triangulation
+    // Pass force=true to bypass cooldown (used by explicit refresh button)
+    function clearCoordsCache(force = false) {
       if (!coordsFetchedAt) {
         coordsPromise = null;
+        return;
+      }
+      if (force) {
+        coordsPromise = null;
+        coordsFetchedAt = null;
         return;
       }
       const elapsed = Date.now() - coordsFetchedAt;

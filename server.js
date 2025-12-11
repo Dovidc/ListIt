@@ -4309,6 +4309,27 @@ app.post('/api/supporters/cancel', auth, async (req, res) => {
 
 });
 
+// Clear location data from all user's listings (privacy feature)
+app.post('/api/me/listings/clear-locations', auth, writeLimiter, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await db.prepare(`
+      UPDATE listings
+      SET lat = NULL, lon = NULL, enable_nearby = 0
+      WHERE user_id = @userId AND (lat IS NOT NULL OR lon IS NOT NULL OR enable_nearby = 1)
+    `).run({ userId });
+
+    const clearedCount = result.changes || 0;
+    console.log(`[clear-locations] User ${userId} cleared location from ${clearedCount} listings`);
+
+    return res.json({ ok: true, cleared: clearedCount });
+  } catch (e) {
+    console.error('[clear-locations] Failed:', e);
+    return res.status(500).json({ error: 'clear_failed' });
+  }
+});
+
 app.delete('/api/me', auth, async (req, res) => {
   try {
     console.log('Delete account request body:', req.body);

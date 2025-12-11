@@ -379,6 +379,41 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
+      // Anti-triangulation: 5-minute cooldown for location/sort refresh
+      const LOCATION_COOLDOWN_MS = 5 * 60 * 1000;
+      const LOCATION_REFRESH_KEY = 'listit_browse_last_refresh';
+      const [lastLocationRefresh, setLastLocationRefresh] = useState(() => {
+        try { return Number(localStorage.getItem(LOCATION_REFRESH_KEY)) || 0; } catch { return 0; }
+      });
+      const [cooldownRemaining, setCooldownRemaining] = useState(0);
+
+      // Cooldown timer effect
+      useEffect(() => {
+        const updateCooldown = () => {
+          const elapsed = Date.now() - lastLocationRefresh;
+          setCooldownRemaining(Math.max(0, LOCATION_COOLDOWN_MS - elapsed));
+        };
+        updateCooldown();
+        const interval = setInterval(updateCooldown, 1000);
+        return () => clearInterval(interval);
+      }, [lastLocationRefresh]);
+
+      const canRefreshLocation = cooldownRemaining === 0;
+      const cooldownProgress = Math.min(1, 1 - (cooldownRemaining / LOCATION_COOLDOWN_MS));
+
+      // Handle location refresh button click
+      const handleLocationRefresh = useCallback(() => {
+        if (!canRefreshLocation) return;
+        const now = Date.now();
+        setLastLocationRefresh(now);
+        try { localStorage.setItem(LOCATION_REFRESH_KEY, String(now)); } catch {}
+        // Force clear coords cache and refresh listings
+        if (typeof helpers?.clearCoordsCache === 'function') {
+          helpers.clearCoordsCache(true);
+        }
+        refreshListings({ preserveExisting: false });
+      }, [canRefreshLocation, refreshListings]);
+
       // Search dropdown state
       const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
       const searchInputRef = useRef(null);
@@ -1471,7 +1506,7 @@
                                 },
                                 style: {
                                   width: '100%',
-                                  paddingRight: query && query.trim() ? 72 : 40
+                                  paddingRight: query && query.trim() ? 100 : 68
                                 }
                               }),
                               // Clear button - only show when there's text
@@ -1480,7 +1515,7 @@
                                 onClick: () => { setQuery(''); handleSearchSubmit(''); },
                                 title: 'Clear search',
                                 style: {
-                                  position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)',
+                                  position: 'absolute', right: 64, top: '50%', transform: 'translateY(-50%)',
                                   background: 'none', border: 'none', padding: 6, cursor: 'pointer',
                                   color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }
@@ -1496,7 +1531,7 @@
                                 onClick: () => handleSearchSubmit(),
                                 title: 'Search',
                                 style: {
-                                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                                  position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)',
                                   background: 'none', border: 'none', padding: 6, cursor: 'pointer',
                                   color: query && query.trim() ? '#2563eb' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   transition: 'color 0.15s ease'
@@ -1505,6 +1540,46 @@
                                 H('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
                                   H('circle', { cx: 11, cy: 11, r: 8 }),
                                   H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
+                                )
+                              ),
+                              // Refresh button with 5-min cooldown - grey to green icon transition
+                              H('button', {
+                                type: 'button',
+                                onClick: handleLocationRefresh,
+                                disabled: !canRefreshLocation,
+                                title: canRefreshLocation ? 'Refresh listings' : `Wait ${Math.ceil(cooldownRemaining / 60000)}m`,
+                                style: {
+                                  position: 'absolute',
+                                  right: 6,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  padding: 4,
+                                  width: 24,
+                                  height: 24,
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: canRefreshLocation ? 'pointer' : 'not-allowed',
+                                  zIndex: 1
+                                }
+                              },
+                                H('svg', {
+                                  width: 14,
+                                  height: 14,
+                                  viewBox: '0 0 24 24',
+                                  fill: 'none',
+                                  stroke: canRefreshLocation
+                                    ? 'rgb(34, 197, 94)'
+                                    : `rgb(${Math.round(156 - (156 - 34) * cooldownProgress)}, ${Math.round(163 - (163 - 197) * cooldownProgress)}, ${Math.round(175 - (175 - 94) * cooldownProgress)})`,
+                                  strokeWidth: 2.5,
+                                  strokeLinecap: 'round',
+                                  strokeLinejoin: 'round',
+                                  style: { transition: 'stroke 0.3s ease' }
+                                },
+                                  H('path', { d: 'M21 12a9 9 0 1 1-9-9' }),
+                                  H('polyline', { points: '21 3 21 9 15 9' })
                                 )
                               ),
                               // Search dropdown
@@ -1762,7 +1837,8 @@
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldWithKarma,
                         onSupporterClick: handleSupporterBadgeClick,
-                        onJoinSupporterProgram: handleSupporterPromptCta
+                        onJoinSupporterProgram: handleSupporterPromptCta,
+                        onListingsChanged: reloadMineOnly
                       }),
 
                       (tab === 'admin') &&

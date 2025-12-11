@@ -234,6 +234,11 @@ function createApiClient(options = {}) {
     body: JSON.stringify({ confirmation })
   }, meta);
 
+  const clearListingLocations = (meta) => request('/api/me/listings/clear-locations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }, meta);
+
   const listAll = (a, b, meta) => {
     let q = '';
     let loc = '';
@@ -545,6 +550,7 @@ function createApiClient(options = {}) {
     confirmSupporterCheckout,
     cancelSubscription,
     deleteAccount,
+    clearListingLocations,
     listAll,
     listListings,
     getUser,

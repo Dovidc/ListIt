@@ -1158,8 +1158,10 @@
           }
 
           if (basePayload.enable_nearby && (basePayload.lat == null || basePayload.lon == null)) {
-            alert('Enable Nearby requires using your location.');
-            return;
+            // Location fetch still in progress or failed - disable nearby for this listing instead of blocking
+            basePayload.enable_nearby = 0;
+            basePayload.lat = null;
+            basePayload.lon = null;
           }
 
           if (draft) {

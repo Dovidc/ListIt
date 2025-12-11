@@ -1424,10 +1424,12 @@
       setAutoPostNearbyEnabled,
       onRequestDeleteAccount,
       onRequestCancelSubscription,
+      onClearListingLocations,
       isMobile,
       user,
       subscriptionStatus: modalSubscriptionStatus
     }) {
+      const [clearingLocations, setClearingLocations] = useState(false);
       const [isDarkMode, setIsDarkMode] = useState(() => {
         if (typeof localStorage !== 'undefined') {
           return localStorage.getItem('theme') === 'dark';
@@ -1617,6 +1619,34 @@
                 }
               },
                 H('div', { style: { fontWeight: 700, marginBottom: 8, color: '#dc2626' } }, 'Danger Zone'),
+                H('div', { className: 'muted', style: { fontSize: 13, marginBottom: 12 } },
+                  'Clear coordinates from all your listings, doing so will remove the distance tag from all your listings that have them.'
+                ),
+                H('button', {
+                  className: 'btn',
+                  onClick: async () => {
+                    if (!confirm('Are you sure you want to remove location data from ALL your listings? This cannot be undone.')) {
+                      return;
+                    }
+                    setClearingLocations(true);
+                    try {
+                      await onClearListingLocations?.();
+                    } catch (e) {
+                      alert('Failed to clear locations. Please try again.');
+                    } finally {
+                      setClearingLocations(false);
+                    }
+                  },
+                  disabled: clearingLocations,
+                  style: {
+                    width: '100%',
+                    background: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    marginBottom: 12,
+                    opacity: clearingLocations ? 0.7 : 1
+                  }
+                }, clearingLocations ? 'Clearing...' : 'Clear distance tags'),
                 H('button', {
                   className: 'btn',
                   onClick: onRequestDeleteAccount,
@@ -1808,7 +1838,8 @@
       onViewSeller,
       onToggleSold,
       onSupporterClick,
-      onJoinSupporterProgram
+      onJoinSupporterProgram,
+      onListingsChanged
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
@@ -2686,6 +2717,11 @@
           setAutoPostNearbyEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,
           onRequestCancelSubscription: handleRequestCancelSubscription,
+          onClearListingLocations: async () => {
+            const result = await api.clearListingLocations();
+            if (onListingsChanged) await onListingsChanged();
+            return result;
+          },
           isMobile,
           user,
           subscriptionStatus
