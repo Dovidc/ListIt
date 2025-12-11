@@ -161,20 +161,40 @@
             });
             listenersRef.current.push(receivedListener);
 
+            // Extract conversation_id from various native payload shapes
+            function getConversationIdFromNotification(action) {
+              const notification = action?.notification || action || {};
+
+              const dataCandidates = [
+                action?.data,
+                notification.data,
+                notification.payload,
+                notification?.payload?.data,
+                notification?.notification?.data,
+                notification?.request?.content?.data,
+                notification?.request?.content?.userInfo,
+                notification?.request?.content?.userInfo?.data,
+                notification?.request?.content?.userInfo?.aps,
+                notification?.request?.content?.userInfo?.payload
+              ];
+
+              for (const data of dataCandidates) {
+                if (!data) continue;
+                const convoId = data.conversation_id ?? data.conversationId;
+                if (convoId !== undefined && convoId !== null) {
+                  return convoId;
+                }
+              }
+              return null;
+            }
+
             // Helper to handle notification tap
             function handleNotificationTap(action) {
               const addLog = window.ListItApp?.AppNav?.addDebugLog || console.log;
               addLog('[Push] handleNotificationTap called');
               console.log('[Push] Notification tapped:', JSON.stringify(action));
 
-              // Try multiple possible data locations
-              const notification = action.notification || action;
-              const data = notification?.data || notification?.payload || action?.data || {};
-              addLog('[Push] data keys: ' + Object.keys(data).join(', '));
-              console.log('[Push] Notification data:', JSON.stringify(data));
-
-              // conversation_id might be a number or string
-              const conversationId = data?.conversation_id || data?.conversationId;
+              const conversationId = getConversationIdFromNotification(action);
               addLog('[Push] conversation_id: ' + conversationId);
               console.log('[Push] conversation_id:', conversationId, 'openConversation available:', typeof window.ListItApp?.AppNav?.openConversation);
 
@@ -193,7 +213,7 @@
                 }, 100);
               } else {
                 addLog('[Push] No conversation_id found');
-                console.log('[Push] No conversation_id in notification data, keys:', Object.keys(data));
+                console.log('[Push] No conversation_id in notification payload');
               }
             }
 

@@ -36,13 +36,35 @@
         // Store for later - React will check this
         window.__earlyPushAction = null;
 
+        function getConversationIdFromAction(action) {
+          var notification = (action && action.notification) || action || {};
+          var candidates = [
+            action && action.data,
+            notification.data,
+            notification.payload,
+            notification.payload && notification.payload.data,
+            notification.notification && notification.notification.data,
+            notification.request && notification.request.content && notification.request.content.data,
+            notification.request && notification.request.content && notification.request.content.userInfo,
+            notification.request && notification.request.content && notification.request.content.userInfo && notification.request.content.userInfo.data,
+            notification.request && notification.request.content && notification.request.content.userInfo && notification.request.content.userInfo.aps,
+            notification.request && notification.request.content && notification.request.content.userInfo && notification.request.content.userInfo.payload
+          ];
+
+          for (var i = 0; i < candidates.length; i++) {
+            var data = candidates[i];
+            if (!data) continue;
+            var convoId = data.conversation_id || data.conversationId;
+            if (convoId !== undefined && convoId !== null) return convoId;
+          }
+
+          return null;
+        }
+
         PushNotifications.addListener('pushNotificationActionPerformed', function(action) {
           console.log('[EarlyPush] Notification tapped:', JSON.stringify(action));
 
-          // Extract conversation_id
-          var notification = action.notification || action;
-          var data = notification && (notification.data || notification.payload) || action.data || {};
-          var conversationId = data.conversation_id || data.conversationId;
+          var conversationId = getConversationIdFromAction(action);
 
           console.log('[EarlyPush] conversation_id:', conversationId);
 

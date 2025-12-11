@@ -72,19 +72,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         var conversationId: String? = nil
 
         // Direct key
-        if let convoId = userInfo["conversation_id"] {
+        if let convoId = userInfo["conversation_id"] ?? userInfo["conversationId"] {
             conversationId = "\(convoId)"
             addNativeDebugLog("Found conversation_id at root: \(conversationId!)")
         }
         // Inside "aps" dictionary
-        else if let aps = userInfo["aps"] as? [String: Any], let convoId = aps["conversation_id"] {
+        else if let aps = userInfo["aps"] as? [String: Any], let convoId = aps["conversation_id"] ?? aps["conversationId"] {
             conversationId = "\(convoId)"
             addNativeDebugLog("Found conversation_id in aps: \(conversationId!)")
         }
         // Inside custom data dictionary
-        else if let data = userInfo["data"] as? [String: Any], let convoId = data["conversation_id"] {
+        else if let data = userInfo["data"] as? [String: Any], let convoId = data["conversation_id"] ?? data["conversationId"] {
             conversationId = "\(convoId)"
             addNativeDebugLog("Found conversation_id in data: \(conversationId!)")
+        }
+        // Inside custom payload dictionary
+        else if let payload = userInfo["payload"] as? [String: Any], let convoId = payload["conversation_id"] ?? payload["conversationId"] {
+            conversationId = "\(convoId)"
+            addNativeDebugLog("Found conversation_id in payload: \(conversationId!)")
         }
         else {
             addNativeDebugLog("No conversation_id found in payload")
