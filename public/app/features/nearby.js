@@ -616,27 +616,43 @@
         }
       }, [api, ensureCoords, normalizeNearbyItems, radius, debouncedSearch, sort, nextCursor, busy, isLoadingMore]);
 
-      // Infinite scroll observer with throttling (Instagram-style)
+      // Infinite scroll with throttling - prevents crashes from rapid API calls
       const lastLoadTimeRef = useRef(0);
-      const throttleMs = 500;
+      const loadInFlightRef = useRef(false);
+      const throttleMs = 1000; // Minimum 1 second between loads - prevents crashes
+
+      const doLoadMore = useCallback(() => {
+        const { hasMore, busy, isLoadingMore } = stateRef.current;
+
+        // Already loading - skip
+        if (loadInFlightRef.current || busy || isLoadingMore) return;
+
+        // No more items
+        if (!hasMore) return;
+
+        // Throttle check
+        const now = Date.now();
+        if (now - lastLoadTimeRef.current < throttleMs) return;
+
+        lastLoadTimeRef.current = now;
+        loadInFlightRef.current = true;
+
+        Promise.resolve(loadNearby(false, true))
+          .catch(() => {})
+          .finally(() => {
+            loadInFlightRef.current = false;
+          });
+      }, [loadNearby]);
 
       useEffect(() => {
         if (!sentinelRef.current) return;
         const observer = new IntersectionObserver((entries) => {
-          const { hasMore, busy, isLoadingMore } = stateRef.current;
           if (!entries[0].isIntersecting) return;
-          if (!hasMore || busy || isLoadingMore) return;
-
-          // Throttle rapid scroll triggers
-          const now = Date.now();
-          if (now - lastLoadTimeRef.current < throttleMs) return;
-          lastLoadTimeRef.current = now;
-
-          loadNearby(false, true);
-        }, { rootMargin: '400px' }); // Trigger earlier for smoother experience
+          doLoadMore();
+        }, { rootMargin: '400px' });
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
-      }, [loadNearby]); // Only depend on loadNearby
+      }, [doLoadMore]);
 
       // Initial load and reload on filter change
       useEffect(() => {
