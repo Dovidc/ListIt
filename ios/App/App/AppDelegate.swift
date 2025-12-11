@@ -107,22 +107,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     private func navigateToConversation(_ conversationId: String, attempt: Int) {
         addNativeDebugLog("navigateToConversation attempt \(attempt) for \(conversationId)")
 
-        // Clear immediately on first attempt to prevent re-triggering
-        if attempt == 1 {
-            self.pendingConversationId = nil
-        }
-
-        let delay = Double(attempt) * 0.5 // 0.5s, 1s, 1.5s, 2s
+        let maxAttempts = 8
+        let delay = Double(attempt) * 0.5 // 0.5s, 1s, 1.5s, ...
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard let rootVC = self.window?.rootViewController as? CAPBridgeViewController,
                   let webView = rootVC.bridge?.webView else {
                 self.addNativeDebugLog("WebView not ready, attempt \(attempt)")
-                // Retry if webview not ready (up to 4 attempts)
-                if attempt < 4 {
+                // Retry if webview not ready (up to maxAttempts)
+                if attempt < maxAttempts {
                     self.navigateToConversation(conversationId, attempt: attempt + 1)
                 } else {
-                    self.addNativeDebugLog("Gave up after 4 attempts")
+                    self.addNativeDebugLog("Gave up after \(maxAttempts) attempts - keeping pendingConversationId")
                 }
                 return
             }
@@ -132,11 +128,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // First flush any pending debug logs
             self.flushDebugLogsToWebView()
 
+            let escapedConversationId = conversationId
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+
             let js = """
                 (function() {
-                    localStorage.setItem('pendingConversationId', '\(conversationId)');
+                    var conversationId = '\(escapedConversationId)';
+                    localStorage.setItem('pendingConversationId', conversationId);
                     if (window.ListItApp && window.ListItApp.AppNav && window.ListItApp.AppNav.openConversation) {
-                        window.ListItApp.AppNav.openConversation(\(conversationId));
+                        window.ListItApp.AppNav.openConversation(conversationId);
                         return 'navigated';
                     }
                     return 'not_ready';
@@ -149,7 +150,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 }
                 if let result = result as? String {
                     self.addNativeDebugLog("JS result: \(result)")
-                    if result == "not_ready" && attempt < 4 {
+                    if result == "navigated" {
+                        self.pendingConversationId = nil
+                    }
+                    if result == "not_ready" && attempt < maxAttempts {
                         self.navigateToConversation(conversationId, attempt: attempt + 1)
                     }
                 }
