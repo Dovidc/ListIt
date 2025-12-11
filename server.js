@@ -752,7 +752,7 @@ async function configureSpatialFeatures() {
          SET geog = ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography
        WHERE lat IS NOT NULL
          AND lon IS NOT NULL
-         AND (geog IS NULL OR ST_IsEmpty(geog));
+         AND (geog IS NULL OR ST_IsEmpty(geog::geometry));
     `);
   } catch (err) {
     console.warn('[postgis] failed to backfill geography column:', err);
