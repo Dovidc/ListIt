@@ -1542,7 +1542,7 @@
                                   H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
                                 )
                               ),
-                              // Refresh button with 5-min cooldown - grey to green icon transition
+                              // Refresh button with 5-min cooldown - grey when cooling down, green when ready
                               H('button', {
                                 type: 'button',
                                 onClick: handleLocationRefresh,
@@ -1570,13 +1570,10 @@
                                   height: 14,
                                   viewBox: '0 0 24 24',
                                   fill: 'none',
-                                  stroke: canRefreshLocation
-                                    ? 'rgb(34, 197, 94)'
-                                    : `rgb(${Math.round(156 - (156 - 34) * cooldownProgress)}, ${Math.round(163 - (163 - 197) * cooldownProgress)}, ${Math.round(175 - (175 - 94) * cooldownProgress)})`,
+                                  stroke: canRefreshLocation ? 'rgb(34, 197, 94)' : 'rgb(156, 163, 175)',
                                   strokeWidth: 2.5,
                                   strokeLinecap: 'round',
-                                  strokeLinejoin: 'round',
-                                  style: { transition: 'stroke 0.3s ease' }
+                                  strokeLinejoin: 'round'
                                 },
                                   H('path', { d: 'M21 12a9 9 0 1 1-9-9' }),
                                   H('polyline', { points: '21 3 21 9 15 9' })
