@@ -484,9 +484,9 @@ class WorkerService {
       return { listingId: job.listing_id };
     }
 
-    if (job.status === 'failed' && job.retry_count >= 3) {
-      console.log(`[Worker] Job ${jobId} exceeded max retries, skipping`);
-      return { error: 'max_retries_exceeded' };
+    if (job.status === 'failed') {
+      console.log(`[Worker] Job ${jobId} already failed, skipping`);
+      return { error: job.error || 'job_failed' };
     }
 
     // Update job to processing status
@@ -639,8 +639,11 @@ class WorkerService {
     } catch (err) {
       // Update job as failed
       const errorMsg = err?.message || 'unknown_error';
+
+      // Don't retry moderation failures - the content will always be flagged
+      const isModeration = err?.code === 'moderation_flagged' || errorMsg === 'moderation_flagged';
       const newRetryCount = (job.retry_count || 0) + 1;
-      const finalStatus = newRetryCount >= 3 ? 'failed' : 'pending';
+      const finalStatus = isModeration ? 'failed' : (newRetryCount >= 3 ? 'failed' : 'pending');
 
       await db.prepare(`
         UPDATE auto_listing_jobs
@@ -653,7 +656,7 @@ class WorkerService {
 
       console.error(`[Worker] Auto-listing job ${jobId} failed:`, errorMsg);
 
-      // Re-throw for worker retry mechanism if not at max retries
+      // Re-throw for worker retry mechanism if not at max retries (but never retry moderation failures)
       if (finalStatus === 'pending') {
         throw err;
       }

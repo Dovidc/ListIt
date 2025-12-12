@@ -8056,13 +8056,92 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
     if (err) return res.status(400).json({ error: err });
 
+    // Moderate message content (text and images)
+    const messageBody = String(body || '').slice(0, 2000);
 
+    // Process images: upload base64 to S3, collect all URLs for moderation
+    const processedImages = []; // { url, isBase64 }
+    const uploadedS3Keys = []; // Track uploaded keys for cleanup if moderation fails
+
+    if (Array.isArray(images) && images.length && uploadBuffer) {
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        if (typeof img !== 'string') continue;
+
+        if (img.startsWith('data:image/')) {
+          // Upload base64 to S3
+          try {
+            const match = img.match(/^data:image\/(\w+);base64,/);
+            const ext = match ? match[1] : 'jpeg';
+            const base64Data = img.replace(/^data:image\/\w+;base64,/, '');
+            const buffer = Buffer.from(base64Data, 'base64');
+            const contentType = `image/${ext}`;
+            const filename = `dm_${req.user.id}_${Date.now()}_${i}.${ext}`;
+
+            const s3Result = await uploadBuffer({ buffer, filename, contentType });
+            processedImages.push({ url: s3Result.publicUrl, key: s3Result.Key });
+            uploadedS3Keys.push(s3Result.Key);
+          } catch (uploadErr) {
+            console.error('[DM] Failed to upload base64 image:', uploadErr?.message || uploadErr);
+            // Skip this image but continue
+          }
+        } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
+          processedImages.push({ url: canonicalAssetUrl(img), key: null });
+        }
+      }
+    } else if (Array.isArray(images) && images.length) {
+      // uploadBuffer not available, only process HTTPS URLs
+      for (const img of images) {
+        if (typeof img === 'string' && img.startsWith('https://') && isAllowedPublicUrl(img)) {
+          processedImages.push({ url: canonicalAssetUrl(img), key: null });
+        }
+      }
+    }
+
+    const imageUrls = processedImages.map(p => p.url);
+
+    // Helper to cleanup S3 uploads if moderation fails
+    const cleanupUploads = async () => {
+      if (uploadedS3Keys.length && typeof deleteS3Objects === 'function') {
+        try {
+          await deleteS3Objects(uploadedS3Keys);
+        } catch (e) {
+          console.warn('[DM] Failed to cleanup S3 uploads after moderation failure:', e?.message || e);
+        }
+      }
+    };
+
+    try {
+      const flagged = await moderateListingContent({
+        title: messageBody,
+        description: '',
+        imageUrls
+      });
+
+      if (flagged?.length) {
+        await cleanupUploads();
+        await recordFlaggedAttempt({
+          userId: req.user.id,
+          title: messageBody.slice(0, 80) || 'DM message',
+          flagged
+        });
+        return res.status(400).json({ error: 'moderation_flagged', flagged });
+      }
+    } catch (modErr) {
+      if (modErr?.code === 'moderation_failed') {
+        console.error('[DM] Moderation failed:', modErr?.message || modErr);
+        // Continue without blocking if moderation service fails
+      } else {
+        await cleanupUploads();
+        throw modErr;
+      }
+    }
 
     const info = await db.prepare(
 
       'INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)'
 
-    ).run(id, req.user.id, String(body || '').slice(0, 2000), nowIso());
+    ).run(id, req.user.id, messageBody, nowIso());
 
 
 
@@ -8070,7 +8149,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
 
-    if (Array.isArray(images) && images.length) {
+    if (processedImages.length) {
 
       const stmt = db.prepare(`
 
@@ -8082,23 +8161,11 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
 
-      for (let i = 0; i < images.length; i++) {
+      for (let i = 0; i < processedImages.length; i++) {
 
-        const img = images[i];
+        const { url } = processedImages[i];
 
-        if (typeof img !== 'string') continue;
-
-        if (img.startsWith('data:image/')) {
-
-          await stmt.run(msgId, i, img, null);
-
-        } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-
-          const normalized = canonicalAssetUrl(img);
-
-          await stmt.run(msgId, i, null, normalized);
-
-        }
+        await stmt.run(msgId, i, null, url);
 
       }
 
