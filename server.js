@@ -501,7 +501,8 @@ if (process.env.EMBED_WORKER !== 'false') {
               incrementCityCount
             },
             aiAnalyzer: runAIAnalysis,
-            contentModerator: moderateListingContent
+            contentModerator: moderateListingContent,
+            recordFlaggedAttempt
           });
           console.log('[Worker] Listing dependencies injected for auto_create_listing');
         }
@@ -1264,8 +1265,10 @@ async function ensureFlaggedAttemptsSchema() {
 async function recordFlaggedAttempt({ userId, listingId = null, title = '', flagged = [] } = {}) {
   const uid = Number(userId);
   if (!Number.isFinite(uid)) return;
-  const lid = Number(listingId);
-  const hasListingId = Number.isFinite(lid) ? lid : null;
+  // Only use listingId if provided and valid (not null/undefined and a positive number)
+  const hasListingId = (listingId != null && Number.isFinite(Number(listingId)) && Number(listingId) > 0)
+    ? Number(listingId)
+    : null;
   const cleanTitle = (() => {
     const raw = typeof title === 'string' ? title : (title == null ? '' : String(title));
     const trimmed = raw.trim();
@@ -2036,53 +2039,71 @@ async function moderateListingContent({ title, description, imageUrls }) {
 
   if (!entries.length) return [];
 
-  let moderation;
-
-  try {
-
-    moderation = await withTimeout(
-      ({ signal }) => client.moderations.create({
-        model: 'omni-moderation-latest',
-        input: entries.map((entry) => entry.value),
-        signal
-      }),
-      OPENAI_TIMEOUT_MS,
-      'openai_moderation'
-    );
-
-  } catch (err) {
-
-    const error = new Error('moderation_failed');
-
-    error.code = 'moderation_failed';
-
-    error.cause = err;
-
-    throw error;
-
-  }
+  // Separate text and image entries - they need to be moderated differently
+  const textEntries = entries.filter(e => e.type !== 'image');
+  const imageEntries = entries.filter(e => e.type === 'image');
 
   const flagged = [];
 
-  moderation.results?.forEach((result, index) => {
+  // Moderate text entries (title, description) together
+  if (textEntries.length) {
+    try {
+      const textModeration = await withTimeout(
+        ({ signal }) => client.moderations.create({
+          model: 'omni-moderation-latest',
+          input: textEntries.map(e => e.value),
+          signal
+        }),
+        OPENAI_TIMEOUT_MS,
+        'openai_moderation'
+      );
 
-    if (!result?.flagged) return;
+      textModeration.results?.forEach((result, index) => {
+        if (!result?.flagged) return;
+        const entry = textEntries[index];
+        flagged.push({
+          type: entry.type,
+          target: entry.value,
+          categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
+          category_scores: result.category_scores || {}
+        });
+      });
+    } catch (err) {
+      console.error('[moderateListingContent] Text moderation failed:', err?.message || err);
+      const error = new Error('moderation_failed');
+      error.code = 'moderation_failed';
+      error.cause = err;
+      throw error;
+    }
+  }
 
-    const entry = entries[index];
+  // Moderate each image separately with multi-modal input
+  for (const imageEntry of imageEntries) {
+    try {
+      const imageModeration = await withTimeout(
+        ({ signal }) => client.moderations.create({
+          model: 'omni-moderation-latest',
+          input: [{ type: 'image_url', image_url: { url: imageEntry.value } }],
+          signal
+        }),
+        OPENAI_TIMEOUT_MS,
+        'openai_moderation'
+      );
 
-    flagged.push({
-
-      type: entry.type,
-
-      target: entry.value,
-
-      categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
-
-      category_scores: result.category_scores || {}
-
-    });
-
-  });
+      const result = imageModeration.results?.[0];
+      if (result?.flagged) {
+        flagged.push({
+          type: 'image',
+          target: imageEntry.value,
+          categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
+          category_scores: result.category_scores || {}
+        });
+      }
+    } catch (err) {
+      console.error('[moderateListingContent] Image moderation failed for', imageEntry.value?.slice(0, 50), err?.message || err);
+      // Continue with other images even if one fails
+    }
+  }
 
   return flagged;
 

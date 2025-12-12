@@ -576,6 +576,14 @@ class WorkerService {
           imageUrls
         });
         if (flagged?.length) {
+          // Record the flagged attempt
+          if (this.recordFlaggedAttempt) {
+            await this.recordFlaggedAttempt({
+              userId: job.user_id,
+              title,
+              flagged
+            });
+          }
           const error = new Error('moderation_flagged');
           error.code = 'moderation_flagged';
           error.flagged = flagged;
@@ -952,7 +960,7 @@ class WorkerService {
   /**
    * Inject external dependencies
    */
-  setDependencies({ stripe, mailService, pushService, iosPushService, listingHelpers, aiAnalyzer, contentModerator } = {}) {
+  setDependencies({ stripe, mailService, pushService, iosPushService, listingHelpers, aiAnalyzer, contentModerator, recordFlaggedAttempt } = {}) {
     if (stripe) {
       this.stripe = stripe;
     }
@@ -974,6 +982,9 @@ class WorkerService {
     }
     if (contentModerator) {
       this.contentModerator = contentModerator;
+    }
+    if (recordFlaggedAttempt) {
+      this.recordFlaggedAttempt = recordFlaggedAttempt;
     }
   }
 
