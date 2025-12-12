@@ -8214,6 +8214,7 @@ app.delete('/api/conversations/:id', auth, writeLimiter, async (req, res) => {
 
 
 app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
+  console.log('[/api/admin/flagged] Request received from user:', req.user?.id);
   try {
     await ensureFlaggedAttemptsSchema();
     const limitRaw = Number(req.query.limit);
@@ -8259,6 +8260,7 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
         details
       };
     });
+    console.log('[/api/admin/flagged] Returning', data.length, 'flagged entries');
     return res.json(data);
   } catch (err) {
     console.error('Admin flagged list failed:', err);

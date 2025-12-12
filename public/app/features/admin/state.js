@@ -172,12 +172,15 @@
       }, [searchTerm, fetchSearch]);
 
       const loadFlagged = useCallback(async () => {
+        console.log('[AdminState] loadFlagged called');
         setFlaggedLoading(true);
         setFlaggedError('');
         try {
           const rows = await api.adminListFlagged({ silent: true });
+          console.log('[AdminState] loadFlagged response:', rows);
           setFlaggedList(Array.isArray(rows) ? rows : []);
         } catch (err) {
+          console.error('[AdminState] loadFlagged error:', err);
           setFlaggedError(err?.message || 'Failed to load flagged uploads');
           setFlaggedList([]);
         } finally {
