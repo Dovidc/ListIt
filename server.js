@@ -8111,29 +8111,32 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
       }
     };
 
-    try {
-      const flagged = await moderateListingContent({
-        title: messageBody,
-        description: '',
-        imageUrls
-      });
-
-      if (flagged?.length) {
-        await cleanupUploads();
-        await recordFlaggedAttempt({
-          userId: req.user.id,
-          title: messageBody.slice(0, 80) || 'DM message',
-          flagged
+    // Only moderate images in DMs (skip text moderation for faster messaging)
+    if (imageUrls.length) {
+      try {
+        const flagged = await moderateListingContent({
+          title: '',
+          description: '',
+          imageUrls
         });
-        return res.status(400).json({ error: 'moderation_flagged', flagged });
-      }
-    } catch (modErr) {
-      if (modErr?.code === 'moderation_failed') {
-        console.error('[DM] Moderation failed:', modErr?.message || modErr);
-        // Continue without blocking if moderation service fails
-      } else {
-        await cleanupUploads();
-        throw modErr;
+
+        if (flagged?.length) {
+          await cleanupUploads();
+          await recordFlaggedAttempt({
+            userId: req.user.id,
+            title: messageBody.slice(0, 80) || 'DM image',
+            flagged
+          });
+          return res.status(400).json({ error: 'moderation_flagged', flagged });
+        }
+      } catch (modErr) {
+        if (modErr?.code === 'moderation_failed') {
+          console.error('[DM] Image moderation failed:', modErr?.message || modErr);
+          // Continue without blocking if moderation service fails
+        } else {
+          await cleanupUploads();
+          throw modErr;
+        }
       }
     }
 
