@@ -507,6 +507,30 @@
 
             ),
 
+            H('label', { style: { display: 'grid', gap: 4 } },
+
+              `Image Size: ${adForm.image_size || 50}%`,
+
+              H('input', {
+
+                type: 'range',
+
+                min: 0,
+
+                max: 100,
+
+                value: adForm.image_size || 50,
+
+                onChange: (e) => setAdForm(f => ({ ...f, image_size: Number(e.target.value) })),
+
+                disabled: adSaving,
+
+                style: { width: '100%' }
+
+              })
+
+            ),
+
             H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
 
               H('label', { style: { display: 'grid', gap: 4, flex: '1 1 200px' } },
@@ -608,7 +632,9 @@
 
               H('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 } },
 
-                H(AdTile, { ad: { ...adForm }, cols: 3, preview: true, className: 'ad-preview' })
+                H('div', { style: { gridColumn: 'span 2', aspectRatio: '2 / 1' } },
+                  H(AdTile, { ad: { ...adForm }, cols: 3, preview: true, className: 'ad-preview' })
+                )
 
               )
 
@@ -645,12 +671,6 @@
                         H('button', { className: 'btn danger', onClick: () => handleDeleteAd(ad.id) }, 'Delete')
 
                       )
-
-                    ),
-
-                    H('div', { style: { display: 'grid', gap: 8 } },
-
-                      H(AdTile, { ad, cols: 3, preview: true })
 
                     )
 

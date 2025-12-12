@@ -2140,6 +2140,8 @@ function formatAdRow(row) {
 
     image_url: canonicalAssetUrl(row.image_url || ''),
 
+    image_size: Number.isFinite(Number(row.image_size)) ? Number(row.image_size) : 50,
+
     cta_label: row.cta_label || '',
 
     background: row.background || '',
@@ -8337,7 +8339,7 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
   try {
 
-    const { title, subtitle, target_url, image_url, cta_label, background, position, is_active } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -8358,6 +8360,12 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
     if (safePosition > 9999) safePosition = 9999;
 
     if (safePosition < -9999) safePosition = -9999;
+
+    let safeImageSize = Number.isFinite(Number(image_size)) ? Math.round(Number(image_size)) : 50;
+
+    if (safeImageSize > 100) safeImageSize = 100;
+
+    if (safeImageSize < 0) safeImageSize = 0;
 
     const normalizedTarget = normalizeHttpUrl(target_url);
 
@@ -8387,9 +8395,9 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
     const info = await db.prepare(`
 
-      INSERT INTO ads (title, subtitle, target_url, image_url, cta_label, background, is_active, position, created_at, updated_at)
+      INSERT INTO ads (title, subtitle, target_url, image_url, image_size, cta_label, background, is_active, position, created_at, updated_at)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -8400,6 +8408,8 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
       normalizedTarget,
 
       normalizedImage || null,
+
+      safeImageSize,
 
       safeCta,
 
@@ -8443,7 +8453,7 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
     }
 
-    const { title, subtitle, target_url, image_url, cta_label, background, position, is_active } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -8464,6 +8474,12 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
     if (safePosition > 9999) safePosition = 9999;
 
     if (safePosition < -9999) safePosition = -9999;
+
+    let safeImageSize = Number.isFinite(Number(image_size)) ? Math.round(Number(image_size)) : 50;
+
+    if (safeImageSize > 100) safeImageSize = 100;
+
+    if (safeImageSize < 0) safeImageSize = 0;
 
     const normalizedTarget = normalizeHttpUrl(target_url);
 
@@ -8503,6 +8519,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
              image_url = ?,
 
+             image_size = ?,
+
              cta_label = ?,
 
              background = ?,
@@ -8524,6 +8542,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
       normalizedTarget,
 
       normalizedImage || null,
+
+      safeImageSize,
 
       safeCta,
 

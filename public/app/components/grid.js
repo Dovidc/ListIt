@@ -145,41 +145,15 @@
       sentinelRef,
       disableVirtualization = false
     }) {
-      // Merge items and ads
-      const entries = useMemo(() => {
-        const base = (items || []).map((it) => ({ type: 'listing', data: it }));
-        if (!Array.isArray(ads) || !ads.length) {
-          return base;
-        }
-
-        const result = [...base];
-        const normalizedAds = ads.map((ad) => ({
-          ...ad,
-          position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0
-        }));
-
-        // Sort ads by position descending so we insert from end
-        const sortedAds = [...normalizedAds].sort((a, b) => {
-          const posDiff = (Number(b.position) || 0) - (Number(a.position) || 0);
-          if (posDiff !== 0) return posDiff;
-          return Number(b.id || 0) - Number(a.id || 0);
-        });
-
-        sortedAds.forEach((ad) => {
-          const pos = Number.isFinite(ad.position) ? ad.position : 0;
-          const idx = Math.min(Math.max(pos, 0), result.length);
-          result.splice(idx, 0, { type: 'ad', data: ad });
-        });
-
-        return result;
-      }, [items, ads]);
+      // Ad dimensions: 2 columns wide, 1 row tall
+      const AD_COLS = 2;
+      const AD_ROWS = 1;
 
       const containerRef = useRef(null);
       const [containerWidth, setContainerWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1000);
 
       useLayoutEffect(() => {
         if (!containerRef.current) return;
-        // Simple ResizeObserver
         const ro = new ResizeObserver(entries => {
           for (const entry of entries) {
             if (entry.contentRect.width > 0) {
@@ -194,52 +168,141 @@
       const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
-      // Calculate item dimensions (1:1 aspect ratio)
       const itemWidth = containerWidth > 0
         ? (containerWidth - (cols - 1) * resolvedGap) / cols
         : 0;
 
-      // Calculate total height from all items (needed for proper scrolling)
-      const rowCount = Math.ceil(entries.length / cols);
-      const totalHeight = rowCount * itemWidth + (rowCount > 0 ? (rowCount - 1) * resolvedGap : 0);
+      // Build layout with proper ad placement - ads occupy multiple cells, items flow around
+      const layoutData = useMemo(() => {
+        const listings = (items || []).map((it) => ({ type: 'listing', data: it }));
+        const normalizedAds = (ads || []).map((ad) => ({
+          type: 'ad',
+          data: ad,
+          position: Number.isFinite(Number(ad?.position)) ? Number(ad.position) : 0,
+          spanCols: AD_COLS,
+          spanRows: AD_ROWS
+        }));
 
-      // Use virtualization hook for determining which items to render
+        // Grid of occupied cells: occupied[row][col] = true if occupied
+        const occupied = {};
+        const isOccupied = (r, c) => occupied[r]?.[c];
+        const markOccupied = (r, c) => {
+          if (!occupied[r]) occupied[r] = {};
+          occupied[r][c] = true;
+        };
+
+        const placedItems = [];
+        let listingIndex = 0;
+        let cellIndex = 0; // Virtual cell index for positioning
+
+        // Sort ads by position
+        const sortedAds = [...normalizedAds].sort((a, b) => (a.position || 0) - (b.position || 0));
+        let adIndex = 0;
+
+        // Place items cell by cell, inserting ads at their positions
+        while (listingIndex < listings.length || adIndex < sortedAds.length) {
+          const row = Math.floor(cellIndex / cols);
+          const col = cellIndex % cols;
+
+          // Skip if this cell is already occupied (by a multi-row ad from above)
+          if (isOccupied(row, col)) {
+            cellIndex++;
+            continue;
+          }
+
+          // Check if an ad should be placed at this position
+          const nextAd = sortedAds[adIndex];
+          if (nextAd && placedItems.filter(p => p.type === 'listing').length >= nextAd.position) {
+            // Place the ad
+            const adSpanCols = Math.min(nextAd.spanCols, cols - col); // Don't overflow grid
+            const adSpanRows = nextAd.spanRows;
+
+            // Mark all cells the ad occupies
+            for (let dr = 0; dr < adSpanRows; dr++) {
+              for (let dc = 0; dc < adSpanCols; dc++) {
+                markOccupied(row + dr, col + dc);
+              }
+            }
+
+            placedItems.push({
+              ...nextAd,
+              row,
+              col,
+              spanCols: adSpanCols,
+              spanRows: adSpanRows,
+              key: `ad-${nextAd.data?.id || adIndex}`
+            });
+            adIndex++;
+            cellIndex++;
+            continue;
+          }
+
+          // Place a listing
+          if (listingIndex < listings.length) {
+            markOccupied(row, col);
+            placedItems.push({
+              ...listings[listingIndex],
+              row,
+              col,
+              spanCols: 1,
+              spanRows: 1,
+              key: `listing-${listings[listingIndex].data?.id || listingIndex}`
+            });
+            listingIndex++;
+          }
+          cellIndex++;
+
+          // Safety: prevent infinite loop
+          if (cellIndex > (listings.length + sortedAds.length * AD_ROWS * AD_COLS) * 2) break;
+        }
+
+        // Calculate total rows needed
+        let maxRow = 0;
+        placedItems.forEach(item => {
+          const bottomRow = item.row + (item.spanRows || 1) - 1;
+          if (bottomRow > maxRow) maxRow = bottomRow;
+        });
+
+        return { placedItems, totalRows: maxRow + 1 };
+      }, [items, ads, cols]);
+
+      const { placedItems, totalRows } = layoutData;
+      const totalHeight = totalRows * itemWidth + (totalRows > 0 ? (totalRows - 1) * resolvedGap : 0);
+
+      // Use virtualization hook
       const {
         startIndex: virtualStartIndex,
         endIndex: virtualEndIndex
       } = useVirtualGrid({
-        totalItems: entries.length,
+        totalItems: placedItems.length,
         columnCount: cols,
         itemHeight: itemWidth,
         gap: resolvedGap,
         buffer: 6
       });
 
-      // When virtualization is disabled, render all items
       const startIndex = disableVirtualization ? 0 : virtualStartIndex;
-      const endIndex = disableVirtualization ? entries.length : virtualEndIndex;
+      const endIndex = disableVirtualization ? placedItems.length : virtualEndIndex;
 
-      // Generate visible items
+      // Generate visible items with proper positioning
       const visibleItems = [];
       for (let i = startIndex; i < endIndex; i++) {
-        const entry = entries[i];
-        if (!entry) continue;
+        const item = placedItems[i];
+        if (!item) continue;
 
-        const rowIndex = Math.floor(i / cols);
-        const colIndex = i % cols;
-
-        const top = rowIndex * (itemWidth + resolvedGap);
-        const left = colIndex * (itemWidth + resolvedGap);
+        const top = item.row * (itemWidth + resolvedGap);
+        const left = item.col * (itemWidth + resolvedGap);
+        const width = item.spanCols * itemWidth + (item.spanCols - 1) * resolvedGap;
+        const height = item.spanRows * itemWidth + (item.spanRows - 1) * resolvedGap;
 
         visibleItems.push({
-          ...entry,
-          key: entry.type === 'ad' ? `ad-${entry.data?.id || i}` : `listing-${entry.data?.id || i}`,
+          ...item,
           style: {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: `${itemWidth}px`,
-            height: `${itemWidth}px`,
+            width: `${width}px`,
+            height: `${height}px`,
             transform: `translate3d(${left}px, ${top}px, 0)`
           }
         });
@@ -250,16 +313,16 @@
         if (typeof onEnsureCover !== 'function') return;
 
         for (let i = startIndex; i < endIndex; i++) {
-          const entry = entries[i];
-          if (entry && entry.type === 'listing' && entry.data?.id) {
-            onEnsureCover(entry.data.id);
+          const item = placedItems[i];
+          if (item && item.type === 'listing' && item.data?.id) {
+            onEnsureCover(item.data.id);
           }
         }
-      }, [startIndex, endIndex, entries, onEnsureCover]);
+      }, [startIndex, endIndex, placedItems, onEnsureCover]);
 
       // Calculate loading indicator height - always show footer area when there are items
       const loaderHeight = 60;
-      const hasItems = entries.length > 0;
+      const hasItems = placedItems.length > 0;
       const extraHeight = hasItems ? loaderHeight : 0;
 
       return H('section', {
@@ -275,7 +338,7 @@
         visibleItems.map(({ type, data, key, style }) => {
           if (type === 'ad') {
             if (!AdTile) return null;
-            return H('div', { key, style },
+            return H('div', { key, style: { ...style, zIndex: 1 } },
               H(AdTile, { ad: data, cols })
             );
           }

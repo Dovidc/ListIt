@@ -13,11 +13,13 @@
 
     function AdTile({ ad, cols = 4, className, preview = false }) {
       if (!ad) return null;
-      const spanCols = Math.max(1, Math.min(3, Number(cols) || 1));
       const hasImage = !!ad.image_url;
       const href = ad.target_url || '#';
       const ctaLabel = (ad.cta_label || 'Visit site').slice(0, 40);
-      const style = { gridColumn: `span ${spanCols}` };
+      // Fill the container (parent controls size via absolute positioning)
+      // Calculate image size - default to 45% if not set
+      const imageSize = Number.isFinite(Number(ad.image_size)) ? Number(ad.image_size) : 45;
+      const style = { width: '100%', height: '100%', '--ad-image-size': `${imageSize}%` };
       if (ad.background) style.background = ad.background;
       if (preview) style.cursor = 'default';
       const cardClass = `card ad-card${hasImage ? '' : ' no-art'}${className ? ` ${className}` : ''}`;
@@ -34,6 +36,7 @@
         anchorProps.rel = 'noopener';
         anchorProps.tabIndex = -1;
       }
+      const artStyle = imageSize > 0 ? {} : { display: 'none' };
       return H('a', anchorProps,
         H('div', { className: 'ad-card__content' },
           H('span', { className: 'ad-card__tag' }, 'Sponsored'),
@@ -44,7 +47,7 @@
             H('span', { className: 'ad-card__arrow' }, '>')
           )
         ),
-        hasImage && H('div', { className: 'ad-card__art' },
+        hasImage && H('div', { className: 'ad-card__art', style: artStyle },
           H(ImageWithSkeleton, {
             src: ad.image_url,
             alt: ad.title ? `${ad.title} artwork` : 'Advertisement art',

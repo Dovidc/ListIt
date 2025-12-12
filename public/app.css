@@ -124,7 +124,8 @@
 .ad-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  /* Use CSS variable for image size - content takes remaining space */
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ad-image-size, 42%));
   gap: 20px;
   padding: 24px;
   border-radius: 20px;
