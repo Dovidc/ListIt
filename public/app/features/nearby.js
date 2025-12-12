@@ -373,7 +373,7 @@
       return ReactRuntime.memo ? ReactRuntime.memo(FallbackListingsGrid) : FallbackListingsGrid;
     }
 
-    const DEFAULT_NEARBY_RADIUS_M = 400;
+    const DEFAULT_NEARBY_RADIUS_M = 305; // ~1000 feet
 
     const NearbyPanel = React.memo(function NearbyPanel({
       user,

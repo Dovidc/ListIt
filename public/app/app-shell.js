@@ -907,31 +907,7 @@
         }
       }, [api, setSupporterPromptSeen, setUser]);
 
-      useEffect(() => {
-        if (typeof window === 'undefined') return undefined;
-        if (!user || user.supporter_badge) return undefined;
-        if (premiumFreeForAll) return undefined;
-        if (supporterUpsellState.open || supporterInfoState.open) return undefined;
-        if (tab !== 'browse') return undefined;
-
-        try {
-          const raw = window.localStorage?.getItem(SUPPORTER_PROMPT_KEY);
-          const last = Number(raw || 0);
-          if (Number.isFinite(last) && Date.now() - last < SUPPORTER_PROMPT_INTERVAL_MS) {
-            return undefined;
-          }
-        } catch {
-          // Ignore storage failures
-        }
-
-        const timer = window.setTimeout(() => {
-          showSupporterPrompt();
-        }, SUPPORTER_PROMPT_DELAY_MS);
-
-        return () => {
-          window.clearTimeout(timer);
-        };
-      }, [user, tab, supporterUpsellState.open, supporterInfoState.open, showSupporterPrompt, premiumFreeForAll]);
+      // Supporter prompt auto-popup removed - users can access it via profile icon
 
       const mineById = useMemo(() => {
         const map = Object.create(null);
@@ -1939,7 +1915,7 @@
               ))
             ),
 
-            isMobile && !isEditingScreen && H('nav', {
+            isMobile && !isEditingScreen && !supporterUpsellState.open && H('nav', {
               className: 'mobile-dashboard',
               role: 'navigation',
               'aria-label': 'Primary'
