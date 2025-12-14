@@ -6,6 +6,81 @@ let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
 let _s3 = null;
 
+// Magic byte signatures for validating image file headers
+const MAGIC_BYTES = {
+  // JPEG: FF D8 FF
+  jpeg: { bytes: [0xFF, 0xD8, 0xFF], offset: 0 },
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  png: { bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], offset: 0 },
+  // GIF: 47 49 46 38 (GIF8)
+  gif: { bytes: [0x47, 0x49, 0x46, 0x38], offset: 0 },
+  // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF....WEBP)
+  webp: { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0, secondCheck: { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 } },
+  // HEIC/HEIF: ....ftyp at offset 4
+  heic: { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4 },
+  // AVIF: ....ftyp at offset 4 (same container as HEIC)
+  avif: { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4 },
+  // MP4: ....ftyp at offset 4
+  mp4: { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4 }
+};
+
+/**
+ * Validate that buffer's magic bytes match the claimed content type
+ * @param {Buffer} buffer - The file buffer to validate
+ * @param {string} contentType - The claimed MIME type
+ * @returns {boolean} - True if valid, false if magic bytes don't match
+ */
+function validateMagicBytes(buffer, contentType) {
+  if (!buffer || buffer.length < 12) return false;
+
+  const type = contentType.toLowerCase();
+  let signatures = [];
+
+  if (type.includes('jpeg') || type.includes('jpg')) {
+    signatures = [MAGIC_BYTES.jpeg];
+  } else if (type.includes('png')) {
+    signatures = [MAGIC_BYTES.png];
+  } else if (type.includes('gif')) {
+    signatures = [MAGIC_BYTES.gif];
+  } else if (type.includes('webp')) {
+    signatures = [MAGIC_BYTES.webp];
+  } else if (type.includes('heic') || type.includes('heif')) {
+    signatures = [MAGIC_BYTES.heic];
+  } else if (type.includes('avif')) {
+    signatures = [MAGIC_BYTES.avif];
+  } else if (type.includes('mp4')) {
+    signatures = [MAGIC_BYTES.mp4];
+  } else {
+    return false; // Unknown type
+  }
+
+  for (const sig of signatures) {
+    let match = true;
+
+    // Check primary bytes
+    for (let i = 0; i < sig.bytes.length; i++) {
+      if (buffer[sig.offset + i] !== sig.bytes[i]) {
+        match = false;
+        break;
+      }
+    }
+
+    // Check secondary bytes if present (e.g., WebP)
+    if (match && sig.secondCheck) {
+      for (let i = 0; i < sig.secondCheck.bytes.length; i++) {
+        if (buffer[sig.secondCheck.offset + i] !== sig.secondCheck.bytes[i]) {
+          match = false;
+          break;
+        }
+      }
+    }
+
+    if (match) return true;
+  }
+
+  return false;
+}
+
 function need(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env ${name}`);
@@ -104,6 +179,11 @@ async function uploadBuffer({ buffer, filename = 'upload.bin', contentType }) {
   const maxImageBytes = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
   if (buffer.length > maxImageBytes) {
     throw new Error('Image too large');
+  }
+
+  // Validate magic bytes to ensure file content matches claimed type
+  if (!validateMagicBytes(buffer, contentType)) {
+    throw new Error('Invalid file: content does not match declared type');
   }
 
   const Key = newKey(filename);

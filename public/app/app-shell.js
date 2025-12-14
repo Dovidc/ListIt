@@ -226,6 +226,34 @@
       const [showLegalModal, setShowLegalModal] = useState(false);
       const [legalCheckDone, setLegalCheckDone] = useState(false);
 
+      // Desktop location accuracy warning toast
+      const [showDesktopAccuracyToast, setShowDesktopAccuracyToast] = useState(false);
+      const DESKTOP_ACCURACY_TOAST_KEY = 'listit_desktop_accuracy_shown';
+
+      useEffect(() => {
+        // Only show on desktop, and only once per session
+        if (isMobile) return;
+        const alreadyShown = sessionStorage.getItem(DESKTOP_ACCURACY_TOAST_KEY);
+        if (alreadyShown) return;
+
+        // Show toast after a brief delay
+        const showTimer = setTimeout(() => {
+          setShowDesktopAccuracyToast(true);
+          sessionStorage.setItem(DESKTOP_ACCURACY_TOAST_KEY, 'true');
+        }, 1500);
+
+        return () => clearTimeout(showTimer);
+      }, [isMobile]);
+
+      // Auto-hide desktop accuracy toast after 10 seconds
+      useEffect(() => {
+        if (!showDesktopAccuracyToast) return;
+        const hideTimer = setTimeout(() => {
+          setShowDesktopAccuracyToast(false);
+        }, 10000);
+        return () => clearTimeout(hideTimer);
+      }, [showDesktopAccuracyToast]);
+
       // Scroll preservation
       const browseScrollPos = useRef(0);
       const prevTabRef = useRef(tab);
@@ -1824,6 +1852,49 @@
             }),
 
             H(ListingQueueToast, null),
+
+            // Desktop location accuracy warning toast
+            showDesktopAccuracyToast && H('div', {
+              className: 'desktop-accuracy-toast',
+              onClick: () => setShowDesktopAccuracyToast(false),
+              style: {
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(30, 41, 59, 0.95)',
+                color: '#fff',
+                padding: '14px 20px',
+                borderRadius: 12,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                zIndex: 10000,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                maxWidth: 400,
+                cursor: 'pointer',
+                animation: 'fadeInUp 0.3s ease'
+              }
+            },
+              H('svg', {
+                width: 20,
+                height: 20,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: '#fbbf24',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+                style: { flexShrink: 0 }
+              },
+                H('circle', { cx: 12, cy: 12, r: 10 }),
+                H('line', { x1: 12, y1: 8, x2: 12, y2: 12 }),
+                H('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })
+              ),
+              H('span', { style: { fontSize: 14, lineHeight: 1.4 } },
+                'Distance estimates will be less accurate on desktop. For best results, use your phone.'
+              )
+            ),
 
             // Edit listing toast with rotating cog
             showEditToast && H('div', {

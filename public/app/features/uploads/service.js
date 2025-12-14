@@ -66,23 +66,40 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
+    // Secure upload - sends file through server for magic byte validation
+    async function secureUpload(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const response = await fetch('/api/uploads/secure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type,
+          'X-Filename': file.name || 'upload.bin'
+        },
+        body: arrayBuffer,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'upload_failed');
+      }
+
+      return response.json();
+    }
+
     async function uploadFileDraft(file) {
       if (!file) throw new Error('file_required');
 
       if (!uploadDraftCache.has(file)) {
         const uploadPromise = s3UploadLimiter(async () => {
-          const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size }, { silent: true });
-          if (sig?.error) throw new Error(sig.error);
-          if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
-
-          const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-          if (!putRes.ok) throw new Error('s3_put_failed');
+          // Use secure upload with magic byte validation
+          const result = await secureUpload(file);
 
           const dims = await measureImageFile(file);
 
           const finalizeRes = await api.finalizeUpload({
-            key: sig.Key,
-            url: sig.publicUrl,
+            key: result.key,
+            url: result.publicUrl,
             width: dims.width,
             height: dims.height,
             bytes: file.size
@@ -93,7 +110,7 @@
 
           return {
             uploadToken: finalizeRes.uploadToken,
-            publicUrl: finalizeRes.url || sig.publicUrl,
+            publicUrl: finalizeRes.url || result.publicUrl,
             width: finalizeRes.width ?? dims.width ?? null,
             height: finalizeRes.height ?? dims.height ?? null,
             bytes: finalizeRes.bytes ?? file.size
@@ -188,23 +205,21 @@
     }
 
     async function uploadOneImage(listingId, file) {
-      const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-      if (sig?.error) throw new Error(sig.error);
-      const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!putRes.ok) throw new Error('s3_put_failed');
+      // Use secure upload with magic byte validation
+      const result = await secureUpload(file);
 
       const dims = await measureImageFile(file);
 
       await api.finalizeUpload({
         listingId,
-        key: sig.Key,
-        url: sig.publicUrl,
+        key: result.key,
+        url: result.publicUrl,
         width: dims.width,
         height: dims.height,
         bytes: file.size
       });
 
-      return sig.publicUrl;
+      return result.publicUrl;
     }
 
     async function uploadFilesForListing(listingId, files = []) {
@@ -217,13 +232,9 @@
     }
 
     async function uploadOneMessageImage(file) {
-      const sig = await api.signUpload({ filename: file.name, contentType: file.type, bytes: file.size });
-      if (sig.error) throw new Error(sig.error);
-
-      const putRes = await fetch(sig.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!putRes.ok) throw new Error('s3_put_failed');
-
-      return sig.publicUrl;
+      // Use secure upload with magic byte validation
+      const result = await secureUpload(file);
+      return result.publicUrl;
     }
 
     return {
