@@ -334,6 +334,7 @@
 
         // Use fetch with keepalive for better reliability
         let result = null;
+        let serverError = null;
         try {
           const response = await fetch('/api/listings/auto-fast', {
             method: 'POST',
@@ -346,8 +347,23 @@
           } else {
             const errText = await response.text();
             console.error('[AutoList] Server error:', response.status, errText);
+            // Parse error message from server
+            try {
+              const errJson = JSON.parse(errText);
+              serverError = errJson.error || errText;
+            } catch {
+              serverError = errText;
+            }
+            // If it's a validation/moderation error, throw immediately
+            if (serverError && (serverError.includes('Invalid file') || serverError.includes('moderation') || serverError.includes('flagged'))) {
+              throw new Error(serverError);
+            }
           }
         } catch (fetchErr) {
+          // Re-throw validation/moderation errors
+          if (fetchErr?.message?.includes('Invalid file') || fetchErr?.message?.includes('moderation') || fetchErr?.message?.includes('flagged')) {
+            throw fetchErr;
+          }
           console.warn('[AutoList] Fetch failed:', fetchErr);
         }
 
@@ -639,6 +655,7 @@
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
       const mountedRef = useRef(true);
+      const [showModerationModal, setShowModerationModal] = useState(false);
 
       // Track mounted state to avoid setState on unmounted component
       useEffect(() => {
@@ -822,7 +839,13 @@
             if (mountedRef.current) onSaved?.(created);
           },
           onError: (err) => {
-            if (mountedRef.current) setAutoBusy(false);
+            if (mountedRef.current) {
+              const msg = err?.message || String(err);
+              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                setShowModerationModal(true);
+              }
+              setAutoBusy(false);
+            }
           }
         }).then((result) => {
           if (result?.queued) {
@@ -833,7 +856,12 @@
         }).catch((err) => {
           console.error('Auto-list failed:', err);
           if (mountedRef.current) {
-            alert(`Auto-list failed: ${err?.message || err}`);
+            const msg = err?.message || String(err);
+            if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+              setShowModerationModal(true);
+            } else {
+              alert(`Auto-list failed: ${msg}`);
+            }
             setAutoBusy(false);
           }
         }).finally(() => {
@@ -935,7 +963,12 @@
                 onSaved?.(created);
               } catch (err) {
                 console.error('Create/save failed:', err);
-                alert(`Create/save failed: ${err?.message || err}`);
+                const msg = err?.message || String(err);
+                if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                  setShowModerationModal(true);
+                } else {
+                  alert(`Create/save failed: ${msg}`);
+                }
               }
             });
             onCancel?.();
@@ -946,7 +979,12 @@
           onSaved?.(createdListing);
         } catch (err) {
           console.error('Create/save failed:', err);
-          alert(`Create/save failed: ${err?.message || err}`);
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            setShowModerationModal(true);
+          } else {
+            alert(`Create/save failed: ${msg}`);
+          }
         }
       }
 
@@ -1395,6 +1433,72 @@
               style: { width: '100%' },
               onClick: () => setShowInquiryHelp(false)
             }, 'Got it')
+          )
+        ),
+
+        // Moderation flagged modal
+        showModerationModal && H('div', {
+          className: 'modal-backdrop',
+          style: {
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(17,24,39,0.7)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 130
+          },
+          onClick: (e) => { if (e.target === e.currentTarget) setShowModerationModal(false); }
+        },
+          H('div', {
+            style: {
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              width: 'min(360px, 90vw)',
+              boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+              textAlign: 'center'
+            }
+          },
+            H('div', {
+              style: {
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: '#fef3c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px'
+              }
+            },
+              H('svg', {
+                width: 28,
+                height: 28,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: '#d97706',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('circle', { cx: 12, cy: 12, r: 10 }),
+                H('line', { x1: 12, y1: 8, x2: 12, y2: 12 }),
+                H('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })
+              )
+            ),
+            H('h3', { style: { margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: '#0f172a' } }, 'Content Under Review'),
+            H('p', { style: { margin: '0 0 20px', fontSize: 14, lineHeight: 1.6, color: '#64748b' } },
+              'Your submission has been flagged and is being reviewed by our administrators. This helps us keep the platform safe for everyone.'
+            ),
+            H('button', {
+              type: 'button',
+              className: 'btn primary',
+              style: { width: '100%', padding: '14px 20px', fontSize: 16 },
+              onClick: () => {
+                setShowModerationModal(false);
+                onCancel?.();
+              }
+            }, 'I Understand')
           )
         )
       );

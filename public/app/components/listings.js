@@ -865,6 +865,7 @@
       // auto-list guard
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
+      const [showModerationModal, setShowModerationModal] = useState(false);
 
       const hasFixedGps = !!draft?.lat;
       const [enableNearby, setEnableNearby] = useState(!!draft?.enable_nearby);
@@ -1022,7 +1023,10 @@
               .map(r => r.value);
 
             if (!uploads.length) {
-              throw new Error('No images uploaded successfully');
+              // Check if any upload failed with a validation/moderation error
+              const firstError = uploadResults.find(r => r.status === 'rejected');
+              const errMsg = firstError?.reason?.message || firstError?.reason || 'No images uploaded successfully';
+              throw new Error(errMsg);
             }
 
             const uploadTokens = uploads.map((u) => u.uploadToken).filter(Boolean);
@@ -1093,6 +1097,11 @@
 
             console.log('[ListingForm AutoList] Job enqueued:', result.job_id);
 
+            // Show toast NOW - data is on server, user can close app
+            if (typeof enqueueListingJob === 'function') {
+              try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+            }
+
             // Success - close the form, job will complete in background
             // Only call callbacks if still mounted
             if (mountedRef.current) {
@@ -1102,15 +1111,20 @@
 
           } catch (err) {
             console.error('[ListingForm AutoList] Error:', err);
-            // Don't show alert on mobile - can cause crashes
-            if (mountedRef.current && typeof window !== 'undefined' && !isMobileDevice()) {
-              alert(`Auto-list failed: ${err?.message || err}`);
+            if (mountedRef.current) {
+              const msg = err?.message || String(err);
+              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                setShowModerationModal(true);
+              } else if (typeof window !== 'undefined' && !isMobileDevice()) {
+                // Only show alert on desktop - can cause crashes on mobile
+                alert(`Auto-list failed: ${msg}`);
+              }
             }
           } finally {
             autoRunning.current = false;
           }
         }, 0);
-      }, [autoListEnabled, autoPostNearbyEnabled, inquiryEnabled, draft, files, onCancel, onSaved]);
+      }, [autoListEnabled, autoPostNearbyEnabled, inquiryEnabled, draft, files, onCancel, onSaved, enqueueListingJob]);
 
       // UPDATED: Submit function that handles image changes properly
       // Update the submit function (remove the duplicate and fix it):
@@ -1200,7 +1214,12 @@
                 onSaved?.();
               } catch (err) {
                 console.error('Create/save failed:', err);
-                alert(`Create/save failed: ${err?.message || err}`);
+                const msg = err?.message || String(err);
+                if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                  setShowModerationModal(true);
+                } else {
+                  alert(`Create/save failed: ${msg}`);
+                }
               }
             });
             onCancel?.();
@@ -1211,7 +1230,12 @@
           onSaved?.();
         } catch (err) {
           console.error('Create/save failed:', err);
-          alert(`Create/save failed: ${err?.message || err}`);
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            setShowModerationModal(true);
+          } else {
+            alert(`Create/save failed: ${msg}`);
+          }
         }
       }
 
@@ -1347,7 +1371,30 @@
           H('button', { className: 'btn primary', type: 'submit', disabled: autoBusy }, draft ? 'Save changes' : 'Create listing'),
           H('button', { className: 'btn', type: 'button', onClick: onCancel, disabled: autoBusy }, 'Cancel')
         ),
-        showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) })
+        showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) }),
+
+        // Moderation flagged modal
+        showModerationModal && H('div', {
+          className: 'modal-overlay',
+          onClick: () => setShowModerationModal(false),
+          style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 9999 }
+        },
+          H('div', {
+            onClick: e => e.stopPropagation(),
+            style: { padding: 24, maxWidth: 400, textAlign: 'center', background: '#fff', borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }
+          },
+            H('div', { style: { fontSize: 48, marginBottom: 12 } }, '\u26A0\uFE0F'),
+            H('h3', { style: { marginBottom: 12 } }, 'Submission Under Review'),
+            H('p', { style: { marginBottom: 16, color: '#666' } },
+              'Your submission has been flagged for review by our administrators. This is a routine check to ensure content meets our community guidelines. We will review it shortly.'
+            ),
+            H('button', {
+              className: 'btn primary',
+              onClick: () => setShowModerationModal(false),
+              style: { width: '100%' }
+            }, 'OK')
+          )
+        )
       );
     }
 
@@ -1356,6 +1403,7 @@
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+      const [showModerationModal, setShowModerationModal] = useState(false);
       const filePreviews = useFilePreviews(files);
 
       const cameraRef = useRef();
@@ -1546,7 +1594,12 @@
               await runJob(false);
             } catch (err) {
               console.error('MassList failed:', err);
-              alert(`MassList failed: ${err?.message || err}`);
+              const msg = err?.message || String(err);
+              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                setShowModerationModal(true);
+              } else {
+                alert(`MassList failed: ${msg}`);
+              }
             }
           });
           onClose?.();
@@ -1560,7 +1613,12 @@
           onClose?.();
         } catch (err) {
           console.error('MassList failed:', err);
-          alert(`MassList failed: ${err?.message || err}`);
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            setShowModerationModal(true);
+          } else {
+            alert(`MassList failed: ${msg}`);
+          }
         } finally {
           setBusy(false);
         }
@@ -1674,7 +1732,33 @@
         )
       );
 
-      return ReactDOM.createPortal(modal, document.body);
+      // Moderation flagged modal
+      const moderationModal = showModerationModal && H('div', {
+        className: 'modal-overlay',
+        onClick: () => setShowModerationModal(false),
+        style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 9999 }
+      },
+        H('div', {
+          onClick: e => e.stopPropagation(),
+          style: { padding: 24, maxWidth: 400, textAlign: 'center', background: '#fff', borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }
+        },
+          H('div', { style: { fontSize: 48, marginBottom: 12 } }, '\u26A0\uFE0F'),
+          H('h3', { style: { marginBottom: 12 } }, 'Submission Under Review'),
+          H('p', { style: { marginBottom: 16, color: '#666' } },
+            'Your submission has been flagged for review by our administrators. This is a routine check to ensure content meets our community guidelines. We will review it shortly.'
+          ),
+          H('button', {
+            className: 'btn primary',
+            onClick: () => setShowModerationModal(false),
+            style: { width: '100%' }
+          }, 'OK')
+        )
+      );
+
+      return ReactDOM.createPortal(
+        H(React.Fragment, null, modal, moderationModal),
+        document.body
+      );
     }
 
     const REPORT_REASON_OPTIONS = [

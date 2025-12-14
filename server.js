@@ -3552,6 +3552,21 @@ We use your information to:
 • Comply with legal obligations
 
 
+PROHIBITED CONTENT
+
+You agree NOT to upload, post, or share any content that:
+• Contains nudity, sexually explicit material, or pornography
+• Depicts or promotes violence, gore, or graphic content
+• Contains hate speech, discrimination, or harassment
+• Promotes illegal activities or substances
+• Infringes on intellectual property rights
+• Is fraudulent, deceptive, or misleading
+• Contains malware, viruses, or malicious code
+• Violates any applicable laws or regulations
+
+We use automated systems and human review to detect prohibited content. Content that violates these guidelines will be removed, and accounts may be suspended or permanently banned. We reserve the right to report illegal content to law enforcement authorities.
+
+
 THIRD-PARTY SERVICES
 
 We use the following third-party services to operate Trovelr:
@@ -5867,6 +5882,7 @@ app.post(
       // Upload images to S3 and create draft records
       const uploadTokens = [];
       const nowUnix = Math.floor(Date.now() / 1000); // Unix timestamp for listing_upload_drafts
+      let lastUploadError = null;
 
       for (let i = 0; i < validImages.length; i++) {
         const img = validImages[i];
@@ -5902,13 +5918,19 @@ app.post(
 
           uploadTokens.push(token);
         } catch (uploadErr) {
-          console.error(`[AutoListingFast] Failed to upload image ${i}:`, uploadErr?.message || uploadErr);
-          // Continue with other images
+          const errMsg = uploadErr?.message || String(uploadErr);
+          console.error(`[AutoListingFast] Failed to upload image ${i}:`, errMsg);
+          lastUploadError = errMsg;
+          // If it's a validation/moderation error, fail immediately
+          if (errMsg.includes('Invalid file') || errMsg.includes('moderation') || errMsg.includes('flagged')) {
+            return res.status(400).json({ error: errMsg });
+          }
+          // Continue with other images for other errors
         }
       }
 
       if (!uploadTokens.length) {
-        return res.status(500).json({ error: 'all_uploads_failed' });
+        return res.status(500).json({ error: lastUploadError || 'all_uploads_failed' });
       }
 
       console.log(`[AutoListingFast] ${uploadTokens.length} images uploaded in ${Date.now() - startTime}ms`);

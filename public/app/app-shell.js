@@ -226,6 +226,9 @@
       const [showLegalModal, setShowLegalModal] = useState(false);
       const [legalCheckDone, setLegalCheckDone] = useState(false);
 
+      // Moderation flagged modal state
+      const [showModerationModal, setShowModerationModal] = useState(false);
+
       // Desktop location accuracy warning toast
       const [showDesktopAccuracyToast, setShowDesktopAccuracyToast] = useState(false);
       const DESKTOP_ACCURACY_TOAST_KEY = 'listit_desktop_accuracy_shown';
@@ -1208,6 +1211,10 @@
                 },
                 onError: (err) => {
                   console.error('[Mobile AutoList] Job error:', err);
+                  const msg = err?.message || String(err);
+                  if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                    setShowModerationModal(true);
+                  }
                 }
               });
               console.log('[Mobile AutoList] Result:', result);
@@ -1893,6 +1900,69 @@
               ),
               H('span', { style: { fontSize: 14, lineHeight: 1.4 } },
                 'Distance estimates will be less accurate on desktop. For best results, use your phone.'
+              )
+            ),
+
+            // Moderation flagged modal
+            showModerationModal && H('div', {
+              className: 'modal-backdrop',
+              style: {
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(17,24,39,0.7)',
+                display: 'grid',
+                placeItems: 'center',
+                zIndex: 10001
+              },
+              onClick: (e) => { if (e.target === e.currentTarget) setShowModerationModal(false); }
+            },
+              H('div', {
+                style: {
+                  background: '#fff',
+                  borderRadius: 16,
+                  padding: 24,
+                  width: 'min(360px, 90vw)',
+                  boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+                  textAlign: 'center'
+                }
+              },
+                H('div', {
+                  style: {
+                    width: 56,
+                    height: 56,
+                    borderRadius: '50%',
+                    background: '#fef3c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 16px'
+                  }
+                },
+                  H('svg', {
+                    width: 28,
+                    height: 28,
+                    viewBox: '0 0 24 24',
+                    fill: 'none',
+                    stroke: '#d97706',
+                    strokeWidth: 2,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round'
+                  },
+                    H('circle', { cx: 12, cy: 12, r: 10 }),
+                    H('line', { x1: 12, y1: 8, x2: 12, y2: 12 }),
+                    H('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })
+                  )
+                ),
+                H('h3', { style: { margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: '#0f172a' } }, 'Content Under Review'),
+                H('p', { style: { margin: '0 0 20px', fontSize: 14, lineHeight: 1.6, color: '#64748b' } },
+                  'Your submission has been flagged and is being reviewed by our administrators. This helps us keep the platform safe for everyone.'
+                ),
+                H('button', {
+                  type: 'button',
+                  className: 'btn primary',
+                  style: { width: '100%', padding: '14px 20px', fontSize: 16 },
+                  onClick: () => setShowModerationModal(false)
+                }, 'I Understand')
               )
             ),
 

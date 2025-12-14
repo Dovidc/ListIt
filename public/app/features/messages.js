@@ -1009,6 +1009,7 @@
       const cameraFileRef = useRef();
       const libraryFileRef = useRef();
       const [lb, setLb] = useState({ open: false, images: [], index: 0 });
+      const [showModerationModal, setShowModerationModal] = useState(false);
       const dropRef = useRef();
       const wsRef = useRef(null);
       const reconnectTimeoutRef = useRef(null);
@@ -1231,16 +1232,31 @@
         if (!bodyTrim && imgFiles.length === 0) return;
 
         const urls = [];
-        for (const f of imgFiles) {
-          const url = await uploadOneMessageImage(f);
-          urls.push(url);
+        try {
+          for (const f of imgFiles) {
+            const url = await uploadOneMessageImage(f);
+            urls.push(url);
+          }
+        } catch (e) {
+          const msg = e?.message || String(e);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            setShowModerationModal(true);
+          } else {
+            alert(msg || 'Image upload failed');
+          }
+          return;
         }
 
         let resp;
         try {
           resp = await api.sendMessage(activeId, bodyTrim, urls);
         } catch (e) {
-          alert(e?.message || 'Send failed');
+          const msg = e?.message || String(e);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged')) {
+            setShowModerationModal(true);
+          } else {
+            alert(msg || 'Send failed');
+          }
           return;
         }
 
@@ -1393,7 +1409,9 @@
         closeLightbox,
         setLightboxIndex,
         lb,
-        markAllAsRead
+        markAllAsRead,
+        showModerationModal,
+        setShowModerationModal
       };
     }
 
@@ -1527,7 +1545,9 @@
         canSendLocation,
         locationPreset,
         sendLocationPreset,
-        markAllAsRead
+        markAllAsRead,
+        showModerationModal,
+        setShowModerationModal
       } = useMessagesPanelState(props);
 
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
@@ -1847,6 +1867,32 @@
         document.body
       );
 
+      // Moderation modal - render via portal to avoid .messages-panel .card transparent override
+      const moderationModal = showModerationModal && ReactDOM.createPortal(
+        H('div', {
+          className: 'modal-overlay',
+          onClick: () => setShowModerationModal(false),
+          style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 9999 }
+        },
+          H('div', {
+            onClick: e => e.stopPropagation(),
+            style: { padding: 24, maxWidth: 400, textAlign: 'center', background: '#fff', borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }
+          },
+            H('div', { style: { fontSize: 48, marginBottom: 12 } }, '\u26A0\uFE0F'),
+            H('h3', { style: { marginBottom: 12 } }, 'Submission Under Review'),
+            H('p', { style: { marginBottom: 16, color: '#666' } },
+              'Your image has been indicated by AI to contain inappropriate content. Violations of the privacy policy might result in account termination.'
+            ),
+            H('button', {
+              className: 'btn primary',
+              onClick: () => setShowModerationModal(false),
+              style: { width: '100%' }
+            }, 'OK')
+          )
+        ),
+        document.body
+      );
+
       return H('div', { className: 'messages-panel' },
         H(ConversationsSidebar, {
           conversations: convosDecorated,
@@ -1862,7 +1908,9 @@
           style: { padding: 12 }
         }, threadContent),
         // Mobile portal
-        mobileThreadPortal
+        mobileThreadPortal,
+        // Moderation modal
+        moderationModal
       );
     }
 
