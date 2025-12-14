@@ -619,7 +619,7 @@
       // Infinite scroll with throttling - prevents crashes from rapid API calls
       const lastLoadTimeRef = useRef(0);
       const loadInFlightRef = useRef(false);
-      const throttleMs = 1000; // Minimum 1 second between loads - prevents crashes
+      const throttleMs = 1500; // Minimum 1.5 seconds between loads - prevents crashes
 
       const doLoadMore = useCallback(() => {
         const { hasMore, busy, isLoadingMore } = stateRef.current;
