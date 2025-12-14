@@ -162,13 +162,40 @@
           'Conversations'
         ),
         H('div', { className: 'messages-sidebar__controls' },
-          H('input', {
-            type: 'text',
-            placeholder: 'Search...',
-            value: searchQuery,
-            onChange: (e) => setSearchQuery(e.target.value),
-            className: 'messages-search-input'
-          }),
+          H('div', { style: { position: 'relative', flex: 1, minWidth: 0 } },
+            H('input', {
+              type: 'text',
+              placeholder: 'Search...',
+              value: searchQuery,
+              onChange: (e) => setSearchQuery(e.target.value),
+              className: 'messages-search-input',
+              style: { paddingRight: searchQuery ? 32 : 12 }
+            }),
+            searchQuery && H('button', {
+              type: 'button',
+              onClick: () => setSearchQuery(''),
+              title: 'Clear search',
+              style: {
+                position: 'absolute',
+                right: 8,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                padding: 4,
+                cursor: 'pointer',
+                color: '#9ca3af',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }
+            },
+              H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+              )
+            )
+          ),
           hasUnread && H('button', {
             className: 'btn messages-mark-read-btn',
             onClick: onMarkAllRead,

@@ -89,7 +89,7 @@ header {
 /* Root elements: full viewport height, solid background, no overscroll bounce */
 html,
 body {
-  background: #fff !important;
+  background: #f8fafc !important;
   min-height: 100vh !important;
   min-height: 100dvh !important;
   height: 100vh !important;
@@ -135,7 +135,7 @@ main.container {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain !important;
   overscroll-behavior-y: contain !important;
-  background: #fff !important;
+  background: #f8fafc !important;
   /* Padding for status bar/Dynamic Island - background extends behind it, content below it */
   padding-top: env(safe-area-inset-top, 44px) !important;
   /* Remove scroll padding that might be pushing content down */

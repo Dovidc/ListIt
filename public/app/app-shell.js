@@ -1555,6 +1555,19 @@
                                   H('polyline', { points: '21 3 21 9 15 9' })
                                 )
                               ),
+                              // Search dropdown backdrop - catches clicks outside to close without triggering underlying elements
+                              searchDropdownOpen && H('div', {
+                                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setSearchDropdownOpen(false); },
+                                style: {
+                                  position: 'fixed',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  zIndex: 99,
+                                  background: 'transparent'
+                                }
+                              }),
                               // Search dropdown
                               searchDropdownOpen && H('div', {
                                 ref: searchDropdownRef,

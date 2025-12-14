@@ -7746,6 +7746,28 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
       const created = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(info.lastInsertRowid);
 
+      // Auto-attach the listing image as the buyer's first message when starting a conversation about a listing
+      if (listing_id && created) {
+        try {
+          const listingImg = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1').get(Number(listing_id));
+          const imgUrl = listingImg?.url || listingImg?.image_data;
+          if (imgUrl) {
+            // Insert a system-generated first message with the listing image
+            const msgInfo = await db.prepare(
+              'INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)'
+            ).run(created.id, req.user.id, '', nowIso());
+            const msgId = msgInfo.lastInsertRowid;
+            // Attach the listing image to this message
+            await db.prepare(
+              'INSERT INTO message_images (message_id, position, image_data, url) VALUES (?, ?, ?, ?)'
+            ).run(msgId, 0, null, canonicalAssetUrl(imgUrl));
+          }
+        } catch (imgErr) {
+          console.warn('[Conversation] Failed to attach listing image to first message:', imgErr?.message || imgErr);
+          // Non-blocking - continue even if image attachment fails
+        }
+      }
+
       const restored = await restoreConversationForUser(created, req.user.id);
 
       return res.json(restored);

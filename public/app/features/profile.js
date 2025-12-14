@@ -491,25 +491,6 @@
               position: 'relative'
             }
           },
-            H('button', {
-              className: 'close preset-close-btn',
-              onClick: onClose,
-              title: 'Close preset settings',
-              style: {
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '44px',
-                height: '44px',
-                fontSize: '32px',
-                lineHeight: '32px',
-                padding: 0,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }
-            }, '✕'),
             H('div', { style: { display: 'grid', gap: 8 } },
               H('h2', {
                 style: {
@@ -1504,25 +1485,6 @@
               position: 'relative'
             }
           },
-            H('button', {
-              className: 'close settings-close-btn',
-              onClick: onClose,
-              title: 'Close settings',
-              style: {
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '44px',
-                height: '44px',
-                fontSize: '32px',
-                lineHeight: '32px',
-                padding: 0,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }
-            }, '✕'),
             H('div', { style: { display: 'grid', gap: 12 } },
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
@@ -1705,25 +1667,6 @@
               position: 'relative'
             }
           },
-            H('button', {
-              className: 'close notification-close-btn',
-              onClick: onClose,
-              title: 'Close notification settings',
-              style: {
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '44px',
-                height: '44px',
-                fontSize: '32px',
-                lineHeight: '32px',
-                padding: 0,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }
-            }, '✕'),
             H('div', { style: { display: 'grid', gap: 16 } },
               H('label', { className: 'toggle-card', style: { padding: '12px 14px', width: '100%' } },
                 H('input', {
