@@ -472,20 +472,29 @@
         submitSearch(term);
       }, [setQuery, submitSearch, saveSearchToHistory]);
 
-      // Close dropdown when clicking outside
+      // Ref for search backdrop to attach non-passive touch listener
+      const searchBackdropRef = useRef(null);
+
+      // Close dropdown when clicking outside - use non-passive listener to allow preventDefault
       useEffect(() => {
-        const handleClickOutside = (e) => {
-          if (searchDropdownOpen &&
-              searchInputRef.current && !searchInputRef.current.contains(e.target) &&
-              searchDropdownRef.current && !searchDropdownRef.current.contains(e.target)) {
-            setSearchDropdownOpen(false);
-          }
+        if (!searchDropdownOpen) return;
+
+        const backdrop = searchBackdropRef.current;
+        if (!backdrop) return;
+
+        const handleBackdropTouch = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setSearchDropdownOpen(false);
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('touchstart', handleClickOutside);
+
+        // Add non-passive touch listener to allow preventDefault
+        backdrop.addEventListener('touchstart', handleBackdropTouch, { passive: false });
+        backdrop.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+
         return () => {
-          document.removeEventListener('mousedown', handleClickOutside);
-          document.removeEventListener('touchstart', handleClickOutside);
+          backdrop.removeEventListener('touchstart', handleBackdropTouch);
+          backdrop.removeEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); });
         };
       }, [searchDropdownOpen]);
 
@@ -1351,6 +1360,25 @@
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
           H(React.Fragment, null,
+            // Search dropdown backdrop - rendered at top level to ensure it covers everything
+            searchDropdownOpen && H('div', {
+              ref: searchBackdropRef,
+              onMouseDown: (e) => { e.preventDefault(); e.stopPropagation(); setSearchDropdownOpen(false); },
+              onClick: (e) => { e.preventDefault(); e.stopPropagation(); },
+              style: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9999,
+                background: 'rgba(0,0,0,0.01)',
+                touchAction: 'none',
+                WebkitTapHighlightColor: 'transparent',
+                WebkitUserSelect: 'none',
+                userSelect: 'none'
+              }
+            }),
             H(Header, { user, setUser, onNav: handleNavigate, active: tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
             banner && H('div', { className: 'global-banner', role: 'status' },
               H('span', { className: 'banner-text' }, banner.message),
@@ -1458,116 +1486,75 @@
                           },
                             H('div', {
                               style: {
-                                position: 'relative',
+                                display: 'flex',
+                                gap: 8,
                                 gridColumn: isMobile ? '1 / -1' : 'auto',
-                                width: '100%'
+                                width: '100%',
+                                alignItems: 'center'
                               }
                             },
-                              H('input', {
-                                ref: searchInputRef,
-                                placeholder: 'Search...',
-                                enterKeyHint: 'search',
-                                value: query,
-                                onChange: e => setQuery(e.target.value),
-                                onFocus: () => setSearchDropdownOpen(true),
-                                onKeyDown: e => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.target.blur();
-                                    handleSearchSubmit();
-                                  } else if (e.key === 'Escape') {
-                                    setSearchDropdownOpen(false);
-                                    e.target.blur();
+                              H('div', {
+                                style: {
+                                  position: 'relative',
+                                  flex: 1,
+                                  minWidth: 0
+                                }
+                              },
+                                H('input', {
+                                  ref: searchInputRef,
+                                  placeholder: 'Search...',
+                                  enterKeyHint: 'search',
+                                  value: query,
+                                  onChange: e => setQuery(e.target.value),
+                                  onFocus: () => setSearchDropdownOpen(true),
+                                  onKeyDown: e => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.target.blur();
+                                      handleSearchSubmit();
+                                    } else if (e.key === 'Escape') {
+                                      setSearchDropdownOpen(false);
+                                      e.target.blur();
+                                    }
+                                  },
+                                  style: {
+                                    width: '100%',
+                                    paddingRight: query && query.trim() ? 68 : 36
+                                  }
+                                }),
+                                // Clear button - only show when there's text
+                                query && query.trim() && H('button', {
+                                  type: 'button',
+                                  onClick: () => { setQuery(''); handleSearchSubmit(''); },
+                                  title: 'Clear search',
+                                  style: {
+                                    position: 'absolute', right: 32, top: '50%', transform: 'translateY(-50%)',
+                                    background: 'none', border: 'none', padding: 6, cursor: 'pointer',
+                                    color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
                                   }
                                 },
-                                style: {
-                                  width: '100%',
-                                  paddingRight: query && query.trim() ? 100 : 68
-                                }
-                              }),
-                              // Clear button - only show when there's text
-                              query && query.trim() && H('button', {
-                                type: 'button',
-                                onClick: () => { setQuery(''); handleSearchSubmit(''); },
-                                title: 'Clear search',
-                                style: {
-                                  position: 'absolute', right: 64, top: '50%', transform: 'translateY(-50%)',
-                                  background: 'none', border: 'none', padding: 6, cursor: 'pointer',
-                                  color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }
-                              },
-                                H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
-                                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
-                                )
-                              ),
-                              // Search button
-                              H('button', {
-                                type: 'button',
-                                onClick: () => handleSearchSubmit(),
-                                title: 'Search',
-                                style: {
-                                  position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)',
-                                  background: 'none', border: 'none', padding: 6, cursor: 'pointer',
-                                  color: query && query.trim() ? '#2563eb' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  transition: 'color 0.15s ease'
-                                }
-                              },
-                                H('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                                  H('circle', { cx: 11, cy: 11, r: 8 }),
-                                  H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
-                                )
-                              ),
-                              // Refresh button with 5-min cooldown - grey when cooling down, green when ready
-                              H('button', {
-                                type: 'button',
-                                onClick: handleLocationRefresh,
-                                disabled: !canRefreshLocation,
-                                title: canRefreshLocation ? 'Refresh listings' : `Wait ${Math.ceil(cooldownRemaining / 60000)}m`,
-                                style: {
-                                  position: 'absolute',
-                                  right: 6,
-                                  top: '50%',
-                                  transform: 'translateY(-50%)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: 4,
-                                  width: 24,
-                                  height: 24,
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: canRefreshLocation ? 'pointer' : 'not-allowed',
-                                  zIndex: 1
-                                }
-                              },
-                                H('svg', {
-                                  width: 14,
-                                  height: 14,
-                                  viewBox: '0 0 24 24',
-                                  fill: 'none',
-                                  stroke: canRefreshLocation ? 'rgb(34, 197, 94)' : 'rgb(156, 163, 175)',
-                                  strokeWidth: 2.5,
-                                  strokeLinecap: 'round',
-                                  strokeLinejoin: 'round'
+                                  H('svg', { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                                    H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                                    H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                                  )
+                                ),
+                                // Search button
+                                H('button', {
+                                  type: 'button',
+                                  onClick: () => handleSearchSubmit(),
+                                  title: 'Search',
+                                  style: {
+                                    position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                                    background: 'none', border: 'none', padding: 6, cursor: 'pointer',
+                                    color: query && query.trim() ? '#2563eb' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'color 0.15s ease'
+                                  }
                                 },
-                                  H('path', { d: 'M21 12a9 9 0 1 1-9-9' }),
-                                  H('polyline', { points: '21 3 21 9 15 9' })
-                                )
-                              ),
-                              // Search dropdown backdrop - catches clicks outside to close without triggering underlying elements
-                              searchDropdownOpen && H('div', {
-                                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setSearchDropdownOpen(false); },
-                                style: {
-                                  position: 'fixed',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  zIndex: 99,
-                                  background: 'transparent'
-                                }
-                              }),
+                                  H('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                                    H('circle', { cx: 11, cy: 11, r: 8 }),
+                                    H('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })
+                                  )
+                                ),
                               // Search dropdown
                               searchDropdownOpen && H('div', {
                                 ref: searchDropdownRef,
@@ -1581,7 +1568,7 @@
                                   background: 'var(--card-bg, #fff)',
                                   borderRadius: 12,
                                   boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                                  zIndex: 100,
+                                  zIndex: 10000,
                                   overflow: 'hidden',
                                   border: '1px solid var(--border-color, #e5e7eb)'
                                 }
@@ -1641,6 +1628,41 @@
                                       }
                                     }, cat))
                                   )
+                                )
+                              )
+                              ),
+                              // Refresh button with 5-min cooldown - outside search bar
+                              H('button', {
+                                type: 'button',
+                                onClick: handleLocationRefresh,
+                                disabled: !canRefreshLocation,
+                                title: canRefreshLocation ? 'Refresh listings' : `Wait ${Math.ceil(cooldownRemaining / 60000)}m`,
+                                style: {
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: 44,
+                                  height: 44,
+                                  padding: 0,
+                                  borderRadius: 16,
+                                  border: '1px solid var(--border-color, #ddd)',
+                                  background: 'var(--card-bg, #fff)',
+                                  cursor: canRefreshLocation ? 'pointer' : 'not-allowed',
+                                  flexShrink: 0
+                                }
+                              },
+                                H('svg', {
+                                  width: 16,
+                                  height: 16,
+                                  viewBox: '0 0 24 24',
+                                  fill: 'none',
+                                  stroke: canRefreshLocation ? '#2563eb' : 'rgb(156, 163, 175)',
+                                  strokeWidth: 2.5,
+                                  strokeLinecap: 'round',
+                                  strokeLinejoin: 'round'
+                                },
+                                  H('path', { d: 'M21 12a9 9 0 1 1-9-9' }),
+                                  H('polyline', { points: '21 3 21 9 15 9' })
                                 )
                               )
                             ),

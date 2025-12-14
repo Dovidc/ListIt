@@ -1282,8 +1282,8 @@
 /* Return to top toast */
 .return-to-top-toast {
   position: fixed;
-  top: 80px;
-  left: 12px;
+  top: 60%;
+  right: 12px;
   z-index: 1100;
   display: flex;
   align-items: center;
