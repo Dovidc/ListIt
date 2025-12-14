@@ -55,5 +55,9 @@
 	<string>UIStatusBarStyleDarkContent</string>
 	<key>UIStatusBarHidden</key>
 	<false/>
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>trovelr.com</string>
+	</array>
 </dict>
 </plist>
