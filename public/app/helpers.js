@@ -353,24 +353,78 @@
     let coordsFetchedAt = null;
     const COORDS_COOLDOWN_MS = 4 * 60 * 1000; // 4 minutes - prevents triangulation of item positions
 
-    function getUserCoordsOnce() {
-      if (coordsPromise) return coordsPromise;
+    // Check if running in Capacitor native app
+    function isCapacitorNative() {
+      return typeof window !== 'undefined' &&
+             window.Capacitor &&
+             window.Capacitor.isNativePlatform &&
+             window.Capacitor.isNativePlatform();
+    }
+
+    // Get coordinates using Capacitor Geolocation plugin (for native apps)
+    async function getCapacitorCoords() {
+      try {
+        const { Geolocation } = window.Capacitor.Plugins;
+        if (!Geolocation) return null;
+
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000
+        });
+
+        return {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        };
+      } catch (err) {
+        console.warn('[Geolocation] Capacitor geolocation failed:', err);
+        return null;
+      }
+    }
+
+    // Get coordinates using browser geolocation API (for web)
+    function getBrowserCoords() {
       if (!('geolocation' in navigator)) return Promise.resolve(null);
-      coordsPromise = new Promise((resolve) => {
+      return new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
           (p) => {
-            coordsFetchedAt = Date.now();
             resolve({ lat: p.coords.latitude, lon: p.coords.longitude });
           },
           () => {
-            // Reset promise on failure so it can retry next time
-            coordsPromise = null;
-            coordsFetchedAt = null;
             resolve(null);
           },
           { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
         );
       });
+    }
+
+    function getUserCoordsOnce() {
+      if (coordsPromise) return coordsPromise;
+
+      coordsPromise = (async () => {
+        try {
+          // Use Capacitor plugin on native, browser API on web
+          const coords = isCapacitorNative()
+            ? await getCapacitorCoords()
+            : await getBrowserCoords();
+
+          if (coords) {
+            coordsFetchedAt = Date.now();
+            return coords;
+          }
+
+          // Reset on failure so it can retry next time
+          coordsPromise = null;
+          coordsFetchedAt = null;
+          return null;
+        } catch (err) {
+          coordsPromise = null;
+          coordsFetchedAt = null;
+          return null;
+        }
+      })();
+
       return coordsPromise;
     }
 
@@ -468,6 +522,7 @@
     return {
       H,
       isMobileDevice,
+      isCapacitorNative,
       seenKey,
       loadSeen,
       saveSeen,

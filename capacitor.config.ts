@@ -5,10 +5,6 @@ const config: CapacitorConfig = {
   appName: 'ListIt',
   webDir: 'public',
   bundledWebRuntime: false,
-  server: {
-    url: 'https://trovelr.com',
-    cleartext: false,
-  },
   ios: {
     contentInset: 'never',
     scrollEnabled: true,

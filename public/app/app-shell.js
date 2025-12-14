@@ -1651,11 +1651,26 @@
                               options: cityOptions,
                               onUseMyLocation: async () => {
                                 try {
-                                  if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
-                                  const { coords } = await new Promise((res, rej) =>
-                                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
-                                  );
-                                  const r = await api.reverseGeocode(coords.latitude, coords.longitude);
+                                  let lat, lon;
+                                  // Use Capacitor Geolocation on native, browser API on web
+                                  if (helpers?.isCapacitorNative?.()) {
+                                    const { Geolocation } = window.Capacitor.Plugins;
+                                    const position = await Geolocation.getCurrentPosition({
+                                      enableHighAccuracy: true,
+                                      timeout: 8000,
+                                      maximumAge: 60000
+                                    });
+                                    lat = position.coords.latitude;
+                                    lon = position.coords.longitude;
+                                  } else {
+                                    if (!('geolocation' in navigator)) { alert('Geolocation not supported'); return; }
+                                    const { coords } = await new Promise((res, rej) =>
+                                      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
+                                    );
+                                    lat = coords.latitude;
+                                    lon = coords.longitude;
+                                  }
+                                  const r = await api.reverseGeocode(lat, lon);
                                   const city = r?.city || (r?.display || '').split(',')[0];
                                   if (city) setLocationQuery(city);
                                 } catch { alert('Could not determine your location'); }

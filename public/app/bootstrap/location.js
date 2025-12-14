@@ -16,16 +16,39 @@
       return display || safeFallback;
     }
 
+    // Check if running in Capacitor native app
+    function isCapacitorNative() {
+      return typeof window !== 'undefined' &&
+             window.Capacitor &&
+             window.Capacitor.isNativePlatform &&
+             window.Capacitor.isNativePlatform();
+    }
+
     async function fetchCoordsAndReverse({ silent = false } = {}) {
-      if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
-      const { coords } = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
-      );
-      const r = await api.reverseGeocode(coords.latitude, coords.longitude, { silent });
-      const fallback = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
+      let lat, lon;
+      // Use Capacitor Geolocation on native, browser API on web
+      if (isCapacitorNative()) {
+        const { Geolocation } = window.Capacitor.Plugins;
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000
+        });
+        lat = position.coords.latitude;
+        lon = position.coords.longitude;
+      } else {
+        if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
+        const { coords } = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
+        );
+        lat = coords.latitude;
+        lon = coords.longitude;
+      }
+      const r = await api.reverseGeocode(lat, lon, { silent });
+      const fallback = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
       return {
-        lat: r?.lat ?? coords.latitude,
-        lon: r?.lon ?? coords.longitude,
+        lat: r?.lat ?? lat,
+        lon: r?.lon ?? lon,
         display: formatLocationDisplay(r, fallback)
       };
     }

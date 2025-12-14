@@ -20,6 +20,7 @@
 
     const {
       isMobileDevice,
+      isCapacitorNative,
       fetchCoordsAndReverse
     } = helpers;
     if (typeof isMobileDevice !== 'function') {
@@ -794,16 +795,28 @@
 
       async function useMyLocation() {
         setGeoErr('');
-        if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); return; }
         setGeoBusy(true);
         try {
-          const coords = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(
-              p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-              err => rej(err),
-              { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-            )
-          );
+          let coords;
+          // Use Capacitor Geolocation on native, browser API on web
+          if (typeof isCapacitorNative === 'function' && isCapacitorNative()) {
+            const { Geolocation } = window.Capacitor.Plugins;
+            const position = await Geolocation.getCurrentPosition({
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 60000
+            });
+            coords = { lat: position.coords.latitude, lon: position.coords.longitude };
+          } else {
+            if (!('geolocation' in navigator)) { setGeoErr('Geolocation not supported'); setGeoBusy(false); return; }
+            coords = await new Promise((res, rej) =>
+              navigator.geolocation.getCurrentPosition(
+                p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+                err => rej(err),
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+              )
+            );
+          }
           const r = await api.reverseGeocode(coords.lat, coords.lon);
           const fallback = `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`;
           setLocation(formatLocationDisplay(r, fallback));
