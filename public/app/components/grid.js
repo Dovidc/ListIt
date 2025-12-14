@@ -368,7 +368,7 @@
             ? H('div', { className: 'spinner' })
             : (!hasMore && H('span', {
                 style: {
-                  color: '#888',
+                  color: '#6b7280',
                   fontSize: 14,
                   fontWeight: 500
                 }

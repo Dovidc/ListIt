@@ -1,4 +1,7 @@
 (() => {
+  // Track if delete confirmation has been shown this session
+  let deleteWarningShown = false;
+
   function createMessagesFeature({ React, ReactDOM, api, uploads, helpers, components }) {
     if (!React || typeof React.useState !== 'function') {
       throw new Error('Messages feature requires React.');
@@ -1204,8 +1207,12 @@
 
       async function deleteConvo(id) {
         if (!id) return;
-        const ok = confirm('Delete this conversation from your inbox? The other participant will keep the messages.');
-        if (!ok) return;
+        // Only show confirmation on first delete per session
+        if (!deleteWarningShown) {
+          const ok = confirm('Delete this conversation from your inbox? The other participant will keep the messages.');
+          if (!ok) return;
+          deleteWarningShown = true;
+        }
         try {
           await api.deleteConversation(id);
           if (activeId === id) setActiveId(null);

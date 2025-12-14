@@ -780,17 +780,18 @@
           sentinelRef: sentinelRef
         }),
 
-        // "No more results" message shown below grid
-        !isLoadingMore && !hasMore && hasItems && H('div', {
+        // "No more listings" message shown below grid (show when not loading, no more pages, and items exist)
+        !isLoadingMore && !busy && !hasMore && hasItems && H('div', {
           style: {
             display: 'flex',
             justifyContent: 'center',
             padding: '16px 0',
-            minHeight: 40
+            minHeight: 40,
+            color: '#6b7280',
+            fontSize: 14,
+            fontWeight: 500
           }
-        },
-          H('span', { className: 'muted' }, 'No more results')
-        ),
+        }, 'No more listings'),
 
         (!hasItems && !busy && !error && debouncedSearch) && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No nearby listings match your search.'),
 

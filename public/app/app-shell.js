@@ -481,29 +481,33 @@
         submitSearch(term);
       }, [setQuery, submitSearch, saveSearchToHistory]);
 
-      // Ref for search backdrop to attach non-passive touch listener
-      const searchBackdropRef = useRef(null);
-
-      // Close dropdown when clicking outside - use non-passive listener to allow preventDefault
+      // Close dropdown when clicking outside
       useEffect(() => {
         if (!searchDropdownOpen) return;
 
-        const backdrop = searchBackdropRef.current;
-        if (!backdrop) return;
-
-        const handleBackdropTouch = (e) => {
-          e.preventDefault();
+        const handleClickOutside = (e) => {
+          const dropdown = searchDropdownRef.current;
+          const searchInput = searchInputRef.current;
+          // Don't close if clicking inside dropdown or search input
+          if (dropdown && dropdown.contains(e.target)) return;
+          if (searchInput && searchInput.contains(e.target)) return;
+          // Stop the event from reaching listings when closing dropdown
           e.stopPropagation();
+          e.preventDefault();
           setSearchDropdownOpen(false);
         };
 
-        // Add non-passive touch listener to allow preventDefault
-        backdrop.addEventListener('touchstart', handleBackdropTouch, { passive: false });
-        backdrop.addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+        // Use a small delay to avoid the click that opened the dropdown from immediately closing it
+        const timeoutId = setTimeout(() => {
+          // Use capture phase to intercept before the event reaches other handlers
+          document.addEventListener('click', handleClickOutside, true);
+          document.addEventListener('touchend', handleClickOutside, true);
+        }, 10);
 
         return () => {
-          backdrop.removeEventListener('touchstart', handleBackdropTouch);
-          backdrop.removeEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); });
+          clearTimeout(timeoutId);
+          document.removeEventListener('click', handleClickOutside, true);
+          document.removeEventListener('touchend', handleClickOutside, true);
         };
       }, [searchDropdownOpen]);
 
@@ -1373,25 +1377,6 @@
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
           H(React.Fragment, null,
-            // Search dropdown backdrop - rendered at top level to ensure it covers everything
-            searchDropdownOpen && H('div', {
-              ref: searchBackdropRef,
-              onMouseDown: (e) => { e.preventDefault(); e.stopPropagation(); setSearchDropdownOpen(false); },
-              onClick: (e) => { e.preventDefault(); e.stopPropagation(); },
-              style: {
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 9999,
-                background: 'rgba(0,0,0,0.01)',
-                touchAction: 'none',
-                WebkitTapHighlightColor: 'transparent',
-                WebkitUserSelect: 'none',
-                userSelect: 'none'
-              }
-            }),
             H(Header, { user, setUser, onNav: handleNavigate, active: tab, unreadCount, hasAdminUnread, onAdminDeleteAll: handleAdminDeleteAll, isMobile, onAuthClick: handleAuthClick }),
             banner && H('div', { className: 'global-banner', role: 'status' },
               H('span', { className: 'banner-text' }, banner.message),
@@ -1572,6 +1557,10 @@
                               searchDropdownOpen && H('div', {
                                 ref: searchDropdownRef,
                                 className: 'search-dropdown',
+                                onMouseDown: (e) => e.stopPropagation(),
+                                onClick: (e) => e.stopPropagation(),
+                                onTouchStart: (e) => e.stopPropagation(),
+                                onTouchEnd: (e) => e.stopPropagation(),
                                 style: {
                                   position: 'absolute',
                                   top: '100%',
