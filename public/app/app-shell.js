@@ -379,40 +379,18 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
-      // Anti-triangulation: 5-minute cooldown for location/sort refresh
-      const LOCATION_COOLDOWN_MS = 5 * 60 * 1000;
-      const LOCATION_REFRESH_KEY = 'listit_browse_last_refresh';
-      const [lastLocationRefresh, setLastLocationRefresh] = useState(() => {
-        try { return Number(localStorage.getItem(LOCATION_REFRESH_KEY)) || 0; } catch { return 0; }
-      });
-      const [cooldownRemaining, setCooldownRemaining] = useState(0);
-
-      // Cooldown timer effect
+      // Automatic geolocation refresh every 5 minutes
+      const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
       useEffect(() => {
-        const updateCooldown = () => {
-          const elapsed = Date.now() - lastLocationRefresh;
-          setCooldownRemaining(Math.max(0, LOCATION_COOLDOWN_MS - elapsed));
-        };
-        updateCooldown();
-        const interval = setInterval(updateCooldown, 1000);
+        const interval = setInterval(() => {
+          // Clear GPS cache and refresh listings automatically
+          if (typeof helpers?.clearCoordsCache === 'function') {
+            helpers.clearCoordsCache(true);
+          }
+          refreshListings({ preserveExisting: true });
+        }, AUTO_REFRESH_INTERVAL_MS);
         return () => clearInterval(interval);
-      }, [lastLocationRefresh]);
-
-      const canRefreshLocation = cooldownRemaining === 0;
-      const cooldownProgress = Math.min(1, 1 - (cooldownRemaining / LOCATION_COOLDOWN_MS));
-
-      // Handle location refresh button click
-      const handleLocationRefresh = useCallback(() => {
-        if (!canRefreshLocation) return;
-        const now = Date.now();
-        setLastLocationRefresh(now);
-        try { localStorage.setItem(LOCATION_REFRESH_KEY, String(now)); } catch {}
-        // Force clear coords cache and refresh listings
-        if (typeof helpers?.clearCoordsCache === 'function') {
-          helpers.clearCoordsCache(true);
-        }
-        refreshListings({ preserveExisting: false });
-      }, [canRefreshLocation, refreshListings]);
+      }, [refreshListings]);
 
       // Search dropdown state
       const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
@@ -1630,40 +1608,6 @@
                                   )
                                 )
                               )
-                              ),
-                              // Refresh button with 5-min cooldown - outside search bar
-                              H('button', {
-                                type: 'button',
-                                onClick: handleLocationRefresh,
-                                disabled: !canRefreshLocation,
-                                title: canRefreshLocation ? 'Refresh listings' : `Wait ${Math.ceil(cooldownRemaining / 60000)}m`,
-                                style: {
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: 44,
-                                  height: 44,
-                                  padding: 0,
-                                  borderRadius: 16,
-                                  border: '1px solid var(--border-color, #ddd)',
-                                  background: 'var(--card-bg, #fff)',
-                                  cursor: canRefreshLocation ? 'pointer' : 'not-allowed',
-                                  flexShrink: 0
-                                }
-                              },
-                                H('svg', {
-                                  width: 16,
-                                  height: 16,
-                                  viewBox: '0 0 24 24',
-                                  fill: 'none',
-                                  stroke: canRefreshLocation ? '#2563eb' : 'rgb(156, 163, 175)',
-                                  strokeWidth: 2.5,
-                                  strokeLinecap: 'round',
-                                  strokeLinejoin: 'round'
-                                },
-                                  H('path', { d: 'M21 12a9 9 0 1 1-9-9' }),
-                                  H('polyline', { points: '21 3 21 9 15 9' })
-                                )
                               )
                             ),
                             H(CityAutocomplete, {
