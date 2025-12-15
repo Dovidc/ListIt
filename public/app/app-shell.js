@@ -1459,7 +1459,8 @@
                   enqueueListingJob,
                   reloadMine: reloadMineOnly,
                   reloadAll: refreshListings,
-                  initialFiles: initialListingFiles
+                  initialFiles: initialListingFiles,
+                  onModerationError: () => setShowModerationModal(true)
                 })
                 : (
                   viewingSeller
@@ -1867,7 +1868,8 @@
               autoInquiryEnabled,
               backgroundQueueEnabled,
               enqueueListingJob,
-              initialFiles: initialMassListFiles
+              initialFiles: initialMassListFiles,
+              onModerationError: () => setShowModerationModal(true)
             }),
 
             H(AuthModal, {

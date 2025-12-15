@@ -861,7 +861,7 @@
     }
 
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -877,6 +877,7 @@
       });
       const [aiBusy, setAiBusy] = useState(false);
       const [aiErr, setAiErr] = useState('');
+      const [aiCooldown, setAiCooldown] = useState(0); // seconds remaining
 
       // auto-list guard
       const autoRunning = useRef(false);
@@ -939,8 +940,16 @@
         }
       }, [draft?.id, autoListEnabled, autoInquiryEnabled]);
 
+      // Cooldown timer effect
+      useEffect(() => {
+        if (aiCooldown <= 0) return;
+        const timer = setTimeout(() => setAiCooldown(c => c - 1), 1000);
+        return () => clearTimeout(timer);
+      }, [aiCooldown]);
+
       // UPDATED: AI analysis that works with both new files and S3 URLs
       async function runAI() {
+        if (aiCooldown > 0) return; // Prevent running during cooldown
         setAiErr('');
         setAiBusy(true);
         try {
@@ -987,6 +996,7 @@
           setAiErr(e.message || 'AI failed');
         } finally {
           setAiBusy(false);
+          setAiCooldown(60); // 1 minute cooldown
         }
       }
 
@@ -1139,14 +1149,21 @@
 
           } catch (err) {
             console.error('[ListingForm AutoList] Error:', err);
-            if (mountedRef.current) {
-              const msg = err?.message || String(err);
-              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-                setShowModerationModal(true);
-              } else if (typeof window !== 'undefined' && !isMobileDevice()) {
-                // Only show alert on desktop - can cause crashes on mobile
-                alert(`Auto-list failed: ${msg}`);
+            const msg = err?.message || String(err);
+            if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+              // Clear files to prevent re-triggering the auto-list effect
+              if (mountedRef.current) {
+                setFiles([]);
               }
+              // Use global modal callback if available, otherwise local state
+              if (typeof onModerationError === 'function') {
+                onModerationError();
+              } else if (mountedRef.current) {
+                setShowModerationModal(true);
+              }
+            } else if (mountedRef.current && typeof window !== 'undefined' && !isMobileDevice()) {
+              // Only show alert on desktop - can cause crashes on mobile
+              alert(`Auto-list failed: ${msg}`);
             }
           } finally {
             autoRunning.current = false;
@@ -1236,21 +1253,25 @@
           };
 
           if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
-            enqueueListingJob(async () => {
-              try {
-                await runCreate();
-                onSaved?.();
-              } catch (err) {
-                console.error('Create/save failed:', err);
-                const msg = err?.message || String(err);
-                if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-                  setShowModerationModal(true);
+            // Don't close immediately - wait for result to handle moderation errors
+            try {
+              await runCreate();
+              onSaved?.();
+              // Only notify queue for UI feedback (toast), actual creation is done
+              try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+            } catch (err) {
+              console.error('Create/save failed:', err);
+              const msg = err?.message || String(err);
+              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                if (typeof onModerationError === 'function') {
+                  onModerationError();
                 } else {
-                  alert(`Create/save failed: ${msg}`);
+                  setShowModerationModal(true);
                 }
+              } else {
+                alert(`Create/save failed: ${msg}`);
               }
-            });
-            onCancel?.();
+            }
             return;
           }
 
@@ -1260,7 +1281,11 @@
           console.error('Create/save failed:', err);
           const msg = err?.message || String(err);
           if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-            setShowModerationModal(true);
+            if (typeof onModerationError === 'function') {
+              onModerationError();
+            } else {
+              setShowModerationModal(true);
+            }
           } else {
             alert(`Create/save failed: ${msg}`);
           }
@@ -1306,8 +1331,9 @@
           )
         ),
 
-        H('div', { className: 'row', style: { gap: 8 } },
-          H('button', { type: 'button', className: `btn ${aiBusy ? '' : 'primary'}`, disabled: aiBusy, onClick: runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
+        H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
+          aiCooldown > 0 && H('span', { style: { color: '#6b7280', fontSize: 14, minWidth: 32 } }, `${aiCooldown}s`),
+          H('button', { type: 'button', className: `btn ${(aiBusy || aiCooldown > 0) ? '' : 'primary'}`, disabled: aiBusy || aiCooldown > 0, onClick: runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
           aiErr && H('span', { className: 'muted', style: { color: '#b91c1c' } }, aiErr),
           H('span', { className: 'muted' }, 'Only images are required. AI can suggest title/tags/price.')
         ),
@@ -1427,7 +1453,7 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [] }) {
+    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1473,6 +1499,7 @@
         const total = filesSnapshot.length;
         let failedCount = 0;
         let doneCount = 0;
+        let moderationFlagged = false;
 
         const updateProgress = trackProgress
           ? (nextDone, nextFailed) => setProgress({ done: nextDone, total, failed: nextFailed })
@@ -1587,6 +1614,10 @@
             encounteredError = true;
             failedCount += 1;
             console.error('MassList failed:', err);
+            const msg = err?.message || String(err);
+            if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+              moderationFlagged = true;
+            }
           } finally {
             doneCount += 1;
             updateProgress(doneCount, failedCount);
@@ -1601,7 +1632,7 @@
         // so we don't need reloadAll which would replace the listings array
         try { await reloadMine(); } catch { }
 
-        return { total, created: total - failedCount, failed: failedCount };
+        return { total, created: total - failedCount, failed: failedCount, moderationFlagged };
       };
 
       async function runMassList() {
@@ -1613,37 +1644,61 @@
 
         const runJob = async (trackProgress) => {
           const stats = await executeMassList({ filesSnapshot, trackProgress });
+          // Check if any files were flagged by moderation
+          if (stats.moderationFlagged) {
+            setFiles([]); // Clear files to prevent re-trigger
+            if (typeof onModerationError === 'function') {
+              onModerationError();
+            } else {
+              setShowModerationModal(true);
+            }
+            return { shouldClose: false };
+          }
           onDone && onDone(stats);
+          return { shouldClose: true };
         };
 
         if (backgroundQueueEnabled && typeof enqueueListingJob === 'function') {
-          enqueueListingJob(async () => {
-            try {
-              await runJob(false);
-            } catch (err) {
-              console.error('MassList failed:', err);
-              const msg = err?.message || String(err);
-              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-                setShowModerationModal(true);
+          // Don't close immediately - wait for job to complete to catch moderation errors
+          setBusy(true);
+          setProgress({ done: 0, total: filesSnapshot.length, failed: 0 });
+          try {
+            const result = await runJob(true);
+            if (result?.shouldClose) onClose?.();
+          } catch (err) {
+            console.error('MassList failed:', err);
+            const msg = err?.message || String(err);
+            if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+              setFiles([]); // Clear files to prevent re-trigger
+              if (typeof onModerationError === 'function') {
+                onModerationError();
               } else {
-                alert(`MassList failed: ${msg}`);
+                setShowModerationModal(true);
               }
+            } else {
+              alert(`MassList failed: ${msg}`);
             }
-          });
-          onClose?.();
+          } finally {
+            setBusy(false);
+          }
           return;
         }
 
         setBusy(true);
         setProgress({ done: 0, total: filesSnapshot.length, failed: 0 });
         try {
-          await runJob(true);
-          onClose?.();
+          const result = await runJob(true);
+          if (result?.shouldClose) onClose?.();
         } catch (err) {
           console.error('MassList failed:', err);
           const msg = err?.message || String(err);
           if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-            setShowModerationModal(true);
+            setFiles([]); // Clear files to prevent re-trigger
+            if (typeof onModerationError === 'function') {
+              onModerationError();
+            } else {
+              setShowModerationModal(true);
+            }
           } else {
             alert(`MassList failed: ${msg}`);
           }

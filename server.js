@@ -2632,6 +2632,15 @@ const uploadLimiter = mkLimiter({ windowMs: 10 * 60 * 1000, max: 120 }, 'upload'
 
 const geocodeLimiter = mkLimiter({ windowMs: 60 * 1000, max: 30 }, 'geocode');
 
+// Stricter rate limiter for AI analysis (expensive API calls) - 10 per hour
+const aiAnalyzeLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 10 }, 'ai-analyze');
+
+// Rate limiter for karma awards - 30 per hour (prevents abuse)
+const karmaLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 30 }, 'karma');
+
+// Rate limiter for profile updates - 20 per hour
+const profileLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 20 }, 'profile');
+
 
 
 const REPORT_REASON_CODES = new Set([
@@ -3734,7 +3743,7 @@ For questions about this Privacy Policy or to exercise your privacy rights:
 Email: support@trovelr.com`;
 }
 
-app.put('/api/me/profile-about', auth, writeLimiter, async (req, res) => {
+app.put('/api/me/profile-about', auth, profileLimiter, async (req, res) => {
 
   try {
 
@@ -3759,7 +3768,7 @@ app.put('/api/me/profile-about', auth, writeLimiter, async (req, res) => {
 
 });
 
-app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
+app.put('/api/me/customization', auth, profileLimiter, async (req, res) => {
   try {
     // Check if user is allowed to customize (premium or payments disabled)
     const paymentsDisabled = await arePaymentsDisabled();
@@ -3836,7 +3845,7 @@ app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
   }
 });
 
-app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
+app.put('/api/me/profile-picture', auth, profileLimiter, async (req, res) => {
   try {
     const url = String(req.body?.profile_picture_url || '').trim();
 
@@ -3920,7 +3929,7 @@ app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) =>
   }
 });
 
-app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) => {
+app.put('/api/me/profile-customization', auth, profileLimiter, async (req, res) => {
 
   try {
 
@@ -4043,7 +4052,7 @@ app.get('/api/listings/:id/potential-buyers', auth, async (req, res) => {
 });
 
 // Award karma for a transaction
-app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
+app.post('/api/listings/:id/award-karma', auth, karmaLimiter, async (req, res) => {
   try {
     const listingId = Number(req.params.id);
     const buyerId = Number(req.body.buyer_id);
@@ -7352,6 +7361,22 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
     }
 
+    // Moderate draft images before accepting them
+    try {
+      const modResult = await moderateImageUrl(sanitized.url);
+      if (modResult.flagged) {
+        await recordFlaggedAttempt({
+          userId: req.user?.id,
+          title: '[Draft Upload]',
+          flagged: modResult.details
+        });
+        return res.status(400).json({ error: 'moderation_flagged', flagged: modResult.details });
+      }
+    } catch (err) {
+      console.error('Draft image moderation failed:', err);
+      // Continue on moderation service errors - don't block uploads
+    }
+
     let token;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -7490,7 +7515,7 @@ app.delete('/api/listings/:listingId/images/:imageId', auth, writeLimiter, async
 
 /* ------------------------------------------------------------------ */
 
-app.post('/api/ai/analyze', auth, writeLimiter, async (req, res) => {
+app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
 
   try {
 

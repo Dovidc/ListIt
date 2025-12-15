@@ -580,7 +580,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [] }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -607,7 +607,8 @@
           reloadAll,
           showTags,
           setShowTags,
-          initialFiles
+          initialFiles,
+          onModerationError
         })
         : H(ListingForm, {
           draft,
@@ -620,7 +621,8 @@
           enqueueListingJob,
           reloadMine,
           reloadAll,
-          initialFiles
+          initialFiles,
+          onModerationError
         });
 
       return H('section', {
