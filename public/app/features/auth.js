@@ -383,9 +383,22 @@
       const disableSubmit = loading || (mode === 'verify' && code.trim().length !== 6);
       const canResend = !!(pendingEmail && pendingPassword);
 
+      function resetMode() {
+        setError('');
+        setInfo('');
+        setLoading(false);
+        setResending(false);
+        setPassword('');
+        setCode('');
+        setResetToken('');
+        setPendingEmail('');
+        setPendingPassword('');
+        setUsername('');
+      }
+
       const registerFields = [
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Username'),
+        H('div', { className: 'form-group', key: 'username' },
+          H('label', null, 'Username'),
           H('input', {
             type: 'text',
             value: username,
@@ -396,8 +409,8 @@
             autoComplete: 'username'
           })
         ),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color: '#111' } }, 'Email'),
+        H('div', { className: 'form-group', key: 'email' },
+          H('label', null, 'Email'),
           H('input', {
             type: 'email',
             value: email,
@@ -408,13 +421,13 @@
             autoComplete: 'email'
           })
         ),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
+        H('div', { className: 'form-group', key: 'password' },
+          H('label', null, 'Password'),
           H('input', {
             type: 'password',
             value: password,
             onChange: (e) => setPassword(e.target.value),
-            placeholder: '--------',
+            placeholder: 'At least 8 characters',
             required: true,
             disabled: loading,
             autoComplete: 'new-password'
@@ -423,8 +436,8 @@
       ];
 
       const loginFields = [
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color: '#111' } }, 'Email'),
+        H('div', { className: 'form-group', key: 'email' },
+          H('label', null, 'Email'),
           H('input', {
             type: 'email',
             value: email,
@@ -435,64 +448,33 @@
             autoComplete: 'email'
           })
         ),
-        H('div', { style: { marginBottom: '8px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Password'),
+        H('div', { className: 'form-group', key: 'password' },
+          H('label', null, 'Password'),
           H('input', {
             type: 'password',
             value: password,
             onChange: (e) => setPassword(e.target.value),
-            placeholder: '--------',
+            placeholder: 'Your password',
             required: true,
             disabled: loading,
             autoComplete: 'current-password'
           })
         ),
-        H('div', {
-          style: {
-            textAlign: 'right',
-            marginTop: '4px',
-            marginBottom: '12px'
-          }
-        },
+        H('div', { style: { textAlign: 'right', marginTop: -8, marginBottom: 8 }, key: 'forgot' },
           H('button', {
             type: 'button',
-            onClick: () => {
-              setMode('reset-request');
-              setError('');
-              setInfo('');
-              setLoading(false);
-              setResending(false);
-              setPassword('');
-              setCode('');
-              setResetToken('');
-              setPendingEmail('');
-              setPendingPassword('');
-              setUsername('');
-            },
-            style: {
-              color: '#111',
-              background: 'none',
-              border: 'none',
-              textDecoration: 'underline',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '14px'
-            }
+            className: 'auth-link',
+            onClick: () => { resetMode(); setMode('reset-request'); }
           }, 'Forgot password?')
         )
       ];
 
       const verifyFields = [
-        H('p', {
-          style: {
-            marginBottom: '16px',
-            color: '#374151',
-            fontSize: '14px',
-            lineHeight: '20px'
-          }
-        }, `Enter the 6-digit code we emailed to ${verificationEmail || 'your account'}.`),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Verification code'),
+        H('p', { className: 'auth-description', key: 'desc' },
+          `Enter the 6-digit code we sent to ${verificationEmail || 'your email'}.`
+        ),
+        H('div', { className: 'form-group', key: 'code' },
+          H('label', null, 'Verification Code'),
           H('input', {
             type: 'text',
             inputMode: 'numeric',
@@ -501,22 +483,18 @@
             onChange: (e) => setCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)),
             placeholder: '123456',
             required: true,
-            disabled: loading
+            disabled: loading,
+            style: { letterSpacing: '0.3em', textAlign: 'center', fontSize: 20 }
           })
         )
       ];
 
       const resetRequestFields = [
-        H('p', {
-          style: {
-            marginBottom: '16px',
-            color: '#374151',
-            fontSize: '14px',
-            lineHeight: '20px'
-          }
-        }, 'Enter your email and we will send you a reset code.'),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600', color: '#111' } }, 'Email'),
+        H('p', { className: 'auth-description', key: 'desc' },
+          'Enter your email and we\'ll send you a code to reset your password.'
+        ),
+        H('div', { className: 'form-group', key: 'email' },
+          H('label', null, 'Email'),
           H('input', {
             type: 'email',
             value: email,
@@ -530,16 +508,11 @@
       ];
 
       const resetConfirmFields = [
-        H('p', {
-          style: {
-            marginBottom: '16px',
-            color: '#374151',
-            fontSize: '14px',
-            lineHeight: '20px'
-          }
-        }, `Enter the code we emailed to ${pendingEmail || email}. Then choose a new password.`),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'Reset code'),
+        H('p', { className: 'auth-description', key: 'desc' },
+          `Enter the code we sent to ${pendingEmail || email}, then choose a new password.`
+        ),
+        H('div', { className: 'form-group', key: 'token' },
+          H('label', null, 'Reset Code'),
           H('input', {
             type: 'text',
             value: resetToken,
@@ -550,13 +523,13 @@
             autoComplete: 'one-time-code'
           })
         ),
-        H('div', { style: { marginBottom: '16px' } },
-          H('label', { style: { display: 'block', marginBottom: '6px', fontWeight: '600' } }, 'New password'),
+        H('div', { className: 'form-group', key: 'password' },
+          H('label', null, 'New Password'),
           H('input', {
             type: 'password',
             value: password,
             onChange: (e) => setPassword(e.target.value),
-            placeholder: '--------',
+            placeholder: 'At least 8 characters',
             required: true,
             disabled: loading,
             autoComplete: 'new-password'
@@ -573,182 +546,65 @@
 
       return ReactDOM.createPortal(
         H('div', {
-          className: 'modal open',
+          className: 'auth-modal-overlay',
           onClick: (e) => {
-            if (e.target.classList.contains('modal')) onClose();
+            if (e.target.classList.contains('auth-modal-overlay')) onClose();
           }
         },
-          H('div', {
-            className: 'modal-inner',
-            style: { maxWidth: '420px', padding: '32px', background: '#fff', color: '#111' }
-          },
-            H('button', { className: 'close', onClick: onClose }, 'x'),
-            H('h2', { style: { margin: '0 0 24px', fontSize: '28px', color: '#111' } }, titles[mode] || 'Account'),
-            info && H('div', {
-              style: {
-                background: '#eff6ff',
-                color: '#1d4ed8',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '14px',
-                lineHeight: '20px'
-              }
-            }, info),
-            H('form', { onSubmit: handleSubmit },
-              formFields,
-              error && H('div', { style: { color: '#be123c', margin: '12px 0' } }, error),
-              H('button', {
-                type: 'submit',
-                className: 'btn primary',
-                style: { width: '100%', marginTop: '16px' },
-                disabled: disableSubmit
-              }, submitText),
-              mode === 'login' && H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
-                "Don't have an account? ",
+          H('div', { className: 'auth-modal' },
+            H('button', { className: 'auth-modal-close', onClick: onClose }, '\u00D7'),
+            H('div', { className: 'auth-modal-header' },
+              H('h2', null, titles[mode] || 'Account')
+            ),
+            H('div', { className: 'auth-modal-body' },
+              info && H('div', { className: 'auth-info' }, info),
+              error && H('div', { className: 'auth-error' }, error),
+              H('form', { onSubmit: handleSubmit },
+                formFields,
                 H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    setMode('register');
-                    setError('');
-                    setInfo('');
-                    setLoading(false);
-                    setResending(false);
-                    setPassword('');
-                    setCode('');
-                    setResetToken('');
-                    setPendingEmail('');
-                    setPendingPassword('');
-                    setUsername('');
-                  },
-                  style: {
-                    color: '#111',
-                    background: 'none',
-                    border: 'none',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontWeight: '600'
-                  }
-                }, 'Register')
-              ),
-              mode === 'register' && H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
-                'Already have an account? ',
-                H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    setMode('login');
-                    setError('');
-                    setInfo('');
-                    setLoading(false);
-                    setResending(false);
-                    setPassword('');
-                    setCode('');
-                    setResetToken('');
-                    setPendingEmail('');
-                    setPendingPassword('');
-                    setUsername('');
-                  },
-                  style: {
-                    color: '#111',
-                    background: 'none',
-                    border: 'none',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontWeight: '600'
-                  }
-                }, 'Log In')
-              ),
-              mode === 'verify' && H('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginTop: '20px',
-                  gap: '12px'
-                }
-              },
-                H('button', {
-                  type: 'button',
-                  onClick: handleResendCode,
-                  disabled: resending || !canResend,
-                  className: 'btn',
-                  style: {
-                    flex: '1',
-                    opacity: resending || !canResend ? 0.6 : 1,
-                    cursor: resending || !canResend ? 'not-allowed' : 'pointer'
-                  }
-                }, resending ? 'Sending...' : 'Resend code'),
-                H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    setMode('login');
-                    setError('');
-                    setInfo('');
-                    setLoading(false);
-                    setResending(false);
-                    setPassword('');
-                    setCode('');
-                    setResetToken('');
-                    setPendingEmail('');
-                    setPendingPassword('');
-                    setUsername('');
-                  },
-                  className: 'btn',
-                  style: { flex: '1' }
-                }, 'Back to login')
-              ),
-              mode === 'reset-request' && H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
-                'Remembered it? ',
-                H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    setMode('login');
-                    setError('');
-                    setInfo('');
-                    setLoading(false);
-                    setResending(false);
-                    setPassword('');
-                    setCode('');
-                    setResetToken('');
-                    setPendingEmail('');
-                    setPendingPassword('');
-                    setUsername('');
-                  },
-                  style: {
-                    color: '#111',
-                    background: 'none',
-                    border: 'none',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontWeight: '600'
-                  }
-                }, 'Back to login')
-              ),
-              mode === 'reset-confirm' && H('div', { style: { textAlign: 'center', marginTop: '20px', color: '#6b7280' } },
-                H('button', {
-                  type: 'button',
-                  onClick: () => {
-                    setMode('reset-request');
-                    setError('');
-                    setInfo('');
-                    setLoading(false);
-                    setResending(false);
-                    setPassword('');
-                    setCode('');
-                    setResetToken('');
-                    setPendingEmail('');
-                    setPendingPassword('');
-                    setUsername('');
-                  },
-                  style: {
-                    color: '#111',
-                    background: 'none',
-                    border: 'none',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontWeight: '600'
-                  }
-                }, 'Need a new code? Start over')
+                  type: 'submit',
+                  className: 'auth-submit',
+                  disabled: disableSubmit
+                }, submitText),
+                mode === 'login' && H('div', { className: 'auth-footer' },
+                  "Don't have an account? ",
+                  H('button', {
+                    type: 'button',
+                    onClick: () => { resetMode(); setMode('register'); }
+                  }, 'Sign up')
+                ),
+                mode === 'register' && H('div', { className: 'auth-footer' },
+                  'Already have an account? ',
+                  H('button', {
+                    type: 'button',
+                    onClick: () => { resetMode(); setMode('login'); }
+                  }, 'Log in')
+                ),
+                mode === 'verify' && H('div', { className: 'auth-footer', style: { display: 'flex', gap: 16, justifyContent: 'center' } },
+                  H('button', {
+                    type: 'button',
+                    onClick: handleResendCode,
+                    disabled: resending || !canResend,
+                    style: { opacity: resending || !canResend ? 0.5 : 1 }
+                  }, resending ? 'Sending...' : 'Resend code'),
+                  H('button', {
+                    type: 'button',
+                    onClick: () => { resetMode(); setMode('login'); }
+                  }, 'Back to login')
+                ),
+                mode === 'reset-request' && H('div', { className: 'auth-footer' },
+                  'Remembered it? ',
+                  H('button', {
+                    type: 'button',
+                    onClick: () => { resetMode(); setMode('login'); }
+                  }, 'Back to login')
+                ),
+                mode === 'reset-confirm' && H('div', { className: 'auth-footer' },
+                  H('button', {
+                    type: 'button',
+                    onClick: () => { resetMode(); setMode('reset-request'); }
+                  }, 'Need a new code?')
+                )
               )
             )
           )

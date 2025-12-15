@@ -1792,7 +1792,7 @@
             H('div', { style: { fontSize: 48, marginBottom: 12 } }, '\u26A0\uFE0F'),
             H('h3', { style: { marginBottom: 12 } }, 'Submission Under Review'),
             H('p', { style: { marginBottom: 16, color: '#666' } },
-              'Your image has been indicated by AI to contain inappropriate content. Violations of the privacy policy might result in account termination.'
+              'This image has been flagged for potentially inappropriate content. Privacy Policy violations may result in account termination.'
             ),
             H('button', {
               className: 'btn primary',

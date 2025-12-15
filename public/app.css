@@ -1743,6 +1743,249 @@
   padding: 24px;
 }
 
+/* Auth Modal Styles */
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.auth-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-modal-header {
+  padding: 28px 28px 0;
+}
+
+.auth-modal-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111;
+}
+
+.auth-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #6b7280;
+  transition: background 0.15s, color 0.15s;
+}
+
+.auth-modal-close:hover {
+  background: #e5e7eb;
+  color: #111;
+}
+
+.auth-modal-body {
+  padding: 24px 28px 28px;
+}
+
+.auth-modal-body .form-group {
+  margin-bottom: 16px;
+}
+
+.auth-modal-body .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #374151;
+}
+
+.auth-modal-body .form-group input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  background: #f9fafb;
+}
+
+.auth-modal-body .form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: #fff;
+}
+
+.auth-modal-body .form-group input::placeholder {
+  color: #9ca3af;
+}
+
+.auth-modal .auth-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-modal .auth-error {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-modal .auth-submit {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.auth-modal .auth-submit:hover:not(:disabled) {
+  background: #333;
+}
+
+.auth-modal .auth-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.auth-modal .auth-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-modal .auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.auth-modal .auth-footer button {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.auth-modal .auth-footer button:hover {
+  text-decoration: underline;
+}
+
+.auth-modal .auth-link {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.auth-modal .auth-link:hover {
+  text-decoration: underline;
+}
+
+.auth-modal .auth-description {
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+[data-theme="dark"] .auth-modal {
+  background: #1e293b;
+}
+
+[data-theme="dark"] .auth-modal-header h2 {
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .auth-modal-close {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .auth-modal-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .auth-modal-body .form-group label {
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .auth-modal-body .form-group input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .auth-modal-body .form-group input:focus {
+  border-color: #3b82f6;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .auth-modal-body .form-group input::placeholder {
+  color: #64748b;
+}
+
+[data-theme="dark"] .auth-modal .auth-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .auth-modal .auth-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .auth-modal .auth-submit {
+  background: #3b82f6;
+}
+
+[data-theme="dark"] .auth-modal .auth-submit:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+[data-theme="dark"] .auth-modal .auth-footer {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .auth-modal .auth-description {
+  color: #94a3b8;
+}
+
 /* Profile Picture Avatar */
 .profile-avatar {
   width: 80px;
