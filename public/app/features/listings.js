@@ -179,6 +179,7 @@
       const [error, setError] = useState(null);
 
       const cursorRef = useRef(null);
+      const pageRef = useRef(1);
       const requestIdRef = useRef(0);
       const isLoadingRef = useRef(false);
       const abortRef = useRef(null);
@@ -208,13 +209,20 @@
         try {
           // Build base params
           const limit = Number.isFinite(limitOverride) ? limitOverride : pageSize;
+          const isPageRequest = cursor && cursor.__page;
+          const resolvedPage = isPageRequest ? cursor.__page : (cursor == null ? 1 : null);
+          const resolvedCursor = isPageRequest ? null : cursor;
           const params = {
             q: query?.trim() || '',
             loc: location?.trim() || '',
-            cursor,
+            cursor: resolvedCursor,
             limit,
             sort: sort || 'new'
           };
+
+          if (resolvedPage != null) {
+            params.page = resolvedPage;
+          }
 
           // Always try to get user coordinates for distance calculation
           // This allows distance badges to show on listings with enable_nearby regardless of sort
@@ -238,8 +246,45 @@
           const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, limit);
           const newRows = rows || [];
 
-          setHasMore(!!hasNext);
-          cursorRef.current = hasNext ? (nextCursor ?? null) : null;
+          // Normalize empty-string cursors to null so we can fall back to page-based
+          // pagination when the backend omits a usable cursor. Some mobile sessions right
+          // after login return `""` instead of null/undefined, which previously prevented
+          // the fallback from engaging and left the feed stuck on the first page.
+          const cleanedNextCursor = nextCursor === '' ? null : nextCursor;
+
+          // On some initial sessions (notably on mobile right after login) the backend
+          // reports `has_next` false yet still returns a full first page and omits a
+          // cursor. That prevents any further pagination until the user triggers a tab
+          // switch that forces a reload. Treat a full first page with no cursor as
+          // paginatable so the feed can continue without requiring a manual tab flip.
+          const isFullFirstPage = cursor == null && (!cleanedNextCursor) && newRows.length >= limit;
+          const effectiveHasNext = hasNext || isFullFirstPage;
+
+          setHasMore(!!effectiveHasNext);
+
+          // Some API responses (notably the paged home feed) may signal that more results
+          // exist without providing an explicit cursor. Previously this would leave the
+          // cursor null, preventing further pages from loading and effectively capping the
+          // grid at the first page (75 items). Fall back to explicit page-based pagination
+          // so the next request can progress even when the backend omits next_cursor.
+          if (effectiveHasNext) {
+            if (cleanedNextCursor != null) {
+              cursorRef.current = cleanedNextCursor;
+              pageRef.current = null;
+            } else {
+              const currentPage = isPageRequest
+                ? resolvedPage
+                : Number.isFinite(pageRef.current)
+                  ? pageRef.current
+                  : 1;
+              const nextPage = (currentPage || 1) + 1;
+              cursorRef.current = { __page: nextPage };
+              pageRef.current = currentPage;
+            }
+          } else {
+            cursorRef.current = null;
+            pageRef.current = isPageRequest ? resolvedPage : pageRef.current;
+          }
 
           setListings(prev => {
             if (replace || cursor == null) return newRows;
@@ -294,6 +339,7 @@
 
       const loadInitial = useCallback(() => {
         cursorRef.current = null;
+        pageRef.current = 1;
         setListings([]);
         setHasMore(false);
         setError(null);
@@ -308,6 +354,7 @@
 
       const refresh = useCallback(async (preserveExisting = false) => {
         cursorRef.current = null;
+        pageRef.current = 1;
         if (!preserveExisting) {
           setListings([]);
           setHasMore(false);
