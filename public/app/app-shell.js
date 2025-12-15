@@ -278,13 +278,22 @@
 
       // Restore scroll position when returning to browse
       React.useLayoutEffect(() => {
+        const scrollTo = (y) => {
+          if (isMobile) {
+            const container = document.querySelector('main.container');
+            if (container) container.scrollTop = y;
+          } else {
+            window.scrollTo(0, y);
+          }
+        };
+
         if (tab === 'browse' && prevTabRef.current !== 'browse') {
-          window.scrollTo(0, browseScrollPos.current);
+          scrollTo(browseScrollPos.current);
         } else if (tab !== 'browse') {
-          window.scrollTo(0, 0);
+          scrollTo(0);
         }
         prevTabRef.current = tab;
-      }, [tab]);
+      }, [tab, isMobile]);
 
       const setSupporterPromptSeen = useCallback(() => {
         try {
@@ -1094,6 +1103,12 @@
       function handleViewSeller(userId, username) {
         setViewingSeller({ id: userId, username });
         setSelectedListing(null);
+        if (isMobile) {
+          const container = document.querySelector('main.container');
+          if (container) container.scrollTop = 0;
+        } else {
+          window.scrollTo(0, 0);
+        }
       }
 
       function handleBackFromSeller() {
