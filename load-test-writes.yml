@@ -1,0 +1,116 @@
+# ⚠️  CAUTION: This test performs WRITE operations!
+# Run against a test database only, or be prepared to clean up test data
+# Creates test listings, sends messages, etc.
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    # Very light load for write tests
+    - duration: 30
+      arrivalRate: 1
+      name: "Light writes"
+    # Slight ramp
+    - duration: 30
+      arrivalRate: 2
+      rampTo: 5
+      name: "Moderate writes"
+
+  # Update these with your actual test user credentials
+  variables:
+    testEmail: "YOUR_TEST_EMAIL"
+    testPassword: "YOUR_TEST_PASSWORD"
+
+  http:
+    cookieJar: true
+
+scenarios:
+  # ============================================
+  # READ-HEAVY (still majority)
+  # ============================================
+
+  - name: "Browse only"
+    weight: 60
+    flow:
+      - get:
+          url: "/api/listings?limit=20&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=20&noimg=1&page=2"
+
+  # ============================================
+  # WRITE OPERATIONS
+  # ============================================
+
+  - name: "Update profile settings"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      # Update profile about (lightweight write)
+      - put:
+          url: "/api/me/profile-about"
+          json:
+            about: "Load test user profile {{ $timestamp }}"
+      - think: 1
+      - get:
+          url: "/api/me"
+
+  - name: "Start conversation flow"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      # Get a listing to message about
+      - get:
+          url: "/api/listings?limit=5&noimg=1"
+          capture:
+            - json: "$[0].id"
+              as: "listingId"
+            - json: "$[0].user_id"
+              as: "sellerId"
+      - think: 1
+      # Start a conversation (this creates DB records)
+      - post:
+          url: "/api/conversations"
+          json:
+            listing_id: "{{ listingId }}"
+            recipient_id: "{{ sellerId }}"
+            message: "Load test message {{ $timestamp }}"
+          # Expect 200 or 409 (conversation exists)
+          expect:
+            - statusCode:
+                - 200
+                - 201
+                - 409
+
+  - name: "Award karma"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=10&noimg=1"
+          capture:
+            - json: "$[0].id"
+              as: "listingId"
+      - think: 1
+      # Try to award karma (may fail if already awarded - that's ok)
+      - post:
+          url: "/api/listings/{{ listingId }}/award-karma"
+          expect:
+            - statusCode:
+                - 200
+                - 400
+                - 429

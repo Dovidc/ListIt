@@ -495,7 +495,23 @@
       method: 'POST',  
       headers: { 'Content-Type': 'application/json' },  
       body: JSON.stringify({ disabled })  
-    }, meta);  
+    }, meta);
+    const adminGetKarmaTop = ({ limit } = {}, meta) => {
+      const params = new URLSearchParams();
+      if (limit) params.set('limit', limit);
+      const qs = params.toString();
+      return request('/api/admin/karma/top' + (qs ? '?' + qs : ''), { method: 'GET' }, meta);
+    };
+
+    const adminGetKarmaChanges = ({ days, limit } = {}, meta) => {
+      const params = new URLSearchParams();
+      if (days) params.set('days', days);
+      if (limit) params.set('limit', limit);
+      const qs = params.toString();
+      return request('/api/admin/karma/changes' + (qs ? '?' + qs : ''), { method: 'GET' }, meta);
+    };
+
+  
     
     const signUpload = ({ filename, contentType, bytes }, meta) => request('/api/uploads/sign', {  
       method: 'POST',  
@@ -597,6 +613,8 @@
       adminClearUserReports,  
       adminGetPaymentsStatus,  
       adminSetPaymentsStatus,  
+      adminGetKarmaTop,
+      adminGetKarmaChanges,
       signUpload,  
       finalizeUpload,  
       getLegalStatus,  

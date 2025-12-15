@@ -1,0 +1,44 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    # Warm up
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm up"
+    # Ramp up
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 30
+      name: "Ramp up"
+    # Sustained load
+    - duration: 60
+      arrivalRate: 30
+      name: "Sustained load"
+
+scenarios:
+  - name: "Browse listings"
+    weight: 60
+    flow:
+      - get:
+          url: "/api/listings?limit=20&noimg=1"
+      - think: 2
+      - get:
+          url: "/api/listings?limit=20&noimg=1&page=2"
+
+  - name: "View listing images"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/listings?limit=10&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/listings/1/images"
+
+  - name: "Search"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/listings?q=phone&limit=20&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/cities?q=new"

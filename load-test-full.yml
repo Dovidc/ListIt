@@ -1,0 +1,159 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    # Light warm up
+    - duration: 20
+      arrivalRate: 3
+      name: "Warm up"
+    # Ramp up
+    - duration: 40
+      arrivalRate: 5
+      rampTo: 15
+      name: "Ramp up"
+    # Sustained load
+    - duration: 60
+      arrivalRate: 15
+      name: "Sustained load"
+
+  # Load test user credentials - create a test user first
+  # You can create one via: POST /api/register or use existing credentials
+  # Update these with your actual test user credentials
+  variables:
+    testEmail: "test@test.com"
+    testPassword: "test123"
+
+  # Store auth cookie across requests
+  http:
+    cookieJar: true
+
+scenarios:
+  # ============================================
+  # UNAUTHENTICATED FLOWS (60% of traffic)
+  # ============================================
+
+  - name: "Browse listings (public)"
+    weight: 35
+    flow:
+      - get:
+          url: "/api/listings?limit=20&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=20&noimg=1&page=2"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=20&noimg=1&page=3"
+
+  - name: "View single listing"
+    weight: 15
+    flow:
+      - get:
+          url: "/api/listings?limit=5&noimg=1"
+          capture:
+            - json: "$[0].id"
+              as: "listingId"
+      - think: 1
+      - get:
+          url: "/api/listings/{{ listingId }}"
+      - get:
+          url: "/api/listings/{{ listingId }}/images"
+
+  - name: "Search and filter"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/listings?q=phone&limit=20&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/listings?q=laptop&limit=20&noimg=1"
+      - think: 1
+      - get:
+          url: "/api/cities?q=new"
+
+  # ============================================
+  # AUTHENTICATED FLOWS (40% of traffic)
+  # ============================================
+
+  - name: "Login and browse profile"
+    weight: 15
+    flow:
+      # Login
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+          capture:
+            - json: "$.user.id"
+              as: "userId"
+      - think: 1
+      # View own profile
+      - get:
+          url: "/api/me"
+      - think: 1
+      # View own listings
+      - get:
+          url: "/api/me/listings"
+      - think: 1
+      # Check conversations
+      - get:
+          url: "/api/conversations"
+
+  - name: "Login and view user profiles"
+    weight: 10
+    flow:
+      # Login first
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      # Get listings to find user IDs
+      - get:
+          url: "/api/listings?limit=10&noimg=1"
+          capture:
+            - json: "$[0].user_id"
+              as: "targetUserId"
+      - think: 1
+      # View another user's profile
+      - get:
+          url: "/api/users/{{ targetUserId }}"
+      - think: 1
+      # View their listings
+      - get:
+          url: "/api/users/{{ targetUserId }}/listings"
+
+  - name: "Login and check notifications"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      - get:
+          url: "/api/me"
+      - get:
+          url: "/api/conversations"
+      - think: 2
+      - get:
+          url: "/api/me/listings"
+
+  - name: "Heavy API user (multiple pages)"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - loop:
+          - get:
+              url: "/api/listings?limit=20&noimg=1&page={{ $loopCount }}"
+          - think: 0.5
+        count: 5
+      - get:
+          url: "/api/me"
+      - get:
+          url: "/api/conversations"

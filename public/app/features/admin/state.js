@@ -90,6 +90,14 @@
       const [paymentsError, setPaymentsError] = useState('');
       const [paymentsUpdatedAt, setPaymentsUpdatedAt] = useState(null);
 
+      // Karma tab state
+      const [karmaView, setKarmaView] = useState('total'); // 'total' or 'changes'
+      const [karmaChangeDays, setKarmaChangeDays] = useState(3); // 1, 3, or 10
+      const [karmaTopUsers, setKarmaTopUsers] = useState([]);
+      const [karmaChangesUsers, setKarmaChangesUsers] = useState([]);
+      const [karmaLoading, setKarmaLoading] = useState(false);
+      const [karmaError, setKarmaError] = useState('');
+
       const searchTimer = useRef(null);
 
       useEffect(() => () => {
@@ -256,6 +264,45 @@
           loadPaymentsStatus();
         }
       }, [tab, loadPaymentsStatus]);
+
+      // Karma loading functions
+      const loadKarmaTop = useCallback(async () => {
+        setKarmaLoading(true);
+        setKarmaError('');
+        try {
+          const result = await api.adminGetKarmaTop({ limit: 50 }, { silent: true });
+          setKarmaTopUsers(Array.isArray(result?.users) ? result.users : []);
+        } catch (err) {
+          setKarmaError(err?.message || 'Failed to load top karma users');
+          setKarmaTopUsers([]);
+        } finally {
+          setKarmaLoading(false);
+        }
+      }, [api]);
+
+      const loadKarmaChanges = useCallback(async (days = karmaChangeDays) => {
+        setKarmaLoading(true);
+        setKarmaError('');
+        try {
+          const result = await api.adminGetKarmaChanges({ days, limit: 50 }, { silent: true });
+          setKarmaChangesUsers(Array.isArray(result?.users) ? result.users : []);
+        } catch (err) {
+          setKarmaError(err?.message || 'Failed to load karma changes');
+          setKarmaChangesUsers([]);
+        } finally {
+          setKarmaLoading(false);
+        }
+      }, [api, karmaChangeDays]);
+
+      useEffect(() => {
+        if (tab === 'karma') {
+          if (karmaView === 'total') {
+            loadKarmaTop();
+          } else {
+            loadKarmaChanges(karmaChangeDays);
+          }
+        }
+      }, [tab, karmaView, karmaChangeDays, loadKarmaTop, loadKarmaChanges]);
 
       const handleStatusChange = useCallback(async (status) => {
         if (!selectedUser) return;
@@ -518,7 +565,18 @@
         loadUser,
         handleStatusChange,
         handleViewUserFromTop,
-        handleClearReportsForUser
+        handleClearReportsForUser,
+        // Karma tab
+        karmaView,
+        setKarmaView,
+        karmaChangeDays,
+        setKarmaChangeDays,
+        karmaTopUsers,
+        karmaChangesUsers,
+        karmaLoading,
+        karmaError,
+        loadKarmaTop,
+        loadKarmaChanges
       };
     }
 

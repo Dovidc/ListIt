@@ -10180,6 +10180,96 @@ app.post('/api/admin/payments', auth, requireAdmin, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// ADMIN: Karma Analytics
+// ─────────────────────────────────────────────────────────────
+
+// Get top karma users
+app.get('/api/admin/karma/top', auth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const users = await db.prepare(`
+      SELECT id, username, email, karma, created_at, last_login_at
+      FROM users
+      WHERE karma > 0
+      ORDER BY karma DESC
+      LIMIT ?
+    `).all(limit);
+    return res.json({ users });
+  } catch (err) {
+    console.error('Admin karma top fetch failed:', err);
+    return res.status(500).json({ error: 'admin_karma_failed' });
+  }
+});
+
+// Get users with biggest karma changes (earned most in recent period)
+app.get('/api/admin/karma/changes', auth, requireAdmin, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Get karma earned as seller
+    const sellerKarma = await db.prepare(`
+      SELECT seller_id as user_id, SUM(seller_points) as points_earned, COUNT(*) as transaction_count
+      FROM karma_transactions
+      WHERE awarded = true AND created_at >= ?
+      GROUP BY seller_id
+    `).all(cutoff);
+
+    // Get karma earned as buyer
+    const buyerKarma = await db.prepare(`
+      SELECT buyer_id as user_id, SUM(buyer_points) as points_earned, COUNT(*) as transaction_count
+      FROM karma_transactions
+      WHERE awarded = true AND created_at >= ?
+      GROUP BY buyer_id
+    `).all(cutoff);
+
+    // Combine and aggregate
+    const userMap = new Map();
+    for (const row of sellerKarma) {
+      const existing = userMap.get(row.user_id) || { user_id: row.user_id, points_earned: 0, transaction_count: 0 };
+      existing.points_earned += Number(row.points_earned) || 0;
+      existing.transaction_count += Number(row.transaction_count) || 0;
+      userMap.set(row.user_id, existing);
+    }
+    for (const row of buyerKarma) {
+      const existing = userMap.get(row.user_id) || { user_id: row.user_id, points_earned: 0, transaction_count: 0 };
+      existing.points_earned += Number(row.points_earned) || 0;
+      existing.transaction_count += Number(row.transaction_count) || 0;
+      userMap.set(row.user_id, existing);
+    }
+
+    // Sort by points earned and take top N
+    const sorted = Array.from(userMap.values())
+      .sort((a, b) => b.points_earned - a.points_earned)
+      .slice(0, limit);
+
+    // Fetch user details
+    const userIds = sorted.map(u => u.user_id);
+    if (userIds.length === 0) {
+      return res.json({ users: [], period_days: days });
+    }
+
+    const placeholders = userIds.map(() => '?').join(',');
+    const userDetails = await db.prepare(`
+      SELECT id, username, email, karma, created_at
+      FROM users WHERE id IN (${placeholders})
+    `).all(...userIds);
+
+    const userDetailsMap = new Map(userDetails.map(u => [u.id, u]));
+    const results = sorted.map(s => ({
+      ...userDetailsMap.get(s.user_id),
+      points_earned_period: s.points_earned,
+      transactions_period: s.transaction_count
+    }));
+
+    return res.json({ users: results, period_days: days });
+  } catch (err) {
+    console.error('Admin karma changes fetch failed:', err);
+    return res.status(500).json({ error: 'admin_karma_failed' });
+  }
+});
 
 
 if (IS_TEST) {
