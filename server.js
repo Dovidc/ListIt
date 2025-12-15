@@ -45,6 +45,47 @@ for (const envFile of ENV_CANDIDATES) {
   }
 }
 
+const Sentry = require('@sentry/node');
+
+// Initialize Sentry for error tracking (only if DSN is configured)
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.1, // Capture 10% of transactions for performance monitoring
+    beforeSend(event) {
+      // Don't send events in test environment
+      if (process.env.NODE_ENV === 'test') return null;
+      return event;
+    }
+  });
+  console.log('[sentry] Error tracking initialized');
+}
+
+/**
+ * Report an error to Sentry with optional context
+ * @param {Error} err - The error to report
+ * @param {Object} context - Optional context (user, extra data, tags)
+ */
+function reportError(err, context = {}) {
+  // Always log to console
+  if (context.label) {
+    console.error(`${context.label}:`, err?.message || err);
+  }
+
+  // Report to Sentry if available
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err, {
+      user: context.user ? { id: context.user.id, email: context.user.email } : undefined,
+      tags: context.tags,
+      extra: {
+        ...context.extra,
+        label: context.label
+      }
+    });
+  }
+}
+
 const crypto = require('crypto');
 
 const db = require('./db-wrapper');
@@ -880,7 +921,11 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
       livemode: event.livemode
     }, { req, failOnError: true });
   } catch (err) {
-    console.error('Error processing webhook:', err);
+    reportError(err, {
+      label: 'Error processing webhook',
+      tags: { component: 'payments', type: 'webhook' },
+      extra: { eventType: event?.type }
+    });
     return res.status(500).json({ error: 'webhook_processing_failed' });
   }
 
@@ -2535,13 +2580,12 @@ async function auth(req, res, next) {
     next();
 
   } catch (err) {
-
-    console.error('Auth middleware failed:', err);
-
+    reportError(err, {
+      label: 'Auth middleware failed',
+      tags: { component: 'auth' }
+    });
     return res.status(500).json({ error: 'auth_failed' });
-
   }
-
 }
 
 
@@ -4017,12 +4061,6 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
       return res.status(403).json({ error: 'Not your listing' });
     }
 
-    // Check if karma already awarded for this listing
-    const existing = await db.prepare('SELECT id FROM karma_transactions WHERE listing_id = ?').get(listingId);
-    if (existing) {
-      return res.status(400).json({ error: 'Karma already awarded for this listing' });
-    }
-
     // Get buyer info
     const buyer = await db.prepare('SELECT id, supporter_tier, supporter_badge, subscription_status FROM users WHERE id = ?').get(buyerId);
     if (!buyer) {
@@ -4044,16 +4082,34 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
     const sellerPoints = 1;
     const buyerPoints = 2;
 
-    // Create karma transaction record
-    await db.prepare(`
-      INSERT INTO karma_transactions (listing_id, seller_id, buyer_id, seller_points, buyer_points, awarded, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(listingId, req.user.id, buyerId, sellerPoints, buyerPoints, shouldAward ? 1 : 0, nowIso());
+    // Use transaction to prevent race condition (double-click awarding duplicate karma)
+    let awarded = false;
+    let alreadyExists = false;
 
-    // If both are premium, award karma
-    if (shouldAward) {
-      await db.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(sellerPoints, req.user.id);
-      await db.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(buyerPoints, buyerId);
+    await db.transaction(async (trx) => {
+      // Check if karma already awarded for this listing (inside transaction)
+      const existing = await trx.prepare('SELECT id FROM karma_transactions WHERE listing_id = ?').get(listingId);
+      if (existing) {
+        alreadyExists = true;
+        return; // Exit transaction early
+      }
+
+      // Create karma transaction record
+      await trx.prepare(`
+        INSERT INTO karma_transactions (listing_id, seller_id, buyer_id, seller_points, buyer_points, awarded, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(listingId, req.user.id, buyerId, sellerPoints, buyerPoints, shouldAward ? 1 : 0, nowIso());
+
+      // If both are premium, award karma
+      if (shouldAward) {
+        await trx.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(sellerPoints, req.user.id);
+        await trx.prepare('UPDATE users SET karma = karma + ? WHERE id = ?').run(buyerPoints, buyerId);
+        awarded = true;
+      }
+    });
+
+    if (alreadyExists) {
+      return res.status(400).json({ error: 'Karma already awarded for this listing' });
     }
 
     // Get updated user
@@ -4062,12 +4118,17 @@ app.post('/api/listings/:id/award-karma', auth, async (req, res) => {
 
     res.json({
       success: true,
-      awarded: shouldAward,
+      awarded: awarded,
       user,
-      message: shouldAward ? 'Karma awarded!' : 'Transaction recorded (one or both users not premium)'
+      message: awarded ? 'Karma awarded!' : 'Transaction recorded (one or both users not premium)'
     });
   } catch (err) {
-    console.error('Award karma error:', err);
+    reportError(err, {
+      label: 'Award karma error',
+      user: req.user,
+      tags: { component: 'karma' },
+      extra: { listingId: req.params?.id, buyerId: req.body?.buyer_id }
+    });
     res.status(500).json({ error: 'Failed to award karma' });
   }
 });
@@ -4083,51 +4144,54 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
     return res.status(403).json({ error: 'payments_disabled' });
   }
 
-
   try {
-
-    if (await arePaymentsDisabled()) {
-      return res.status(503).json({ error: 'payments_disabled' });
-    }
-
     if (!stripe) {
-
       return res.status(503).json({ error: 'stripe_unavailable' });
-
     }
 
     const tier = String(req.body?.tier || 'basic').toLowerCase();
 
     if (!['basic', 'premium'].includes(tier)) {
-
       return res.status(400).json({ error: 'invalid_tier' });
+    }
 
+    // Check for existing pending checkout session to prevent double-click issues
+    const existingSessionId = req.user.supporter_checkout_id;
+    if (existingSessionId) {
+      try {
+        const existingSession = await stripe.checkout.sessions.retrieve(existingSessionId);
+        // If session is still open and for the same tier, reuse it
+        if (existingSession.status === 'open' && existingSession.metadata?.tier === tier) {
+          console.log('[Checkout] Reusing existing session:', existingSessionId);
+          const amount = tier === 'premium' ? SUPPORTER_PREMIUM_AMOUNT : SUPPORTER_DONATION_AMOUNT;
+          return res.json({
+            url: existingSession.url,
+            session_id: existingSession.id,
+            tier: tier,
+            amount: amount,
+            currency: SUPPORTER_DONATION_CURRENCY
+          });
+        }
+        // Session expired or completed, continue to create new one
+      } catch (err) {
+        // Session doesn't exist or retrieval failed, continue to create new one
+        console.log('[Checkout] Could not retrieve existing session, creating new one');
+      }
     }
 
     const successUrl = resolveSupporterReturnUrl(req, SUPPORTER_SUCCESS_PATH);
-
     const cancelUrl = resolveSupporterReturnUrl(req, SUPPORTER_CANCEL_PATH);
 
     const sessionConfig = {
-
       client_reference_id: String(req.user.id),
-
       customer_email: req.user.email,
-
       success_url: successUrl,
-
       cancel_url: cancelUrl,
-
       payment_method_types: ['card'],
-
       metadata: {
-
         user_id: String(req.user.id),
-
         tier: tier
-
       }
-
     };
 
     if (tier === 'premium') {
@@ -4235,13 +4299,14 @@ app.post('/api/supporters/checkout', auth, async (req, res) => {
     });
 
   } catch (err) {
-
-    console.error('Supporter checkout failed:', err);
-
+    reportError(err, {
+      label: 'Supporter checkout failed',
+      user: req.user,
+      tags: { component: 'payments' },
+      extra: { tier: req.body?.tier }
+    });
     return res.status(500).json({ error: 'checkout_failed' });
-
   }
-
 });
 
 app.post('/api/supporters/confirm', auth, async (req, res) => {
@@ -4367,13 +4432,14 @@ app.post('/api/supporters/confirm', auth, async (req, res) => {
     return res.json(user);
 
   } catch (err) {
-
-    console.error('Supporter confirm failed:', err);
-
+    reportError(err, {
+      label: 'Supporter confirm failed',
+      user: req.user,
+      tags: { component: 'payments' },
+      extra: { sessionId: req.body?.session_id }
+    });
     return res.status(500).json({ error: 'confirmation_failed' });
-
   }
-
 });
 
 app.post('/api/supporters/cancel', auth, async (req, res) => {
@@ -4413,13 +4479,14 @@ app.post('/api/supporters/cancel', auth, async (req, res) => {
     return res.json({ success: true, user });
 
   } catch (err) {
-
-    console.error('Cancel subscription failed:', err);
-
+    reportError(err, {
+      label: 'Cancel subscription failed',
+      user: req.user,
+      tags: { component: 'payments' },
+      extra: { subscriptionId: req.user?.stripe_subscription_id }
+    });
     return res.status(500).json({ error: 'cancellation_failed' });
-
   }
-
 });
 
 // Clear location data from all user's listings (privacy feature)
@@ -4529,8 +4596,11 @@ app.delete('/api/me', auth, async (req, res) => {
     return res.json({ ok: true });
 
   } catch (e) {
-    console.error('Delete account failed:', e);
-    console.error('Error stack:', e.stack);
+    reportError(e, {
+      label: 'Delete account failed',
+      user: req.user,
+      tags: { component: 'account', severity: 'critical' }
+    });
     return res.status(500).json({ error: 'delete_failed', message: e.message });
   }
 });
@@ -10157,12 +10227,20 @@ app.get('/support', (_req, res) => {
 
 
 
-app.use((err, _req, res, _next) => {
-
+app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
 
-  res.status(500).json({ error: 'server_error' });
+  // Report to Sentry with request context
+  Sentry.captureException(err, {
+    user: req.user ? { id: req.user.id, email: req.user.email } : undefined,
+    extra: {
+      method: req.method,
+      path: req.path,
+      query: req.query
+    }
+  });
 
+  res.status(500).json({ error: 'server_error' });
 });
 
 

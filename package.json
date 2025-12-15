@@ -28,6 +28,7 @@
     "@capacitor/push-notifications": "^6.0.4",
     "@capacitor/status-bar": "^6.0.3",
     "@sendgrid/mail": "^8.1.2",
+    "@sentry/node": "^10.30.0",
     "apn": "^2.2.0",
     "bcryptjs": "^3.0.2",
     "compression": "^1.7.4",
