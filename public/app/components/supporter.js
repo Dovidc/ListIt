@@ -892,7 +892,7 @@
                     ),
                     H('div', null,
                       H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
-                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Award karma points to buyers when you complete a sale')
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Collect and award karma when selling and buying from other premium users')
                     )
                   )
                 ),

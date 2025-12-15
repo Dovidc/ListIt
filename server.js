@@ -2109,6 +2109,56 @@ async function moderateListingContent({ title, description, imageUrls }) {
 
 }
 
+/**
+ * Moderate a single image URL (for profile pictures, banners, etc.)
+ * Returns { flagged: boolean, details: array } with moderation details
+ * Throws on error (fail closed for profile images)
+ */
+async function moderateImageUrl(imageUrl) {
+  const client = getOpenAIClient();
+  if (!client) {
+    console.log('[moderateImageUrl] No OpenAI client, skipping moderation');
+    return { flagged: false, details: [] };
+  }
+
+  const url = canonicalAssetUrl(imageUrl) || imageUrl;
+  if (!url) {
+    console.log('[moderateImageUrl] No URL provided');
+    return { flagged: false, details: [] };
+  }
+
+  console.log('[moderateImageUrl] Moderating:', url.slice(0, 80));
+
+  const result = await withTimeout(
+    ({ signal }) => client.moderations.create({
+      model: 'omni-moderation-latest',
+      input: [{ type: 'image_url', image_url: { url } }],
+      signal
+    }),
+    OPENAI_TIMEOUT_MS,
+    'openai_moderation'
+  );
+
+  const flagged = result.results?.[0]?.flagged;
+  if (flagged) {
+    console.log('[moderateImageUrl] Image FLAGGED:', url.slice(0, 80));
+    const categories = result.results?.[0]?.categories || {};
+    const flaggedCategories = Object.keys(categories).filter(k => categories[k]);
+    console.log('[moderateImageUrl] Flagged categories:', flaggedCategories.join(', '));
+    return {
+      flagged: true,
+      details: [{
+        type: 'image',
+        target: url,
+        categories: flaggedCategories,
+        category_scores: result.results?.[0]?.category_scores || {}
+      }]
+    };
+  } else {
+    console.log('[moderateImageUrl] Image passed moderation');
+  }
+  return { flagged: false, details: [] };
+}
 
 
 function normalizeHttpUrl(input, { allowEmpty = false } = {}) {
@@ -3686,8 +3736,21 @@ app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
     const params = [];
 
     if (profile_bg_image_url !== undefined) {
+      const bgUrl = String(profile_bg_image_url || '').trim() || null;
+      // Moderate banner image if provided
+      if (bgUrl) {
+        const modResult = await moderateImageUrl(bgUrl);
+        if (modResult.flagged) {
+          await recordFlaggedAttempt({
+            userId: req.user?.id,
+            title: '[Profile Banner]',
+            flagged: modResult.details
+          });
+          return res.status(400).json({ error: 'moderation_flagged' });
+        }
+      }
       updates.push('profile_bg_image_url = ?');
-      params.push(String(profile_bg_image_url || '').trim() || null);
+      params.push(bgUrl);
     }
 
     if (profile_bg_video_url !== undefined) {
@@ -3730,15 +3793,11 @@ app.put('/api/me/customization', auth, writeLimiter, async (req, res) => {
 });
 
 app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
-
   try {
-
     const url = String(req.body?.profile_picture_url || '').trim();
 
     if (url && url.length > 500) {
-
       return res.status(400).json({ error: 'URL too long' });
-
     }
 
     // Validate URL is from allowed S3 bucket if provided
@@ -3747,20 +3806,26 @@ app.put('/api/me/profile-picture', auth, writeLimiter, async (req, res) => {
       if (allowedBase && !url.startsWith(allowedBase)) {
         return res.status(400).json({ error: 'Invalid image URL' });
       }
+
+      // Moderate the image
+      const modResult = await moderateImageUrl(url);
+      if (modResult.flagged) {
+        await recordFlaggedAttempt({
+          userId: req.user?.id,
+          title: '[Profile Picture]',
+          flagged: modResult.details
+        });
+        return res.status(400).json({ error: 'moderation_flagged' });
+      }
     }
 
     await db.prepare('UPDATE users SET profile_picture_url = ? WHERE id = ?').run(url || null, req.user.id);
 
     return res.json({ ok: true, profile_picture_url: url });
-
   } catch (e) {
-
     console.error('Update profile picture failed:', e);
-
     return res.status(500).json({ error: 'update_failed' });
-
   }
-
 });
 
 app.put('/api/me/notification-settings', auth, writeLimiter, async (req, res) => {
@@ -3849,6 +3914,16 @@ app.put('/api/me/profile-customization', auth, writeLimiter, async (req, res) =>
       }
       if (!isAllowedBannerImageUrl(bgImageUrl)) {
         return res.status(400).json({ error: 'Image must be uploaded through Trovelr' });
+      }
+      // Moderate banner image
+      const modResult = await moderateImageUrl(bgImageUrl);
+      if (modResult.flagged) {
+        await recordFlaggedAttempt({
+          userId: req.user?.id,
+          title: '[Profile Banner]',
+          flagged: modResult.details
+        });
+        return res.status(400).json({ error: 'moderation_flagged' });
       }
     }
 

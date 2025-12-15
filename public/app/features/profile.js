@@ -443,13 +443,21 @@
       onSaveProfileAbout,
       profileAboutStatusMessage
     }) {
+      const [saving, setSaving] = useState(false);
+      const [saveStatus, setSaveStatus] = useState('');
+
+      // Hide mobile dashboard when modal is open
+      useEffect(() => {
+        if (open) {
+          document.body.classList.add('modal-open');
+          return () => document.body.classList.remove('modal-open');
+        }
+      }, [open]);
+
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
       }
-
-      const [saving, setSaving] = useState(false);
-      const [saveStatus, setSaveStatus] = useState('');
 
       const handleOverlayClick = (evt) => {
         if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
@@ -463,13 +471,9 @@
         try {
           await onSaveLocation?.();
           await onSaveProfileAbout?.();
-          setSaveStatus('Saved');
-          setTimeout(() => {
-            setSaveStatus('');
-          }, 2000);
+          onClose?.();
         } catch (err) {
           setSaveStatus('Error saving. Please try again.');
-        } finally {
           setSaving(false);
         }
       };
@@ -708,6 +712,14 @@
           setPosition({ x: 0, y: 0 });
           setImageDimensions({ width: 0, height: 0 });
           setCropError(null);
+        }
+      }, [open]);
+
+      // Hide mobile dashboard when modal is open
+      useEffect(() => {
+        if (open) {
+          document.body.classList.add('modal-open');
+          return () => document.body.classList.remove('modal-open');
         }
       }, [open]);
 
@@ -1445,6 +1457,14 @@
         }
       }, [isDarkMode]);
 
+      // Hide mobile dashboard when modal is open
+      useEffect(() => {
+        if (open) {
+          document.body.classList.add('modal-open');
+          return () => document.body.classList.remove('modal-open');
+        }
+      }, [open]);
+
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
@@ -1641,6 +1661,14 @@
       onSave,
       saving
     }) {
+      // Hide mobile dashboard when modal is open
+      useEffect(() => {
+        if (open) {
+          document.body.classList.add('modal-open');
+          return () => document.body.classList.remove('modal-open');
+        }
+      }, [open]);
+
       const hasDom = typeof document !== 'undefined' && document.body;
       if (!open || !hasDom) {
         return null;
@@ -2584,17 +2612,19 @@
         ),
 
         H('section', null,
-          H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
+          H('div', { style: { display: 'flex', gap: 8, margin: '0 0 16px' } },
             H('button', {
               className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
               type: 'button',
+              style: { flex: 1 },
               onClick: () => setProfileTab('active')
-            }, 'Active listings'),
+            }, 'Active'),
             H('button', {
               className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
               type: 'button',
+              style: { flex: 1 },
               onClick: () => setProfileTab('sold')
-            }, 'Sold listings')
+            }, 'Sold')
           ),
           (shownItems.length
             ? (ListingsGrid

@@ -26,7 +26,9 @@
       "Bash(npm run build:core:browser:*)",
       "Bash(npm run:*)",
       "WebSearch",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

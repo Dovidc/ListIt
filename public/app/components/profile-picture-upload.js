@@ -196,13 +196,27 @@
 
           const file = new File([blob], 'profile-picture.jpg', { type: 'image/jpeg' });
           const url = await uploadOneMessageImage(file);
-          await api.updateProfilePicture(url);
+          const result = await api.updateProfilePicture(url);
+
+          if (result?.error === 'moderation_flagged') {
+            setError('This image was flagged by our content moderation system and cannot be used.');
+            return;
+          }
+          if (result?.error) {
+            setError(result.error);
+            return;
+          }
 
           onUploadComplete?.(url);
           onClose?.();
         } catch (err) {
           console.error('Upload failed:', err);
-          setError(err.message || 'Upload failed');
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged')) {
+            setError('This image was flagged by our content moderation system and cannot be used.');
+          } else {
+            setError(msg || 'Upload failed');
+          }
         } finally {
           setUploading(false);
         }
