@@ -53,6 +53,12 @@ if (process.env.SENTRY_DSN) {
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: 0.1, // Capture 10% of transactions for performance monitoring
+    integrations: [
+      // Send console.log, console.warn, and console.error calls as logs to Sentry
+      Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
+    ],
+    // Enable logs to be sent to Sentry
+    enableLogs: true,
     beforeSend(event) {
       // Don't send events in test environment
       if (process.env.NODE_ENV === 'test') return null;
