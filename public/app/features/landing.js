@@ -493,7 +493,12 @@
                                 type: 'submit',
                                 style: btnStyle,
                                 disabled: loading
-                            }, loading ? 'Please wait...' : 'Sign In'),
+                            }, loading ? 'Please wait...' :
+                                mode === 'register' ? 'Create Account' :
+                                mode === 'reset-request' ? 'Send Reset Code' :
+                                mode === 'reset-confirm' ? 'Reset Password' :
+                                mode === 'verify' ? 'Verify Email' :
+                                'Sign In'),
 
                             H('div', {
                                 style: {

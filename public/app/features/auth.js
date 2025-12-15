@@ -83,6 +83,8 @@
       return ctx;
     }
 
+    const COOLDOWN_SECONDS = 60; // 1 minute cooldown for resend
+
     function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
       const { setUser } = useAuth();
       const [mode, setMode] = useState(initialMode);
@@ -97,6 +99,23 @@
       const [info, setInfo] = useState('');
       const [loading, setLoading] = useState(false);
       const [resending, setResending] = useState(false);
+      const [cooldownRemaining, setCooldownRemaining] = useState(0);
+
+      // Cooldown timer effect
+      useEffect(() => {
+        if (cooldownRemaining <= 0) return;
+        const timer = setTimeout(() => {
+          setCooldownRemaining(prev => prev - 1);
+        }, 1000);
+        return () => clearTimeout(timer);
+      }, [cooldownRemaining]);
+
+      // Start cooldown when entering verify or reset-confirm modes
+      useEffect(() => {
+        if (mode === 'verify' || mode === 'reset-confirm') {
+          setCooldownRemaining(COOLDOWN_SECONDS);
+        }
+      }, [mode]);
 
       useEffect(() => {
         if (isOpen) {
@@ -112,6 +131,7 @@
           setPendingPassword('');
           setLoading(false);
           setResending(false);
+          setCooldownRemaining(0);
         }
       }, [isOpen, initialMode]);
 
@@ -229,6 +249,7 @@
           const issues = err?.issues;
           if (message === 'email_unverified') {
             setInfo('We just emailed you a new code. It may take a moment to arrive.');
+            setCooldownRemaining(COOLDOWN_SECONDS);
             handled = true;
           } else {
             setError(getFriendlyError(message, issues));
@@ -240,6 +261,7 @@
 
         if (!handled) {
           setInfo('We just emailed you a new code. It may take a moment to arrive.');
+          setCooldownRemaining(COOLDOWN_SECONDS);
         }
       }
 
@@ -297,6 +319,7 @@
             setInfo('We emailed you a reset code. Enter it below to choose a new password.');
             setPassword('');
             setResetToken('');
+            setCooldownRemaining(COOLDOWN_SECONDS);
             setMode('reset-confirm');
             return;
           }
@@ -546,10 +569,7 @@
 
       return ReactDOM.createPortal(
         H('div', {
-          className: 'auth-modal-overlay',
-          onClick: (e) => {
-            if (e.target.classList.contains('auth-modal-overlay')) onClose();
-          }
+          className: 'auth-modal-overlay'
         },
           H('div', { className: 'auth-modal' },
             H('button', { className: 'auth-modal-close', onClick: onClose }, '\u00D7'),
@@ -584,9 +604,9 @@
                   H('button', {
                     type: 'button',
                     onClick: handleResendCode,
-                    disabled: resending || !canResend,
-                    style: { opacity: resending || !canResend ? 0.5 : 1 }
-                  }, resending ? 'Sending...' : 'Resend code'),
+                    disabled: resending || !canResend || cooldownRemaining > 0,
+                    style: { opacity: resending || !canResend || cooldownRemaining > 0 ? 0.5 : 1 }
+                  }, resending ? 'Sending...' : cooldownRemaining > 0 ? `Resend (${cooldownRemaining}s)` : 'Resend code'),
                   H('button', {
                     type: 'button',
                     onClick: () => { resetMode(); setMode('login'); }
@@ -602,8 +622,10 @@
                 mode === 'reset-confirm' && H('div', { className: 'auth-footer' },
                   H('button', {
                     type: 'button',
-                    onClick: () => { resetMode(); setMode('reset-request'); }
-                  }, 'Need a new code?')
+                    onClick: () => { resetMode(); setMode('reset-request'); },
+                    disabled: cooldownRemaining > 0,
+                    style: { opacity: cooldownRemaining > 0 ? 0.5 : 1 }
+                  }, cooldownRemaining > 0 ? `Need a new code? (${cooldownRemaining}s)` : 'Need a new code?')
                 )
               )
             )
