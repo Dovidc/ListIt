@@ -4381,71 +4381,74 @@ app.delete('/api/me', auth, async (req, res) => {
     const userId = req.user.id;
     console.log('Deleting account for user:', userId);
 
-    // Delete in proper order to handle foreign key constraints
-    // PostgreSQL (and SQLite with FK enabled) require child records deleted first
+    // Use transaction to ensure atomic deletion - all or nothing
+    await db.transaction(async (tx) => {
+      // Delete in proper order to handle foreign key constraints
+      // PostgreSQL (and SQLite with FK enabled) require child records deleted first
 
-    // Get all listing IDs for this user first
-    const userListings = await db.prepare('SELECT id FROM listings WHERE user_id = ?').all(userId);
-    const listingIds = userListings.map(l => l.id);
-    console.log('Found listings:', listingIds);
+      // Get all listing IDs for this user first
+      const userListings = await tx.prepare('SELECT id FROM listings WHERE user_id = ?').all(userId);
+      const listingIds = userListings.map(l => l.id);
+      console.log('Found listings:', listingIds);
 
-    // Delete listing images (child of listings)
-    if (listingIds.length > 0) {
-      const placeholders = listingIds.map(() => '?').join(',');
-      await db.prepare(`DELETE FROM listing_images WHERE listing_id IN (${placeholders})`).run(...listingIds);
-      console.log('Deleted listing images');
-    }
-
-    // Get all conversations for this user
-    const userConversations = await db.prepare('SELECT id FROM conversations WHERE a_user_id = ? OR b_user_id = ?').all(userId, userId);
-    const conversationIds = userConversations.map(c => c.id);
-    console.log('Found conversations:', conversationIds.length);
-
-    // Get all message IDs from user's conversations
-    let messageIds = [];
-    if (conversationIds.length > 0) {
-      const placeholders = conversationIds.map(() => '?').join(',');
-      const userMessages = await db.prepare(`SELECT id FROM messages WHERE conversation_id IN (${placeholders})`).all(...conversationIds);
-      messageIds = userMessages.map(m => m.id);
-      console.log('Found messages:', messageIds.length);
-
-      // Delete message images (child of messages)
-      if (messageIds.length > 0) {
-        const msgPlaceholders = messageIds.map(() => '?').join(',');
-        await db.prepare(`DELETE FROM message_images WHERE message_id IN (${msgPlaceholders})`).run(...messageIds);
-        console.log('Deleted message images');
+      // Delete listing images (child of listings)
+      if (listingIds.length > 0) {
+        const placeholders = listingIds.map(() => '?').join(',');
+        await tx.prepare(`DELETE FROM listing_images WHERE listing_id IN (${placeholders})`).run(...listingIds);
+        console.log('Deleted listing images');
       }
 
-      // Delete all messages in user's conversations
-      await db.prepare(`DELETE FROM messages WHERE conversation_id IN (${placeholders})`).run(...conversationIds);
-      console.log('Deleted messages');
-    }
+      // Get all conversations for this user
+      const userConversations = await tx.prepare('SELECT id FROM conversations WHERE a_user_id = ? OR b_user_id = ?').all(userId, userId);
+      const conversationIds = userConversations.map(c => c.id);
+      console.log('Found conversations:', conversationIds.length);
 
-    // Delete all user's conversations
-    await db.prepare('DELETE FROM conversations WHERE a_user_id = ? OR b_user_id = ?').run(userId, userId);
-    console.log('Deleted conversations');
+      // Get all message IDs from user's conversations
+      let messageIds = [];
+      if (conversationIds.length > 0) {
+        const placeholders = conversationIds.map(() => '?').join(',');
+        const userMessages = await tx.prepare(`SELECT id FROM messages WHERE conversation_id IN (${placeholders})`).all(...conversationIds);
+        messageIds = userMessages.map(m => m.id);
+        console.log('Found messages:', messageIds.length);
 
-    // Delete listing upload drafts
-    await db.prepare('DELETE FROM listing_upload_drafts WHERE user_id = ?').run(userId);
-    console.log('Deleted upload drafts');
+        // Delete message images (child of messages)
+        if (messageIds.length > 0) {
+          const msgPlaceholders = messageIds.map(() => '?').join(',');
+          await tx.prepare(`DELETE FROM message_images WHERE message_id IN (${msgPlaceholders})`).run(...messageIds);
+          console.log('Deleted message images');
+        }
 
-    // Delete all user's listings
-    await db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
-    console.log('Deleted listings');
+        // Delete all messages in user's conversations
+        await tx.prepare(`DELETE FROM messages WHERE conversation_id IN (${placeholders})`).run(...conversationIds);
+        console.log('Deleted messages');
+      }
 
-    // Delete all user's reports (both made and received)
-    await db.prepare('DELETE FROM seller_reports WHERE reporter_user_id = ? OR reported_user_id = ?').run(userId, userId);
-    console.log('Deleted reports');
+      // Delete all user's conversations
+      await tx.prepare('DELETE FROM conversations WHERE a_user_id = ? OR b_user_id = ?').run(userId, userId);
+      console.log('Deleted conversations');
 
-    // Delete user's push subscriptions
-    await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
-    console.log('Deleted push subscriptions');
+      // Delete listing upload drafts
+      await tx.prepare('DELETE FROM listing_upload_drafts WHERE user_id = ?').run(userId);
+      console.log('Deleted upload drafts');
 
-    // Delete the user account
-    await db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-    console.log('Deleted user account');
+      // Delete all user's listings
+      await tx.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+      console.log('Deleted listings');
 
-    // Clear auth cookie
+      // Delete all user's reports (both made and received)
+      await tx.prepare('DELETE FROM seller_reports WHERE reporter_user_id = ? OR reported_user_id = ?').run(userId, userId);
+      console.log('Deleted reports');
+
+      // Delete user's push subscriptions
+      await tx.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+      console.log('Deleted push subscriptions');
+
+      // Delete the user account
+      await tx.prepare('DELETE FROM users WHERE id = ?').run(userId);
+      console.log('Deleted user account');
+    });
+
+    // Clear auth cookie (outside transaction - not a DB operation)
     clearAuthCookie(res);
 
     return res.json({ ok: true });

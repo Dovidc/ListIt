@@ -315,18 +315,10 @@
       return H('div', {
         ref: msgsContainerRef,
         className: 'messages-thread-content',
-        style: {
-          flex: 1,
-          overflow: 'auto',
-          padding: 4,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end'
-        },
+        style: { padding: 4 },
         onScroll
       },
-      H('div', { style: { display: 'flex', flexDirection: 'column' } },
+      H('div', { style: { display: 'flex', flexDirection: 'column', marginTop: 'auto' } },
         messages.map((message) => {
         const ts = formatMessageTimestamp(message.created_at || message.updated_at);
         const isMine = message.sender_id === user?.id;
@@ -1611,94 +1603,6 @@
         setShowConversationOnMobile(false);
       }, []);
 
-      // Thread content - reusable for both desktop and mobile portal
-      const threadContent = H(React.Fragment, null,
-        // Back button only on mobile
-        isMobile && activeId && H('div', {
-          className: 'messages-thread-header',
-          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }
-        },
-          H('button', {
-            onClick: handleBackToList,
-            style: {
-              background: 'transparent',
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontSize: 16,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontWeight: 600,
-              color: '#2563eb'
-            }
-          }, '← Back to conversations')
-        ),
-        !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
-        (activeId && loadingMsgs) && H('div', {
-          className: 'muted',
-          style: { padding: '20px', textAlign: 'center' }
-        }, 'Loading messages...'),
-        (activeId && !loadingMsgs) && H(MessagesThread, {
-          messages: msgs,
-          user: currentUser,
-          ImageWithSkeleton,
-          openLightbox,
-          msgsContainerRef,
-          onScroll: checkIfAtBottom,
-          formatMessageTimestamp,
-          otherUserPicture: active?.other_user_profile_picture,
-          otherUserId: active?.other_user_id,
-          otherUserUsername: active?.other_user_username,
-          onViewProfile
-        }),
-        (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
-          previews: imgPreviews,
-          onRemove: removeImg,
-          ImageWithSkeleton
-        }),
-        activeId && H(MessageComposer, {
-          input,
-          setInput,
-          onComposerPaste,
-          onPickImages: pickImgs,
-          cameraFileRef,
-          libraryFileRef,
-          dropRef,
-          onDragOver,
-          onDrop,
-          canRevealPaypal,
-          onRevealPaypal: handleRequestPaypal,
-          canSendLocation,
-          onRequestLocation: handleRequestLocation,
-          onSend: send,
-          inputRef: mobileInputRef,
-          otherUserDeleted: active?.other_user_deleted,
-          hasImages: imgPreviews.length > 0
-        }),
-        H(Lightbox, {
-          open: lb.open,
-          images: lb.images,
-          fallback: lb.images,
-          loading: false,
-          index: lb.index,
-          onClose: closeLightbox,
-          onIndex: setLightboxIndex
-        }),
-        H(ConfirmLocationModal, {
-          open: confirmLocationOpen,
-          address: locationPreset,
-          onCancel: handleCloseLocationConfirm,
-          onConfirm: handleConfirmLocation
-        }),
-        H(ConfirmPaypalModal, {
-          open: confirmPaypalOpen,
-          email: currentUser?.paypal_email,
-          onCancel: handleClosePaypalConfirm,
-          onConfirm: handleConfirmPaypal
-        })
-      );
-
       // Refs for portal elements
       const portalRef = useRef(null);
       const composerWrapperRef = useRef(null);
@@ -1901,19 +1805,83 @@
       );
 
       return H('div', { className: 'messages-panel' },
-        H(ConversationsSidebar, {
-          conversations: convosDecorated,
-          activeId,
-          onSelectConversation: handleSelectConversation,
-          onDeleteConversation: deleteConvo,
-          onMarkAllRead: markAllAsRead,
-          className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
-        }),
-        // Desktop thread only (mobile uses portal instead)
-        !isMobile && H('section', {
-          className: 'card col messages-thread-shell',
-          style: { padding: 12 }
-        }, threadContent),
+        // Left side: conversations list
+        H('div', { className: 'messages-panel-left' },
+          H(ConversationsSidebar, {
+            conversations: convosDecorated,
+            activeId,
+            onSelectConversation: handleSelectConversation,
+            onDeleteConversation: deleteConvo,
+            onMarkAllRead: markAllAsRead,
+            className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
+          })
+        ),
+        // Right side: message thread (desktop only)
+        !isMobile && H('div', { className: 'messages-panel-right' },
+          !activeId && H('div', { className: 'muted', style: { padding: 20 } }, 'Select a conversation'),
+          (activeId && loadingMsgs) && H('div', {
+            className: 'muted',
+            style: { padding: 20, textAlign: 'center' }
+          }, 'Loading messages...'),
+          (activeId && !loadingMsgs) && H(MessagesThread, {
+            messages: msgs,
+            user: currentUser,
+            ImageWithSkeleton,
+            openLightbox,
+            msgsContainerRef,
+            onScroll: checkIfAtBottom,
+            formatMessageTimestamp,
+            otherUserPicture: active?.other_user_profile_picture,
+            otherUserId: active?.other_user_id,
+            otherUserUsername: active?.other_user_username,
+            onViewProfile
+          }),
+          (activeId && imgPreviews.length > 0) && H(ImagePreviewStrip, {
+            previews: imgPreviews,
+            onRemove: removeImg,
+            ImageWithSkeleton
+          }),
+          activeId && H(MessageComposer, {
+            input,
+            setInput,
+            onComposerPaste,
+            onPickImages: pickImgs,
+            cameraFileRef,
+            libraryFileRef,
+            dropRef,
+            onDragOver,
+            onDrop,
+            canRevealPaypal,
+            onRevealPaypal: handleRequestPaypal,
+            canSendLocation,
+            onRequestLocation: handleRequestLocation,
+            onSend: send,
+            inputRef: mobileInputRef,
+            otherUserDeleted: active?.other_user_deleted,
+            hasImages: imgPreviews.length > 0
+          }),
+          H(Lightbox, {
+            open: lb.open,
+            images: lb.images,
+            fallback: lb.images,
+            loading: false,
+            index: lb.index,
+            onClose: closeLightbox,
+            onIndex: setLightboxIndex
+          }),
+          H(ConfirmLocationModal, {
+            open: confirmLocationOpen,
+            address: locationPreset,
+            onCancel: handleCloseLocationConfirm,
+            onConfirm: handleConfirmLocation
+          }),
+          H(ConfirmPaypalModal, {
+            open: confirmPaypalOpen,
+            email: currentUser?.paypal_email,
+            onCancel: handleClosePaypalConfirm,
+            onConfirm: handleConfirmPaypal
+          })
+        ),
         // Mobile portal
         mobileThreadPortal,
         // Moderation modal
