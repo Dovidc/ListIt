@@ -2647,6 +2647,9 @@ const karmaLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 30 }, 'karma');
 // Rate limiter for profile updates - 20 per hour
 const profileLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 20 }, 'profile');
 
+// Rate limiter for listing creation - 30 per minute
+const listingCreateLimiter = mkLimiter({ windowMs: 60 * 1000, max: 30 }, 'listing-create');
+
 
 
 const REPORT_REASON_CODES = new Set([
@@ -5819,7 +5822,7 @@ app.post(
     // Fall back to normal auth
     return auth(req, res, next);
   },
-  writeLimiter,
+  listingCreateLimiter,
   (req, res, next) => {
     if (isLockedAccount(req.user)) return respondLocked(res);
     return next();
@@ -5995,7 +5998,7 @@ app.post(
     }
     return auth(req, res, next);
   },
-  writeLimiter,
+  listingCreateLimiter,
   (req, res, next) => {
     if (isLockedAccount(req.user)) return respondLocked(res);
     return next();

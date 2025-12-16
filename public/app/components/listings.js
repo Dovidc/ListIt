@@ -3723,12 +3723,12 @@
                       padding: '12px 16px',
                       borderRadius: 14,
                       border: 'none',
-                      background: '#5865F2',
+                      background: '#3b82f6',
                       color: '#fff',
                       fontSize: 15,
                       fontWeight: 700,
                       cursor: 'pointer',
-                      boxShadow: '0 10px 25px rgba(88, 101, 242, 0.4)'
+                      boxShadow: '0 10px 25px rgba(59, 130, 246, 0.4)'
                     }
                   }, 'Message'),
                   H('button', {
