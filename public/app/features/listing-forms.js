@@ -35,7 +35,9 @@
       uploadFileDraft,
       uploadFilesForListing,
       useFilePreviews,
-      AI_IMAGE_LIMIT
+      AI_IMAGE_LIMIT,
+      // Optional: background upload service for native apps
+      backgroundUploadService
     } = uploads;
 
     if (typeof clearDraftCacheForFile !== 'function') {
@@ -163,6 +165,220 @@
       });
     }
 
+    /**
+     * Native background upload flow:
+     * 1. Compress images to blobs
+     * 2. Run AI analysis to get title/description/price/tags
+     * 3. Create shell listing with AI-generated content
+     * 4. Start native background uploads to S3
+     * 5. User can close app - iOS/Android continue uploads
+     * 6. When uploads complete, images attach to listing
+     */
+    async function runAutoListWithBackgroundUpload({
+      files,
+      location,
+      autoPostNearbyEnabled,
+      autoInquiryEnabled,
+      enqueueListingJob,
+      reloadMineRef,
+      reloadAllRef,
+      reloadMine,
+      reloadAll,
+      onCreated,
+      onError,
+      onJobQueued
+    }) {
+      const startTime = Date.now();
+
+      // Convert files to array
+      let fileArray;
+      try {
+        if (files instanceof FileList) {
+          fileArray = Array.from(files);
+        } else if (Array.isArray(files)) {
+          fileArray = files;
+        } else if (files && typeof files[Symbol.iterator] === 'function') {
+          fileArray = Array.from(files);
+        } else {
+          fileArray = files ? [files] : [];
+        }
+      } catch (e) {
+        console.error('[AutoList/BG] Error converting files:', e);
+        fileArray = [];
+      }
+
+      const validFiles = fileArray.filter(f => f && (f instanceof Blob || f instanceof File || f.uri));
+      console.log('[AutoList/BG] Valid files:', validFiles.length);
+
+      if (!validFiles.length) {
+        throw new Error('No images provided for auto-listing.');
+      }
+
+      // Step 1: Compress images to blobs (same as regular flow)
+      console.log('[AutoList/BG] Compressing', validFiles.length, 'images...');
+      const compressedBlobs = [];
+      const base64Images = []; // For AI analysis
+
+      for (let i = 0; i < Math.min(validFiles.length, 12); i++) {
+        try {
+          const { blob } = await compressImage(validFiles[i], 1200, 0.8);
+          compressedBlobs.push(blob);
+
+          // Also convert to base64 for AI (only first few images)
+          if (i < AI_IMAGE_LIMIT) {
+            const base64 = await fileToBase64(blob);
+            base64Images.push(base64);
+          }
+        } catch (e) {
+          console.warn(`[AutoList/BG] Failed to compress image ${i}:`, e);
+          // Use original if compression fails
+          compressedBlobs.push(validFiles[i]);
+        }
+      }
+
+      if (!compressedBlobs.length) {
+        throw new Error('Failed to process images');
+      }
+
+      console.log(`[AutoList/BG] Compressed ${compressedBlobs.length} images in ${Date.now() - startTime}ms`);
+
+      // Step 2: Determine location (same as regular flow)
+      const manualLocation = String(location || '').trim();
+      let locAuto = manualLocation;
+      let latAuto = null;
+      let lonAuto = null;
+      let enableNearbyAuto = false;
+
+      if (autoPostNearbyEnabled || !locAuto) {
+        try {
+          const c = await fetchCoordsAndReverse({ silent: true });
+          if (c && c.lat != null && c.lon != null) {
+            if (autoPostNearbyEnabled) {
+              enableNearbyAuto = true;
+            }
+            latAuto = c.lat;
+            lonAuto = c.lon;
+            if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
+          }
+        } catch (err) {
+          console.warn('[AutoList/BG] Location lookup failed:', err);
+        }
+      }
+
+      if (!locAuto) {
+        locAuto = 'Unknown location';
+      }
+
+      // Step 3: Run AI analysis to get title/description/price/tags
+      let aiTitle = null;
+      let aiDescription = null;
+      let aiPrice = null;
+      let aiTags = null;
+
+      if (base64Images.length > 0 && typeof api.aiAnalyze === 'function') {
+        console.log(`[AutoList/BG] Running AI analysis on ${base64Images.length} images...`);
+        const aiStartTime = Date.now();
+
+        try {
+          const aiResult = await api.aiAnalyze({
+            images: base64Images,
+            hint: ''
+          });
+
+          if (aiResult) {
+            aiTitle = aiResult.title || null;
+            aiDescription = aiResult.description || null;
+            aiPrice = typeof aiResult.price === 'number' ? aiResult.price : null;
+            aiTags = Array.isArray(aiResult.tags) ? aiResult.tags : null;
+          }
+
+          console.log(`[AutoList/BG] AI analysis complete in ${Date.now() - aiStartTime}ms: "${aiTitle}"`);
+        } catch (aiErr) {
+          console.warn('[AutoList/BG] AI analysis failed (continuing without):', aiErr.message);
+          // Continue without AI - listing will have no title/description
+        }
+      }
+
+      // Step 4: Create shell listing with AI-generated content + background uploads
+      try {
+        const result = await backgroundUploadService.createListingWithBackgroundUpload({
+          images: compressedBlobs,
+          location: locAuto,
+          title: aiTitle,
+          description: aiDescription,
+          price: aiPrice,
+          enable_nearby: enableNearbyAuto,
+          inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true,
+          lat: latAuto,
+          lon: lonAuto,
+          tags: aiTags,
+
+          onListingCreated: ({ listing_id, images_pending }) => {
+            console.log(`[AutoList/BG] Shell listing ${listing_id} created, ${images_pending} images pending`);
+
+            // Show toast immediately - listing exists!
+            if (typeof enqueueListingJob === 'function') {
+              try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+            }
+
+            // Notify that job was "queued" (listing created, uploads in progress)
+            try {
+              onJobQueued?.({ listing_id, status: 'uploading', images_pending });
+            } catch (e) {
+              console.warn('[AutoList/BG] onJobQueued callback error:', e);
+            }
+          },
+
+          onImageProgress: (slot, percent) => {
+            // Could update UI with progress here
+            console.log(`[AutoList/BG] Image ${slot} upload: ${percent}%`);
+          },
+
+          onImageComplete: ({ listingId, slot, publicUrl, imagesPending }) => {
+            console.log(`[AutoList/BG] Image ${slot} complete, ${imagesPending} remaining`);
+          },
+
+          onAllComplete: async ({ listing_id, total }) => {
+            console.log(`[AutoList/BG] All ${total} images uploaded for listing ${listing_id}`);
+
+            // Reload listings
+            const mineFn = reloadMineRef?.current ?? reloadMine;
+            const allFn = reloadAllRef?.current ?? reloadAll;
+
+            try { await mineFn?.(); } catch { }
+            try { await allFn?.({ preserveExisting: true }); } catch { }
+
+            // Fetch the completed listing
+            try {
+              // TODO: Could fetch the listing here to pass to onCreated
+              onCreated?.({ id: listing_id });
+            } catch (e) {
+              console.warn('[AutoList/BG] onCreated callback error:', e);
+            }
+          },
+
+          onError: (err) => {
+            console.error('[AutoList/BG] Upload error:', err);
+            try { onError?.(err); } catch (e) { console.warn('[AutoList/BG] onError callback error:', e); }
+          }
+        });
+
+        const totalTime = Date.now() - startTime;
+        console.log(`[AutoList/BG] Listing ${result.listing_id} created in ${totalTime}ms, ${result.images_pending} images uploading in background`);
+
+        return {
+          queued: true,
+          listingId: result.listing_id,
+          isBackgroundUpload: result.isBackgroundUpload
+        };
+
+      } catch (err) {
+        console.error('[AutoList/BG] Error:', err);
+        onError?.(err);
+        throw err;
+      }
+    }
+
     async function runAutoList({
       files,
       location,
@@ -179,6 +395,29 @@
       onJobQueued
     } = {}) {
       try {
+        // Check if native background upload is available
+        const useNativeBackground = backgroundUploadService &&
+          typeof backgroundUploadService.hasBackgroundUploadSupport === 'function' &&
+          backgroundUploadService.hasBackgroundUploadSupport();
+
+        if (useNativeBackground) {
+          console.log('[AutoList] Using native background upload (shell + background images)');
+          return await runAutoListWithBackgroundUpload({
+            files,
+            location,
+            autoPostNearbyEnabled,
+            autoInquiryEnabled,
+            enqueueListingJob,
+            reloadMineRef,
+            reloadAllRef,
+            reloadMine,
+            reloadAll,
+            onCreated,
+            onError,
+            onJobQueued
+          });
+        }
+
         console.log('[AutoList] Starting runAutoList (fast mode)');
 
         // Defensive: ensure files is an array

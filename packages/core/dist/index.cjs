@@ -319,6 +319,17 @@ function createApiClient(options = {}) {
   }, meta);
 
   /**
+   * Create a shell listing immediately (no images).
+   * Returns listing_id + presigned S3 URLs for background upload.
+   * Use this for native background uploads where images upload separately.
+   */
+  const createListingShell = (payload, meta) => request('/api/listings/create-shell', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  }, meta);
+
+  /**
    * Get status of an auto-listing job.
    */
   const getAutoListingStatus = (jobId, meta) => request(`/api/listings/auto/${jobId}`, { method: 'GET' }, meta);
@@ -559,6 +570,7 @@ function createApiClient(options = {}) {
     createListing,
     createAutoListing,
     createAutoListingFast,
+    createListingShell,
     getAutoListingStatus,
     listAutoListingJobs,
     updateListing,

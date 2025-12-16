@@ -321,6 +321,17 @@
     }, meta);  
     
     /**  
+     * Create a shell listing immediately (no images).  
+     * Returns listing_id + presigned S3 URLs for background upload.  
+     * Use this for native background uploads where images upload separately.  
+     */  
+    const createListingShell = (payload, meta) => request('/api/listings/create-shell', {  
+      method: 'POST',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify(payload || {})  
+    }, meta);  
+    
+    /**  
      * Get status of an auto-listing job.  
      */  
     const getAutoListingStatus = (jobId, meta) => request(`/api/listings/auto/${jobId}`, { method: 'GET' }, meta);  
@@ -495,23 +506,7 @@
       method: 'POST',  
       headers: { 'Content-Type': 'application/json' },  
       body: JSON.stringify({ disabled })  
-    }, meta);
-    const adminGetKarmaTop = ({ limit } = {}, meta) => {
-      const params = new URLSearchParams();
-      if (limit) params.set('limit', limit);
-      const qs = params.toString();
-      return request('/api/admin/karma/top' + (qs ? '?' + qs : ''), { method: 'GET' }, meta);
-    };
-
-    const adminGetKarmaChanges = ({ days, limit } = {}, meta) => {
-      const params = new URLSearchParams();
-      if (days) params.set('days', days);
-      if (limit) params.set('limit', limit);
-      const qs = params.toString();
-      return request('/api/admin/karma/changes' + (qs ? '?' + qs : ''), { method: 'GET' }, meta);
-    };
-
-  
+    }, meta);  
     
     const signUpload = ({ filename, contentType, bytes }, meta) => request('/api/uploads/sign', {  
       method: 'POST',  
@@ -577,6 +572,7 @@
       createListing,  
       createAutoListing,  
       createAutoListingFast,  
+      createListingShell,  
       getAutoListingStatus,  
       listAutoListingJobs,  
       updateListing,  
@@ -613,8 +609,6 @@
       adminClearUserReports,  
       adminGetPaymentsStatus,  
       adminSetPaymentsStatus,  
-      adminGetKarmaTop,
-      adminGetKarmaChanges,
       signUpload,  
       finalizeUpload,  
       getLegalStatus,  

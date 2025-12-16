@@ -9,6 +9,7 @@
     const createUploadsImageUtils = uploadsNamespace.createUploadsImageUtils;
     const createUploadsService = uploadsNamespace.createUploadsService;
     const createUploadsHooks = uploadsNamespace.createUploadsHooks;
+    const createBackgroundUploadService = uploadsNamespace.createBackgroundUploadService;
 
     if (typeof createUploadsImageUtils !== 'function') {
       throw new Error('Uploads feature requires the uploads image utils module.');
@@ -19,6 +20,16 @@
 
     const utils = createUploadsImageUtils();
     const service = createUploadsService({ api, utils });
+
+    // Create background upload service if available (optional - for native apps)
+    let backgroundUploadService = null;
+    if (typeof createBackgroundUploadService === 'function') {
+      try {
+        backgroundUploadService = createBackgroundUploadService({ api });
+      } catch (e) {
+        console.warn('[Uploads] Background upload service not available:', e.message);
+      }
+    }
 
     const hasReact = !!(React && typeof React.useState === 'function' && typeof React.useEffect === 'function');
     let useFilePreviews = () => {
@@ -48,7 +59,9 @@
       useFilePreviews,
       filesToDataUrls: utils.filesToDataUrls,
       fileToDataUrl: utils.fileToDataUrl,
-      AI_IMAGE_LIMIT: utils.AI_IMAGE_LIMIT
+      AI_IMAGE_LIMIT: utils.AI_IMAGE_LIMIT,
+      // Background upload service (for native apps with Capacitor)
+      backgroundUploadService
     };
   }
 

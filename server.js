@@ -6172,6 +6172,183 @@ app.post(
 );
 
 /**
+ * POST /api/listings/create-shell
+ * Creates a listing immediately with text/location but NO images.
+ * Returns the listing_id + presigned S3 URLs for background image upload.
+ *
+ * This enables "fire and forget" - user sees listing created instantly,
+ * then images upload in background (even if app closes on mobile).
+ *
+ * Expected body: {
+ *   location: 'City, State',
+ *   title: 'Item title' (optional - can be AI generated later),
+ *   description: 'Description' (optional),
+ *   price: 100 (optional),
+ *   enable_nearby: true/false,
+ *   inquiry_enabled: true/false,
+ *   lat: number (optional),
+ *   lon: number (optional),
+ *   image_count: 1-12 (number of presigned URLs to generate)
+ * }
+ *
+ * Returns: {
+ *   listing_id: number,
+ *   upload_slots: [{ uploadUrl, publicUrl, key }, ...]
+ * }
+ */
+app.post(
+  '/api/listings/create-shell',
+  auth,
+  listingCreateLimiter,
+  (req, res, next) => {
+    if (isLockedAccount(req.user)) return respondLocked(res);
+    return next();
+  },
+  async (req, res) => {
+    console.log('[CreateShell] POST /api/listings/create-shell called by user', req.user?.id);
+
+    try {
+      const {
+        location,
+        title,
+        description,
+        price,
+        enable_nearby,
+        inquiry_enabled,
+        lat,
+        lon,
+        image_count,
+        tags
+      } = req.body || {};
+
+      // Validate location
+      if (!location || typeof location !== 'string' || !location.trim()) {
+        return res.status(400).json({ error: 'location_required' });
+      }
+
+      // Validate image_count (1-12)
+      const imgCount = Math.min(12, Math.max(1, Number(image_count) || 1));
+
+      // Check if S3 presign is available
+      if (typeof presignUpload !== 'function') {
+        console.error('[CreateShell] presignUpload not available');
+        return res.status(503).json({ error: 's3_not_configured' });
+      }
+
+      // Moderate text content if provided
+      if (title || description) {
+        try {
+          const flagged = await moderateListingContent({
+            title: String(title || ''),
+            description: String(description || ''),
+            imageUrls: []
+          });
+          if (flagged?.length) {
+            await recordFlaggedAttempt({ userId: req.user?.id, title, flagged });
+            return res.status(400).json({ error: 'moderation_flagged', flagged });
+          }
+        } catch (err) {
+          if (err?.code === 'moderation_failed') {
+            console.error('[CreateShell] Moderation service error:', err);
+            // Continue anyway - don't block listing creation
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      const now = nowIso();
+
+      // Parse coordinates
+      const safeLat = Number.isFinite(Number(lat)) ? Number(lat) : null;
+      const safeLon = Number.isFinite(Number(lon)) ? Number(lon) : null;
+
+      // Parse price
+      const safePrice = Number.isFinite(Number(price)) && Number(price) >= 0 ? Number(price) : null;
+
+      // Parse tags
+      let parsedTags = null;
+      if (tags) {
+        if (Array.isArray(tags)) {
+          parsedTags = JSON.stringify(tags.slice(0, 10).map(t => String(t).slice(0, 50)));
+        } else if (typeof tags === 'string') {
+          try {
+            const arr = JSON.parse(tags);
+            if (Array.isArray(arr)) {
+              parsedTags = JSON.stringify(arr.slice(0, 10).map(t => String(t).slice(0, 50)));
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Create the listing shell (no image_data yet)
+      const insertResult = await db.prepare(`
+        INSERT INTO listings (
+          user_id, title, description, price, location, lat, lon,
+          enable_nearby, inquiry_enabled, tags, image_data, images_pending,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+      `).run(
+        req.user.id,
+        title ? String(title).slice(0, 200) : null,
+        description ? String(description).slice(0, 5000) : null,
+        safePrice,
+        String(location).trim().slice(0, 200),
+        safeLat,
+        safeLon,
+        enable_nearby ? 1 : 0,
+        inquiry_enabled ? 1 : 0,
+        parsedTags,
+        imgCount, // images_pending column to track expected uploads
+        now,
+        now
+      );
+
+      const listingId = insertResult.lastInsertRowid;
+      console.log(`[CreateShell] Created shell listing ${listingId} for user ${req.user.id}`);
+
+      // Generate presigned URLs for each image slot
+      const uploadSlots = [];
+      for (let i = 0; i < imgCount; i++) {
+        try {
+          const sig = await presignUpload({
+            filename: `listing_${listingId}_${i}.jpg`,
+            contentType: 'image/jpeg',
+            bytes: 0 // Unknown at this point
+          });
+          uploadSlots.push({
+            slot: i,
+            uploadUrl: sig.uploadUrl,
+            publicUrl: sig.publicUrl,
+            key: sig.Key
+          });
+        } catch (err) {
+          console.error(`[CreateShell] Failed to generate presigned URL for slot ${i}:`, err);
+          // Continue with remaining slots
+        }
+      }
+
+      if (!uploadSlots.length) {
+        // Rollback - delete the shell listing
+        await db.prepare('DELETE FROM listings WHERE id = ?').run(listingId);
+        return res.status(503).json({ error: 's3_presign_failed' });
+      }
+
+      return res.status(201).json({
+        listing_id: listingId,
+        upload_slots: uploadSlots,
+        images_pending: imgCount
+      });
+
+    } catch (e) {
+      const msg = String(e?.message || e || 'server_error');
+      console.error('[CreateShell] Error:', msg);
+      return res.status(500).json({ error: 'server_error', detail: msg });
+    }
+  }
+);
+
+/**
  * GET /api/listings/auto/:jobId
  * Poll the status of an auto-listing job.
  */
@@ -7354,13 +7531,20 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
         UPDATE listings
 
-           SET image_data = COALESCE(NULLIF(image_data, ''), @url)
+           SET image_data = COALESCE(NULLIF(image_data, ''), @url),
+               images_pending = CASE
+                 WHEN images_pending > 0 THEN images_pending - 1
+                 ELSE images_pending
+               END
 
          WHERE id = @listingId
 
       `).run({ listingId: lid, url: sanitized.url });
 
-      return res.json({ ok: true, position: pos });
+      // Get updated images_pending count
+      const updatedListing = await db.prepare('SELECT images_pending FROM listings WHERE id = ?').get(lid);
+
+      return res.json({ ok: true, position: pos, images_pending: updatedListing?.images_pending ?? 0 });
 
     }
 
