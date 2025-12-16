@@ -4541,6 +4541,33 @@ app.delete('/api/me', auth, async (req, res) => {
     const userId = req.user.id;
     console.log('Deleting account for user:', userId);
 
+    // Check if user has an active, non-cancelled subscription (blocks deletion)
+    const user = await db.prepare('SELECT stripe_customer_id FROM users WHERE id = ?').get(userId);
+    if (user?.stripe_customer_id && stripe) {
+      try {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripe_customer_id,
+          status: 'active'
+        });
+
+        // Check if any subscription is set to renew (not cancelled)
+        // cancel_at_period_end = false means it will renew
+        // cancel_at_period_end = true means user cancelled but still has time left
+        const renewingSubscription = subscriptions.data.find(sub => !sub.cancel_at_period_end);
+        if (renewingSubscription) {
+          console.log('User has active renewing subscription, blocking deletion:', renewingSubscription.id);
+          return res.status(400).json({
+            error: 'active_subscription',
+            message: 'Please cancel your subscription before deleting your account. You can do this from your profile settings.'
+          });
+        }
+        // If cancel_at_period_end is true, user already cancelled - allow deletion
+      } catch (stripeErr) {
+        console.error('Failed to check Stripe subscription:', stripeErr);
+        // If we can't verify, allow deletion to proceed
+      }
+    }
+
     // Use transaction to ensure atomic deletion - all or nothing
     await db.transaction(async (tx) => {
       // Delete in proper order to handle foreign key constraints
