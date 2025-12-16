@@ -395,6 +395,7 @@
       SmartImage,
       ListingFormModal,
       CompactListingForm,
+      DesktopNewListingModal,
       runAutoList
     } = listingFormsFeatureFactory({
       React: runtimeReact,
@@ -505,7 +506,7 @@
         messages: { MessagesPanel, useMessageActions },
         admin: { AdminDashboard, useAdminListingActions },
         profile: { ProfilePanel },
-        listingForms: { ListingFormModal, runAutoList },
+        listingForms: { ListingFormModal, DesktopNewListingModal, runAutoList },
         preferences: { useAppPreferences },
         push: { usePushNotifications },
         ads: { useAds },

@@ -52,10 +52,14 @@
         }
       },
         H('span', null, 'Subscribe at '),
-        H('span', {
+        H('a', {
+          href: 'https://trovelr.com',
+          target: '_blank',
+          rel: 'noopener noreferrer',
           style: {
             color: '#2563eb',
-            fontWeight: 600
+            fontWeight: 600,
+            textDecoration: 'none'
           }
         }, 'trovelr.com'),
         H('button', {

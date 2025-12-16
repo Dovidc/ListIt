@@ -1748,10 +1748,306 @@
       );
     }
 
+    /**
+     * Desktop-only modal for creating a new listing.
+     * Shows just an image picker - once images are selected, runs auto-list flow,
+     * then redirects to edit page when listing is created.
+     */
+    function DesktopNewListingModal({
+      isOpen,
+      onClose,
+      onListingCreated,
+      autoPostNearbyEnabled,
+      autoInquiryEnabled,
+      backgroundQueueEnabled,
+      enqueueListingJob,
+      reloadMine,
+      reloadAll,
+      onModerationError
+    }) {
+      const fileRef = useRef(null);
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+      const [status, setStatus] = useState('');
+      const mountedRef = useRef(true);
+      const reloadMineRef = useRef(reloadMine);
+      const reloadAllRef = useRef(reloadAll);
+
+      useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+      }, []);
+
+      useEffect(() => { reloadMineRef.current = reloadMine; }, [reloadMine]);
+      useEffect(() => { reloadAllRef.current = reloadAll; }, [reloadAll]);
+
+      // Reset state when modal opens
+      useEffect(() => {
+        if (isOpen) {
+          setBusy(false);
+          setError('');
+          setStatus('');
+        }
+      }, [isOpen]);
+
+      const handleOverlayClick = (e) => {
+        if (e.target === e.currentTarget && !busy) {
+          onClose?.();
+        }
+      };
+
+      const handleFileSelect = async (e) => {
+        const selectedFiles = e.target.files;
+        if (!selectedFiles || selectedFiles.length === 0) return;
+
+        setBusy(true);
+        setError('');
+        setStatus('Processing images...');
+
+        try {
+          await runAutoList({
+            files: selectedFiles,
+            location: '',
+            autoPostNearbyEnabled,
+            autoInquiryEnabled,
+            backgroundQueueEnabled,
+            enqueueListingJob,
+            reloadMineRef,
+            reloadAllRef,
+            onCreated: (created) => {
+              if (mountedRef.current) {
+                setBusy(false);
+                setStatus('');
+                onListingCreated?.(created);
+              }
+            },
+            onError: (err) => {
+              if (mountedRef.current) {
+                const msg = err?.message || String(err);
+                if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                  onModerationError?.();
+                  onClose?.();
+                } else {
+                  setError(msg || 'Failed to create listing');
+                }
+                setBusy(false);
+                setStatus('');
+              }
+            },
+            onJobQueued: () => {
+              if (mountedRef.current) {
+                setStatus('Creating listing...');
+              }
+            }
+          });
+        } catch (err) {
+          if (mountedRef.current) {
+            setError(err?.message || 'Failed to create listing');
+            setBusy(false);
+            setStatus('');
+          }
+        }
+
+        // Reset file input
+        if (fileRef.current) fileRef.current.value = '';
+      };
+
+      const handleChooseFiles = () => {
+        if (busy) return;
+        fileRef.current?.click();
+      };
+
+      if (!isOpen) return null;
+
+      return H('div', {
+        className: 'modal-backdrop',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(17, 24, 39, 0.7)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 130
+        },
+        onClick: handleOverlayClick
+      },
+        H('div', {
+          style: {
+            background: '#fff',
+            borderRadius: 16,
+            padding: 32,
+            width: 'min(440px, 90vw)',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+            textAlign: 'center'
+          }
+        },
+          // Close button
+          !busy && H('button', {
+            type: 'button',
+            onClick: onClose,
+            style: {
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              background: 'none',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              color: '#64748b',
+              lineHeight: 1
+            }
+          }, '\u00D7'),
+
+          // Icon
+          H('div', {
+            style: {
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px'
+            }
+          },
+            H('svg', {
+              width: 32,
+              height: 32,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: '#fff',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+              H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+              H('polyline', { points: '21 15 16 10 5 21' })
+            )
+          ),
+
+          // Title
+          H('h2', {
+            style: {
+              margin: '0 0 8px',
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#0f172a'
+            }
+          }, 'New Listing'),
+
+          // Subtitle
+          H('p', {
+            style: {
+              margin: '0 0 24px',
+              fontSize: 14,
+              color: '#64748b',
+              lineHeight: 1.5
+            }
+          }, 'Select photos and AI will generate your listing automatically. You can edit details after.'),
+
+          // Error message
+          error && H('div', {
+            style: {
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+              color: '#dc2626',
+              fontSize: 14
+            }
+          }, error),
+
+          // Status message
+          busy && status && H('div', {
+            style: {
+              marginBottom: 16,
+              color: '#6366f1',
+              fontSize: 14,
+              fontWeight: 500
+            }
+          }, status),
+
+          // Hidden file input
+          H('input', {
+            ref: fileRef,
+            type: 'file',
+            accept: 'image/*',
+            multiple: true,
+            style: { display: 'none' },
+            onChange: handleFileSelect
+          }),
+
+          // Main action button
+          H('button', {
+            type: 'button',
+            className: 'btn primary',
+            onClick: handleChooseFiles,
+            disabled: busy,
+            style: {
+              width: '100%',
+              padding: '14px 24px',
+              fontSize: 16,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10
+            }
+          },
+            busy
+              ? H('span', {
+                style: {
+                  display: 'inline-block',
+                  width: 18,
+                  height: 18,
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderTopColor: '#fff',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }
+              })
+              : H('svg', {
+                width: 20,
+                height: 20,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+                H('polyline', { points: '17 8 12 3 7 8' }),
+                H('line', { x1: 12, y1: 3, x2: 12, y2: 15 })
+              ),
+            busy ? 'Creating...' : 'Choose Photos'
+          ),
+
+          // Cancel link
+          !busy && H('button', {
+            type: 'button',
+            onClick: onClose,
+            style: {
+              background: 'none',
+              border: 'none',
+              marginTop: 16,
+              color: '#64748b',
+              fontSize: 14,
+              cursor: 'pointer'
+            }
+          }, 'Cancel')
+        )
+      );
+    }
+
     return {
       SmartImage,
       ListingFormModal,
       CompactListingForm,
+      DesktopNewListingModal,
       runAutoList,
       pollAutoListingJob
     };

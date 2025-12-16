@@ -500,6 +500,21 @@ function createApiClient(options = {}) {
 
   const adminGetPaymentsStatus = (meta) => request('/api/admin/payments', { method: 'GET' }, meta);
 
+  const adminGetKarmaTop = ({ limit } = {}, meta) => {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', limit);
+    const qs = params.toString();
+    return request(`/api/admin/karma/top${qs ? '?' + qs : ''}`, { method: 'GET' }, meta);
+  };
+
+  const adminGetKarmaChanges = ({ days, limit } = {}, meta) => {
+    const params = new URLSearchParams();
+    if (days) params.set('days', days);
+    if (limit) params.set('limit', limit);
+    const qs = params.toString();
+    return request(`/api/admin/karma/changes${qs ? '?' + qs : ''}`, { method: 'GET' }, meta);
+  };
+
   const adminSetPaymentsStatus = (disabled, meta) => request('/api/admin/payments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -606,6 +621,8 @@ function createApiClient(options = {}) {
     adminTopReports,
     adminClearUserReports,
     adminGetPaymentsStatus,
+    adminGetKarmaTop,
+    adminGetKarmaChanges,
     adminSetPaymentsStatus,
     signUpload,
     finalizeUpload,

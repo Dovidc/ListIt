@@ -861,7 +861,7 @@
     }
 
     // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -1140,11 +1140,53 @@
               try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
             }
 
-            // Success - close the form, job will complete in background
-            // Only call callbacks if still mounted
+            // Close the form immediately - user doesn't need to wait
             if (mountedRef.current) {
-              try { onSaved?.(); } catch (e) { console.warn('[ListingForm AutoList] onSaved error:', e); }
               try { onCancel?.(); } catch (e) { console.warn('[ListingForm AutoList] onCancel error:', e); }
+            }
+
+            // Poll for job completion, then refresh listings
+            if (typeof api.getAutoListingStatus === 'function') {
+              const pollForCompletion = async () => {
+                let attempts = 0;
+                const maxAttempts = 30; // 1 minute max
+                const intervalMs = 2000;
+
+                const poll = async () => {
+                  if (attempts >= maxAttempts) {
+                    console.warn('[ListingForm AutoList] Polling timed out');
+                    return;
+                  }
+                  attempts++;
+
+                  try {
+                    const status = await api.getAutoListingStatus(result.job_id, { silent: true });
+                    if (status?.status === 'completed') {
+                      console.log('[ListingForm AutoList] Job completed, refreshing listings');
+                      // Refresh listings to show the new item with full seller data
+                      try { await reloadMine?.(); } catch (e) { /* ignore */ }
+                      try { await reloadAll?.(); } catch (e) { /* ignore */ }
+                      // Now notify that save is complete
+                      try { onSaved?.(); } catch (e) { console.warn('[ListingForm AutoList] onSaved error:', e); }
+                      return;
+                    } else if (status?.status === 'failed') {
+                      console.error('[ListingForm AutoList] Job failed:', status.error);
+                      return;
+                    }
+                    // Still pending, poll again
+                    setTimeout(poll, intervalMs);
+                  } catch (e) {
+                    console.warn('[ListingForm AutoList] Poll error:', e);
+                    setTimeout(poll, intervalMs);
+                  }
+                };
+
+                setTimeout(poll, intervalMs);
+              };
+              pollForCompletion();
+            } else {
+              // No polling available, call onSaved immediately as fallback
+              try { onSaved?.(); } catch (e) { console.warn('[ListingForm AutoList] onSaved error:', e); }
             }
 
           } catch (err) {
@@ -1295,6 +1337,77 @@
       const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
       const showInquiryText = !!inquiryEnabled;
       const formattedPrice = isFree ? price(0) : price(Number(priceVal));
+
+      // On desktop for new listings, show simplified upload-only view until files are added
+      const isDesktopNewListing = !draft && !isMobile;
+      const showSimplifiedView = isDesktopNewListing && files.length === 0 && existingUrls.length === 0;
+
+      // Simplified desktop view - just file upload
+      if (showSimplifiedView) {
+        return H('div', {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '48px 24px',
+            textAlign: 'center',
+            minHeight: 300
+          }
+        },
+          H('div', {
+            style: {
+              width: 72,
+              height: 72,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 20
+            }
+          },
+            H('svg', {
+              width: 36,
+              height: 36,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: '#fff',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+              H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+              H('polyline', { points: '21 15 16 10 5 21' })
+            )
+          ),
+          H('h2', {
+            style: {
+              margin: '0 0 8px',
+              fontSize: 24,
+              fontWeight: 700,
+              color: '#0f172a'
+            }
+          }, 'New Listing'),
+          H('p', {
+            style: {
+              margin: '0 0 24px',
+              fontSize: 15,
+              color: '#64748b',
+              lineHeight: 1.5,
+              maxWidth: 320
+            }
+          }, 'Select photos and AI will generate your listing. You can edit details after.'),
+          H(MultiFilePicker, { files, onChange: setFiles }),
+          H('button', {
+            type: 'button',
+            className: 'btn',
+            onClick: onCancel,
+            style: { marginTop: 16 }
+          }, 'Cancel')
+        );
+      }
 
       return H('form', { onSubmit: submit, className: 'row', style: { flexDirection: 'column', gap: 12, position: 'relative' } },
 

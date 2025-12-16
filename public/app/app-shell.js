@@ -98,7 +98,7 @@
     const { MessagesPanel, useMessageActions } = messagesFeature;
     const { AdminDashboard, useAdminListingActions } = adminFeature;
     const { ProfilePanel } = profileFeature;
-    const { ListingFormModal, runAutoList } = listingFormsFeature;
+    const { ListingFormModal, DesktopNewListingModal, runAutoList } = listingFormsFeature;
     const { useAppPreferences } = preferencesFeature;
     const { usePushNotifications } = pushFeature;
     const { useAds } = adsFeature;
@@ -221,6 +221,7 @@
       const supporterQueryHandledRef = useRef(false);
       const plusButtonTimerRef = useRef(null);
       const isLongPressRef = useRef(false);
+      const [showDesktopNewListingModal, setShowDesktopNewListingModal] = useState(false);
 
       // Legal acceptance modal state
       const [showLegalModal, setShowLegalModal] = useState(false);
@@ -1840,9 +1841,14 @@
                         items: mine,
                         onEnsureCover: ensureCover,
                         onNewListing: () => {
+                          console.log('[NewListing] clicked, isMobile:', isMobile, 'DesktopNewListingModal:', typeof DesktopNewListingModal);
                           if (!user) { alert('Log in to create a listing.'); return; }
                           if (user.account_status === 'locked') { showLockedBanner(); return; }
-                          openListingEditor({ draft: null, originTab: 'profile' });
+                          if (isMobile) {
+                            openListingEditor({ draft: null, originTab: 'profile' });
+                          } else {
+                            setShowDesktopNewListingModal(true);
+                          }
                         },
                         onEdit: (it) => {
                           if (user?.account_status === 'locked') { showLockedBanner(); return; }
@@ -1885,6 +1891,26 @@
               backgroundQueueEnabled,
               enqueueListingJob,
               initialFiles: initialMassListFiles,
+              onModerationError: () => setShowModerationModal(true)
+            }),
+
+            showDesktopNewListingModal && H(DesktopNewListingModal, {
+              isOpen: showDesktopNewListingModal,
+              onClose: () => setShowDesktopNewListingModal(false),
+              onListingCreated: (created) => {
+                setShowDesktopNewListingModal(false);
+                // Open the edit page for the newly created listing
+                const rich = { ...created, id: created.id || created.listing_id };
+                openListingEditor({ draft: rich, originTab: 'profile', reopenListingId: rich.id });
+                reloadMineOnly();
+                refreshListings();
+              },
+              autoPostNearbyEnabled,
+              autoInquiryEnabled,
+              backgroundQueueEnabled,
+              enqueueListingJob,
+              reloadMine: reloadMineOnly,
+              reloadAll: refreshListings,
               onModerationError: () => setShowModerationModal(true)
             }),
 
