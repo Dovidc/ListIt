@@ -48,9 +48,9 @@
       const { showQueueToast, queuePendingCount, uploadingCount } = useListingQueueState();
       const toastClass = `listing-queue-toast${showQueueToast ? ' show' : ''}${className ? ` ${className}` : ''}`;
 
-      // Show "Keep app open" when uploading, otherwise show the default message
-      const displayMessage = uploadingCount > 0 ? 'Keep app open' : message;
-      const displayIcon = uploadingCount > 0 ? '⏳' : icon;
+      // Show "Listing in progress" when uploading, otherwise show the default message
+      const displayMessage = uploadingCount > 0 ? 'Listing in progress' : message;
+      const displayIcon = icon;
 
       return H('div', {
         className: toastClass,
