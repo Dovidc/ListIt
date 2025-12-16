@@ -28,7 +28,8 @@
       "WebSearch",
       "Bash(curl:*)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

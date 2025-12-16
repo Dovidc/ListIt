@@ -316,12 +316,7 @@
           onListingCreated: ({ listing_id, images_pending }) => {
             console.log(`[AutoList/BG] Shell listing ${listing_id} created, ${images_pending} images pending`);
 
-            // Show toast immediately - listing exists!
-            if (typeof enqueueListingJob === 'function') {
-              try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
-            }
-
-            // Notify that job was "queued" (listing created, uploads in progress)
+            // Notify that job was "queued" - caller handles hiding "Keep app open" toast
             try {
               onJobQueued?.({ listing_id, status: 'uploading', images_pending });
             } catch (e) {
@@ -625,12 +620,7 @@
         const totalTime = Date.now() - startTime;
         console.log(`[AutoList] Job ${result.job_id} created in ${totalTime}ms (server: ${result.processing_time_ms}ms)`);
 
-        // Show toast NOW - data is on server, user can close app
-        if (typeof enqueueListingJob === 'function') {
-          try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
-        }
-
-        // Notify caller that job was queued
+        // Notify caller that job was queued - caller handles hiding "Keep app open" toast
         try { onJobQueued?.(result); } catch (e) { console.warn('[AutoList] onJobQueued callback error:', e); }
 
         // Step 5: Poll for completion (optional, for immediate feedback)

@@ -648,7 +648,9 @@
       });
       const {
         backgroundQueueEnabled,
-        enqueueListingJob
+        enqueueListingJob,
+        showUploadingToast,
+        hideUploadingToast
       } = useListingQueueState();
 
       const {
@@ -1186,9 +1188,9 @@
           return;
         }
         if (autoListEnabled) {
-          // INSTANT toast - show immediately when user presses "use photo"
-          if (typeof enqueueListingJob === 'function') {
-            try { enqueueListingJob(async () => {}); } catch (e) { /* ignore */ }
+          // Show "Keep app open" toast immediately - stays visible until server confirms
+          if (typeof showUploadingToast === 'function') {
+            try { showUploadingToast(); } catch (e) { /* ignore */ }
           }
 
           // Save job intent to localStorage for recovery if app closes
@@ -1212,6 +1214,12 @@
                 enqueueListingJob,
                 reloadMine: reloadMineOnly,
                 reloadAll: refreshListings,
+                onJobQueued: () => {
+                  // Server confirmed receipt - safe to close app now
+                  if (typeof hideUploadingToast === 'function') {
+                    try { hideUploadingToast(); } catch (e) { /* ignore */ }
+                  }
+                },
                 onCreated: (createdListing) => {
                   try {
                     if (createdListing?.id) {
@@ -1229,6 +1237,10 @@
                   }
                 },
                 onError: (err) => {
+                  // Hide toast on error too
+                  if (typeof hideUploadingToast === 'function') {
+                    try { hideUploadingToast(); } catch (e) { /* ignore */ }
+                  }
                   console.error('[Mobile AutoList] Job error:', err);
                   const msg = err?.message || String(err);
                   if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
@@ -1246,6 +1258,10 @@
               } catch (e) { /* ignore */ }
 
             } catch (err) {
+              // Hide toast on error
+              if (typeof hideUploadingToast === 'function') {
+                try { hideUploadingToast(); } catch (e) { /* ignore */ }
+              }
               console.error('[Mobile AutoList] Failed:', err);
             }
           }, 0);

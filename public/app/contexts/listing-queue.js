@@ -17,14 +17,20 @@
         backgroundQueueEnabled,
         showQueueToast,
         queuePendingCount,
-        enqueueListingJob
+        uploadingCount,
+        enqueueListingJob,
+        showUploadingToast,
+        hideUploadingToast
       } = queueValue;
 
       const value = useMemo(() => queueValue, [
         backgroundQueueEnabled,
         showQueueToast,
         queuePendingCount,
-        enqueueListingJob
+        uploadingCount,
+        enqueueListingJob,
+        showUploadingToast,
+        hideUploadingToast
       ]);
 
       return H(ListingQueueContext.Provider, { value }, children);
@@ -39,16 +45,20 @@
     }
 
     function ListingQueueToast({ message = 'listing in progress', icon = '✓', className = '' } = {}) {
-      const { showQueueToast, queuePendingCount } = useListingQueueState();
+      const { showQueueToast, queuePendingCount, uploadingCount } = useListingQueueState();
       const toastClass = `listing-queue-toast${showQueueToast ? ' show' : ''}${className ? ` ${className}` : ''}`;
+
+      // Show "Keep app open" when uploading, otherwise show the default message
+      const displayMessage = uploadingCount > 0 ? 'Keep app open' : message;
+      const displayIcon = uploadingCount > 0 ? '⏳' : icon;
 
       return H('div', {
         className: toastClass,
         'aria-live': 'polite',
         'data-count': queuePendingCount > 0 ? queuePendingCount : undefined
       },
-        H('span', { className: 'listing-queue-toast__icon', 'aria-hidden': true }, icon),
-        H('span', { className: 'listing-queue-toast__text' }, message)
+        H('span', { className: 'listing-queue-toast__icon', 'aria-hidden': true }, displayIcon),
+        H('span', { className: 'listing-queue-toast__text' }, displayMessage)
       );
     }
 

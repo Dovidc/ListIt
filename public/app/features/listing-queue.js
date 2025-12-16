@@ -15,9 +15,28 @@ export function createListingQueueFeature({ React }) {
     const listingQueueRef = useRef([]);
     const listingQueueProcessingRef = useRef(false);
     const [showQueueToast, setShowQueueToast] = useState(false);
+    const [uploadingCount, setUploadingCount] = useState(0); // Track uploads in progress
     const toastTimerRef = useRef(null);
     const [queuePendingCount, setQueuePendingCount] = useState(0);
     const backgroundQueueEnabled = true;
+
+    // Show "Keep app open" toast - stays visible until hideUploadingToast is called
+    const showUploadingToast = useCallback(() => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setUploadingCount(c => c + 1);
+      setShowQueueToast(true);
+    }, []);
+
+    // Hide the toast when upload is complete (safe to close app)
+    const hideUploadingToast = useCallback(() => {
+      setUploadingCount(c => {
+        const newCount = Math.max(0, c - 1);
+        if (newCount === 0) {
+          setShowQueueToast(false);
+        }
+        return newCount;
+      });
+    }, []);
 
     const showQueueReminder = useCallback(() => {
       setShowQueueToast(true);
@@ -67,8 +86,11 @@ export function createListingQueueFeature({ React }) {
       backgroundQueueEnabled,
       showQueueToast,
       queuePendingCount,
-      enqueueListingJob
-    }), [backgroundQueueEnabled, showQueueToast, queuePendingCount, enqueueListingJob]);
+      uploadingCount,
+      enqueueListingJob,
+      showUploadingToast,
+      hideUploadingToast
+    }), [backgroundQueueEnabled, showQueueToast, queuePendingCount, uploadingCount, enqueueListingJob, showUploadingToast, hideUploadingToast]);
   }
 
   return {
