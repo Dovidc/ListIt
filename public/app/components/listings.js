@@ -2208,11 +2208,15 @@
 
     // ============================================================
     // PinchZoomImage - Pinch-to-zoom image component for lightbox
+    // Uses native resolution when zoomed for sharp detail viewing
     // ============================================================
     function PinchZoomImage({ src, alt, onLoad, onError, style, className }) {
       const containerRef = useRef(null);
       const imgRef = useRef(null);
       const [imgLoaded, setImgLoaded] = useState(false);
+      const [isZoomed, setIsZoomed] = useState(false);
+      const [currentScale, setCurrentScale] = useState(1);
+      const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
 
       const stateRef = useRef({
         scale: 1,
@@ -2238,7 +2242,10 @@
         const img = imgRef.current;
         if (!img) return;
         const { scale, translateX, translateY } = stateRef.current;
-        img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        img.style.transform = `translate(${translateX}px, ${translateY}px)`;
+        // Update zoom state for rendering at native resolution
+        setIsZoomed(scale > 1);
+        setCurrentScale(scale);
       }, []);
 
       const clampTranslation = useCallback(() => {
@@ -2248,14 +2255,26 @@
 
         const state = stateRef.current;
         const containerRect = container.getBoundingClientRect();
-        const imgRect = img.getBoundingClientRect();
 
-        // Get the unscaled image dimensions
-        const imgWidth = imgRect.width / state.scale;
-        const imgHeight = imgRect.height / state.scale;
+        // Use natural dimensions scaled by zoom level for accurate bounds
+        const nw = naturalSize.width || img.naturalWidth || img.offsetWidth;
+        const nh = naturalSize.height || img.naturalHeight || img.offsetHeight;
 
-        const scaledWidth = imgWidth * state.scale;
-        const scaledHeight = imgHeight * state.scale;
+        // Calculate how big the image would be to fit the container at scale 1
+        const containerAspect = containerRect.width / containerRect.height;
+        const imgAspect = nw / nh;
+        let baseWidth, baseHeight;
+        if (imgAspect > containerAspect) {
+          baseWidth = containerRect.width;
+          baseHeight = containerRect.width / imgAspect;
+        } else {
+          baseHeight = containerRect.height;
+          baseWidth = containerRect.height * imgAspect;
+        }
+
+        // At scale > 1, we render larger, up to native resolution
+        const scaledWidth = Math.min(nw, baseWidth * state.scale);
+        const scaledHeight = Math.min(nh, baseHeight * state.scale);
 
         // Calculate max translation bounds
         const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2);
@@ -2264,7 +2283,7 @@
         // Clamp translation
         state.translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, state.translateX));
         state.translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, state.translateY));
-      }, []);
+      }, [naturalSize]);
 
       const getDistance = useCallback((touches) => {
         if (touches.length < 2) return 0;
@@ -2368,6 +2387,9 @@
         state.isPinching = false;
         state.isDragging = false;
         setImgLoaded(false);
+        setIsZoomed(false);
+        setCurrentScale(1);
+        setNaturalSize({ width: 0, height: 0 });
         if (imgRef.current) {
           imgRef.current.style.transform = '';
         }
@@ -2411,6 +2433,10 @@
       }, [clampTranslation, updateTransform]);
 
       const handleImgLoad = useCallback((e) => {
+        const img = e.target;
+        if (img) {
+          setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+        }
         setImgLoaded(true);
         onLoad?.(e);
       }, [onLoad]);
@@ -2432,33 +2458,38 @@
         const container = containerRef.current;
         if (!container) return;
 
+        const oldScale = state.scale;
+
         // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
-        const zoomDelta = -e.deltaY * 0.001;
+        const zoomDelta = -e.deltaY * 0.002;
         let newScale = state.scale * (1 + zoomDelta);
 
         // Clamp to min/max scale
         newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
 
-        // Get mouse position relative to container
-        const rect = container.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        // Don't do anything if scale didn't change
+        if (newScale === oldScale) return;
 
-        // Calculate the point under the mouse in image coordinates before zoom
-        const beforeZoomX = (mouseX - rect.width / 2 - state.translateX) / state.scale;
-        const beforeZoomY = (mouseY - rect.height / 2 - state.translateY) / state.scale;
+        // Get container rect
+        const containerRect = container.getBoundingClientRect();
 
-        // Update scale
-        const oldScale = state.scale;
+        // Mouse position relative to container center (since image is centered)
+        const mouseX = e.clientX - containerRect.left - containerRect.width / 2;
+        const mouseY = e.clientY - containerRect.top - containerRect.height / 2;
+
+        // The zoom ratio
+        const zoomRatio = newScale / oldScale;
+
+        // Point under mouse in image space (accounting for current translation)
+        // The image center is at (0,0) + translate, so point on image = mousePos - translate
+        const pointX = mouseX - state.translateX;
+        const pointY = mouseY - state.translateY;
+
+        // After zoom, we want the same point to stay under the mouse
+        // newTranslate = mousePos - pointOnImage * zoomRatio
+        state.translateX = mouseX - pointX * zoomRatio;
+        state.translateY = mouseY - pointY * zoomRatio;
         state.scale = newScale;
-
-        // Calculate the point under the mouse in image coordinates after zoom
-        const afterZoomX = beforeZoomX * newScale;
-        const afterZoomY = beforeZoomY * newScale;
-
-        // Adjust translation to keep the point under the mouse stationary
-        state.translateX = state.translateX - (afterZoomX - beforeZoomX * oldScale);
-        state.translateY = state.translateY - (afterZoomY - beforeZoomY * oldScale);
 
         // Reset translation if zooming back to 1
         if (newScale <= 1) {
@@ -2561,26 +2592,57 @@
         onMouseUp: handleMouseUp,
         onMouseLeave: handleMouseLeave
       },
-        H('img', {
-          ref: imgRef,
-          src: src,
-          alt: alt,
-          draggable: false,
-          className: className || 'lightbox-img',
-          onLoad: handleImgLoad,
-          onError: handleImgError,
-          style: {
+        (() => {
+          // Calculate displayed image size based on zoom level
+          // At scale 1: fit to container. At scale > 1: scale up to native resolution max.
+          const container = containerRef.current;
+          let imgStyle = {
             ...(style || {}),
             opacity: imgLoaded ? (style?.opacity ?? 1) : 0,
-            transition: 'opacity 180ms ease',
+            transition: isZoomed ? 'none' : 'opacity 180ms ease',
             transformOrigin: 'center center',
             willChange: 'transform',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
             pointerEvents: 'none'
+          };
+
+          if (isZoomed && naturalSize.width && naturalSize.height && container) {
+            const containerRect = container.getBoundingClientRect();
+            // Calculate base size (how big it would be at scale 1 to fit container)
+            const containerAspect = containerRect.width / containerRect.height;
+            const imgAspect = naturalSize.width / naturalSize.height;
+            let baseWidth, baseHeight;
+            if (imgAspect > containerAspect) {
+              baseWidth = containerRect.width;
+              baseHeight = containerRect.width / imgAspect;
+            } else {
+              baseHeight = containerRect.height;
+              baseWidth = containerRect.height * imgAspect;
+            }
+            // Scale up but cap at native resolution for sharp pixels
+            const targetWidth = Math.min(naturalSize.width, baseWidth * currentScale);
+            const targetHeight = Math.min(naturalSize.height, baseHeight * currentScale);
+            imgStyle.width = `${targetWidth}px`;
+            imgStyle.height = `${targetHeight}px`;
+            imgStyle.maxWidth = 'none';
+            imgStyle.maxHeight = 'none';
+            imgStyle.objectFit = 'none';
+          } else {
+            imgStyle.maxWidth = '100%';
+            imgStyle.maxHeight = '100%';
+            imgStyle.objectFit = 'contain';
           }
-        })
+
+          return H('img', {
+            ref: imgRef,
+            src: src,
+            alt: alt,
+            draggable: false,
+            className: className || 'lightbox-img',
+            onLoad: handleImgLoad,
+            onError: handleImgError,
+            style: imgStyle
+          });
+        })()
       );
     }
 
@@ -2595,11 +2657,21 @@
 
       const [stageLoaded, setStageLoaded] = React.useState(false);
 
+      // Zoom state - simple CSS transform approach (same as DM lightbox)
+      const [zoom, setZoom] = React.useState(1);
+      const [pan, setPan] = React.useState({ x: 0, y: 0 });
+      const [isDragging, setIsDragging] = React.useState(false);
+      const containerRef = React.useRef(null);
+      const touchStartRef = React.useRef(null);
+      const lastPinchDistRef = React.useRef(null);
+      const isPanningRef = React.useRef(false);
+      const lastPanRef = React.useRef({ x: 0, y: 0 });
+      const mouseStartRef = React.useRef(null);
+
+      // Reset zoom when image changes or modal closes
       React.useEffect(() => {
-        if (!open) {
-          setStageLoaded(false);
-          return;
-        }
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
         setStageLoaded(false);
       }, [open, currentSrc]);
 
@@ -2635,6 +2707,151 @@
         return () => window.removeEventListener('keydown', handler);
       }, [open, canNavigate, safeIndex, len, onClose, onIndex]);
 
+      // Pinch-to-zoom for mobile
+      const handleTouchStart = React.useCallback((e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          lastPinchDistRef.current = Math.sqrt(dx * dx + dy * dy);
+          isPanningRef.current = false;
+        } else if (e.touches.length === 1 && zoom > 1) {
+          e.preventDefault();
+          isPanningRef.current = true;
+          touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          lastPanRef.current = { ...pan };
+        }
+      }, [zoom, pan]);
+
+      const handleTouchMove = React.useCallback((e) => {
+        if (e.touches.length === 2 && lastPinchDistRef.current !== null) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const scale = dist / lastPinchDistRef.current;
+          setZoom(z => Math.min(Math.max(z * scale, 1), 5));
+          lastPinchDistRef.current = dist;
+        } else if (e.touches.length === 1 && isPanningRef.current && touchStartRef.current && zoom > 1) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - touchStartRef.current.x;
+          const dy = e.touches[0].clientY - touchStartRef.current.y;
+          setPan({
+            x: lastPanRef.current.x + dx,
+            y: lastPanRef.current.y + dy
+          });
+        }
+      }, [zoom]);
+
+      const handleTouchEnd = React.useCallback((e) => {
+        if (e.touches.length < 2) {
+          lastPinchDistRef.current = null;
+        }
+        if (e.touches.length === 0) {
+          isPanningRef.current = false;
+          touchStartRef.current = null;
+          if (zoom <= 1) {
+            setPan({ x: 0, y: 0 });
+          }
+        }
+      }, [zoom]);
+
+      // Mouse drag for desktop
+      const handleMouseDown = React.useCallback((e) => {
+        if (zoom > 1 && e.button === 0) {
+          e.preventDefault();
+          setIsDragging(true);
+          mouseStartRef.current = { x: e.clientX, y: e.clientY };
+          lastPanRef.current = { ...pan };
+        }
+      }, [zoom, pan]);
+
+      const handleMouseMove = React.useCallback((e) => {
+        if (isDragging && mouseStartRef.current && zoom > 1) {
+          e.preventDefault();
+          const dx = e.clientX - mouseStartRef.current.x;
+          const dy = e.clientY - mouseStartRef.current.y;
+          setPan({
+            x: lastPanRef.current.x + dx,
+            y: lastPanRef.current.y + dy
+          });
+        }
+      }, [isDragging, zoom]);
+
+      const handleMouseUp = React.useCallback(() => {
+        setIsDragging(false);
+        mouseStartRef.current = null;
+      }, []);
+
+      // Attach mouse move/up to window when dragging
+      React.useEffect(() => {
+        if (isDragging) {
+          window.addEventListener('mousemove', handleMouseMove);
+          window.addEventListener('mouseup', handleMouseUp);
+          return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+          };
+        }
+      }, [isDragging, handleMouseMove, handleMouseUp]);
+
+      // Scroll-to-zoom for desktop - zooms toward cursor position
+      const handleWheel = React.useCallback((e) => {
+        e.preventDefault();
+        const container = containerRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left - rect.width / 2;
+        const mouseY = e.clientY - rect.top - rect.height / 2;
+
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+
+        setZoom(prevZoom => {
+          const newZoom = Math.min(Math.max(prevZoom * delta, 1), 5);
+
+          if (newZoom <= 1) {
+            setPan({ x: 0, y: 0 });
+          } else {
+            // Adjust pan to zoom toward cursor
+            const zoomRatio = newZoom / prevZoom;
+            setPan(prevPan => ({
+              x: mouseX - (mouseX - prevPan.x) * zoomRatio,
+              y: mouseY - (mouseY - prevPan.y) * zoomRatio
+            }));
+          }
+
+          return newZoom;
+        });
+      }, []);
+
+      // Double-tap/click to toggle zoom
+      const lastTapRef = React.useRef(0);
+      const handleDoubleTap = React.useCallback((e) => {
+        if (isDragging) return;
+        const now = Date.now();
+        if (now - lastTapRef.current < 300) {
+          e.preventDefault();
+          if (zoom > 1) {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          } else {
+            // Zoom in toward tap/click position
+            const container = containerRef.current;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const tapX = (e.clientX || e.changedTouches?.[0]?.clientX || rect.left + rect.width / 2) - rect.left - rect.width / 2;
+              const tapY = (e.clientY || e.changedTouches?.[0]?.clientY || rect.top + rect.height / 2) - rect.top - rect.height / 2;
+              setZoom(2.5);
+              setPan({ x: -tapX * 1.5, y: -tapY * 1.5 });
+            } else {
+              setZoom(2.5);
+            }
+          }
+        }
+        lastTapRef.current = now;
+      }, [zoom, isDragging]);
+
       const handleBackdropClick = React.useCallback((evt) => {
         if (evt.target.classList.contains('lightbox-backdrop') ||
           evt.target.classList.contains('lightbox-overlay')) {
@@ -2649,15 +2866,49 @@
         : null;
 
       const imageContent = len
-        ? H('div', { className: 'lightbox-main' },
-          H(PinchZoomImage, {
+        ? H('div', {
+            className: 'lightbox-main',
+            ref: containerRef,
+            onTouchStart: handleTouchStart,
+            onTouchMove: handleTouchMove,
+            onTouchEnd: handleTouchEnd,
+            onMouseDown: handleMouseDown,
+            onWheel: handleWheel,
+            onClick: handleDoubleTap,
+            style: { touchAction: 'none', overflow: 'hidden', userSelect: 'none' }
+          },
+          H('img', {
             src: currentSrc,
             alt: `Listing image ${safeIndex + 1}`,
             className: 'lightbox-img',
+            draggable: false,
             onLoad: handleStageSettled,
             onError: handleStageSettled,
-            style: { opacity: stageLoaded ? 1 : 0, transition: 'opacity 180ms ease' }
-          })
+            style: {
+              opacity: stageLoaded ? 1 : 0,
+              transition: zoom === 1 ? 'transform 0.2s ease-out, opacity 180ms ease' : 'opacity 180ms ease',
+              transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+              cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              pointerEvents: 'none'
+            }
+          }),
+          zoom > 1 && H('div', {
+            style: {
+              position: 'absolute',
+              bottom: 10,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.6)',
+              color: '#fff',
+              padding: '4px 10px',
+              borderRadius: 12,
+              fontSize: 11,
+              pointerEvents: 'none'
+            }
+          }, `${Math.round(zoom * 100)}%`)
         )
         : H('div', { className: 'lightbox-main' },
           H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available')
