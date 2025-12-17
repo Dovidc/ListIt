@@ -4558,7 +4558,7 @@ app.delete('/api/me', auth, async (req, res) => {
           console.log('User has active renewing subscription, blocking deletion:', renewingSubscription.id);
           return res.status(400).json({
             error: 'active_subscription',
-            message: 'Please cancel your subscription before deleting your account. You can do this from your profile settings.'
+            message: 'You have an active subscription, cancel it first.'
           });
         }
         // If cancel_at_period_end is true, user already cancelled - allow deletion

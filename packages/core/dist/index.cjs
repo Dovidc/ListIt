@@ -71,7 +71,7 @@ function createApiClient(options = {}) {
           payload = null;
         }
 
-        const message = payload && typeof payload === 'object' && payload.error ? payload.error : 'request_failed';
+        const message = payload && typeof payload === 'object' ? (payload.message || payload.error || 'request_failed') : 'request_failed';
         if (message === 'account_locked') {
           onAccountLocked?.();
         }
