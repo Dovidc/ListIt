@@ -103,7 +103,10 @@
             let hasUpdates = false;
             for (const r of covers) {
               if (r?.id != null && r.image_data) {
-                cacheRef.current?.set(r.id, { url: r.image_data });
+                cacheRef.current?.set(r.id, {
+                  url: r.image_data,
+                  thumb_url: r.thumb_url || null
+                });
                 hasUpdates = true;
               }
             }
@@ -310,7 +313,7 @@
                 if (reqId === requestIdRef.current && Array.isArray(covers)) {
                   const entries = covers
                     .filter(r => r?.id != null && r.image_data)
-                    .map(r => [r.id, { url: r.image_data }]);
+                    .map(r => [r.id, { url: r.image_data, thumb_url: r.thumb_url || null }]);
                   if (entries.length) onCoversLoaded(entries);
                 }
               } catch { }
@@ -585,25 +588,31 @@
     // ============================================================
     // HELPER: addCoversToListings
     // Enriches listings with cover image data
+    // Uses thumbnail for grid display, stores full URL for detail view
     // Only creates new objects for items whose cover actually changed
     // ============================================================
     function addCoversToListings(listings, getCover) {
       return (listings || []).map(item => {
         const cached = getCover(item.id);
-        const inlineUrl = cached?.url || selectPrimaryListingImage(
+        // Prefer thumbnail for grid display (faster loading)
+        // Check cached thumb_url first, then item.thumb_url from API
+        const thumbUrl = cached?.thumb_url || item?.thumb_url;
+        const fullUrl = cached?.url || selectPrimaryListingImage(
           item,
-          item?.image_data || item?.thumb_url || (Array.isArray(item?.images) ? item.images[0] : null)
+          item?.image_data || (Array.isArray(item?.images) ? item.images[0] : null)
         );
-        const newCover = inlineUrl || '';
+        // Use thumbnail if available, otherwise full URL
+        const newCover = thumbUrl || fullUrl || '';
         const newAr = (cached?.w && cached?.h) ? (cached.w / cached.h) : 1;
 
         // Only create new object if cover data actually changed
-        if (item.__cover === newCover && item.__ar === newAr) {
+        if (item.__cover === newCover && item.__ar === newAr && item.__fullCover === fullUrl) {
           return item;
         }
         return {
           ...item,
-          __cover: newCover,
+          __cover: newCover,      // Thumbnail for grid
+          __fullCover: fullUrl,   // Full image for detail view
           __ar: newAr
         };
       });

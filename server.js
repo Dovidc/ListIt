@@ -576,9 +576,10 @@ let presignUpload;
 let presignDownload;
 let uploadBuffer;
 
+let generateThumbnailFromUrl;
 try {
 
-  ({ presignUpload, presignDownload, uploadBuffer } = require('./s3'));
+  ({ presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl } = require('./s3'));
 
   console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'uploadBuffer=', typeof uploadBuffer === 'function', 'bucket=', process.env.S3_BUCKET);
 
@@ -4978,6 +4979,14 @@ app.get('/api/listings', async (req, res) => {
           const out = { ...r, tags: (r.tags ? String(r.tags).split(',') : []) };
 
           out.image_data = canonicalAssetUrl(out.image_data);
+          // Add thumbnail URL for grid display
+          if (out.image_data) {
+            const lastSlash = out.image_data.lastIndexOf('/');
+            const filename = lastSlash >= 0 ? out.image_data.slice(lastSlash + 1) : out.image_data;
+            out.thumb_url = filename.includes('.')
+              ? out.image_data.replace(/\.([^.]+)$/, '_thumb.jpg')
+              : `${out.image_data}_thumb.jpg`;
+          }
 
           return out;
 
@@ -5154,6 +5163,14 @@ app.get('/api/listings', async (req, res) => {
         if (Object.prototype.hasOwnProperty.call(out, 'image_data')) {
 
           out.image_data = canonicalAssetUrl(out.image_data);
+          // Add thumbnail URL for grid display
+          if (out.image_data) {
+            const lastSlash = out.image_data.lastIndexOf('/');
+            const filename = lastSlash >= 0 ? out.image_data.slice(lastSlash + 1) : out.image_data;
+            out.thumb_url = filename.includes('.')
+              ? out.image_data.replace(/\.([^.]+)$/, '_thumb.jpg')
+              : `${out.image_data}_thumb.jpg`;
+          }
 
         }
 
@@ -5279,15 +5296,29 @@ app.get('/api/listings/covers', async (req, res) => {
 
 
 
-    const normalized = rows.map(row => ({
+    // Helper to derive thumbnail URL from full URL
+    const getThumbUrl = (url) => {
+      if (!url || typeof url !== 'string') return null;
+      // Check if filename (last path segment) has an extension
+      const lastSlash = url.lastIndexOf('/');
+      const filename = lastSlash >= 0 ? url.slice(lastSlash + 1) : url;
+      if (filename.includes('.')) {
+        // Has extension - replace it with _thumb.jpg
+        return url.replace(/\.([^.]+)$/, '_thumb.jpg');
+      } else {
+        // No extension - append _thumb.jpg
+        return `${url}_thumb.jpg`;
+      }
+    };
 
-      ...row,
-
-      image_data: canonicalAssetUrl(row.image_data)
-
-    }));
-
-
+    const normalized = rows.map(row => {
+      const fullUrl = canonicalAssetUrl(row.image_data);
+      return {
+        ...row,
+        image_data: fullUrl,
+        thumb_url: getThumbUrl(fullUrl)
+      };
+    });
 
     res.json(normalized);
 
@@ -7027,11 +7058,11 @@ app.get('/api/listings/:id/images', async (req, res) => {
 
     const rows = await db.prepare(`
 
-      SELECT COALESCE(url, image_data) AS image 
+      SELECT COALESCE(url, image_data) AS image
 
-      FROM listing_images 
+      FROM listing_images
 
-      WHERE listing_id = ? 
+      WHERE listing_id = ?
 
         AND (url IS NOT NULL OR image_data IS NOT NULL)
 
@@ -7039,7 +7070,12 @@ app.get('/api/listings/:id/images', async (req, res) => {
 
     `).all(id);
 
-    res.json(rows.map(r => canonicalAssetUrl(r.image)));
+    // Filter out thumbnail URLs - they're for grid display only, not for gallery
+    const images = rows
+      .map(r => canonicalAssetUrl(r.image))
+      .filter(url => !url.includes('_thumb.'));
+
+    res.json(images);
 
   } catch (e) {
 
@@ -7571,6 +7607,13 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
       // Get updated images_pending count
       const updatedListing = await db.prepare('SELECT images_pending FROM listings WHERE id = ?').get(lid);
 
+      // Generate thumbnail async (fire-and-forget, don't block response)
+      if (typeof generateThumbnailFromUrl === 'function') {
+        generateThumbnailFromUrl(sanitized.url, sanitized.key).catch(err => {
+          console.warn('[Finalize] Thumbnail generation failed:', err.message);
+        });
+      }
+
       return res.json({ ok: true, position: pos, images_pending: updatedListing?.images_pending ?? 0 });
 
     }
@@ -7635,6 +7678,14 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
       return res.status(500).json({ error: 'token_generation_failed' });
 
+    }
+
+    // Generate thumbnail async (fire-and-forget, don't block response)
+    if (typeof generateThumbnailFromUrl === 'function') {
+      console.log('[Finalize] Generating thumbnail for url:', sanitized.url, 'key:', sanitized.key);
+      generateThumbnailFromUrl(sanitized.url, sanitized.key).catch(err => {
+        console.warn('[Finalize] Thumbnail generation failed:', err.message);
+      });
     }
 
     return res.json({ ok: true, uploadToken: token, url: sanitized.url, width: sanitized.width, height: sanitized.height, bytes: sanitized.bytes });

@@ -27,11 +27,26 @@
     };
 
     // Simple grid tile - no observers, no refs, just render
+    // Falls back to full image if thumbnail fails to load
     const GridTile = React.memo(function GridTile({ item, onSelect, isMobile }) {
-      const src = item?.__cover;
+      const thumbSrc = item?.__cover;
+      const fullSrc = item?.__fullCover || thumbSrc;
+      const [src, setSrc] = React.useState(thumbSrc);
       const isClickable = typeof onSelect === 'function';
       const hasDistance = Number.isFinite(item?.distance_m);
       const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
+
+      // Update src when item changes
+      React.useEffect(() => {
+        setSrc(thumbSrc);
+      }, [thumbSrc]);
+
+      const handleImageError = React.useCallback(() => {
+        // If thumbnail failed, try full image
+        if (src === thumbSrc && fullSrc && fullSrc !== thumbSrc) {
+          setSrc(fullSrc);
+        }
+      }, [src, thumbSrc, fullSrc]);
 
       const handleClick = isClickable
         ? (evt) => onSelect(evt, item, src)
@@ -78,6 +93,8 @@
               fetchPriority: 'low',
               width: 300,
               height: 300,
+              maxRetries: 0,  // Don't retry thumbnails, fall back to full image immediately
+              onError: handleImageError,
               style: {
                 position: 'absolute',
                 inset: 0,

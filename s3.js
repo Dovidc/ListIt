@@ -2,6 +2,12 @@
 'use strict';
 
 const crypto = require('crypto');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  console.warn('[S3] sharp not available, thumbnails disabled');
+}
 let S3Client, PutObjectCommand, GetObjectCommand;
 let getSignedUrl;
 let _s3 = null;
@@ -161,9 +167,34 @@ async function presignDownload({ key, expiresIn = 120 } = {}) {
 }
 
 /**
+ * Generate a thumbnail from an image buffer
+ * Returns null if sharp is not available or processing fails
+ */
+async function generateThumbnail(buffer) {
+  if (!sharp) return null;
+
+  try {
+    // Resize to 400px wide, maintain aspect ratio, convert to JPEG for smaller size
+    const thumbBuffer = await sharp(buffer)
+      .resize(400, null, {
+        withoutEnlargement: true,  // Don't upscale small images
+        fit: 'inside'
+      })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+
+    return thumbBuffer;
+  } catch (err) {
+    console.warn('[S3] Thumbnail generation failed:', err.message);
+    return null;
+  }
+}
+
+/**
  * Upload a buffer directly to S3 from the server.
  * Used for fire-and-forget listing creation where we want to
  * receive the image on our server first (fast) then upload to S3 (async).
+ * Also generates and uploads a thumbnail version.
  */
 async function uploadBuffer({ buffer, filename = 'upload.bin', contentType }) {
   const s3 = getS3();
@@ -187,6 +218,9 @@ async function uploadBuffer({ buffer, filename = 'upload.bin', contentType }) {
   }
 
   const Key = newKey(filename);
+  const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
+
+  // Upload full-size image
   const cmd = new PutObjectCommand({
     Bucket,
     Key,
@@ -194,12 +228,103 @@ async function uploadBuffer({ buffer, filename = 'upload.bin', contentType }) {
     ContentType: contentType,
     CacheControl: 'public, max-age=31536000, immutable',
   });
-
   await s3.send(cmd);
-
-  const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
   const publicUrl = `${base.replace(/\/+$/, '')}/${Key}`;
-  return { Bucket, Key, publicUrl };
+
+  // Generate and upload thumbnail (non-blocking, don't fail if this fails)
+  let thumbUrl = null;
+  try {
+    const thumbBuffer = await generateThumbnail(buffer);
+    if (thumbBuffer) {
+      // Create thumbnail key by inserting _thumb before extension
+      const thumbKey = Key.replace(/\.([^.]+)$/, '_thumb.jpg');
+      const thumbCmd = new PutObjectCommand({
+        Bucket,
+        Key: thumbKey,
+        Body: thumbBuffer,
+        ContentType: 'image/jpeg',
+        CacheControl: 'public, max-age=31536000, immutable',
+      });
+      await s3.send(thumbCmd);
+      thumbUrl = `${base.replace(/\/+$/, '')}/${thumbKey}`;
+      console.log('[S3] Thumbnail generated:', thumbKey);
+    }
+  } catch (thumbErr) {
+    console.warn('[S3] Thumbnail upload failed:', thumbErr.message);
+    // Continue without thumbnail - grid will fall back to full image
+  }
+
+  return { Bucket, Key, publicUrl, thumbUrl };
 }
 
-module.exports = { presignUpload, presignDownload, uploadBuffer };
+/**
+ * Generate and upload a thumbnail for an existing image URL.
+ * Used for images uploaded via presigned URLs (where we don't have the buffer).
+ * This is async/fire-and-forget - errors are logged but don't block.
+ *
+ * @param {string} imageUrl - The full URL of the image to create thumbnail for
+ * @param {string} s3Key - The S3 key of the original image
+ * @returns {Promise<string|null>} - The thumbnail URL if successful, null otherwise
+ */
+async function generateThumbnailFromUrl(imageUrl, s3Key) {
+  if (!sharp) {
+    console.warn('[S3] sharp not available, skipping thumbnail generation');
+    return null;
+  }
+
+  if (!imageUrl || !s3Key) {
+    return null;
+  }
+
+  try {
+    const s3 = getS3();
+    const Bucket = need('S3_BUCKET');
+    const region = process.env.AWS_REGION || process.env.S3_REGION;
+    const PUBLIC_BASE = (process.env.PUBLIC_ASSET_BASE || '').trim();
+
+    // Fetch the original image
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      console.warn('[S3] Failed to fetch image for thumbnail:', response.status);
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Generate thumbnail
+    const thumbBuffer = await sharp(buffer)
+      .resize(400, null, {
+        withoutEnlargement: true,
+        fit: 'inside'
+      })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+
+    // Create thumbnail key - handle keys with or without extensions
+    const finalThumbKey = s3Key.includes('.')
+      ? s3Key.replace(/\.([^.]+)$/, '_thumb.jpg')
+      : `${s3Key}_thumb.jpg`;
+
+    // Upload thumbnail
+    const thumbCmd = new PutObjectCommand({
+      Bucket,
+      Key: finalThumbKey,
+      Body: thumbBuffer,
+      ContentType: 'image/jpeg',
+      CacheControl: 'public, max-age=31536000, immutable',
+    });
+    await s3.send(thumbCmd);
+
+    const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
+    const thumbUrl = `${base.replace(/\/+$/, '')}/${finalThumbKey}`;
+
+    console.log('[S3] Thumbnail generated:', finalThumbKey);
+    return thumbUrl;
+  } catch (err) {
+    console.warn('[S3] Thumbnail generation from URL failed:', err.message);
+    return null;
+  }
+}
+
+module.exports = { presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl };

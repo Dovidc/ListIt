@@ -28,7 +28,7 @@
 
       const dismissBanner = useCallback(() => setBanner(null), []);
 
-      const handleTabChange = useCallback((newTab) => {
+      const handleTabChange = useCallback((newTab, { skipHistory = false } = {}) => {
         if (newTab === 'admin' && !user?.is_admin) {
           return;
         }
@@ -37,7 +37,30 @@
         }
         setTab(newTab);
         setViewingSeller(null);
+        // Push to browser history so back button works
+        if (!skipHistory && typeof window !== 'undefined' && window.history?.pushState) {
+          window.history.pushState({ tab: newTab }, '', window.location.pathname);
+        }
       }, [user?.is_admin, isMobile]);
+
+      // Handle browser back/forward buttons
+      useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        // Set initial state
+        if (!window.history.state?.tab) {
+          window.history.replaceState({ tab }, '', window.location.pathname);
+        }
+
+        const handlePopState = (event) => {
+          const prevTab = event.state?.tab || 'browse';
+          // Use skipHistory to avoid pushing again when going back
+          handleTabChange(prevTab, { skipHistory: true });
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, [handleTabChange, tab]);
 
       useEffect(() => {
         if (!user?.is_admin && tab === 'admin') {

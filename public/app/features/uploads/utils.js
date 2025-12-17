@@ -31,6 +31,8 @@
         if (typeof raw !== 'string') continue;
         const trimmed = raw.trim();
         if (!trimmed) continue;
+        // Skip thumbnail URLs - they shouldn't be in gallery
+        if (trimmed.includes('_thumb.')) continue;
         const key = trimmed.split('?')[0];
         if (seen.has(key)) continue;
         seen.add(key);
@@ -63,7 +65,8 @@
         if (Array.isArray(listing.images)) listing.images.forEach(push);
         if (includeListingFallbackFields) {
           push(listing.image_data);
-          push(listing.thumb_url);
+          // Note: thumb_url is intentionally NOT included here - it's only for grid display
+          // Including it would cause duplicate images (full + thumb) in the gallery
         }
       }
 

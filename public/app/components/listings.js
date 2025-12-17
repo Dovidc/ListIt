@@ -2723,7 +2723,9 @@
       viewContext = 'grid'
     }) {
 
-      const fallbackImages = useMemo(() => collectListingImages(item, item?.__cover), [item, item?.__cover]);
+      // Use full-size image for detail view, not thumbnail
+      const fullCover = item?.__fullCover || item?.__cover;
+      const fallbackImages = useMemo(() => collectListingImages(item, fullCover), [item, fullCover]);
       const baseGallery = useMemo(() => {
         const fallbackList = Array.isArray(fallbackImages) ? fallbackImages : [];
         const inlineList = Array.isArray(item?.images) ? item.images : [];
@@ -2743,9 +2745,10 @@
 
       const normalizedBaseGallery = useMemo(() => {
         if (Array.isArray(baseGallery) && baseGallery.length) return baseGallery;
-        const fallbackCover = item.image_data || item.__cover || item.thumb_url || '';
+        // Prefer full-size image for detail view
+        const fallbackCover = item.image_data || item.__fullCover || item.__cover || item.thumb_url || '';
         return fallbackCover ? [fallbackCover] : [];
-      }, [baseGallery, item.image_data, item.__cover, item.thumb_url]);
+      }, [baseGallery, item.image_data, item.__fullCover, item.__cover, item.thumb_url]);
 
       const sameList = useCallback((a, b) => {
         if (a === b) return true;
@@ -3937,7 +3940,7 @@
                     const patch = {};
                     covers.forEach(r => {
                       if (!r || r.id == null) return;
-                      if (r.image_data) patch[r.id] = { url: r.image_data };
+                      if (r.image_data) patch[r.id] = { url: r.image_data, thumb_url: r.thumb_url || null };
                     });
                     if (Object.keys(patch).length) {
                       setCoverById(prev => ({ ...prev, ...patch }));
