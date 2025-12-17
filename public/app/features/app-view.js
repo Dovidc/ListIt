@@ -54,6 +54,17 @@
         }
       }, [user, tab, isMobile]);
 
+      // Show locked banner automatically when a locked user logs in or app loads
+      useEffect(() => {
+        if (user?.account_status === 'locked') {
+          setBanner({
+            type: 'locked',
+            message: 'Your account is locked. Please message an admin for help.',
+            ts: Date.now()
+          });
+        }
+      }, [user?.account_status]);
+
       const openAuthModal = useCallback((mode = 'login') => {
         setAuthModal({ isOpen: true, mode });
       }, []);

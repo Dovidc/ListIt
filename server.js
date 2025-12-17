@@ -8160,9 +8160,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
 
     if (isLockedAccount(req.user) && !target.is_admin) {
-
       return respondLocked(res);
-
     }
 
 
