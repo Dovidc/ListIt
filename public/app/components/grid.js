@@ -165,7 +165,9 @@
         return () => ro.disconnect();
       }, []);
 
-      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : 4);
+      // On desktop, use 6 columns if container is wide enough (1400px+), otherwise 4
+      const desktopCols = containerWidth >= 1400 ? 6 : 4;
+      const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : (isMobile ? 3 : desktopCols);
       const resolvedGap = Number.isFinite(gap) ? gap : 12;
 
       const itemWidth = containerWidth > 0
