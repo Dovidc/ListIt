@@ -195,7 +195,7 @@
       const unreadDotColor = hasAdminUnread ? '#111' : '#ef4444';
 
       const messagesBtn = navButton('messages', 'Messages', () => {
-        if (!user) { alert('Log in to view messages.'); return; }
+        if (!user) { onAuthClick('login'); return; }
         onNav('messages');
       },
         (unreadCount > 0) && H('span', { className: 'nav-unread-dot', style: { background: unreadDotColor } }),

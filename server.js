@@ -2045,9 +2045,83 @@ function validateMsgImages(images) {
 
 
 
-async function moderateListingContent({ title, description, imageUrls }) {
+// Prohibited items keyword patterns (case-insensitive)
+const PROHIBITED_ITEM_PATTERNS = [
+  // Firearms
+  /\b(gun|guns|firearm|firearms|pistol|pistols|rifle|rifles|shotgun|shotguns|handgun|handguns)\b/i,
+  /\b(glock|ar-?15|ak-?47|remington|smith\s*&?\s*wesson|sig\s*sauer|beretta|ruger|colt|mossberg)\b/i,
+  /\b(semi-?auto|fully?\s*auto|assault\s*weapon|assault\s*rifle)\b/i,
+  /\b(9mm|\.45|\.22|\.38|\.357|\.308|5\.56|7\.62)\s*(caliber|cal|ammo|ammunition|rounds?)?\b/i,
+  /\b(ammunition|ammo|bullets|cartridges|magazines?|clips?)\b/i,
+  /\b(holster|gun\s*case|gun\s*safe|gun\s*cabinet)\b/i,
+  /\b(concealed\s*carry|ccw|open\s*carry)\b/i,
+  // Weapons
+  /\b(weapon|weapons|switchblade|brass\s*knuckles|nunchucks?|throwing\s*stars?)\b/i,
+  // Explosives
+  /\b(explosive|explosives|grenade|grenades|bomb|bombs|dynamite|c-?4)\b/i,
+  // Drugs (common)
+  /\b(cocaine|heroin|meth|methamphetamine|fentanyl|opioid|opioids)\b/i,
+  /\b(mdma|ecstasy|lsd|psilocybin|dmt)\b/i,
+];
+
+function checkProhibitedItems(text) {
+  if (!text || typeof text !== 'string') return null;
+  for (const pattern of PROHIBITED_ITEM_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      return { matched: match[0], pattern: pattern.source };
+    }
+  }
+  return null;
+}
+
+async function moderateListingContent({ title, description, tags, imageUrls }) {
 
   const client = getOpenAIClient();
+
+  const flagged = [];
+
+  // Check for prohibited items (firearms, weapons, drugs) via keyword detection
+  const titleCheck = checkProhibitedItems(title);
+  if (titleCheck) {
+    flagged.push({
+      type: 'title',
+      target: title,
+      categories: ['prohibited_item'],
+      category_scores: { prohibited_item: 1.0 },
+      matched: titleCheck.matched
+    });
+  }
+
+  const descCheck = checkProhibitedItems(description);
+  if (descCheck) {
+    flagged.push({
+      type: 'description',
+      target: description,
+      categories: ['prohibited_item'],
+      category_scores: { prohibited_item: 1.0 },
+      matched: descCheck.matched
+    });
+  }
+
+  // Check tags too
+  const tagsStr = Array.isArray(tags) ? tags.join(' ') : (typeof tags === 'string' ? tags : '');
+  const tagsCheck = checkProhibitedItems(tagsStr);
+  if (tagsCheck) {
+    flagged.push({
+      type: 'tags',
+      target: tagsStr,
+      categories: ['prohibited_item'],
+      category_scores: { prohibited_item: 1.0 },
+      matched: tagsCheck.matched
+    });
+  }
+
+  // If prohibited items found, return immediately (no need for OpenAI check)
+  if (flagged.length > 0) {
+    console.log('[moderateListingContent] Prohibited item detected:', flagged.map(f => f.matched).join(', '));
+    return flagged;
+  }
 
   if (!client) return [];
 
@@ -2094,8 +2168,6 @@ async function moderateListingContent({ title, description, imageUrls }) {
   // Separate text and image entries - they need to be moderated differently
   const textEntries = entries.filter(e => e.type !== 'image');
   const imageEntries = entries.filter(e => e.type === 'image');
-
-  const flagged = [];
 
   // Moderate text entries (title, description) together
   if (textEntries.length) {
@@ -2639,8 +2711,8 @@ const uploadLimiter = mkLimiter({ windowMs: 10 * 60 * 1000, max: 120 }, 'upload'
 
 const geocodeLimiter = mkLimiter({ windowMs: 60 * 1000, max: 30 }, 'geocode');
 
-// Stricter rate limiter for AI analysis (expensive API calls) - 10 per hour
-const aiAnalyzeLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 10 }, 'ai-analyze');
+// Rate limiter for AI analysis (expensive API calls) - 3 per minute
+const aiAnalyzeLimiter = mkLimiter({ windowMs: 60 * 1000, max: 3 }, 'ai-analyze');
 
 // Rate limiter for karma awards - 30 per hour (prevents abuse)
 const karmaLimiter = mkLimiter({ windowMs: 60 * 60 * 1000, max: 30 }, 'karma');
@@ -5630,6 +5702,8 @@ app.post(
 
           description: String(descStr || ''),
 
+          tags: tagStr,
+
           imageUrls: uploads.map((item) => item.url)
 
         });
@@ -6294,11 +6368,12 @@ app.post(
       }
 
       // Moderate text content if provided
-      if (title || description) {
+      if (title || description || tags) {
         try {
           const flagged = await moderateListingContent({
             title: String(title || ''),
             description: String(description || ''),
+            tags: normalizeTags(tags),
             imageUrls: []
           });
           if (flagged?.length) {
@@ -6772,6 +6847,8 @@ app.put(
 
       const newLoc = (location !== undefined) ? String(location).slice(0, 80) : existing.location;
 
+      const newTags = normalizeTags(tags);
+
       try {
 
         const flagged = await moderateListingContent({
@@ -6779,6 +6856,8 @@ app.put(
           title: String(newTitle || ''),
 
           description: String(newDesc || ''),
+
+          tags: newTags,
 
           imageUrls: remainingImageUrls
 
@@ -7070,12 +7149,7 @@ app.get('/api/listings/:id/images', async (req, res) => {
 
     `).all(id);
 
-    // Filter out thumbnail URLs - they're for grid display only, not for gallery
-    const images = rows
-      .map(r => canonicalAssetUrl(r.image))
-      .filter(url => !url.includes('_thumb.'));
-
-    res.json(images);
+    res.json(rows.map(r => canonicalAssetUrl(r.image)));
 
   } catch (e) {
 

@@ -1419,11 +1419,12 @@
       onConversationOpened,
       onTabChange,
       onSellerCleared,
-      recomputeUnread
+      recomputeUnread,
+      onAuthClick
     }) {
       const startMessage = useCallback(async (item) => {
         if (!item) return;
-        if (!user) { alert('Log in to message a seller.'); return; }
+        if (!user) { onAuthClick?.('login'); return; }
         if (user.id === item?.user_id) { alert('This is your listing.'); return; }
 
         if (typeof onSellerCleared === 'function') {
@@ -1444,10 +1445,10 @@
         } catch (err) {
           alert(err?.message || 'Failed to open conversation.');
         }
-      }, [user, onSellerCleared, onConversationOpened, onTabChange]);
+      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick]);
 
       const startDirectMessage = useCallback(async (userId) => {
-        if (!user) { alert('Log in to message users.'); return; }
+        if (!user) { onAuthClick?.('login'); return; }
         const targetId = Number(userId);
         if (!Number.isFinite(targetId) || targetId <= 0) return;
         if (targetId === user.id) return;
@@ -1467,7 +1468,7 @@
         } catch (err) {
           alert(err?.message || 'Failed to open conversation.');
         }
-      }, [user, onSellerCleared, onConversationOpened, onTabChange]);
+      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick]);
 
       const handleSeen = useCallback((convoId, lastMsgId) => {
         if (!user) return;

@@ -86,7 +86,7 @@
       AuthModal
     } = auth;
 
-    const { LandingPage } = features?.landing || {};
+    // LandingPage removed - users can now browse without auth
 
     const {
       useListingsFeature,
@@ -675,7 +675,8 @@
         onConversationOpened: setActiveConvoId,
         onTabChange: onTabChange,
         onSellerCleared: () => setViewingSeller(null),
-        recomputeUnread
+        recomputeUnread,
+        onAuthClick: handleAuthClick
       });
 
       useEffect(() => {
@@ -1138,7 +1139,6 @@
 
       function ensureCanCreate() {
         if (!user) {
-          alert('Log in to create a listing.');
           handleAuthClick('login');
           return false;
         }
@@ -1287,7 +1287,6 @@
 
       function handleMobileNav(target) {
         if (target === 'messages' && !user) {
-          alert('Log in to view messages.');
           handleAuthClick('login');
           return;
         }
@@ -1397,14 +1396,19 @@
         profile: 'Profile'
       };
 
-      // Show Landing Page for unauthenticated mobile users
-      if (isMobile && !user && !loadingUser) {
-        return H(LandingPage, {
-          onLogin: (loggedInUser) => {
-            setUser(loggedInUser);
-          }
-        });
-      }
+      // Sign in icon for unauthenticated users
+      const signInIcon = () => H('svg', {
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round'
+      },
+        H('path', { d: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4' }),
+        H('polyline', { points: '10 17 15 12 10 7' }),
+        H('line', { x1: 15, y1: 12, x2: 3, y2: 12 })
+      );
 
       return H(ListingsProvider, { value: listings },
         H(NotificationsProvider, { value: notifications },
@@ -1720,14 +1724,14 @@
                           !isMobile && H('div', { className: 'row', style: { gap: 8 } },
                             H('button', {
                               className: 'btn primary', onClick: () => {
-                                if (!user) { alert('Log in to create a listing.'); return; }
+                                if (!user) { handleAuthClick('login'); return; }
                                 if (user.account_status === 'locked') { showLockedBanner(); return; }
                                 openListingEditor({ draft: null, originTab: 'browse' });
                               }
                             }, 'New listing'),
                             H('button', {
                               className: 'btn', onClick: () => {
-                                if (!user) { alert('Log in to create listings.'); return; }
+                                if (!user) { handleAuthClick('login'); return; }
                                 if (user.account_status === 'locked') { showLockedBanner(); return; }
                                 setShowMassList(true);
                               }
@@ -1842,7 +1846,7 @@
                         onEnsureCover: ensureCover,
                         onNewListing: () => {
                           console.log('[NewListing] clicked, isMobile:', isMobile, 'DesktopNewListingModal:', typeof DesktopNewListingModal);
-                          if (!user) { alert('Log in to create a listing.'); return; }
+                          if (!user) { handleAuthClick('login'); return; }
                           if (user.account_status === 'locked') { showLockedBanner(); return; }
                           if (isMobile) {
                             openListingEditor({ draft: null, originTab: 'profile' });
@@ -1886,6 +1890,7 @@
               addListing,
               user,
               onLockedAction: showLockedBanner,
+              onAuthClick: handleAuthClick,
               autoPostNearbyEnabled,
               autoInquiryEnabled,
               backgroundQueueEnabled,
@@ -2141,14 +2146,14 @@
                 H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.messages()),
                 unreadCount > 0 && H('span', { className: 'mobile-dashboard__badge' })
               ),
-              // Profile
+              // Profile / Sign In
               H('button', {
                 type: 'button',
                 className: ['mobile-dashboard__button', tab === 'profile' ? 'is-active' : ''].filter(Boolean).join(' '),
-                onClick: () => handleMobileNav('profile'),
-                'aria-label': 'Profile'
+                onClick: () => user ? handleMobileNav('profile') : handleAuthClick('login'),
+                'aria-label': user ? 'Profile' : 'Sign In'
               },
-                H('span', { className: 'mobile-dashboard__icon' }, mobileNavIcons.profile())
+                H('span', { className: 'mobile-dashboard__icon' }, user ? mobileNavIcons.profile() : signInIcon())
               )
             )
           )

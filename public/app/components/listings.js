@@ -996,7 +996,7 @@
           setAiErr(e.message || 'AI failed');
         } finally {
           setAiBusy(false);
-          setAiCooldown(60); // 1 minute cooldown
+          setAiCooldown(20); // 20 second cooldown (3 per minute)
         }
       }
 
@@ -1566,7 +1566,7 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
+    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, onAuthClick, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
@@ -1749,7 +1749,7 @@
       };
 
       async function runMassList() {
-        if (!user) { alert('Log in to create listings.'); return; }
+        if (!user) { onAuthClick?.('login'); return; }
         if (user.account_status === 'locked') { onLockedAction?.(); return; }
         if (!files.length) { alert('Pick at least one image.'); return; }
 
