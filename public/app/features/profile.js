@@ -1824,6 +1824,8 @@
       const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
       const [deleteConfirmText, setDeleteConfirmText] = useState('');
       const [deleteAccountError, setDeleteAccountError] = useState('');
+      const [cancelSubscriptionModalOpen, setCancelSubscriptionModalOpen] = useState(false);
+      const [cancelSubscriptionBusy, setCancelSubscriptionBusy] = useState(false);
       const [karmaModalOpen, setKarmaModalOpen] = useState(false);
       const [karmaListingId, setKarmaListingId] = useState(null);
       const [subscriptionStatus, setSubscriptionStatus] = useState(user?.subscription_status || null);
@@ -2278,23 +2280,31 @@
         setProfileCustomizationStatusMessage('Background image removed. Click Save to apply.');
       }, [isPremiumUser]);
 
-      const handleRequestCancelSubscription = useCallback(async () => {
-        if (!confirm('Are you sure you want to cancel your monthly subscription? You will keep your supporter badge until the end of your current billing period.')) {
-          return;
-        }
+      const handleRequestCancelSubscription = useCallback(() => {
+        setCancelSubscriptionModalOpen(true);
+      }, []);
 
+      const handleCloseCancelSubscriptionModal = useCallback(() => {
+        setCancelSubscriptionModalOpen(false);
+      }, []);
+
+      const handleConfirmCancelSubscription = useCallback(async () => {
+        setCancelSubscriptionBusy(true);
         try {
           await api.cancelSubscription();
           setSubscriptionStatus('canceling');
           if (user) {
             navBridge.setUser?.({ ...user, subscription_status: 'canceling' });
           }
+          setCancelSubscriptionModalOpen(false);
           setSettingsOpen(false);
           // Refresh user data to update UI
           window.location.reload();
         } catch (err) {
           console.error('Cancel subscription failed:', err);
           alert(err.message || 'Failed to cancel subscription');
+        } finally {
+          setCancelSubscriptionBusy(false);
         }
       }, [user]);
 
@@ -2794,6 +2804,58 @@
                       opacity: deleteConfirmText !== 'confirm' ? 0.5 : 1
                     }
                   }, 'Delete Account')
+                )
+              )
+            )
+          ),
+          document.body
+        ),
+
+        cancelSubscriptionModalOpen && createPortal(
+          H('div', {
+            className: 'modal-overlay',
+            onClick: (e) => {
+              if (e.target.classList.contains('modal-overlay') && !cancelSubscriptionBusy) {
+                handleCloseCancelSubscriptionModal();
+              }
+            }
+          },
+            H('div', { className: 'modal-content', style: { maxWidth: 400 } },
+              H('div', { className: 'modal-header' },
+                H('h2', { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, 'Cancel Subscription'),
+                H('button', {
+                  className: 'modal-close',
+                  onClick: handleCloseCancelSubscriptionModal,
+                  disabled: cancelSubscriptionBusy,
+                  'aria-label': 'Close'
+                }, '×')
+              ),
+              H('div', { className: 'modal-body' },
+                H('p', { style: { marginBottom: 16 } },
+                  'Are you sure you want to cancel your monthly subscription?'
+                ),
+                H('p', { style: { marginBottom: 16, color: '#6b7280' } },
+                  'You will keep your supporter badge and premium features until the end of your current billing period.'
+                ),
+                H('div', { style: { display: 'flex', gap: 8 } },
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleCloseCancelSubscriptionModal,
+                    disabled: cancelSubscriptionBusy,
+                    style: { flex: 1 }
+                  }, 'Keep Subscription'),
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleConfirmCancelSubscription,
+                    disabled: cancelSubscriptionBusy,
+                    style: {
+                      flex: 1,
+                      background: '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      opacity: cancelSubscriptionBusy ? 0.5 : 1
+                    }
+                  }, cancelSubscriptionBusy ? 'Canceling...' : 'Cancel Subscription')
                 )
               )
             )
