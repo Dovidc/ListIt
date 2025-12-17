@@ -2875,7 +2875,7 @@
             onMouseDown: handleMouseDown,
             onWheel: handleWheel,
             onClick: handleDoubleTap,
-            style: { touchAction: 'none', overflow: 'hidden', userSelect: 'none' }
+            style: { touchAction: 'none', overflow: 'hidden', userSelect: 'none', position: 'relative' }
           },
           H('img', {
             src: currentSrc,
@@ -2895,10 +2895,71 @@
               pointerEvents: 'none'
             }
           }),
-          zoom > 1 && H('div', {
+          // Navigation arrows attached to the lightbox
+          canNavigate && H('button', {
+            onClick: (e) => { e.stopPropagation(); onIndex?.((safeIndex - 1 + len) % len); },
+            'aria-label': 'Previous',
+            style: {
+              position: 'absolute',
+              left: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'rgba(0,0,0,0.5)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '50%',
+              width: 44,
+              height: 44,
+              fontSize: 28,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10
+            }
+          }, '‹'),
+          canNavigate && H('button', {
+            onClick: (e) => { e.stopPropagation(); onIndex?.((safeIndex + 1) % len); },
+            'aria-label': 'Next',
+            style: {
+              position: 'absolute',
+              right: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'rgba(0,0,0,0.5)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '50%',
+              width: 44,
+              height: 44,
+              fontSize: 28,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10
+            }
+          }, '›'),
+          // Image counter (only if multiple images)
+          len > 1 && H('div', {
             style: {
               position: 'absolute',
               bottom: 10,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.6)',
+              color: '#fff',
+              padding: '4px 12px',
+              borderRadius: 12,
+              fontSize: 12,
+              pointerEvents: 'none'
+            }
+          }, `${safeIndex + 1} / ${len}`),
+          // Zoom indicator
+          zoom > 1 && H('div', {
+            style: {
+              position: 'absolute',
+              top: 10,
               left: '50%',
               transform: 'translateX(-50%)',
               background: 'rgba(0,0,0,0.6)',
@@ -2914,36 +2975,10 @@
           H('div', { className: 'lightbox-empty' }, loading ? null : 'No images available')
         );
 
-      const thumbsContent = len
-        ? H('div', { className: 'lightbox-thumbs' },
-          ...list.map((img, i) => H(ImageWithSkeleton, {
-            key: String(i),
-            src: img,
-            alt: `Thumbnail ${i + 1}`,
-            className: i === safeIndex ? 'active' : '',
-            onClick: () => onIndex?.(i)
-          }))
-        )
-        : (loading
-          ? H('div', { className: 'lightbox-thumbs loading', 'aria-hidden': true },
-            ...Array.from({ length: 4 }).map((_, i) =>
-              H('div', { key: `s-${i}`, className: 'lightbox-thumb-skeleton' })
-            )
-          )
-          : H('div', { className: 'lightbox-thumbs empty' },
-            H('span', null, 'No photos yet')
-          )
-        );
-
       const overlayContent = H('div', { className: 'lightbox-content', role: 'dialog', 'aria-modal': true },
         H('button', { className: 'lightbox-close', onClick: onClose, 'aria-label': 'Close gallery' }, '×'),
         stageOverlay,
-        imageContent,
-        thumbsContent,
-        canNavigate && H('div', { className: 'lightbox-nav' },
-          H('button', { className: 'nav prev', onClick: () => onIndex?.((safeIndex - 1 + len) % len), 'aria-label': 'Previous' }, '‹'),
-          H('button', { className: 'nav next', onClick: () => onIndex?.((safeIndex + 1) % len), 'aria-label': 'Next' }, '›')
-        )
+        imageContent
       );
 
       return ReactDOM.createPortal(
