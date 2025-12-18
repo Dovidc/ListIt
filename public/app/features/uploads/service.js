@@ -66,52 +66,34 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
-    // Read file as base64 data URL - compatible with Capacitor's native bridge
-    function readFileAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          // Result is like "data:image/jpeg;base64,/9j/4AAQ..."
-          // We need just the base64 part after the comma
-          const dataUrl = reader.result;
-          const base64 = dataUrl.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-    }
+    // Upload via S3 presigned URL (avoids base64 memory overhead)
+    async function presignedUpload(file) {
+      if (!file) throw new Error('file_required');
 
-    // Secure upload - sends file through server for magic byte validation
-    // Uses base64 encoding to work with Capacitor's native HTTP bridge
-    async function secureUpload(file) {
-      const base64Data = await readFileAsBase64(file);
-      if (!base64Data) {
-        throw new Error('Failed to read file');
-      }
-
-      // Use absolute URL only for Capacitor native (when LISTIT_NATIVE_API_BASE_URL is set)
-      // On web/localhost, use relative URL to avoid CORS issues
-      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || '';
-      const response = await fetch(apiBase + '/api/uploads/secure', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          filename: file.name || 'upload.bin',
-          mimeType: file.type || 'image/jpeg',
-          data: base64Data
-        })
+      const sig = await api.signUpload({
+        filename: file.name || 'upload.bin',
+        contentType: file.type || 'application/octet-stream',
+        bytes: file.size
       });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'upload_failed');
+      if (!sig || sig.error || !sig.uploadUrl || !sig.publicUrl || !sig.Key) {
+        throw new Error(sig?.error || 'upload_failed');
       }
 
-      return response.json();
+      const headers = {};
+      if (file.type) headers['Content-Type'] = file.type;
+
+      const uploadRes = await fetch(sig.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('upload_failed');
+      }
+
+      return { key: sig.Key, publicUrl: sig.publicUrl, bytes: file.size };
     }
 
     async function uploadFileDraft(file) {
@@ -119,8 +101,8 @@
 
       if (!uploadDraftCache.has(file)) {
         const uploadPromise = s3UploadLimiter(async () => {
-          // Use secure upload with magic byte validation
-          const result = await secureUpload(file);
+          // Upload via presigned URL to avoid base64 memory usage
+          const result = await presignedUpload(file);
 
           const dims = await measureImageFile(file);
 
@@ -129,7 +111,7 @@
             url: result.publicUrl,
             width: dims.width,
             height: dims.height,
-            bytes: file.size
+            bytes: result.bytes
           }, { silent: true });
 
           if (finalizeRes?.error) throw new Error(finalizeRes.error);
@@ -232,8 +214,7 @@
     }
 
     async function uploadOneImage(listingId, file) {
-      // Use secure upload with magic byte validation
-      const result = await secureUpload(file);
+      const result = await presignedUpload(file);
 
       const dims = await measureImageFile(file);
 
@@ -243,7 +224,7 @@
         url: result.publicUrl,
         width: dims.width,
         height: dims.height,
-        bytes: file.size
+        bytes: result.bytes
       });
 
       return result.publicUrl;
@@ -259,8 +240,7 @@
     }
 
     async function uploadOneMessageImage(file) {
-      // Use secure upload with magic byte validation
-      const result = await secureUpload(file);
+      const result = await presignedUpload(file);
       return result.publicUrl;
     }
 
