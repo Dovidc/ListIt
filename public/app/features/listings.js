@@ -227,11 +227,13 @@
             params.page = resolvedPage;
           }
 
-          // Always try to get user coordinates for distance calculation
-          // This allows distance badges to show on listings with enable_nearby regardless of sort
+          // Try to get user coordinates for distance calculation, but don't block listings
+          // Use a short timeout (1s) so initial load isn't delayed by slow geolocation
           if (typeof getUserCoordsOnce === 'function') {
             try {
-              const coords = await getUserCoordsOnce();
+              const coordsPromise = getUserCoordsOnce();
+              const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 1000));
+              const coords = await Promise.race([coordsPromise, timeoutPromise]);
               if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
                 params.lat = coords.lat;
                 params.lon = coords.lon;
