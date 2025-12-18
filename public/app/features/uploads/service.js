@@ -85,69 +85,32 @@
     // Secure upload - sends file through server for magic byte validation
     // Uses base64 encoding to work with Capacitor's native HTTP bridge
     async function secureUpload(file) {
-      // STEP1: Read file as base64
-      let base64Data;
-      try {
-        base64Data = await readFileAsBase64(file);
-      } catch (readErr) {
-        throw new Error('STEP1_B64READ: ' + (readErr?.message || readErr));
+      const base64Data = await readFileAsBase64(file);
+      if (!base64Data) {
+        throw new Error('Failed to read file');
       }
 
-      if (!base64Data || typeof base64Data !== 'string') {
-        throw new Error('STEP1_B64EMPTY');
-      }
-
-      // STEP2: Build JSON body
-      let jsonBody;
-      try {
-        jsonBody = JSON.stringify({
+      // Use absolute URL for Capacitor native compatibility
+      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || window.LISTIT_API_BASE_URL || 'https://trovelr.com';
+      const response = await fetch(apiBase + '/api/uploads/secure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
           filename: file.name || 'upload.bin',
           mimeType: file.type || 'image/jpeg',
           data: base64Data
-        });
-      } catch (jsonErr) {
-        throw new Error('STEP2_JSON: ' + (jsonErr?.message || jsonErr));
-      }
+        })
+      });
 
-      // STEP3: Fetch - use absolute URL for Capacitor native compatibility
-      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || window.LISTIT_API_BASE_URL || 'https://trovelr.com';
-      let response;
-      try {
-        response = await fetch(apiBase + '/api/uploads/secure', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include',
-          body: jsonBody
-        });
-      } catch (fetchErr) {
-        throw new Error('STEP3_FETCH: ' + (fetchErr?.message || fetchErr));
-      }
-
-      // STEP4: Check response
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error('STEP4_HTTP' + response.status + ': ' + (err.error || 'fail'));
+        throw new Error(err.error || 'upload_failed');
       }
 
-      // STEP5: Parse response
-      try {
-        const text = await response.text();
-        if (!text) {
-          throw new Error('STEP5_EMPTY_RESPONSE');
-        }
-        try {
-          return JSON.parse(text);
-        } catch (jsonErr) {
-          throw new Error('STEP5_BADJSON: ' + text.substring(0, 100));
-        }
-      } catch (parseErr) {
-        if (parseErr.message.startsWith('STEP5_')) {
-          throw parseErr;
-        }
-        throw new Error('STEP5_TEXTREAD: ' + (parseErr?.message || parseErr));
-      }
+      return response.json();
     }
 
     async function uploadFileDraft(file) {

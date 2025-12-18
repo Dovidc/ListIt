@@ -175,7 +175,9 @@ async function generateThumbnail(buffer) {
 
   try {
     // Resize to 400px wide, maintain aspect ratio, convert to JPEG for smaller size
+    // .rotate() with no args auto-rotates based on EXIF orientation
     const thumbBuffer = await sharp(buffer)
+      .rotate()
       .resize(400, null, {
         withoutEnlargement: true,  // Don't upscale small images
         fit: 'inside'
@@ -292,8 +294,9 @@ async function generateThumbnailFromUrl(imageUrl, s3Key) {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Generate thumbnail
+    // Generate thumbnail - rotate() auto-fixes EXIF orientation
     const thumbBuffer = await sharp(buffer)
+      .rotate()
       .resize(400, null, {
         withoutEnlargement: true,
         fit: 'inside'
