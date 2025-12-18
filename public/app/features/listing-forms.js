@@ -946,11 +946,15 @@
         setFiles(next);
       }
 
+      // Load existing images only when draft.id changes (separate effect to avoid
+      // re-fetching when autoListEnabled/autoInquiryEnabled change)
       useEffect(() => {
+        console.log('[CompactListingForm] Image load effect running, draft.id:', draft?.id);
         (async () => {
           if (draft?.id) {
             try {
               const arr = await api.getListingImages(draft.id);
+              console.log('[CompactListingForm] Loaded images from DB:', arr);
               setExistingUrls(arr || []);
               setOriginalUrls(arr || []);
             }
@@ -963,7 +967,10 @@
             setOriginalUrls([]);
           }
         })();
+      }, [draft?.id]);
 
+      // Set inquiry default only for new listings
+      useEffect(() => {
         if (!draft?.id) {
           if (!autoListEnabled) {
             setInquiryEnabled(false);
@@ -981,12 +988,16 @@
         try {
           const sources = [];
 
+          console.log('[runAI] Starting. files:', files.length, 'existingUrls:', existingUrls.length, existingUrls);
+
           // Upload new files first
           if (files.length) {
             for (const file of files) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               try {
+                console.log('[runAI] Uploading file:', file?.name);
                 const upload = await uploadFileDraft(file);
+                console.log('[runAI] Upload result:', upload?.publicUrl);
                 if (upload?.publicUrl) {
                   sources.push(upload.publicUrl);
                 }
@@ -999,6 +1010,7 @@
           // Only use existing URLs if we need more images
           // Note: existingUrls should be empty if user removed all existing images
           if (sources.length < AI_IMAGE_LIMIT && existingUrls.length) {
+            console.log('[runAI] Adding existing URLs:', existingUrls);
             for (const url of existingUrls) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               if (typeof url === 'string' && url.trim()) {
@@ -1006,6 +1018,8 @@
               }
             }
           }
+
+          console.log('[runAI] Final sources to analyze:', sources);
 
           if (!sources.length) {
             alert('No images available for AI analysis.');

@@ -910,7 +910,8 @@
         setFiles(initialFiles.slice());
       }, [initialFiles]);
 
-      // Load current images (URLs/base64; new uploads use files[])
+      // Load current images only when draft.id changes (separate effect to avoid
+      // re-fetching when autoListEnabled/autoInquiryEnabled change)
       useEffect(() => {
         (async () => {
           if (draft?.id) {
@@ -928,7 +929,10 @@
             setOriginalUrls([]);
           }
         })();
+      }, [draft?.id]);
 
+      // Set inquiry default only for new listings
+      useEffect(() => {
         if (!draft?.id) {
           if (!autoListEnabled) {
             setInquiryEnabled(false);
