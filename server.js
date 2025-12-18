@@ -8015,6 +8015,7 @@ app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
 
       for (const img of openAIImages) {
         if (typeof img === 'string' && img.trim()) {
+          console.log('[AI Analyze] Sending image to OpenAI:', img.trim());
           content.push({ type: 'image_url', image_url: { url: img.trim() } });
         }
       }

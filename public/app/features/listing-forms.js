@@ -1016,9 +1016,11 @@
             return;
           }
 
+          // Don't send existing title/description as hint - it biases AI toward old content
+          // Only send hint if user explicitly typed something new (not from AI)
           const res = await api.aiAnalyze({
             images: sources.slice(0, AI_IMAGE_LIMIT),
-            hint: `${title} ${description}`.trim()
+            hint: ''
           });
 
           if (res.title) setTitle(res.title);
