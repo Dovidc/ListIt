@@ -913,10 +913,12 @@
       // Load current images only when draft.id changes (separate effect to avoid
       // re-fetching when autoListEnabled/autoInquiryEnabled change)
       useEffect(() => {
+        console.log('[ListingForm desktop] Image load effect running, draft.id:', draft?.id);
         (async () => {
           if (draft?.id) {
             try {
               const arr = await api.getListingImages(draft.id);
+              console.log('[ListingForm desktop] Loaded images from DB:', arr);
               setExistingUrls(arr || []);
               setOriginalUrls(arr || []);
             }
@@ -992,9 +994,10 @@
             return;
           }
 
+          // Don't send existing title/description as hint - it biases AI toward old content
           const res = await api.aiAnalyze({
             images: sources.slice(0, AI_IMAGE_LIMIT),
-            hint: `${title} ${description}`.trim()
+            hint: ''
           });
 
           if (res.title) setTitle(res.title);
