@@ -979,14 +979,24 @@
         setAiBusy(true);
         try {
           const sources = [];
+          const debugInfo = [];
+
+          debugInfo.push(`files: ${files.length}, existing: ${existingUrls.length}`);
 
           if (files.length) {
             for (const file of files) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               try {
+                debugInfo.push(`uploading: ${file?.name || 'unnamed'}, ${file?.size || 0}b, ${file?.type || 'no-type'}`);
                 const upload = await uploadFileDraft(file);
-                if (upload?.publicUrl) sources.push(upload.publicUrl);
+                if (upload?.publicUrl) {
+                  sources.push(upload.publicUrl);
+                  debugInfo.push(`uploaded OK`);
+                } else {
+                  debugInfo.push(`upload returned no URL`);
+                }
               } catch (err) {
+                debugInfo.push(`upload error: ${err?.message || err}`);
                 console.error('AI draft upload failed:', err);
               }
             }
@@ -1001,8 +1011,10 @@
             }
           }
 
+          debugInfo.push(`final sources: ${sources.length}`);
+
           if (!sources.length) {
-            alert('No images available for AI analysis.');
+            alert('No images available for AI analysis.\n\nDebug: ' + debugInfo.join('\n'));
             return;
           }
 
