@@ -132,9 +132,20 @@
 
       // STEP5: Parse response
       try {
-        return await response.json();
+        const text = await response.text();
+        if (!text) {
+          throw new Error('STEP5_EMPTY_RESPONSE');
+        }
+        try {
+          return JSON.parse(text);
+        } catch (jsonErr) {
+          throw new Error('STEP5_BADJSON: ' + text.substring(0, 100));
+        }
       } catch (parseErr) {
-        throw new Error('STEP5_PARSE: ' + (parseErr?.message || parseErr));
+        if (parseErr.message.startsWith('STEP5_')) {
+          throw parseErr;
+        }
+        throw new Error('STEP5_TEXTREAD: ' + (parseErr?.message || parseErr));
       }
     }
 
