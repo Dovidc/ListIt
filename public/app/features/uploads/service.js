@@ -109,10 +109,11 @@
         throw new Error('STEP2_JSON: ' + (jsonErr?.message || jsonErr));
       }
 
-      // STEP3: Fetch
+      // STEP3: Fetch - use absolute URL for Capacitor native compatibility
+      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || window.LISTIT_API_BASE_URL || 'https://trovelr.com';
       let response;
       try {
-        response = await fetch('/api/uploads/secure', {
+        response = await fetch(apiBase + '/api/uploads/secure', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
