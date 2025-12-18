@@ -29,7 +29,11 @@
       "Bash(curl:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" status)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" diff public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" diff server.js)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" log --oneline -5)"
     ],
     "deny": [],
     "ask": []
