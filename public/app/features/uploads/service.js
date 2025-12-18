@@ -66,51 +66,47 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
-    // Read file as ArrayBuffer using FileReader (more compatible than file.arrayBuffer())
-    function readFileAsArrayBuffer(file) {
+    // Read file as base64 data URL - compatible with Capacitor's native bridge
+    function readFileAsBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
+        reader.onload = () => {
+          // Result is like "data:image/jpeg;base64,/9j/4AAQ..."
+          // We need just the base64 part after the comma
+          const dataUrl = reader.result;
+          const base64 = dataUrl.split(',')[1];
+          resolve(base64);
+        };
         reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsArrayBuffer(file);
+        reader.readAsDataURL(file);
       });
     }
 
     // Secure upload - sends file through server for magic byte validation
-    // Uses XMLHttpRequest to bypass Capacitor's fetch() patch which breaks file uploads
+    // Uses base64 encoding to work with Capacitor's native HTTP bridge
     async function secureUpload(file) {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
+      const base64Data = await readFileAsBase64(file);
 
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/uploads/secure', true);
-        xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
-        xhr.setRequestHeader('X-Filename', file.name || 'upload.bin');
-        xhr.withCredentials = true;
-
-        xhr.onload = function() {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch (e) {
-              reject(new Error('Invalid response'));
-            }
-          } else {
-            try {
-              const err = JSON.parse(xhr.responseText);
-              reject(new Error(err.error || 'upload_failed'));
-            } catch (e) {
-              reject(new Error('upload_failed'));
-            }
-          }
-        };
-
-        xhr.onerror = function() {
-          reject(new Error('network_error'));
-        };
-
-        xhr.send(arrayBuffer);
+      // Send as JSON with base64 encoded data - this works reliably with Capacitor
+      const response = await fetch('/api/uploads/secure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          filename: file.name || 'upload.bin',
+          mimeType: file.type || 'image/jpeg',
+          data: base64Data
+        })
       });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'upload_failed');
+      }
+
+      return response.json();
     }
 
     async function uploadFileDraft(file) {

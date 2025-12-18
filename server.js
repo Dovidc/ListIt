@@ -7512,26 +7512,35 @@ app.post('/api/uploads/sign', auth, uploadLimiter, async (req, res) => {
 });
 
 // Secure upload endpoint - validates magic bytes before uploading to S3
-app.post('/api/uploads/secure', auth, uploadLimiter, express.raw({ type: 'image/*', limit: '25mb' }), async (req, res) => {
+// Accepts JSON with base64-encoded data (for Capacitor compatibility)
+app.post('/api/uploads/secure', auth, uploadLimiter, express.json({ limit: '35mb' }), async (req, res) => {
   try {
     if (!uploadBuffer) {
       return res.status(500).json({ error: 's3_module_not_loaded' });
     }
 
-    const contentType = req.headers['content-type'] || '';
-    const filename = req.headers['x-filename'] || 'upload.bin';
+    const { filename, mimeType, data } = req.body || {};
 
-    if (!contentType.startsWith('image/')) {
-      return res.status(400).json({ error: 'Invalid content type' });
-    }
-
-    const buffer = req.body;
-    if (!buffer || !buffer.length) {
+    if (!data || typeof data !== 'string') {
       return res.status(400).json({ error: 'No file data received' });
     }
 
+    if (!mimeType || !mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Invalid content type' });
+    }
+
+    // Decode base64 to buffer
+    const buffer = Buffer.from(data, 'base64');
+    if (!buffer || !buffer.length) {
+      return res.status(400).json({ error: 'Invalid base64 data' });
+    }
+
     // uploadBuffer validates magic bytes and uploads to S3
-    const result = await uploadBuffer({ buffer, filename, contentType });
+    const result = await uploadBuffer({
+      buffer,
+      filename: filename || 'upload.bin',
+      contentType: mimeType
+    });
 
     return res.json({
       publicUrl: result.publicUrl,
