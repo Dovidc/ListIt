@@ -980,9 +980,6 @@
         try {
           const sources = [];
 
-          // Log state for debugging
-          console.log('[runAI] files:', files.length, 'existingUrls:', existingUrls.length, existingUrls);
-
           // Upload new files first
           if (files.length) {
             for (const file of files) {
@@ -1008,8 +1005,6 @@
               }
             }
           }
-
-          console.log('[runAI] final sources:', sources);
 
           if (!sources.length) {
             alert('No images available for AI analysis.');
