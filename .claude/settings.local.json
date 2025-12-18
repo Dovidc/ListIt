@@ -43,7 +43,17 @@
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"fix: EXIF rotation for thumbnails, clean up debug code\")",
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"debug: add console logs for AI image source tracking\")",
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"fix: don''t send old title/description as AI hint\")",
-      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"cleanup: remove debug logging\")"
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"cleanup: remove debug logging\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log --oneline -- \"public/app/helpers/browser.js\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log -p HEAD~3..HEAD -- \"public/app/features/listings.js\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log -p --all -S \"getUserCoordsOnce\\\\|getCapacitorCoords\\\\|getBrowserCoords\" -- \"public/app/helpers.js\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log --oneline -- \"public/app/features/listings.js\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show 816bb536:public/app/features/listings.js)",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show a5b5bca7:public/app/features/listings.js)",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show 68aa622a:public/app/features/listings.js)",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log --all --oneline -S \"Always try to get user coordinates\" -- \"public/app/features/listings.js\")",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show acf88f14)",
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show acf88f14~1:public/app/features/listings.js)"
     ],
     "deny": [],
     "ask": []
