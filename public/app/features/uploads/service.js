@@ -66,15 +66,25 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
+    // Read file as ArrayBuffer using FileReader (more compatible than file.arrayBuffer())
+    function readFileAsArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
     // Secure upload - sends file through server for magic byte validation
     // Uses XMLHttpRequest to bypass Capacitor's fetch() patch which breaks file uploads
     async function secureUpload(file) {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await readFileAsArrayBuffer(file);
 
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/uploads/secure', true);
-        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
         xhr.setRequestHeader('X-Filename', file.name || 'upload.bin');
         xhr.withCredentials = true;
 
