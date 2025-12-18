@@ -955,11 +955,15 @@
         try {
           const sources = [];
 
+          console.log('[runAI desktop] files:', files.length, 'existingUrls:', existingUrls);
+
           if (files.length) {
             for (const file of files) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               try {
+                console.log('[runAI desktop] uploading:', file?.name);
                 const upload = await uploadFileDraft(file);
+                console.log('[runAI desktop] uploaded:', upload?.publicUrl);
                 if (upload?.publicUrl) sources.push(upload.publicUrl);
               } catch (err) {
                 console.error('AI draft upload failed:', err);
@@ -971,10 +975,13 @@
             for (const url of existingUrls) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               if (typeof url === 'string' && url.trim()) {
+                console.log('[runAI desktop] adding existing:', url);
                 sources.push(url);
               }
             }
           }
+
+          console.log('[runAI desktop] final sources:', sources);
 
           if (!sources.length) {
             alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
