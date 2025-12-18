@@ -7,8 +7,8 @@ const config: CapacitorConfig = {
   bundledWebRuntime: false,
   plugins: {
     CapacitorHttp: {
-      // Patch fetch() to use native HTTP - bypasses CORS/cookie issues
-      enabled: true,
+      // Disabled - causes issues with file uploads (FormData/arrayBuffer)
+      enabled: false,
     },
     CapacitorCookies: {
       // Patch document.cookie to use native cookies

@@ -7512,87 +7512,26 @@ app.post('/api/uploads/sign', auth, uploadLimiter, async (req, res) => {
 });
 
 // Secure upload endpoint - validates magic bytes before uploading to S3
-// Supports both raw body (desktop) and FormData (iOS native)
-app.post('/api/uploads/secure', auth, uploadLimiter, async (req, res) => {
+app.post('/api/uploads/secure', auth, uploadLimiter, express.raw({ type: 'image/*', limit: '25mb' }), async (req, res) => {
   try {
     if (!uploadBuffer) {
       return res.status(500).json({ error: 's3_module_not_loaded' });
     }
 
     const contentType = req.headers['content-type'] || '';
-    let buffer, filename, fileContentType;
+    const filename = req.headers['x-filename'] || 'upload.bin';
 
-    // Check if this is a multipart/form-data request (iOS/Capacitor)
-    if (contentType.includes('multipart/form-data')) {
-      // Parse multipart manually
-      const chunks = [];
-      for await (const chunk of req) {
-        chunks.push(chunk);
-      }
-      const body = Buffer.concat(chunks);
-
-      // Extract boundary from content-type
-      const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/);
-      if (!boundaryMatch) {
-        return res.status(400).json({ error: 'Invalid multipart boundary' });
-      }
-      const boundary = boundaryMatch[1] || boundaryMatch[2];
-
-      // Parse the multipart body to extract the file
-      const boundaryBuffer = Buffer.from('--' + boundary);
-      const parts = [];
-      let start = 0;
-
-      while (true) {
-        const idx = body.indexOf(boundaryBuffer, start);
-        if (idx === -1) break;
-        if (start > 0) {
-          parts.push(body.slice(start, idx - 2)); // -2 for \r\n before boundary
-        }
-        start = idx + boundaryBuffer.length + 2; // +2 for \r\n after boundary
-      }
-
-      if (parts.length === 0) {
-        return res.status(400).json({ error: 'No file in multipart data' });
-      }
-
-      // Parse the first part (the file)
-      const part = parts[0];
-      const headerEndIdx = part.indexOf('\r\n\r\n');
-      if (headerEndIdx === -1) {
-        return res.status(400).json({ error: 'Invalid multipart part' });
-      }
-
-      const headerStr = part.slice(0, headerEndIdx).toString();
-      buffer = part.slice(headerEndIdx + 4);
-
-      // Extract filename from Content-Disposition
-      const filenameMatch = headerStr.match(/filename="([^"]+)"/);
-      filename = filenameMatch ? filenameMatch[1] : 'upload.bin';
-
-      // Extract Content-Type from part headers
-      const ctMatch = headerStr.match(/Content-Type:\s*([^\r\n]+)/i);
-      fileContentType = ctMatch ? ctMatch[1].trim() : 'image/jpeg';
-
-    } else if (contentType.startsWith('image/')) {
-      // Raw body approach (desktop browser)
-      const chunks = [];
-      for await (const chunk of req) {
-        chunks.push(chunk);
-      }
-      buffer = Buffer.concat(chunks);
-      filename = req.headers['x-filename'] || 'upload.bin';
-      fileContentType = contentType;
-    } else {
+    if (!contentType.startsWith('image/')) {
       return res.status(400).json({ error: 'Invalid content type' });
     }
 
+    const buffer = req.body;
     if (!buffer || !buffer.length) {
       return res.status(400).json({ error: 'No file data received' });
     }
 
     // uploadBuffer validates magic bytes and uploads to S3
-    const result = await uploadBuffer({ buffer, filename, contentType: fileContentType });
+    const result = await uploadBuffer({ buffer, filename, contentType });
 
     return res.json({
       publicUrl: result.publicUrl,

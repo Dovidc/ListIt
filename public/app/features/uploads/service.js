@@ -68,13 +68,14 @@
 
     // Secure upload - sends file through server for magic byte validation
     async function secureUpload(file) {
-      // Use FormData for better iOS/Capacitor compatibility
-      const formData = new FormData();
-      formData.append('file', file, file.name || 'upload.bin');
-
+      const arrayBuffer = await file.arrayBuffer();
       const response = await fetch('/api/uploads/secure', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': file.type,
+          'X-Filename': file.name || 'upload.bin'
+        },
+        body: arrayBuffer,
         credentials: 'include'
       });
 
