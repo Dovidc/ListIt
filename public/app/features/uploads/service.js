@@ -85,25 +85,39 @@
     // Secure upload - sends file through server for magic byte validation
     // Uses base64 encoding to work with Capacitor's native HTTP bridge
     async function secureUpload(file) {
-      const base64Data = await readFileAsBase64(file);
+      let base64Data;
+      try {
+        base64Data = await readFileAsBase64(file);
+      } catch (readErr) {
+        throw new Error('B64READ_FAIL: ' + (readErr?.message || readErr));
+      }
+
+      if (!base64Data || typeof base64Data !== 'string') {
+        throw new Error('B64_EMPTY: no base64 data');
+      }
 
       // Send as JSON with base64 encoded data - this works reliably with Capacitor
-      const response = await fetch('/api/uploads/secure', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          filename: file.name || 'upload.bin',
-          mimeType: file.type || 'image/jpeg',
-          data: base64Data
-        })
-      });
+      let response;
+      try {
+        response = await fetch('/api/uploads/secure', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            filename: file.name || 'upload.bin',
+            mimeType: file.type || 'image/jpeg',
+            data: base64Data
+          })
+        });
+      } catch (fetchErr) {
+        throw new Error('FETCH_FAIL: ' + (fetchErr?.message || fetchErr));
+      }
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'upload_failed');
+        throw new Error('HTTP_' + response.status + ': ' + (err.error || 'upload_failed'));
       }
 
       return response.json();
