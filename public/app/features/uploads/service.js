@@ -67,24 +67,40 @@
     }
 
     // Secure upload - sends file through server for magic byte validation
+    // Uses XMLHttpRequest to bypass Capacitor's fetch() patch which breaks file uploads
     async function secureUpload(file) {
       const arrayBuffer = await file.arrayBuffer();
-      const response = await fetch('/api/uploads/secure', {
-        method: 'POST',
-        headers: {
-          'Content-Type': file.type,
-          'X-Filename': file.name || 'upload.bin'
-        },
-        body: arrayBuffer,
-        credentials: 'include'
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/uploads/secure', true);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('X-Filename', file.name || 'upload.bin');
+        xhr.withCredentials = true;
+
+        xhr.onload = function() {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('Invalid response'));
+            }
+          } else {
+            try {
+              const err = JSON.parse(xhr.responseText);
+              reject(new Error(err.error || 'upload_failed'));
+            } catch (e) {
+              reject(new Error('upload_failed'));
+            }
+          }
+        };
+
+        xhr.onerror = function() {
+          reject(new Error('network_error'));
+        };
+
+        xhr.send(arrayBuffer);
       });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'upload_failed');
-      }
-
-      return response.json();
     }
 
     async function uploadFileDraft(file) {

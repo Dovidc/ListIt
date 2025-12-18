@@ -7,8 +7,8 @@ const config: CapacitorConfig = {
   bundledWebRuntime: false,
   plugins: {
     CapacitorHttp: {
-      // Disabled - causes issues with file uploads (FormData/arrayBuffer)
-      enabled: false,
+      // Required for auth cookies to work on iOS native
+      enabled: true,
     },
     CapacitorCookies: {
       // Patch document.cookie to use native cookies
