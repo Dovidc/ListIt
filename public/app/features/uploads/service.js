@@ -85,18 +85,31 @@
     // Secure upload - sends file through server for magic byte validation
     // Uses base64 encoding to work with Capacitor's native HTTP bridge
     async function secureUpload(file) {
+      // STEP1: Read file as base64
       let base64Data;
       try {
         base64Data = await readFileAsBase64(file);
       } catch (readErr) {
-        throw new Error('B64READ_FAIL: ' + (readErr?.message || readErr));
+        throw new Error('STEP1_B64READ: ' + (readErr?.message || readErr));
       }
 
       if (!base64Data || typeof base64Data !== 'string') {
-        throw new Error('B64_EMPTY: no base64 data');
+        throw new Error('STEP1_B64EMPTY');
       }
 
-      // Send as JSON with base64 encoded data - this works reliably with Capacitor
+      // STEP2: Build JSON body
+      let jsonBody;
+      try {
+        jsonBody = JSON.stringify({
+          filename: file.name || 'upload.bin',
+          mimeType: file.type || 'image/jpeg',
+          data: base64Data
+        });
+      } catch (jsonErr) {
+        throw new Error('STEP2_JSON: ' + (jsonErr?.message || jsonErr));
+      }
+
+      // STEP3: Fetch
       let response;
       try {
         response = await fetch('/api/uploads/secure', {
@@ -105,22 +118,24 @@
             'Content-Type': 'application/json'
           },
           credentials: 'include',
-          body: JSON.stringify({
-            filename: file.name || 'upload.bin',
-            mimeType: file.type || 'image/jpeg',
-            data: base64Data
-          })
+          body: jsonBody
         });
       } catch (fetchErr) {
-        throw new Error('FETCH_FAIL: ' + (fetchErr?.message || fetchErr));
+        throw new Error('STEP3_FETCH: ' + (fetchErr?.message || fetchErr));
       }
 
+      // STEP4: Check response
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error('HTTP_' + response.status + ': ' + (err.error || 'upload_failed'));
+        throw new Error('STEP4_HTTP' + response.status + ': ' + (err.error || 'fail'));
       }
 
-      return response.json();
+      // STEP5: Parse response
+      try {
+        return await response.json();
+      } catch (parseErr) {
+        throw new Error('STEP5_PARSE: ' + (parseErr?.message || parseErr));
+      }
     }
 
     async function uploadFileDraft(file) {

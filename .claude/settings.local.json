@@ -33,7 +33,11 @@
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" status)",
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" diff public/app/features/uploads/service.js)",
       "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" diff server.js)",
-      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" log --oneline -5)"
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" log --oneline -5)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" show HEAD:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" add -A)",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" commit -m \"debug: add step markers to secureUpload\")",
+      "Bash(git -C \"c:\\Users\\Dovid\\Downloads\\listit_multi_images\" push)"
     ],
     "deny": [],
     "ask": []
