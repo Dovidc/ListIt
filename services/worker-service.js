@@ -576,12 +576,13 @@ class WorkerService {
           imageUrls
         });
         if (flagged?.length) {
-          // Record the flagged attempt
+          // Record the flagged attempt with associated images
           if (this.recordFlaggedAttempt) {
             await this.recordFlaggedAttempt({
               userId: job.user_id,
               title,
-              flagged
+              flagged,
+              images: imageUrls
             });
           }
           const error = new Error('moderation_flagged');

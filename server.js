@@ -1314,7 +1314,7 @@ async function ensureFlaggedAttemptsSchema() {
   return flaggedSchemaPromise;
 }
 
-async function recordFlaggedAttempt({ userId, listingId = null, title = '', flagged = [] } = {}) {
+async function recordFlaggedAttempt({ userId, listingId = null, title = '', flagged = [], images = [] } = {}) {
   const uid = Number(userId);
   if (!Number.isFinite(uid)) return;
   // Only use listingId if provided and valid (not null/undefined and a positive number)
@@ -1334,12 +1334,20 @@ async function recordFlaggedAttempt({ userId, listingId = null, title = '', flag
       try { detailsJson = JSON.stringify(normalized); } catch { }
     }
   }
+  // Store associated image URLs as JSON array
+  let imagesJson = null;
+  if (Array.isArray(images) && images.length) {
+    const validImages = images.filter(url => typeof url === 'string' && url.trim());
+    if (validImages.length) {
+      try { imagesJson = JSON.stringify(validImages); } catch { }
+    }
+  }
   try {
     await ensureFlaggedAttemptsSchema();
     await db.prepare(`
-      INSERT INTO flagged_attempts (user_id, listing_id, listing_title, details, flagged_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(uid, hasListingId, cleanTitle, detailsJson, nowIso());
+      INSERT INTO flagged_attempts (user_id, listing_id, listing_title, details, images, flagged_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid, hasListingId, cleanTitle, detailsJson, imagesJson, nowIso());
   } catch (err) {
     console.warn('Failed to record flagged attempt:', err?.message || err);
   }
@@ -3879,7 +3887,8 @@ app.put('/api/me/customization', auth, profileLimiter, async (req, res) => {
           await recordFlaggedAttempt({
             userId: req.user?.id,
             title: '[Profile Banner]',
-            flagged: modResult.details
+            flagged: modResult.details,
+            images: [bgUrl]
           });
           return res.status(400).json({ error: 'moderation_flagged' });
         }
@@ -3948,7 +3957,8 @@ app.put('/api/me/profile-picture', auth, profileLimiter, async (req, res) => {
         await recordFlaggedAttempt({
           userId: req.user?.id,
           title: '[Profile Picture]',
-          flagged: modResult.details
+          flagged: modResult.details,
+          images: [url]
         });
         return res.status(400).json({ error: 'moderation_flagged' });
       }
@@ -4056,7 +4066,8 @@ app.put('/api/me/profile-customization', auth, profileLimiter, async (req, res) 
         await recordFlaggedAttempt({
           userId: req.user?.id,
           title: '[Profile Banner]',
-          flagged: modResult.details
+          flagged: modResult.details,
+          images: [bgImageUrl]
         });
         return res.status(400).json({ error: 'moderation_flagged' });
       }
@@ -5709,7 +5720,7 @@ app.post(
         });
 
         if (flagged?.length) {
-          await recordFlaggedAttempt({ userId: req.user?.id, title: safeTitle, flagged });
+          await recordFlaggedAttempt({ userId: req.user?.id, title: safeTitle, flagged, images: uploads.map((item) => item.url) });
 
           return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -6864,7 +6875,7 @@ app.put(
         });
 
         if (flagged?.length) {
-          await recordFlaggedAttempt({ userId: req.user?.id, listingId: id, title: newTitle, flagged });
+          await recordFlaggedAttempt({ userId: req.user?.id, listingId: id, title: newTitle, flagged, images: remainingImageUrls });
 
           return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -7641,7 +7652,7 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
         });
 
         if (flagged?.length) {
-          await recordFlaggedAttempt({ userId: req.user?.id, listingId: lid, title: listing.title, flagged });
+          await recordFlaggedAttempt({ userId: req.user?.id, listingId: lid, title: listing.title, flagged, images: imageUrls });
 
           return res.status(400).json({ error: 'moderation_flagged', flagged });
 
@@ -7714,7 +7725,8 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
         await recordFlaggedAttempt({
           userId: req.user?.id,
           title: '[Draft Upload]',
-          flagged: modResult.details
+          flagged: modResult.details,
+          images: [sanitized.url]
         });
         return res.status(400).json({ error: 'moderation_flagged', flagged: modResult.details });
       }
@@ -7976,7 +7988,7 @@ app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
           });
 
           if (flagged.length) {
-            await recordFlaggedAttempt({ userId: req.user?.id, title: hint, flagged });
+            await recordFlaggedAttempt({ userId: req.user?.id, title: hint, flagged, images });
             return res.status(400).json({ error: 'moderation_flagged', flagged });
           }
         } catch (err) {
@@ -8724,7 +8736,8 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
           await recordFlaggedAttempt({
             userId: req.user.id,
             title: messageBody.slice(0, 80) || 'DM image',
-            flagged
+            flagged,
+            images: imageUrls
           });
           return res.status(400).json({ error: 'moderation_flagged', flagged });
         }
@@ -8915,6 +8928,7 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
              f.listing_id,
              COALESCE(NULLIF(f.listing_title, ''), l.title, '') AS listing_title,
              f.details,
+             f.images,
              f.flagged_at,
              u.username,
              u.email
@@ -8939,6 +8953,16 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
         }
       }
       const username = row.username || (Number.isFinite(userId) ? `User #${userId}` : null);
+      // Parse images JSON array
+      let images = [];
+      if (row.images) {
+        try {
+          const parsed = JSON.parse(row.images);
+          if (Array.isArray(parsed)) {
+            images = parsed.filter(url => typeof url === 'string' && url.trim());
+          }
+        } catch { }
+      }
       return {
         id: Number.isFinite(id) ? id : row.id,
         user_id: userId,
@@ -8947,7 +8971,8 @@ app.get('/api/admin/flagged', auth, requireAdmin, async (req, res) => {
         flagged_at: row.flagged_at,
         username,
         email: row.email,
-        details
+        details,
+        images
       };
     });
     console.log('[/api/admin/flagged] Returning', data.length, 'flagged entries');

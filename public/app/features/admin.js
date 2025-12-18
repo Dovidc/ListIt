@@ -366,6 +366,38 @@
                       ),
                       H('div', { className: 'muted', style: { fontSize: 12 } }, item?.email || 'No email on file'),
                       H('div', { className: 'muted', style: { fontSize: 12 } }, item?.listing_title ? `Title: ${item.listing_title}` : 'Title not provided'),
+                      // Show associated images if available
+                      Array.isArray(item?.images) && item.images.length > 0 && H('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 } },
+                        item.images.slice(0, 4).map((imgUrl, imgIdx) => H('img', {
+                          key: `img-${item.id}-${imgIdx}`,
+                          src: imgUrl,
+                          alt: `Flagged image ${imgIdx + 1}`,
+                          style: {
+                            width: 80,
+                            height: 80,
+                            objectFit: 'cover',
+                            borderRadius: 6,
+                            border: '1px solid #e5e7eb',
+                            cursor: 'pointer'
+                          },
+                          onClick: () => window.open(imgUrl, '_blank')
+                        })),
+                        item.images.length > 4 && H('div', {
+                          style: {
+                            width: 80,
+                            height: 80,
+                            borderRadius: 6,
+                            border: '1px solid #e5e7eb',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#f3f4f6',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: '#6b7280'
+                          }
+                        }, `+${item.images.length - 4}`)
+                      ),
                       details.length ? H('div', { style: { display: 'grid', gap: 6 } },
                         details.map((detail, idx) => {
                           if (!detail || typeof detail !== 'object') return null;

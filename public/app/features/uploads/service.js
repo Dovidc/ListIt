@@ -90,8 +90,9 @@
         throw new Error('Failed to read file');
       }
 
-      // Use absolute URL for Capacitor native compatibility
-      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || window.LISTIT_API_BASE_URL || 'https://trovelr.com';
+      // Use absolute URL only for Capacitor native (when LISTIT_NATIVE_API_BASE_URL is set)
+      // On web/localhost, use relative URL to avoid CORS issues
+      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || '';
       const response = await fetch(apiBase + '/api/uploads/secure', {
         method: 'POST',
         headers: {

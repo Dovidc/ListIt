@@ -567,7 +567,8 @@
           payload._authToken = token;
         }
 
-        // Use fetch with keepalive for better reliability
+        // Use fetch to send to server
+        // Note: keepalive has a 64KB body limit, so we can't use it with base64 images
         let result = null;
         let serverError = null;
         try {
@@ -575,7 +576,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-            keepalive: true // Allows request to complete even if page unloads
+            credentials: 'include'
           });
           if (response.ok) {
             result = await response.json();
