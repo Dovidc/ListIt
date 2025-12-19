@@ -361,6 +361,50 @@
              window.Capacitor.isNativePlatform();
     }
 
+    // Pick images from gallery using Capacitor Camera plugin
+    // Returns array of File objects, or null if cancelled/unavailable
+    async function pickGalleryImages(limit = 12) {
+      if (!isCapacitorNative()) return null;
+
+      try {
+        const { Camera } = window.Capacitor.Plugins;
+        if (!Camera || typeof Camera.pickImages !== 'function') {
+          console.warn('[Gallery] Capacitor Camera plugin not available');
+          return null;
+        }
+
+        const result = await Camera.pickImages({
+          quality: 90,
+          limit
+        });
+
+        if (!result?.photos?.length) return [];
+
+        // Convert photos to File objects
+        const files = await Promise.all(result.photos.map(async (photo, i) => {
+          try {
+            // photo.webPath is a blob URL we can fetch
+            const response = await fetch(photo.webPath);
+            const blob = await response.blob();
+            const filename = `gallery_${Date.now()}_${i}.${photo.format || 'jpeg'}`;
+            return new File([blob], filename, { type: blob.type || 'image/jpeg' });
+          } catch (err) {
+            console.warn('[Gallery] Failed to convert photo:', err);
+            return null;
+          }
+        }));
+
+        return files.filter(Boolean);
+      } catch (err) {
+        // User cancelled or permission denied
+        if (err?.message?.includes('cancelled') || err?.message?.includes('canceled')) {
+          return [];
+        }
+        console.warn('[Gallery] pickImages failed:', err);
+        return null;
+      }
+    }
+
     // Get coordinates using Capacitor Geolocation plugin (for native apps)
     async function getCapacitorCoords() {
       try {
@@ -523,6 +567,7 @@
       H,
       isMobileDevice,
       isCapacitorNative,
+      pickGalleryImages,
       seenKey,
       loadSeen,
       saveSeen,

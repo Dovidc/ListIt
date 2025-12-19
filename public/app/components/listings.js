@@ -62,6 +62,7 @@
     const {
       isMobileDevice,
       isCapacitorNative,
+      pickGalleryImages,
       createConcurrencyLimiter,
       fetchCoordsAndReverse,
       getUserCoordsOnce,
@@ -1594,8 +1595,13 @@
       }, [initialFiles]);
 
       function pick(e) {
-        const MAX_EACH_MB = 20;
         const selected = Array.from(e.target.files || []);
+        addFiles(selected);
+        if (e.target) e.target.value = '';
+      }
+
+      function addFiles(selected) {
+        const MAX_EACH_MB = 20;
         const next = [...files];
         for (const f of selected) {
           if (!f.type?.startsWith?.('image/')) { alert('Only images are allowed'); continue; }
@@ -1603,8 +1609,22 @@
           next.push(f);
         }
         setFiles(next);
-        if (e.target) e.target.value = '';
       }
+
+      async function pickFromGallery() {
+        // On Capacitor, use native gallery picker (no extra prompt)
+        const nativeFiles = await pickGalleryImages(12);
+        if (nativeFiles !== null) {
+          // null means unavailable, [] means cancelled, [...] means files
+          if (nativeFiles.length > 0) {
+            addFiles(nativeFiles);
+          }
+          return;
+        }
+        // Fallback to HTML input for web
+        galleryRef.current?.click();
+      }
+
       function removeAt(i) {
         const next = [...files];
         const [removed] = next.splice(i, 1);
@@ -1875,7 +1895,7 @@
               ),
               H('button', {
                 type: 'button',
-                onClick: () => galleryRef.current?.click(),
+                onClick: pickFromGallery,
                 style: {
                   display: 'flex',
                   flexDirection: 'column',

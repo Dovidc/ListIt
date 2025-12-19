@@ -39,6 +39,8 @@
       throw new Error('Messages feature requires saveSeen helper.');
     }
 
+    const pickGalleryImages = helpers?.pickGalleryImages;
+
     const Lightbox = components?.Lightbox;
     const ImageWithSkeleton = components?.ImageWithSkeleton;
     if (typeof Lightbox !== 'function' || typeof ImageWithSkeleton !== 'function') {
@@ -422,6 +424,7 @@
       onPickImages,
       cameraFileRef,
       libraryFileRef,
+      pickFromGallery,
       dropRef,
       onDragOver,
       onDrop,
@@ -578,7 +581,7 @@
               // Gallery icon button
               H('button', {
                 type: 'button',
-                onClick: () => { libraryFileRef?.current?.click(); setShowAttachMenu(false); },
+                onClick: () => { pickFromGallery(); setShowAttachMenu(false); },
                 title: 'Photo library',
                 style: {
                   width: 44,
@@ -768,9 +771,7 @@
             variant: 'camera'
           }),
           H(AttachButton, {
-            onClick: () => {
-              if (libraryFileRef?.current) libraryFileRef.current.click();
-            },
+            onClick: pickFromGallery,
             title: 'Attach from photos',
             variant: 'library'
           }),
@@ -1145,6 +1146,21 @@
       function pickImgs(e) {
         addFiles(e.target.files);
         if (e?.target) e.target.value = '';
+      }
+
+      async function pickFromGallery() {
+        // On Capacitor, use native gallery picker (no extra prompt)
+        if (typeof pickGalleryImages === 'function') {
+          const nativeFiles = await pickGalleryImages(5);
+          if (nativeFiles !== null) {
+            if (nativeFiles.length > 0) {
+              addFiles(nativeFiles);
+            }
+            return;
+          }
+        }
+        // Fallback to HTML input for web
+        libraryFileRef?.current?.click();
       }
 
       function onComposerPaste(e) {
@@ -1718,6 +1734,7 @@
             onPickImages: pickImgs,
             cameraFileRef,
             libraryFileRef,
+            pickFromGallery,
             dropRef,
             onDragOver,
             onDrop,
@@ -1849,6 +1866,7 @@
             onPickImages: pickImgs,
             cameraFileRef,
             libraryFileRef,
+            pickFromGallery,
             dropRef,
             onDragOver,
             onDrop,
