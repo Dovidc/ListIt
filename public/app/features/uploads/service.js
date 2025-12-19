@@ -71,48 +71,7 @@
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
     }
 
-    // Read file as base64 - used for Capacitor native fallback
-    function readFileAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result;
-          const base64 = dataUrl.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-    }
-
-    // Capacitor native upload via base64 - fallback when presigned fails
-    async function capacitorUploadBase64(file) {
-      const base64Data = await readFileAsBase64(file);
-      if (!base64Data) {
-        throw new Error('Failed to read file');
-      }
-
-      const apiBase = window.LISTIT_NATIVE_API_BASE_URL || '';
-      const response = await fetch(apiBase + '/api/uploads/secure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          filename: file.name || 'upload.bin',
-          mimeType: file.type || 'image/jpeg',
-          data: base64Data
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'upload_failed');
-      }
-
-      return response.json();
-    }
-
-    // Presigned URL upload - works on web, may work on Capacitor
+    // Presigned URL upload - works on web and Capacitor (via XMLHttpRequest)
     async function presignedUpload(file) {
       // Get presigned URL from server
       const apiBase = isCapacitorNative() ? (window.LISTIT_NATIVE_API_BASE_URL || '') : '';
@@ -156,19 +115,9 @@
       };
     }
 
-    // Smart upload - tries presigned first, falls back to base64 on Capacitor
+    // Smart upload - presigned URLs only, no base64 fallback
     async function smartUpload(file) {
-      // Try presigned URL first (works on web, may work on Capacitor)
-      try {
-        return await presignedUpload(file);
-      } catch (err) {
-        // On Capacitor, fall back to base64 if presigned fails
-        if (isCapacitorNative()) {
-          console.warn('[smartUpload] Presigned failed on Capacitor, trying base64:', err.message);
-          return await capacitorUploadBase64(file);
-        }
-        throw err;
-      }
+      return await presignedUpload(file);
     }
 
     async function uploadFileDraft(file) {

@@ -330,4 +330,4 @@ async function generateThumbnailFromUrl(imageUrl, s3Key) {
   }
 }
 
-module.exports = { presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl };
+module.exports = { presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl, validateMagicBytes };

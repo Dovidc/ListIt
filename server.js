@@ -575,11 +575,11 @@ if (process.env.EMBED_WORKER !== 'false') {
 let presignUpload;
 let presignDownload;
 let uploadBuffer;
-
 let generateThumbnailFromUrl;
-try {
+let validateMagicBytes;
 
-  ({ presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl } = require('./s3'));
+try {
+  ({ presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl, validateMagicBytes } = require('./s3'));
 
   console.log('[S3] s3.js loaded:', typeof presignUpload === 'function', 'uploadBuffer=', typeof uploadBuffer === 'function', 'bucket=', process.env.S3_BUCKET);
 
@@ -6096,14 +6096,8 @@ app.post(
  * POST /api/listings/auto-fast
  * Fire-and-forget listing creation with images.
  *
- * This endpoint accepts either:
- * 1. uploadTokens: array of pre-uploaded image tokens (preferred, zero server memory)
- * 2. images: base64-encoded images (legacy, for Capacitor iOS)
- *
  * Expected body: {
- *   uploadTokens: ['token1', 'token2'] (preferred - images already uploaded via presigned URLs)
- *   OR
- *   images: [{ data: 'base64...', type: 'image/jpeg', name: 'photo.jpg' }] (legacy)
+ *   uploadTokens: ['token1', 'token2'] (images already uploaded via presigned URLs)
  *   location: 'City, State',
  *   enable_nearby: true/false,
  *   inquiry_enabled: true/false,
@@ -6114,8 +6108,7 @@ app.post(
  */
 app.post(
   '/api/listings/auto-fast',
-  // Increase body size limit for base64 images (max ~10MB per image, 3 images = 30MB)
-  express.json({ limit: '50mb' }),
+  express.json({ limit: '1mb' }),
   // Handle beacon auth (same as /api/listings/auto)
   (req, res, next) => {
     if (!req.user && req.body?._authToken) {
@@ -6154,7 +6147,6 @@ app.post(
 
     try {
       const {
-        images,
         uploadTokens: clientTokens,
         location,
         enable_nearby,
@@ -6193,80 +6185,9 @@ app.post(
         }
 
         console.log(`[AutoListingFast] Using ${uploadTokens.length} pre-uploaded images for user ${req.user.id}`);
-      }
-      // LEGACY PATH: Base64 images (for Capacitor iOS)
-      else if (Array.isArray(images) && images.length > 0) {
-        // Limit to 12 images
-        const validImages = images.slice(0, 12).filter(img =>
-          img && typeof img.data === 'string' && img.data.length > 0
-        );
-
-        if (!validImages.length) {
-          return res.status(400).json({ error: 'no_valid_images' });
-        }
-
-        // Check if S3 upload is available
-        if (typeof uploadBuffer !== 'function') {
-          console.error('[AutoListingFast] uploadBuffer not available');
-          return res.status(503).json({ error: 's3_not_configured' });
-        }
-
-        console.log(`[AutoListingFast] Processing ${validImages.length} base64 images for user ${req.user.id}`);
-
-        const nowUnix = Math.floor(Date.now() / 1000);
-        let lastUploadError = null;
-
-        for (let i = 0; i < validImages.length; i++) {
-          const img = validImages[i];
-          try {
-            // Decode base64
-            const base64Data = img.data.replace(/^data:image\/\w+;base64,/, '');
-            const buffer = Buffer.from(base64Data, 'base64');
-
-            // Determine content type
-            const contentType = img.type || 'image/jpeg';
-            const filename = img.name || `photo_${i}.jpg`;
-
-            // Upload to S3
-            const s3Result = await uploadBuffer({ buffer, filename, contentType });
-            console.log(`[AutoListingFast] Image ${i + 1} uploaded to S3: ${s3Result.Key}`);
-
-            // Create upload draft record
-            const token = require('crypto').randomBytes(16).toString('hex');
-            await db.prepare(`
-              INSERT INTO listing_upload_drafts (
-                user_id, token, key, url, width, height, bytes, created_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              req.user.id,
-              token,
-              s3Result.Key,
-              s3Result.publicUrl,
-              img.width || 0,
-              img.height || 0,
-              buffer.length,
-              nowUnix
-            );
-
-            uploadTokens.push(token);
-          } catch (uploadErr) {
-            const errMsg = uploadErr?.message || String(uploadErr);
-            console.error(`[AutoListingFast] Failed to upload image ${i}:`, errMsg);
-            lastUploadError = errMsg;
-            if (errMsg.includes('Invalid file') || errMsg.includes('moderation') || errMsg.includes('flagged')) {
-              return res.status(400).json({ error: errMsg });
-            }
-          }
-        }
-
-        if (!uploadTokens.length) {
-          return res.status(500).json({ error: lastUploadError || 'all_uploads_failed' });
-        }
-
-        console.log(`[AutoListingFast] ${uploadTokens.length} base64 images uploaded in ${Date.now() - startTime}ms`);
-      }
-      else {
-        return res.status(400).json({ error: 'images_or_tokens_required' });
+      } else {
+        // No valid upload tokens - presigned URL upload is required
+        return res.status(400).json({ error: 'upload_tokens_required' });
       }
 
       // Create job record (same as /api/listings/auto)
@@ -7547,47 +7468,6 @@ app.post('/api/uploads/sign', auth, uploadLimiter, async (req, res) => {
 
 });
 
-// Secure upload endpoint - validates magic bytes before uploading to S3
-// Accepts JSON with base64-encoded data (for Capacitor compatibility)
-app.post('/api/uploads/secure', auth, uploadLimiter, express.json({ limit: '35mb' }), async (req, res) => {
-  try {
-    if (!uploadBuffer) {
-      return res.status(500).json({ error: 's3_module_not_loaded' });
-    }
-
-    const { filename, mimeType, data } = req.body || {};
-
-    if (!data || typeof data !== 'string') {
-      return res.status(400).json({ error: 'No file data received' });
-    }
-
-    if (!mimeType || !mimeType.startsWith('image/')) {
-      return res.status(400).json({ error: 'Invalid content type' });
-    }
-
-    // Decode base64 to buffer
-    const buffer = Buffer.from(data, 'base64');
-    if (!buffer || !buffer.length) {
-      return res.status(400).json({ error: 'Invalid base64 data' });
-    }
-
-    // uploadBuffer validates magic bytes and uploads to S3
-    const result = await uploadBuffer({
-      buffer,
-      filename: filename || 'upload.bin',
-      contentType: mimeType
-    });
-
-    return res.json({
-      publicUrl: result.publicUrl,
-      key: result.Key
-    });
-  } catch (e) {
-    console.error('[SecureUpload] Error:', e.message);
-    return res.status(400).json({ error: e.message || 'upload_failed' });
-  }
-});
-
 app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
   try {
@@ -7606,6 +7486,27 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
       return res.status(400).json({ error: 'invalid_asset_url' });
 
+    }
+
+    // Validate magic bytes by fetching first 16 bytes from S3
+    if (typeof validateMagicBytes === 'function') {
+      try {
+        const headResponse = await fetch(rawUrl, { headers: { Range: 'bytes=0-15' } });
+        if (headResponse.ok) {
+          const buffer = Buffer.from(await headResponse.arrayBuffer());
+          // Infer content type from URL extension
+          const ext = rawUrl.match(/\.(\w+)(?:\?|$)/)?.[1]?.toLowerCase() || 'jpeg';
+          const contentTypeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', avif: 'image/avif' };
+          const contentType = contentTypeMap[ext] || 'image/jpeg';
+          if (!validateMagicBytes(buffer, contentType)) {
+            console.warn('[Finalize] Magic byte validation failed for:', rawUrl);
+            return res.status(400).json({ error: 'invalid_file_type' });
+          }
+        }
+      } catch (err) {
+        console.warn('[Finalize] Magic byte check failed:', err.message);
+        // Continue anyway - don't block on fetch failures
+      }
     }
 
     const safeUrl = canonicalAssetUrl(rawUrl);
@@ -8700,46 +8601,17 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
     // Moderate message content (text and images)
     const messageBody = String(body || '').slice(0, 2000);
 
-    // Process images: upload base64 to S3, collect all URLs for moderation
-    const processedImages = []; // { url, isBase64 }
-    const uploadedS3Keys = []; // Track uploaded keys for cleanup if moderation fails
+    // Process images: only accept presigned URL uploads (HTTPS URLs)
+    const processedImages = []; // { url, key }
 
-    if (Array.isArray(images) && images.length && uploadBuffer) {
-      for (let i = 0; i < images.length; i++) {
-        const img = images[i];
+    if (Array.isArray(images) && images.length) {
+      for (const img of images) {
         if (typeof img !== 'string') continue;
 
-        if (img.startsWith('data:image/')) {
-          // Upload base64 to S3
-          try {
-            const match = img.match(/^data:image\/(\w+);base64,/);
-            const ext = match ? match[1] : 'jpeg';
-            const base64Data = img.replace(/^data:image\/\w+;base64,/, '');
-            const buffer = Buffer.from(base64Data, 'base64');
-            const contentType = `image/${ext}`;
-            const filename = `dm_${req.user.id}_${Date.now()}_${i}.${ext}`;
-
-            const s3Result = await uploadBuffer({ buffer, filename, contentType });
-            processedImages.push({ url: s3Result.publicUrl, key: s3Result.Key });
-            uploadedS3Keys.push(s3Result.Key);
-          } catch (uploadErr) {
-            console.error('[DM] Failed to upload base64 image:', uploadErr?.message || uploadErr);
-            // Skip this image but continue
-          }
-        } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
+        // Only accept HTTPS URLs (presigned URL uploads)
+        if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
           // Extract S3 key from URL for thumbnail generation
           // URL format: https://domain/public/uploads/2025-12-19/filename.jpg
-          const urlObj = new URL(img);
-          const pathMatch = urlObj.pathname.match(/^\/(public\/uploads\/.+)$/);
-          const extractedKey = pathMatch ? pathMatch[1] : null;
-          processedImages.push({ url: canonicalAssetUrl(img), key: extractedKey });
-        }
-      }
-    } else if (Array.isArray(images) && images.length) {
-      // uploadBuffer not available, only process HTTPS URLs
-      for (const img of images) {
-        if (typeof img === 'string' && img.startsWith('https://') && isAllowedPublicUrl(img)) {
-          // Extract S3 key from URL for thumbnail generation
           let extractedKey = null;
           try {
             const urlObj = new URL(img);
@@ -8748,23 +8620,16 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
           } catch (e) { /* ignore parse errors */ }
           processedImages.push({ url: canonicalAssetUrl(img), key: extractedKey });
         }
+        // Reject base64 images - they must use presigned URL upload
+        else if (img.startsWith('data:image/')) {
+          console.warn('[DM] Rejected base64 image - must use presigned URL upload');
+        }
       }
     }
 
     const imageUrls = processedImages.map(p => p.url);
 
-    // Helper to cleanup S3 uploads if moderation fails
-    const cleanupUploads = async () => {
-      if (uploadedS3Keys.length && typeof deleteS3Objects === 'function') {
-        try {
-          await deleteS3Objects(uploadedS3Keys);
-        } catch (e) {
-          console.warn('[DM] Failed to cleanup S3 uploads after moderation failure:', e?.message || e);
-        }
-      }
-    };
-
-    // Only moderate images in DMs (skip text moderation for faster messaging)
+    // Moderate images in DMs (skip text moderation for faster messaging)
     if (imageUrls.length) {
       try {
         const flagged = await moderateListingContent({
@@ -8774,7 +8639,6 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
         });
 
         if (flagged?.length) {
-          await cleanupUploads();
           await recordFlaggedAttempt({
             userId: req.user.id,
             title: messageBody.slice(0, 80) || 'DM image',
@@ -8788,7 +8652,6 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
           console.error('[DM] Image moderation failed:', modErr?.message || modErr);
           // Continue without blocking if moderation service fails
         } else {
-          await cleanupUploads();
           throw modErr;
         }
       }
