@@ -445,75 +445,30 @@
           throw new Error('Fast auto-listing API not available');
         }
 
-        // Check if running on Capacitor native (needs base64 path)
-        const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-
+        // Use presigned URLs for all platforms (web and Capacitor)
+        // Capacitor uses XMLHttpRequest internally to bypass CapacitorHttp's fetch() patch
         let uploadTokens = [];
-        let images = [];
         const startTime = Date.now();
 
-        if (isNative) {
-          // CAPACITOR PATH: Use base64 (native HTTP bridge breaks binary uploads)
-          console.log('[AutoList] Capacitor detected, using base64 upload path...');
+        console.log('[AutoList] Using presigned URL upload path...');
 
-          const imagePromises = validFiles.slice(0, 12).map(async (file, i) => {
-            try {
-              const { blob, width, height } = await compressImage(file, 1200, 0.8);
-              const base64 = await fileToBase64(blob);
-              return {
-                data: base64,
-                type: 'image/jpeg',
-                name: file.name || `photo_${i}.jpg`,
-                width,
-                height
-              };
-            } catch (e) {
-              console.warn(`[AutoList] Failed to process image ${i}:`, e);
-              try {
-                const base64 = await fileToBase64(file);
-                return {
-                  data: base64,
-                  type: file.type || 'image/jpeg',
-                  name: file.name || `photo_${i}.jpg`,
-                  width: 0,
-                  height: 0
-                };
-              } catch (e2) {
-                console.error(`[AutoList] Failed to convert image ${i}:`, e2);
-                return null;
-              }
-            }
-          });
-
-          const imageResults = await Promise.all(imagePromises);
-          images = imageResults.filter(Boolean);
-          console.log(`[AutoList] Converted ${images.length} images to base64 in ${Date.now() - startTime}ms`);
-
-          if (!images.length) {
-            throw new Error('Failed to process images');
+        const uploadPromises = validFiles.slice(0, 12).map(async (file, i) => {
+          try {
+            const result = await uploadFileDraft(file);
+            console.log(`[AutoList] Image ${i + 1} uploaded:`, result.publicUrl);
+            return result.uploadToken;
+          } catch (e) {
+            console.error(`[AutoList] Failed to upload image ${i}:`, e);
+            return null;
           }
-        } else {
-          // WEB PATH: Use presigned URLs (zero server memory)
-          console.log('[AutoList] Web detected, using presigned URL upload path...');
+        });
 
-          const uploadPromises = validFiles.slice(0, 12).map(async (file, i) => {
-            try {
-              const result = await uploadFileDraft(file);
-              console.log(`[AutoList] Image ${i + 1} uploaded:`, result.publicUrl);
-              return result.uploadToken;
-            } catch (e) {
-              console.error(`[AutoList] Failed to upload image ${i}:`, e);
-              return null;
-            }
-          });
+        const tokenResults = await Promise.all(uploadPromises);
+        uploadTokens = tokenResults.filter(Boolean);
+        console.log(`[AutoList] Uploaded ${uploadTokens.length} images in ${Date.now() - startTime}ms`);
 
-          const tokenResults = await Promise.all(uploadPromises);
-          uploadTokens = tokenResults.filter(Boolean);
-          console.log(`[AutoList] Uploaded ${uploadTokens.length} images in ${Date.now() - startTime}ms`);
-
-          if (!uploadTokens.length) {
-            throw new Error('Failed to upload images');
-          }
+        if (!uploadTokens.length) {
+          throw new Error('Failed to upload images');
         }
 
         // Step 2: Determine location and coordinates (should be cached, fast)
@@ -574,15 +529,9 @@
           location: locAuto,
           hint: '',
           enable_nearby: enableNearbyAuto,
-          inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
+          inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true,
+          uploadTokens
         };
-
-        // Use uploadTokens for web, images for Capacitor
-        if (uploadTokens.length > 0) {
-          payload.uploadTokens = uploadTokens;
-        } else {
-          payload.images = images;
-        }
 
         if (enableNearbyAuto && latAuto != null && lonAuto != null) {
           payload.lat = latAuto;
@@ -599,8 +548,7 @@
           payload._authToken = token;
         }
 
-        // Use fetch to send to server
-        // Note: keepalive has a 64KB body limit, so we can't use it with base64 images
+        // Use fetch to send to server (payload is small - just tokens, no base64)
         let result = null;
         let serverError = null;
         try {
