@@ -819,8 +819,6 @@
     }) {
       useModalLifecycle(open, onClose);
 
-      const donationText = formatDonation(Number(amount), currency);
-      const premiumText = formatDonation(Number(premiumAmount || 199), currency);
       const handleOverlay = (evt) => {
         if (evt.target === evt.currentTarget) {
           onClose?.();
@@ -831,12 +829,6 @@
       const isIOS = isIOSNativeApp();
 
       if (!open) return null;
-
-      const handleTierClick = (tier) => {
-        if (onTierChange) {
-          onTierChange(tier);
-        }
-      };
 
       // Notice for non-iOS users (iOS gets CopySubscribeLink component instead)
       const effectiveNotice = paymentsDisabled
@@ -899,24 +891,6 @@
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'Collect and award karma when selling and buying from other premium users')
                     )
                   )
-                ),
-                // Pricing
-                H('div', {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '16px 20px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: 12,
-                    background: '#fafafa',
-                    marginTop: 4
-                  }
-                },
-                  H('div', { style: { textAlign: 'center' } },
-                    H('div', { style: { fontWeight: 800, fontSize: 22 } }, `${premiumText}/month`),
-                    H('div', { style: { fontSize: 12, color: '#666' } }, 'Cancel anytime from your profile')
-                  )
                 )
               )
               : H('p', { className: 'supporter-modal__body' },
@@ -925,22 +899,35 @@
             isIOS && isPrompt && H(CopySubscribeLink),
             effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
-            H('div', { className: 'supporter-modal__actions' },
-              H('button', {
-                type: 'button',
-                className: 'btn',
-                onClick: () => onClose?.(),
-                disabled: busy
-              }, isPrompt ? (isIOS ? 'Close' : 'Maybe later') : 'Close'),
+            // Bottom section with buttons and cancel text
+            isPrompt ? H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 16 } },
               // Hide payment button on iOS native app (App Store rules prohibit external payment links)
-              isPrompt && !isIOS && typeof onJoin === 'function' && H('button', {
+              !isIOS && typeof onJoin === 'function' && H('button', {
                 type: 'button',
                 className: 'btn primary',
                 onClick: () => {
                   onJoin('premium');
                 },
-                disabled: busy || paymentsDisabled
-              }, paymentsDisabled ? 'Payments disabled' : (busy ? 'Redirecting…' : 'Subscribe'))
+                disabled: busy || paymentsDisabled,
+                style: { width: '100%', padding: '14px 24px', fontSize: 16, fontWeight: 600 }
+              }, paymentsDisabled ? 'Payments disabled' : (busy ? 'Redirecting...' : 'Subscribe at $2.99 / month')),
+              H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: () => onClose?.(),
+                disabled: busy,
+                style: { width: '100%', padding: '12px 24px', fontSize: 15 }
+              }, 'Maybe later'),
+              H('p', { style: { fontSize: 12, color: '#999', margin: 0, textAlign: 'center' } },
+                'Cancel any time from your profile'
+              )
+            ) : H('div', { className: 'supporter-modal__actions' },
+              H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: () => onClose?.(),
+                disabled: busy
+              }, 'Close')
             )
           )
         ),
