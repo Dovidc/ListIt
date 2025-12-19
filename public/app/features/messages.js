@@ -360,10 +360,13 @@
             message.body && H('div', null, message.body),
             Array.isArray(message.images) && message.images.length > 0 &&
               H('div', { className: 'row', style: { gap: 6, marginTop: 6, flexWrap: 'wrap' } },
-                ...message.images.map((src, index) =>
-                  H(ImageWithSkeleton, {
+                ...message.images.map((img, index) => {
+                  // Support both old format (string) and new format ({ url, thumb })
+                  const thumbSrc = typeof img === 'string' ? img : (img.thumb || img.url);
+                  const fullUrls = message.images.map(i => typeof i === 'string' ? i : i.url);
+                  return H(ImageWithSkeleton, {
                     key: index,
-                    src,
+                    src: thumbSrc,
                     loading: 'lazy',
                     decoding: 'async',
                     style: {
@@ -374,9 +377,9 @@
                       border: '1px solid #e5e7eb',
                       cursor: 'zoom-in'
                     },
-                    onClick: () => openLightbox(message.images, index)
-                  })
-                )
+                    onClick: () => openLightbox(fullUrls, index)
+                  });
+                })
               ),
             ts && H('div', {
               className: 'muted',
@@ -1411,6 +1414,7 @@
         removeImg,
         onComposerPaste,
         pickImgs,
+        pickFromGallery,
         onDragOver,
         onDrop,
         send,
@@ -1548,6 +1552,7 @@
         revealPaypal,
         onComposerPaste,
         pickImgs,
+        pickFromGallery,
         cameraFileRef,
         libraryFileRef,
         dropRef,

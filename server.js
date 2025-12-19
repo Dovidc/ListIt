@@ -8588,20 +8588,25 @@ app.get('/api/conversations/:id/messages', auth, async (req, res) => {
       // Build IN clause with proper parameter binding
       const placeholders = messageIds.map(() => '?').join(',');
       allImages = await db.prepare(`
-        SELECT message_id, COALESCE(url, image_data) AS image_data
+        SELECT message_id, COALESCE(url, image_data) AS image_data, thumb_url
         FROM message_images
         WHERE message_id IN (${placeholders})
         ORDER BY message_id ASC, position ASC
       `).all(...messageIds);
     }
 
-    // Group images by message_id
+    // Group images by message_id - return objects with url and thumb
     const imagesByMessageId = {};
     for (const img of allImages) {
       if (!imagesByMessageId[img.message_id]) {
         imagesByMessageId[img.message_id] = [];
       }
-      imagesByMessageId[img.message_id].push(canonicalAssetUrl(img.image_data));
+      const fullUrl = canonicalAssetUrl(img.image_data);
+      const thumbUrl = img.thumb_url ? canonicalAssetUrl(img.thumb_url) : null;
+      imagesByMessageId[img.message_id].push({
+        url: fullUrl,
+        thumb: thumbUrl || fullUrl // fallback to full URL if no thumb yet
+      });
     }
 
     // Attach images to messages
@@ -8722,14 +8727,26 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
             // Skip this image but continue
           }
         } else if (img.startsWith('https://') && isAllowedPublicUrl(img)) {
-          processedImages.push({ url: canonicalAssetUrl(img), key: null });
+          // Extract S3 key from URL for thumbnail generation
+          // URL format: https://domain/public/uploads/2025-12-19/filename.jpg
+          const urlObj = new URL(img);
+          const pathMatch = urlObj.pathname.match(/^\/(public\/uploads\/.+)$/);
+          const extractedKey = pathMatch ? pathMatch[1] : null;
+          processedImages.push({ url: canonicalAssetUrl(img), key: extractedKey });
         }
       }
     } else if (Array.isArray(images) && images.length) {
       // uploadBuffer not available, only process HTTPS URLs
       for (const img of images) {
         if (typeof img === 'string' && img.startsWith('https://') && isAllowedPublicUrl(img)) {
-          processedImages.push({ url: canonicalAssetUrl(img), key: null });
+          // Extract S3 key from URL for thumbnail generation
+          let extractedKey = null;
+          try {
+            const urlObj = new URL(img);
+            const pathMatch = urlObj.pathname.match(/^\/(public\/uploads\/.+)$/);
+            extractedKey = pathMatch ? pathMatch[1] : null;
+          } catch (e) { /* ignore parse errors */ }
+          processedImages.push({ url: canonicalAssetUrl(img), key: extractedKey });
         }
       }
     }
@@ -8790,25 +8807,27 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
     if (processedImages.length) {
-
       const stmt = db.prepare(`
-
-        INSERT INTO message_images (message_id, position, image_data, url)
-
-        VALUES (?, ?, ?, ?)
-
+        INSERT INTO message_images (message_id, position, image_data, url, thumb_url)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
-
-
       for (let i = 0; i < processedImages.length; i++) {
+        const { url, key } = processedImages[i];
+        let thumbUrl = null;
 
-        const { url } = processedImages[i];
+        // Generate thumbnail synchronously so it's ready for the response
+        if (key && typeof generateThumbnailFromUrl === 'function') {
+          try {
+            thumbUrl = await generateThumbnailFromUrl(url, key);
+            console.log('[DM] Thumbnail generated:', thumbUrl);
+          } catch (err) {
+            console.warn('[DM] Thumbnail generation failed:', err.message);
+          }
+        }
 
-        await stmt.run(msgId, i, null, url);
-
+        await stmt.run(msgId, i, null, url, thumbUrl);
       }
-
     }
 
 
@@ -8820,11 +8839,14 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
        WHERE m.id = ?
     `).get(msgId);
 
-    const imgs = await db.prepare('SELECT COALESCE(url, image_data) AS image_data FROM message_images WHERE message_id = ? ORDER BY position ASC')
-
+    const imgs = await db.prepare('SELECT COALESCE(url, image_data) AS image_data, thumb_url FROM message_images WHERE message_id = ? ORDER BY position ASC')
       .all(msgId);
 
-    const normalizedImgs = imgs.map(r => canonicalAssetUrl(r.image_data));
+    const normalizedImgs = imgs.map(r => {
+      const fullUrl = canonicalAssetUrl(r.image_data);
+      const thumbUrl = r.thumb_url ? canonicalAssetUrl(r.thumb_url) : null;
+      return { url: fullUrl, thumb: thumbUrl || fullUrl };
+    });
 
     const messagePayload = { ...row, images: normalizedImgs };
     const senderUsername = row?.sender_username || req.user.username || null;
