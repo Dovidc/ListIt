@@ -71,7 +71,7 @@
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
     }
 
-    // Read file as base64 - only used for Capacitor native
+    // Read file as base64 - used for Capacitor native fallback
     function readFileAsBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -85,8 +85,8 @@
       });
     }
 
-    // Capacitor native upload - uses base64 because native HTTP bridge breaks binary uploads
-    async function capacitorUpload(file) {
+    // Capacitor native upload via base64 - fallback when presigned fails
+    async function capacitorUploadBase64(file) {
       const base64Data = await readFileAsBase64(file);
       if (!base64Data) {
         throw new Error('Failed to read file');
@@ -112,9 +112,10 @@
       return response.json();
     }
 
-    // Web/desktop upload - uses presigned URLs (zero server memory)
+    // Presigned URL upload - works on web, may work on Capacitor
     async function presignedUpload(file) {
       // Get presigned URL from server
+      const apiBase = isCapacitorNative() ? (window.LISTIT_NATIVE_API_BASE_URL || '') : '';
       const sig = await api.signUpload({
         filename: file.name,
         contentType: file.type,
@@ -123,13 +124,31 @@
       if (sig?.error) throw new Error(sig.error);
       if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
 
-      // Upload directly to S3 (bypasses server entirely)
-      const putRes = await fetch(sig.uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type }
-      });
-      if (!putRes.ok) throw new Error('s3_put_failed');
+      // Upload directly to S3
+      // On Capacitor, use XMLHttpRequest to bypass the fetch() patch
+      if (isCapacitorNative()) {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', sig.uploadUrl, true);
+          xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error('s3_put_failed'));
+            }
+          };
+          xhr.onerror = () => reject(new Error('s3_put_failed'));
+          xhr.send(file);
+        });
+      } else {
+        const putRes = await fetch(sig.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type }
+        });
+        if (!putRes.ok) throw new Error('s3_put_failed');
+      }
 
       return {
         publicUrl: sig.publicUrl,
@@ -137,12 +156,19 @@
       };
     }
 
-    // Smart upload - picks the best method based on platform
+    // Smart upload - tries presigned first, falls back to base64 on Capacitor
     async function smartUpload(file) {
-      if (isCapacitorNative()) {
-        return capacitorUpload(file);
+      // Try presigned URL first (works on web, may work on Capacitor)
+      try {
+        return await presignedUpload(file);
+      } catch (err) {
+        // On Capacitor, fall back to base64 if presigned fails
+        if (isCapacitorNative()) {
+          console.warn('[smartUpload] Presigned failed on Capacitor, trying base64:', err.message);
+          return await capacitorUploadBase64(file);
+        }
+        throw err;
       }
-      return presignedUpload(file);
     }
 
     async function uploadFileDraft(file) {
