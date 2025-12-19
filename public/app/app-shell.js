@@ -79,6 +79,7 @@
     const pushFeature = features?.push || {};
     const adsFeature = features?.ads || {};
     const appViewFeature = features?.appView || {};
+    const iapService = features?.iap || null;
 
     const {
       AuthProvider,
@@ -258,6 +259,15 @@
         return () => clearTimeout(hideTimer);
       }, [showDesktopAccuracyToast]);
 
+      // Initialize IAP service on iOS native
+      useEffect(() => {
+        if (iapService && typeof iapService.initialize === 'function') {
+          iapService.initialize().catch(() => {
+            // Silent fail - IAP will initialize on demand when user tries to purchase
+          });
+        }
+      }, []);
+
       // Scroll preservation
       const browseScrollPos = useRef(0);
       const prevTabRef = useRef(tab);
@@ -361,6 +371,34 @@
           return;
         }
         setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '', notice: '' }));
+
+        // Use IAP on iOS native
+        if (iapService && typeof iapService.isIOSNative === 'function' && iapService.isIOSNative()) {
+          try {
+            await iapService.initialize();
+            const result = await iapService.purchase();
+            if (result?.success) {
+              // Refresh user to get updated supporter status
+              const updatedUser = await api.me();
+              if (updatedUser && !updatedUser.error) {
+                AppNav.setUser(updatedUser);
+              }
+              setSupporterUpsellState((prev) => ({ ...prev, open: false, busy: false, error: '' }));
+            } else {
+              throw new Error(result?.error || 'Purchase failed');
+            }
+          } catch (err) {
+            const message = err?.message || 'Could not complete purchase.';
+            if (message.includes('cancel') || message.includes('Cancel')) {
+              setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '' }));
+            } else {
+              setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: message }));
+            }
+          }
+          return;
+        }
+
+        // Use Stripe for web/desktop
         try {
           const response = await api.startSupporterCheckout(tier);
           if (response && typeof response.amount !== 'undefined') {
@@ -386,7 +424,7 @@
           }
           setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: message }));
         }
-      }, [api, premiumFreeForAll]);
+      }, [api, premiumFreeForAll, iapService, AppNav]);
 
       const { ads, refreshAds } = useAds();
 

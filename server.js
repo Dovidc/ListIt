@@ -4591,6 +4591,116 @@ app.post('/api/supporters/cancel', auth, async (req, res) => {
   }
 });
 
+// Apple IAP receipt validation
+app.post('/api/subscriptions/apple/validate', auth, writeLimiter, async (req, res) => {
+  const { receipt, productId } = req.body;
+
+  if (!receipt) {
+    return res.status(400).json({ error: 'receipt_required' });
+  }
+
+  console.log('[Apple IAP] Validating receipt for user:', req.user.id, 'product:', productId);
+
+  try {
+    // Validate with Apple's servers
+    // Use production URL first, fall back to sandbox for testing
+    const validateWithApple = async (url) => {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          'receipt-data': receipt,
+          'password': process.env.APPLE_SHARED_SECRET || '',
+          'exclude-old-transactions': true
+        })
+      });
+      return response.json();
+    };
+
+    let appleResponse = await validateWithApple('https://buy.itunes.apple.com/verifyReceipt');
+
+    // Status 21007 means receipt is from sandbox - retry with sandbox URL
+    if (appleResponse.status === 21007) {
+      console.log('[Apple IAP] Receipt is sandbox, retrying with sandbox URL');
+      appleResponse = await validateWithApple('https://sandbox.itunes.apple.com/verifyReceipt');
+    }
+
+    // Check Apple's response status
+    // 0 = valid, other codes are errors
+    if (appleResponse.status !== 0) {
+      console.error('[Apple IAP] Invalid receipt, status:', appleResponse.status);
+      return res.status(400).json({
+        error: 'invalid_receipt',
+        appleStatus: appleResponse.status
+      });
+    }
+
+    // Find the latest subscription info
+    const latestReceiptInfo = appleResponse.latest_receipt_info;
+    if (!latestReceiptInfo || !latestReceiptInfo.length) {
+      return res.status(400).json({ error: 'no_subscription_info' });
+    }
+
+    // Get the most recent transaction for our product
+    const subscription = latestReceiptInfo
+      .filter(tx => tx.product_id === productId)
+      .sort((a, b) => Number(b.purchase_date_ms) - Number(a.purchase_date_ms))[0];
+
+    if (!subscription) {
+      return res.status(400).json({ error: 'product_not_found_in_receipt' });
+    }
+
+    // Check if subscription is still valid
+    const expiresMs = Number(subscription.expires_date_ms);
+    const isActive = expiresMs > Date.now();
+
+    if (!isActive) {
+      console.log('[Apple IAP] Subscription expired:', new Date(expiresMs));
+      return res.status(400).json({ error: 'subscription_expired' });
+    }
+
+    // Update user's premium status
+    const originalTransactionId = subscription.original_transaction_id;
+    const expiresAt = new Date(expiresMs).toISOString();
+
+    await db.prepare(`
+      UPDATE users
+      SET
+        is_premium = 1,
+        supporter_since = COALESCE(supporter_since, ?),
+        subscription_status = 'active',
+        apple_original_transaction_id = ?,
+        apple_subscription_expires_at = ?
+      WHERE id = ?
+    `).run(
+      nowIso(),
+      originalTransactionId,
+      expiresAt,
+      req.user.id
+    );
+
+    console.log('[Apple IAP] Subscription activated for user:', req.user.id, 'expires:', expiresAt);
+
+    // Return updated user
+    const refreshed = await getUserWithStatus(req.user.id);
+    const user = await mapUserWithPayments(refreshed);
+
+    return res.json({
+      success: true,
+      user,
+      expiresAt
+    });
+  } catch (err) {
+    console.error('[Apple IAP] Validation error:', err);
+    reportError(err, {
+      label: 'Apple IAP validation failed',
+      user: req.user,
+      tags: { component: 'payments' }
+    });
+    return res.status(500).json({ error: 'validation_failed' });
+  }
+});
+
 // Clear location data from all user's listings (privacy feature)
 app.post('/api/me/listings/clear-locations', auth, writeLimiter, async (req, res) => {
   try {

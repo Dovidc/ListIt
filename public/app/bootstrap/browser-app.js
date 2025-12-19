@@ -257,6 +257,11 @@
     }
     const { useAds } = adsFeatureFactory({ React: runtimeReact, api });
 
+    const iapFeatureFactory = bundles?.features?.iap?.createIAPService;
+    const iapService = typeof iapFeatureFactory === 'function'
+      ? iapFeatureFactory({ api })
+      : null;
+
     const messageCenterFeatureFactory = bundles?.features?.messageCenter?.createMessageCenterFeature;
     if (typeof messageCenterFeatureFactory !== 'function') {
       throw new Error('Message center feature bundle failed to load.');
@@ -515,7 +520,8 @@
         preferences: { useAppPreferences },
         push: { usePushNotifications },
         ads: { useAds },
-        appView: { useAppView }
+        appView: { useAppView },
+        iap: iapService
       },
       contexts: {
         listings: { ListingsProvider },
