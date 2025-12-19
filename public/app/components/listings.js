@@ -913,12 +913,10 @@
       // Load current images only when draft.id changes (separate effect to avoid
       // re-fetching when autoListEnabled/autoInquiryEnabled change)
       useEffect(() => {
-        console.log('[ListingForm desktop] Image load effect running, draft.id:', draft?.id);
         (async () => {
           if (draft?.id) {
             try {
               const arr = await api.getListingImages(draft.id);
-              console.log('[ListingForm desktop] Loaded images from DB:', arr);
               setExistingUrls(arr || []);
               setOriginalUrls(arr || []);
             }
@@ -953,23 +951,18 @@
         return () => clearTimeout(timer);
       }, [aiCooldown]);
 
-      // UPDATED: AI analysis that works with both new files and S3 URLs
       async function runAI() {
-        if (aiCooldown > 0) return; // Prevent running during cooldown
+        if (aiCooldown > 0) return;
         setAiErr('');
         setAiBusy(true);
         try {
           const sources = [];
 
-          console.log('[runAI desktop] files:', files.length, 'existingUrls:', existingUrls);
-
           if (files.length) {
             for (const file of files) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               try {
-                console.log('[runAI desktop] uploading:', file?.name);
                 const upload = await uploadFileDraft(file);
-                console.log('[runAI desktop] uploaded:', upload?.publicUrl);
                 if (upload?.publicUrl) sources.push(upload.publicUrl);
               } catch (err) {
                 console.error('AI draft upload failed:', err);
@@ -981,16 +974,13 @@
             for (const url of existingUrls) {
               if (sources.length >= AI_IMAGE_LIMIT) break;
               if (typeof url === 'string' && url.trim()) {
-                console.log('[runAI desktop] adding existing:', url);
                 sources.push(url);
               }
             }
           }
 
-          console.log('[runAI desktop] final sources:', sources);
-
           if (!sources.length) {
-            alert('No images available for AI analysis. Please add new images or ensure existing images are accessible.');
+            alert('No images available for AI analysis.');
             return;
           }
 
