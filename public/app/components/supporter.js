@@ -16,90 +16,6 @@
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
-    // Detect if running in iOS native app (Capacitor)
-    function isIOSNativeApp() {
-      try {
-        const platform = window.Capacitor?.getPlatform?.();
-        return platform === 'ios';
-      } catch {
-        return false;
-      }
-    }
-
-    // Copy link for iOS users - "Subscribe at trovelr.com [copy icon]"
-    function CopySubscribeLink() {
-      const [copied, setCopied] = useState(false);
-
-      const handleCopy = useCallback(async () => {
-        try {
-          await navigator.clipboard.writeText('https://trovelr.com');
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        } catch (err) {
-          console.error('Failed to copy:', err);
-        }
-      }, []);
-
-      return H('div', {
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          marginTop: 12,
-          fontSize: 14,
-          color: '#64748b'
-        }
-      },
-        H('span', null, 'Subscribe at '),
-        H('a', {
-          href: 'https://trovelr.com',
-          target: '_blank',
-          rel: 'noopener noreferrer',
-          style: {
-            color: '#2563eb',
-            fontWeight: 600,
-            textDecoration: 'none'
-          }
-        }, 'trovelr.com'),
-        H('button', {
-          type: 'button',
-          onClick: handleCopy,
-          title: copied ? 'Copied!' : 'Copy link',
-          style: {
-            background: 'none',
-            border: 'none',
-            padding: 4,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: copied ? '#10b981' : '#64748b',
-            transition: 'color 0.2s'
-          }
-        },
-          // Clipboard icon SVG
-          H('svg', {
-            width: 18,
-            height: 18,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
-          },
-            copied
-              ? H('path', { d: 'M20 6L9 17l-5-5' }) // Checkmark
-              : [
-                H('rect', { key: 'rect', x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
-                H('path', { key: 'path', d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' })
-              ]
-          )
-        )
-      );
-    }
-
     const badgeIcons = {
       sparkles: () => H('svg', {
         className: 'supporter-badge__icon',
@@ -722,7 +638,6 @@
       if (!open) return null;
 
       const sinceLabel = formatSinceLabel(since);
-      const isIOS = isIOSNativeApp();
 
       const handleOverlay = (evt) => {
         if (evt.target === evt.currentTarget) {
@@ -753,8 +668,6 @@
                 ? 'You already have an active supporter subscription. Thanks for keeping Trovelr running!'
                 : 'Supporters keep Trovelr running and get special cusomization options for their profile and listing cards.'
             ),
-            // Show copy link for iOS native app users
-            isIOS && !isSelf && H(CopySubscribeLink),
 
             H('div', { className: 'supporter-modal__actions' },
               H('button', {
@@ -826,7 +739,6 @@
       };
 
       const isPrompt = mode !== 'success';
-      const isIOS = isIOSNativeApp();
 
       if (!open) return null;
 
@@ -896,13 +808,12 @@
               : H('p', { className: 'supporter-modal__body' },
                 'Thanks for supporting Trovelr! Enjoy your premium badge and profile customization features.'
               ),
-            isIOS && isPrompt && H(CopySubscribeLink),
             effectiveNotice && H('div', { className: 'supporter-modal__notice' }, effectiveNotice),
             error && H('div', { className: 'supporter-modal__error' }, error),
             // Bottom section with buttons and cancel text
             isPrompt ? H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 16 } },
-              // Hide payment button on iOS native app (App Store rules prohibit external payment links)
-              !isIOS && typeof onJoin === 'function' && H('button', {
+              // Subscribe button - shows on all platforms (iOS will use IAP, web uses Stripe)
+              typeof onJoin === 'function' && H('button', {
                 type: 'button',
                 className: 'btn primary',
                 onClick: () => {
