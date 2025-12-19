@@ -42,6 +42,8 @@
     const {
       H,
       isMobileDevice,
+      isCapacitorNative,
+      pickGalleryImages,
       seenKey,
       loadSeen,
       saveSeen,
@@ -280,7 +282,8 @@
       },
       helpers: {
         loadSeen,
-        saveSeen
+        saveSeen,
+        pickGalleryImages
       },
       components: {
         Lightbox,
@@ -367,6 +370,8 @@
       },
       helpers: {
         isMobileDevice,
+        isCapacitorNative,
+        pickGalleryImages,
         createConcurrencyLimiter,
         fetchCoordsAndReverse,
         getUserCoordsOnce,
