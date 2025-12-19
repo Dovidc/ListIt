@@ -66,13 +66,16 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
-    // Read file as base64 data URL - compatible with Capacitor's native bridge
+    // Check if running in Capacitor native app
+    function isCapacitorNative() {
+      return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    }
+
+    // Read file as base64 - only used for Capacitor native
     function readFileAsBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-          // Result is like "data:image/jpeg;base64,/9j/4AAQ..."
-          // We need just the base64 part after the comma
           const dataUrl = reader.result;
           const base64 = dataUrl.split(',')[1];
           resolve(base64);
@@ -82,22 +85,17 @@
       });
     }
 
-    // Secure upload - sends file through server for magic byte validation
-    // Uses base64 encoding to work with Capacitor's native HTTP bridge
-    async function secureUpload(file) {
+    // Capacitor native upload - uses base64 because native HTTP bridge breaks binary uploads
+    async function capacitorUpload(file) {
       const base64Data = await readFileAsBase64(file);
       if (!base64Data) {
         throw new Error('Failed to read file');
       }
 
-      // Use absolute URL only for Capacitor native (when LISTIT_NATIVE_API_BASE_URL is set)
-      // On web/localhost, use relative URL to avoid CORS issues
       const apiBase = window.LISTIT_NATIVE_API_BASE_URL || '';
       const response = await fetch(apiBase + '/api/uploads/secure', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           filename: file.name || 'upload.bin',
@@ -114,13 +112,45 @@
       return response.json();
     }
 
+    // Web/desktop upload - uses presigned URLs (zero server memory)
+    async function presignedUpload(file) {
+      // Get presigned URL from server
+      const sig = await api.signUpload({
+        filename: file.name,
+        contentType: file.type,
+        bytes: file.size
+      });
+      if (sig?.error) throw new Error(sig.error);
+      if (!sig?.uploadUrl || !sig?.publicUrl || !sig?.Key) throw new Error('invalid_presign');
+
+      // Upload directly to S3 (bypasses server entirely)
+      const putRes = await fetch(sig.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type }
+      });
+      if (!putRes.ok) throw new Error('s3_put_failed');
+
+      return {
+        publicUrl: sig.publicUrl,
+        key: sig.Key
+      };
+    }
+
+    // Smart upload - picks the best method based on platform
+    async function smartUpload(file) {
+      if (isCapacitorNative()) {
+        return capacitorUpload(file);
+      }
+      return presignedUpload(file);
+    }
+
     async function uploadFileDraft(file) {
       if (!file) throw new Error('file_required');
 
       if (!uploadDraftCache.has(file)) {
         const uploadPromise = s3UploadLimiter(async () => {
-          // Use secure upload with magic byte validation
-          const result = await secureUpload(file);
+          const result = await smartUpload(file);
 
           const dims = await measureImageFile(file);
 
@@ -232,8 +262,7 @@
     }
 
     async function uploadOneImage(listingId, file) {
-      // Use secure upload with magic byte validation
-      const result = await secureUpload(file);
+      const result = await smartUpload(file);
 
       const dims = await measureImageFile(file);
 
@@ -259,8 +288,7 @@
     }
 
     async function uploadOneMessageImage(file) {
-      // Use secure upload with magic byte validation
-      const result = await secureUpload(file);
+      const result = await smartUpload(file);
       return result.publicUrl;
     }
 

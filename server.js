@@ -6094,14 +6094,16 @@ app.post(
 
 /**
  * POST /api/listings/auto-fast
- * Fire-and-forget listing creation with raw images.
+ * Fire-and-forget listing creation with images.
  *
- * This endpoint accepts base64-encoded images directly, uploads them to S3
- * server-side, and creates the listing job. The user can close the app
- * immediately after this request completes - the server handles everything.
+ * This endpoint accepts either:
+ * 1. uploadTokens: array of pre-uploaded image tokens (preferred, zero server memory)
+ * 2. images: base64-encoded images (legacy, for Capacitor iOS)
  *
  * Expected body: {
- *   images: [{ data: 'base64...', type: 'image/jpeg', name: 'photo.jpg' }],
+ *   uploadTokens: ['token1', 'token2'] (preferred - images already uploaded via presigned URLs)
+ *   OR
+ *   images: [{ data: 'base64...', type: 'image/jpeg', name: 'photo.jpg' }] (legacy)
  *   location: 'City, State',
  *   enable_nearby: true/false,
  *   inquiry_enabled: true/false,
@@ -6153,6 +6155,7 @@ app.post(
     try {
       const {
         images,
+        uploadTokens: clientTokens,
         location,
         enable_nearby,
         inquiry_enabled,
@@ -6166,83 +6169,105 @@ app.post(
         return res.status(400).json({ error: 'location_required' });
       }
 
-      // Validate images
-      if (!Array.isArray(images) || !images.length) {
-        return res.status(400).json({ error: 'images_required' });
-      }
+      let uploadTokens = [];
 
-      // Limit to 12 images
-      const validImages = images.slice(0, 12).filter(img =>
-        img && typeof img.data === 'string' && img.data.length > 0
-      );
+      // PREFERRED PATH: Client already uploaded images via presigned URLs
+      if (Array.isArray(clientTokens) && clientTokens.length > 0) {
+        // Validate that these tokens belong to this user
+        const validTokens = clientTokens.slice(0, 12).filter(t => typeof t === 'string' && t.length > 0);
 
-      if (!validImages.length) {
-        return res.status(400).json({ error: 'no_valid_images' });
-      }
+        for (const token of validTokens) {
+          const draft = await db.prepare(
+            'SELECT id FROM listing_upload_drafts WHERE token = ? AND user_id = ?'
+          ).get(token, req.user.id);
 
-      // Check if S3 upload is available
-      if (typeof uploadBuffer !== 'function') {
-        console.error('[AutoListingFast] uploadBuffer not available');
-        return res.status(503).json({ error: 's3_not_configured' });
-      }
-
-      console.log(`[AutoListingFast] Processing ${validImages.length} images for user ${req.user.id}`);
-
-      // Upload images to S3 and create draft records
-      const uploadTokens = [];
-      const nowUnix = Math.floor(Date.now() / 1000); // Unix timestamp for listing_upload_drafts
-      let lastUploadError = null;
-
-      for (let i = 0; i < validImages.length; i++) {
-        const img = validImages[i];
-        try {
-          // Decode base64
-          const base64Data = img.data.replace(/^data:image\/\w+;base64,/, '');
-          const buffer = Buffer.from(base64Data, 'base64');
-
-          // Determine content type
-          const contentType = img.type || 'image/jpeg';
-          const filename = img.name || `photo_${i}.jpg`;
-
-          // Upload to S3
-          const s3Result = await uploadBuffer({ buffer, filename, contentType });
-          console.log(`[AutoListingFast] Image ${i + 1} uploaded to S3: ${s3Result.Key}`);
-
-          // Create upload draft record
-          const token = require('crypto').randomBytes(16).toString('hex');
-          await db.prepare(`
-            INSERT INTO listing_upload_drafts (
-              user_id, token, key, url, width, height, bytes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            req.user.id,
-            token,
-            s3Result.Key,
-            s3Result.publicUrl,
-            img.width || 0,
-            img.height || 0,
-            buffer.length,
-            nowUnix
-          );
-
-          uploadTokens.push(token);
-        } catch (uploadErr) {
-          const errMsg = uploadErr?.message || String(uploadErr);
-          console.error(`[AutoListingFast] Failed to upload image ${i}:`, errMsg);
-          lastUploadError = errMsg;
-          // If it's a validation/moderation error, fail immediately
-          if (errMsg.includes('Invalid file') || errMsg.includes('moderation') || errMsg.includes('flagged')) {
-            return res.status(400).json({ error: errMsg });
+          if (draft) {
+            uploadTokens.push(token);
+          } else {
+            console.warn(`[AutoListingFast] Invalid or unauthorized token: ${token}`);
           }
-          // Continue with other images for other errors
         }
-      }
 
-      if (!uploadTokens.length) {
-        return res.status(500).json({ error: lastUploadError || 'all_uploads_failed' });
-      }
+        if (!uploadTokens.length) {
+          return res.status(400).json({ error: 'no_valid_upload_tokens' });
+        }
 
-      console.log(`[AutoListingFast] ${uploadTokens.length} images uploaded in ${Date.now() - startTime}ms`);
+        console.log(`[AutoListingFast] Using ${uploadTokens.length} pre-uploaded images for user ${req.user.id}`);
+      }
+      // LEGACY PATH: Base64 images (for Capacitor iOS)
+      else if (Array.isArray(images) && images.length > 0) {
+        // Limit to 12 images
+        const validImages = images.slice(0, 12).filter(img =>
+          img && typeof img.data === 'string' && img.data.length > 0
+        );
+
+        if (!validImages.length) {
+          return res.status(400).json({ error: 'no_valid_images' });
+        }
+
+        // Check if S3 upload is available
+        if (typeof uploadBuffer !== 'function') {
+          console.error('[AutoListingFast] uploadBuffer not available');
+          return res.status(503).json({ error: 's3_not_configured' });
+        }
+
+        console.log(`[AutoListingFast] Processing ${validImages.length} base64 images for user ${req.user.id}`);
+
+        const nowUnix = Math.floor(Date.now() / 1000);
+        let lastUploadError = null;
+
+        for (let i = 0; i < validImages.length; i++) {
+          const img = validImages[i];
+          try {
+            // Decode base64
+            const base64Data = img.data.replace(/^data:image\/\w+;base64,/, '');
+            const buffer = Buffer.from(base64Data, 'base64');
+
+            // Determine content type
+            const contentType = img.type || 'image/jpeg';
+            const filename = img.name || `photo_${i}.jpg`;
+
+            // Upload to S3
+            const s3Result = await uploadBuffer({ buffer, filename, contentType });
+            console.log(`[AutoListingFast] Image ${i + 1} uploaded to S3: ${s3Result.Key}`);
+
+            // Create upload draft record
+            const token = require('crypto').randomBytes(16).toString('hex');
+            await db.prepare(`
+              INSERT INTO listing_upload_drafts (
+                user_id, token, key, url, width, height, bytes, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              req.user.id,
+              token,
+              s3Result.Key,
+              s3Result.publicUrl,
+              img.width || 0,
+              img.height || 0,
+              buffer.length,
+              nowUnix
+            );
+
+            uploadTokens.push(token);
+          } catch (uploadErr) {
+            const errMsg = uploadErr?.message || String(uploadErr);
+            console.error(`[AutoListingFast] Failed to upload image ${i}:`, errMsg);
+            lastUploadError = errMsg;
+            if (errMsg.includes('Invalid file') || errMsg.includes('moderation') || errMsg.includes('flagged')) {
+              return res.status(400).json({ error: errMsg });
+            }
+          }
+        }
+
+        if (!uploadTokens.length) {
+          return res.status(500).json({ error: lastUploadError || 'all_uploads_failed' });
+        }
+
+        console.log(`[AutoListingFast] ${uploadTokens.length} base64 images uploaded in ${Date.now() - startTime}ms`);
+      }
+      else {
+        return res.status(400).json({ error: 'images_or_tokens_required' });
+      }
 
       // Create job record (same as /api/listings/auto)
       const now = nowIso(); // ISO string for auto_listing_jobs (TEXT columns)

@@ -53,7 +53,16 @@
       "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show 68aa622a:public/app/features/listings.js)",
       "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" log --all --oneline -S \"Always try to get user coordinates\" -- \"public/app/features/listings.js\")",
       "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show acf88f14)",
-      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show acf88f14~1:public/app/features/listings.js)"
+      "Bash(git -C \"c:/Users/Dovid/Downloads/listit_multi_images\" show acf88f14~1:public/app/features/listings.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline --since=\"2025-12-17 18:00\" --until=\"2025-12-18 12:00\" --format=\"%h %ai %s\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline -30 -- \"public/app/features/uploads/service.js\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 81cdee11:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show b4f52827:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show f95574ee:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show f173624b:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 3d063b1a:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 0b82a32a:public/app/features/uploads/service.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 9156dac4:public/app/features/uploads/service.js)"
     ],
     "deny": [],
     "ask": []
