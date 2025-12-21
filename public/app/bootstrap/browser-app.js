@@ -92,7 +92,9 @@
         // Access to localStorage can fail in some environments (Safari private mode, etc.)
       }
 
-      return '';
+      // Native apps with custom hostname need explicit API base URL
+      // since relative URLs go to the custom scheme (e.g. capacitor://trovelr)
+      return 'https://trovelr.com';
     };
 
     const api = createApiClient({
