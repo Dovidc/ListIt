@@ -2,9 +2,15 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.listit.app',
-  appName: 'ListIt',
+  appName: 'Trovelr',
   webDir: 'public',
   bundledWebRuntime: false,
+  server: {
+    // Use app name instead of "localhost" in iOS permission dialogs
+    hostname: 'Trovelr',
+    androidScheme: 'https',
+    iosScheme: 'https',
+  },
   plugins: {
     CapacitorHttp: {
       // Required for auth cookies to work on iOS native

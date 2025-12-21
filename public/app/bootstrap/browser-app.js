@@ -97,8 +97,9 @@
 
     const api = createApiClient({
       baseUrl: resolveApiBaseUrl(),
-      onRequestStart: () => AppNav.incLoad(),
-      onRequestEnd: () => AppNav.decLoad(),
+      // Global loader disabled - use localized loading states instead
+      onRequestStart: () => {},
+      onRequestEnd: () => {},
       onUnauthorized: () => {
         AppNav.setUser(null);
         AppNav.setTab('browse');
