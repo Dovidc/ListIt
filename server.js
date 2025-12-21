@@ -2490,6 +2490,8 @@ async function getUserWithStatus(userId) {
 
              stripe_customer_id,
 
+             apple_original_transaction_id,
+
              karma
 
         FROM users
@@ -2565,6 +2567,8 @@ function mapUserRow(row, extra = {}) {
     subscription_current_period_end: row.subscription_current_period_end || null,
 
     stripe_customer_id: row.stripe_customer_id || null,
+
+    apple_original_transaction_id: row.apple_original_transaction_id || null,
 
     karma: row.karma || 0,
 
@@ -4736,7 +4740,20 @@ app.delete('/api/me', auth, async (req, res) => {
     console.log('Deleting account for user:', userId);
 
     // Check if user has an active, non-cancelled subscription (blocks deletion)
-    const user = await db.prepare('SELECT stripe_customer_id FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT stripe_customer_id, apple_subscription_expires_at FROM users WHERE id = ?').get(userId);
+
+    // Check for active Apple subscription
+    if (user?.apple_subscription_expires_at) {
+      const expiresAt = new Date(user.apple_subscription_expires_at);
+      if (expiresAt > new Date()) {
+        console.log('User has active Apple subscription, blocking deletion. Expires:', expiresAt);
+        return res.status(400).json({
+          error: 'active_subscription',
+          message: 'You have an active Apple subscription. Please cancel it in iOS Settings → Apple ID → Subscriptions first.'
+        });
+      }
+    }
+
     if (user?.stripe_customer_id && stripe) {
       try {
         const subscriptions = await stripe.subscriptions.list({
@@ -10735,6 +10752,35 @@ app.get('/api/metrics', auth, requireAdmin, (_req, res) => {
 
 app.get('/support', (_req, res) => {
   res.send('email support@trovelr.com for assistance.');
+});
+
+app.get('/privacy', (_req, res) => {
+  res.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Trovelr</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+    h1 { color: #333; }
+    h2 { color: #555; margin-top: 2em; }
+    p { color: #444; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p><strong>Last Updated:</strong> December 2024</p>
+  ${getPrivacyPolicyContent().split('\n').map(line => {
+    if (line.startsWith('PRIVACY POLICY')) return '';
+    if (line.startsWith('Last Updated:')) return '';
+    if (line.match(/^[A-Z][A-Z\s']+$/)) return `<h2>${line}</h2>`;
+    if (line.startsWith('•')) return `<p>${line}</p>`;
+    if (line.trim()) return `<p>${line}</p>`;
+    return '';
+  }).join('\n')}
+</body>
+</html>`);
 });
 
 

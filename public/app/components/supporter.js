@@ -961,7 +961,7 @@
             }, '×'),
             H('h2', { className: 'supporter-modal__title' }, 'Who bought this item?'),
             H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
-              'Select the buyer to award karma points. You\'ll get 1 point, they\'ll get 2 points.'
+              'Select the buyer'
             ),
             loading
               ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')

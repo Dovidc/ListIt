@@ -30,8 +30,7 @@
       ListingModal,
       ProfilePictureUploadModal,
       ListingsGrid,
-      SupporterBadge,
-      SelectBuyerModal
+      SupporterBadge
     } = components;
 
     if (typeof ImageWithSkeleton !== 'function') {
@@ -1569,6 +1568,19 @@
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'Tokyo Night theme')
                 )
               ),
+              // Show Apple subscription management info for Apple subscribers
+              user?.apple_original_transaction_id && !user?.stripe_subscription_id && H('div', {
+                style: {
+                  marginTop: 24,
+                  paddingTop: 24,
+                  borderTop: '1px solid #e5e7eb'
+                }
+              },
+                H('div', { style: { fontWeight: 700, marginBottom: 8 } }, 'Subscription'),
+                H('div', { className: 'muted', style: { fontSize: 14, marginBottom: 12 } },
+                  'Your subscription is managed through Apple. To cancel or manage your subscription, go to iOS Settings → Apple ID → Subscriptions.'
+                )
+              ),
               // Show cancel subscription button for subscribers with active Stripe subscription
               user?.stripe_subscription_id && H('div', {
                 style: {
@@ -1826,8 +1838,6 @@
       const [deleteAccountError, setDeleteAccountError] = useState('');
       const [cancelSubscriptionModalOpen, setCancelSubscriptionModalOpen] = useState(false);
       const [cancelSubscriptionBusy, setCancelSubscriptionBusy] = useState(false);
-      const [karmaModalOpen, setKarmaModalOpen] = useState(false);
-      const [karmaListingId, setKarmaListingId] = useState(null);
       const [subscriptionStatus, setSubscriptionStatus] = useState(user?.subscription_status || null);
       const [profileAvatarBorderColor, setProfileAvatarBorderColor] = useState(user?.profile_avatar_border_color || '#ffffff');
       const [profileAvatarBorderStyle, setProfileAvatarBorderStyle] = useState(user?.profile_avatar_border_style || 'solid');
@@ -2308,37 +2318,6 @@
         }
       }, [user]);
 
-      const handleToggleSoldWithKarma = useCallback(async (listing, makeSold) => {
-        if (makeSold && isPremiumUser) {
-          // Show karma modal for premium users when marking as sold
-          setKarmaListingId(listing.id);
-          setKarmaModalOpen(true);
-          // Don't mark as sold yet - wait for modal
-        } else {
-          // Non-premium users or unmarking sold - proceed normally
-          await onToggleSold?.(listing, makeSold);
-        }
-      }, [user, onToggleSold]);
-
-      const handleKarmaBuyerSelected = useCallback(async (result) => {
-        setKarmaModalOpen(false);
-        const listing = items.find(it => it.id === karmaListingId);
-        if (listing) {
-          // Now mark as sold after karma is awarded
-          await onToggleSold?.(listing, true);
-        }
-        setKarmaListingId(null);
-      }, [karmaListingId, items, onToggleSold]);
-
-      const handleKarmaModalClose = useCallback(async () => {
-        setKarmaModalOpen(false);
-        const listing = items.find(it => it.id === karmaListingId);
-        if (listing) {
-          // User skipped karma - mark as sold anyway
-          await onToggleSold?.(listing, true);
-        }
-        setKarmaListingId(null);
-      }, [karmaListingId, items, onToggleSold]);
 
       if (!user) {
         return H('section', { className: 'card', style: { padding: 16, margin: '12px 0 16px' } },
@@ -2874,17 +2853,10 @@
             onDelete: handleDelete,
             onAdminDelete: handleAdminDelete,
             onViewSeller,
-            onToggleSold: handleToggleSoldWithKarma,
+            onToggleSold,
             showDistance: false,
             onSupporterClick
           }
-        }),
-
-        H(SelectBuyerModal, {
-          open: karmaModalOpen,
-          onClose: handleKarmaModalClose,
-          listingId: karmaListingId,
-          onBuyerSelected: handleKarmaBuyerSelected
         })
       ];
 
