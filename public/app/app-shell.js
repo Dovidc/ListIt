@@ -28,7 +28,7 @@
   const SUPPORTER_DEFAULT_CURRENCY = 'usd';
 
   // Minimum background time before triggering refresh (prevents flicker on quick app switches)
-  const RESUME_MIN_THRESHOLD_MS = 3 * 1000;
+  const RESUME_MIN_THRESHOLD_MS = 30 * 1000;
 
   function createEditorState(overrides = {}) {
     return { ...EDITOR_DEFAULT_STATE, ...overrides };

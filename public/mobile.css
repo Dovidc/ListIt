@@ -706,13 +706,33 @@ main {
 /* Global loading overlay (mobile also sees it) */
 .global-loader {
   position: fixed;
-  inset: 0;
-  background: rgba(255, 255, 255, .6);
-  backdrop-filter: blur(2px);
+  top: -50px;
+  left: -50px;
+  right: -50px;
+  bottom: -50px;
+  width: calc(100vw + 100px);
+  height: calc(100vh + 100px);
+  background: rgba(0, 0, 0, .75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
-  z-index: 2000;
+  z-index: 9999;
   pointer-events: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.global-loader .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+}
+
+.global-loader .loader-text {
+  color: #fff;
 }
 
 .spinner {
@@ -885,13 +905,33 @@ main {
 /* Global loading overlay (mobile also sees it) */
 .global-loader {
   position: fixed;
-  inset: 0;
-  background: rgba(255, 255, 255, .6);
-  backdrop-filter: blur(2px);
+  top: -50px;
+  left: -50px;
+  right: -50px;
+  bottom: -50px;
+  width: calc(100vw + 100px);
+  height: calc(100vh + 100px);
+  background: rgba(0, 0, 0, .75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
-  z-index: 2000;
+  z-index: 9999;
   pointer-events: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.global-loader .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+}
+
+.global-loader .loader-text {
+  color: #fff;
 }
 
 .spinner {
@@ -1078,35 +1118,25 @@ main {
     z-index: 1000;
   }
 
-  /* Global loading overlay (mobile also sees it) */
+  /* Global loading overlay - ensure full coverage on mobile */
   .global-loader {
     position: fixed;
-    inset: 0;
-    background: rgba(255, 255, 255, .6);
-    backdrop-filter: blur(2px);
+    top: -50px;
+    left: -50px;
+    right: -50px;
+    bottom: -50px;
+    width: calc(100vw + 100px);
+    height: calc(100vh + 100px);
+    background: rgba(0, 0, 0, .75);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: grid;
     place-items: center;
-    z-index: 2000;
+    z-index: 9999;
     pointer-events: none;
-  }
-
-  .spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid #e5e7eb;
-    border-top-color: #111;
-    border-radius: 50%;
-    animation: spin .9s linear infinite;
-    margin: 8px auto;
-  }
-
-  .loader-text {
-    font-weight: 700;
-    color: #111;
-  }
-
-  @keyframes spin {
-    ```css transform: rotate(360deg);
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
 }
 

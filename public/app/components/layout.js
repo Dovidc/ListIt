@@ -1,10 +1,11 @@
 (() => {
-  function createLayoutComponents({ React }) {
+  function createLayoutComponents({ React, ReactDOM }) {
     if (!React || typeof React.createElement !== 'function') {
       throw new Error('Layout components require React.');
     }
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
+    const createPortal = ReactDOM?.createPortal || ((children) => children);
 
     function GlobalLoader({ active }) {
       const [visible, setVisible] = React.useState(active);
@@ -25,10 +26,14 @@
       }, [active, visible]);
 
       if (!visible) return null;
-      return H('div', { className: fadeOut ? 'global-loader fade-out' : 'global-loader' },
+
+      const content = H('div', { className: fadeOut ? 'global-loader fade-out' : 'global-loader' },
         H('div', { className: 'spinner' }),
         H('div', { className: 'loader-text' }, 'Loading...')
       );
+
+      // Use portal to render at document.body level for true full-screen coverage
+      return createPortal(content, document.body);
     }
 
     function ResumeOverlay({ active }) {

@@ -196,7 +196,7 @@
     if (typeof layoutComponentsFactory !== 'function') {
       throw new Error('Layout components bundle failed to load.');
     }
-    const { Header, GlobalLoader, ResumeOverlay, CustomDropdown } = layoutComponentsFactory({ React: runtimeReact });
+    const { Header, GlobalLoader, ResumeOverlay, CustomDropdown } = layoutComponentsFactory({ React: runtimeReact, ReactDOM: runtimeReactDOM });
 
     const appViewFeatureFactory = bundles?.features?.appView?.createAppViewFeature;
     if (typeof appViewFeatureFactory !== 'function') {
