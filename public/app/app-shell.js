@@ -1232,78 +1232,58 @@
             try { showUploadingToast(); } catch (e) { /* ignore */ }
           }
 
-          // Save job intent to localStorage for recovery if app closes
           const jobId = 'pending-' + Date.now();
+
+          // BLOCKING: Wait for upload + API call to complete before returning
+          // This ensures server has all data before user can lock phone
           try {
-            const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
-            pendingJobs.push({ id: jobId, timestamp: Date.now(), fileCount: files.length });
-            localStorage.setItem('listit_pending_jobs', JSON.stringify(pendingJobs.slice(-10))); // Keep last 10
-          } catch (e) { /* ignore storage errors */ }
-
-          // Fire-and-forget: process in background
-          setTimeout(async () => {
-            try {
-              console.log('[Mobile AutoList] Starting job', jobId, 'with', files.length, 'files');
-              const result = await runAutoList({
-                files,
-                location: '',
-                autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
-                autoInquiryEnabled,
-                backgroundQueueEnabled,
-                enqueueListingJob,
-                reloadMine: reloadMineOnly,
-                reloadAll: refreshListings,
-                onJobQueued: () => {
-                  // Server confirmed receipt - safe to close app now
-                  if (typeof hideUploadingToast === 'function') {
-                    try { hideUploadingToast(); } catch (e) { /* ignore */ }
-                  }
-                },
-                onCreated: (createdListing) => {
-                  try {
-                    if (createdListing?.id) {
-                      // Add to local state immediately so it appears in both views
-                      addListing(createdListing);
-                      showRecentListingToast(createdListing);
-                    }
-                    // Remove from pending jobs
-                    try {
-                      const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
-                      localStorage.setItem('listit_pending_jobs', JSON.stringify(pendingJobs.filter(j => j.id !== jobId)));
-                    } catch (e) { /* ignore */ }
-                  } catch (e) {
-                    console.warn('[Mobile AutoList] onCreated error:', e);
-                  }
-                },
-                onError: (err) => {
-                  // Hide toast on error too
-                  if (typeof hideUploadingToast === 'function') {
-                    try { hideUploadingToast(); } catch (e) { /* ignore */ }
-                  }
-                  console.error('[Mobile AutoList] Job error:', err);
-                  const msg = err?.message || String(err);
-                  if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
-                    setShowModerationModal(true);
-                  }
+            console.log('[Mobile AutoList] Starting job', jobId, 'with', files.length, 'files');
+            const result = await runAutoList({
+              files,
+              location: '',
+              autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+              autoInquiryEnabled,
+              backgroundQueueEnabled,
+              enqueueListingJob,
+              reloadMine: reloadMineOnly,
+              reloadAll: refreshListings,
+              onJobQueued: () => {
+                // Server confirmed receipt - safe to close app now
+                if (typeof hideUploadingToast === 'function') {
+                  try { hideUploadingToast(); } catch (e) { /* ignore */ }
                 }
-              });
-              console.log('[Mobile AutoList] Result:', result);
-
-              // Mark job as sent (even if we don't get confirmation)
-              try {
-                const pendingJobs = JSON.parse(localStorage.getItem('listit_pending_jobs') || '[]');
-                const updated = pendingJobs.map(j => j.id === jobId ? { ...j, sent: true } : j);
-                localStorage.setItem('listit_pending_jobs', JSON.stringify(updated));
-              } catch (e) { /* ignore */ }
-
-            } catch (err) {
-              // Hide toast on error
-              if (typeof hideUploadingToast === 'function') {
-                try { hideUploadingToast(); } catch (e) { /* ignore */ }
+              },
+              onCreated: (createdListing) => {
+                try {
+                  if (createdListing?.id) {
+                    // Add to local state immediately so it appears in both views
+                    addListing(createdListing);
+                    showRecentListingToast(createdListing);
+                  }
+                } catch (e) {
+                  console.warn('[Mobile AutoList] onCreated error:', e);
+                }
+              },
+              onError: (err) => {
+                // Hide toast on error too
+                if (typeof hideUploadingToast === 'function') {
+                  try { hideUploadingToast(); } catch (e) { /* ignore */ }
+                }
+                console.error('[Mobile AutoList] Job error:', err);
+                const msg = err?.message || String(err);
+                if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                  setShowModerationModal(true);
+                }
               }
-              console.error('[Mobile AutoList] Failed:', err);
+            });
+            console.log('[Mobile AutoList] Result:', result);
+          } catch (err) {
+            // Hide toast on error
+            if (typeof hideUploadingToast === 'function') {
+              try { hideUploadingToast(); } catch (e) { /* ignore */ }
             }
-          }, 0);
+            console.error('[Mobile AutoList] Failed:', err);
+          }
           return;
         }
         openListingEditor({ draft: null, files, originTab: tab });
