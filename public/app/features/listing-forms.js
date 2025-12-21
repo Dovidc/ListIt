@@ -867,6 +867,7 @@
       const [aiErr, setAiErr] = useState('');
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
+      const [saving, setSaving] = useState(false);
       const mountedRef = useRef(true);
       const [showModerationModal, setShowModerationModal] = useState(false);
 
@@ -1022,7 +1023,8 @@
         try {
           let coords;
           // Use Capacitor Geolocation on native, browser API on web
-          if (typeof isCapacitorNative === 'function' && isCapacitorNative()) {
+          const isNative = window.Capacitor?.isNativePlatform?.();
+          if (isNative && window.Capacitor?.Plugins?.Geolocation) {
             const { Geolocation } = window.Capacitor.Plugins;
             const position = await Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
@@ -1111,18 +1113,20 @@
 
       async function submit(e) {
         e.preventDefault();
-        try {
-          const totalImages = existingUrls.length + files.length;
-          if (totalImages === 0) {
-            alert('Please add at least one image.');
-            return;
-          }
+        const totalImages = existingUrls.length + files.length;
+        if (totalImages === 0) {
+          alert('Please add at least one image.');
+          return;
+        }
 
-          const trimmedLocation = String(location || '').trim();
-          if (!trimmedLocation) {
-            alert('Location is required.');
-            return;
-          }
+        const trimmedLocation = String(location || '').trim();
+        if (!trimmedLocation) {
+          alert('Location is required.');
+          return;
+        }
+
+        setSaving(true);
+        try {
 
           const parsedPrice = Number(priceVal);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
@@ -1221,6 +1225,8 @@
           } else {
             alert(`Create/save failed: ${msg}`);
           }
+        } finally {
+          if (mountedRef.current) setSaving(false);
         }
       }
 
@@ -1624,20 +1630,39 @@
           }, 'Cancel'),
           H('button', {
             type: 'submit',
-            disabled: autoBusy,
+            disabled: autoBusy || saving,
             style: {
               flex: 1,
               padding: '14px 20px',
               border: 'none',
               borderRadius: 12,
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              background: saving
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
               color: '#fff',
               fontSize: 16,
               fontWeight: 600,
-              cursor: autoBusy ? 'not-allowed' : 'pointer',
-              opacity: autoBusy ? 0.6 : 1
+              cursor: (autoBusy || saving) ? 'not-allowed' : 'pointer',
+              opacity: autoBusy ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'background 0.2s ease'
             }
-          }, draft ? 'Save Changes' : 'Create Listing')
+          },
+            saving && H('span', {
+              style: {
+                width: 16,
+                height: 16,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }
+            }),
+            saving ? 'Saving...' : (draft ? 'Save Changes' : 'Create Listing')
+          )
         ),
         showInquiryHelp && H('div', {
           style: {

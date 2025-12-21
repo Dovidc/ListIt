@@ -701,7 +701,8 @@
 
       let lat, lon;
       // Use Capacitor Geolocation on native, browser API on web
-      if (typeof isCapacitorNative === 'function' && isCapacitorNative()) {
+      const isNative = window.Capacitor?.isNativePlatform?.();
+      if (isNative && window.Capacitor?.Plugins?.Geolocation) {
         const { Geolocation } = window.Capacitor.Plugins;
         const position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
@@ -1011,7 +1012,8 @@
         try {
           let coords;
           // Use Capacitor Geolocation on native, browser API on web
-          if (typeof isCapacitorNative === 'function' && isCapacitorNative()) {
+          const isNative = window.Capacitor?.isNativePlatform?.();
+          if (isNative && window.Capacitor?.Plugins?.Geolocation) {
             const { Geolocation } = window.Capacitor.Plugins;
             const position = await Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
