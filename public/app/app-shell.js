@@ -1764,7 +1764,8 @@
                               className: 'btn primary', onClick: () => {
                                 if (!user) { handleAuthClick('login'); return; }
                                 if (user.account_status === 'locked') { showLockedBanner(); return; }
-                                openListingEditor({ draft: null, originTab: 'browse' });
+                                // Use DesktopNewListingModal for consistent desktop experience
+                                setShowDesktopNewListingModal(true);
                               }
                             }, 'New listing'),
                             H('button', {
@@ -1940,11 +1941,9 @@
             showDesktopNewListingModal && H(DesktopNewListingModal, {
               isOpen: showDesktopNewListingModal,
               onClose: () => setShowDesktopNewListingModal(false),
-              onListingCreated: (created) => {
+              onListingCreated: () => {
                 setShowDesktopNewListingModal(false);
-                // Open the edit page for the newly created listing
-                const rich = { ...created, id: created.id || created.listing_id };
-                openListingEditor({ draft: rich, originTab: 'profile', reopenListingId: rich.id });
+                // Just reload listings - don't open editor (avoids confusing flash)
                 reloadMineOnly();
                 refreshListings();
               },
