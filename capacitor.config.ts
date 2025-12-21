@@ -6,10 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
   bundledWebRuntime: false,
   server: {
-    // Custom hostname so iOS permission dialogs say "trovelr" instead of "localhost"
-    hostname: 'trovelr',
     androidScheme: 'https',
-    iosScheme: 'capacitor',
   },
   plugins: {
     CapacitorHttp: {
