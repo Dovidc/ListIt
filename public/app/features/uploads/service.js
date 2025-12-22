@@ -66,6 +66,73 @@
       if (uploadDraftCache.has(file)) uploadDraftCache.delete(file);
     }
 
+    // Compress image to max dimension and quality
+    const MAX_IMAGE_DIMENSION = 2400;
+    const IMAGE_QUALITY = 0.85;
+
+    async function compressImageForUpload(file) {
+      // Skip non-images
+      if (!file?.type?.startsWith?.('image/')) return file;
+
+      // Skip small files (already compressed or small images)
+      if (file.size < 500 * 1024) return file; // < 500KB, skip
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let width = img.width;
+            let height = img.height;
+
+            // Only compress if larger than max dimension
+            if (width <= MAX_IMAGE_DIMENSION && height <= MAX_IMAGE_DIMENSION) {
+              URL.revokeObjectURL(img.src);
+              resolve(file);
+              return;
+            }
+
+            // Calculate new dimensions (scale down longest edge)
+            if (width > height) {
+              height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+              width = MAX_IMAGE_DIMENSION;
+            } else {
+              width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+              height = MAX_IMAGE_DIMENSION;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(
+              (blob) => {
+                URL.revokeObjectURL(img.src);
+                if (blob) {
+                  const compressed = new File([blob], file.name || 'image.jpg', { type: 'image/jpeg' });
+                  console.log(`[Upload] Compressed: ${(file.size/1024).toFixed(0)}KB -> ${(compressed.size/1024).toFixed(0)}KB (${width}x${height})`);
+                  resolve(compressed);
+                } else {
+                  resolve(file); // Fallback to original
+                }
+              },
+              'image/jpeg',
+              IMAGE_QUALITY
+            );
+          } catch (e) {
+            URL.revokeObjectURL(img.src);
+            resolve(file); // Fallback to original on error
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(img.src);
+          resolve(file); // Fallback to original on error
+        };
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
     // Check if running in Capacitor native app
     function isCapacitorNative() {
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -125,16 +192,18 @@
 
       if (!uploadDraftCache.has(file)) {
         const uploadPromise = s3UploadLimiter(async () => {
-          const result = await smartUpload(file);
+          // Compress before upload for faster transfers
+          const compressedFile = await compressImageForUpload(file);
+          const result = await smartUpload(compressedFile);
 
-          const dims = await measureImageFile(file);
+          const dims = await measureImageFile(compressedFile);
 
           const finalizeRes = await api.finalizeUpload({
             key: result.key,
             url: result.publicUrl,
             width: dims.width,
             height: dims.height,
-            bytes: file.size
+            bytes: compressedFile.size
           }, { silent: true });
 
           if (finalizeRes?.error) throw new Error(finalizeRes.error);
@@ -145,7 +214,7 @@
             publicUrl: finalizeRes.url || result.publicUrl,
             width: finalizeRes.width ?? dims.width ?? null,
             height: finalizeRes.height ?? dims.height ?? null,
-            bytes: finalizeRes.bytes ?? file.size
+            bytes: finalizeRes.bytes ?? compressedFile.size
           };
         }).catch((err) => {
           clearDraftCacheForFile(file);

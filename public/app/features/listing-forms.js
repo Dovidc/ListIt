@@ -454,11 +454,7 @@
 
         const uploadPromises = validFiles.slice(0, 12).map(async (file, i) => {
           try {
-            // Compress to 2400px before upload for faster transfers
-            const { blob } = await compressImage(file, 2400, 0.85);
-            const compressedFile = new File([blob], file.name || `image-${i}.jpg`, { type: 'image/jpeg' });
-            console.log(`[AutoList] Compressed image ${i + 1}: ${(file.size/1024).toFixed(0)}KB -> ${(compressedFile.size/1024).toFixed(0)}KB`);
-            const result = await uploadFileDraft(compressedFile);
+            const result = await uploadFileDraft(file);
             console.log(`[AutoList] Image ${i + 1} uploaded:`, result.publicUrl);
             return result.uploadToken;
           } catch (e) {
