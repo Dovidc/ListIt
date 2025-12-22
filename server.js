@@ -1564,8 +1564,7 @@ function synthesizeListingDescription(_title, hint) {
 
   }
 
-  // AI descriptions disabled - use simple placeholder
-  return 'No description';
+  return '';
 
 }
 
@@ -5034,7 +5033,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold,
+      l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free,
 
       u.username AS owner_username,
 
@@ -5054,7 +5053,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold,
+      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free,
 
       u.username AS owner_username,
 
@@ -5120,6 +5119,11 @@ app.get('/api/listings', async (req, res) => {
         if (hasUserCoords) {
           orderSQL = 'ORDER BY distance_m ASC, id DESC';
         }
+        break;
+
+      case 'free':
+        // Free items first, then by newest
+        orderSQL = 'ORDER BY l.is_free DESC, l.id DESC';
         break;
 
     }
@@ -5718,7 +5722,7 @@ app.post(
 
       if (isLockedAccount(req.user)) return respondLocked(res);
 
-      const { title, description, location, price, tags, enable_nearby, inquiry_enabled } = req.body || {};
+      const { title, description, location, price, tags, enable_nearby, inquiry_enabled, is_free } = req.body || {};
 
 
 
@@ -5884,11 +5888,13 @@ app.post(
 
 
 
+      const isFreeVal = is_free ? 1 : 0;
+
       const info = await db.prepare(`
 
-      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled)
+      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled, is_free)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -5908,7 +5914,7 @@ app.post(
 
         tagStr,
 
-        lat, lon, enNearby, inquiryEnabled
+        lat, lon, enNearby, inquiryEnabled, isFreeVal
 
       );
 
@@ -6502,9 +6508,9 @@ app.post(
       const insertResult = await db.prepare(`
         INSERT INTO listings (
           user_id, title, description, price, location, lat, lon,
-          enable_nearby, inquiry_enabled, tags, image_data, images_pending,
+          enable_nearby, inquiry_enabled, is_free, tags, image_data, images_pending,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
       `).run(
         req.user.id,
         title ? String(title).slice(0, 200) : null,
@@ -6515,6 +6521,7 @@ app.post(
         safeLon,
         enable_nearby ? 1 : 0,
         inquiry_enabled ? 1 : 0,
+        0, // is_free - default to 0 for auto-created listings
         parsedTags,
         imgCount, // images_pending column to track expected uploads
         now,
@@ -7110,7 +7117,11 @@ app.put(
 
       }
 
+      if (typeof req.body.is_free !== 'undefined') {
 
+        await db.prepare('UPDATE listings SET is_free=? WHERE id=?').run(req.body.is_free ? 1 : 0, id);
+
+      }
 
       if (typeof req.body.sold !== 'undefined') {
 
@@ -7318,6 +7329,7 @@ app.get('/api/listings/nearby', async (req, res) => {
     if (sort === 'new') orderBy = 'ORDER BY l.created_at DESC, l.id DESC';
     else if (sort === 'price_asc') orderBy = 'ORDER BY l.price ASC, l.id DESC';
     else if (sort === 'price_desc') orderBy = 'ORDER BY l.price DESC, l.id DESC';
+    else if (sort === 'free') orderBy = 'ORDER BY l.is_free DESC, l.id DESC';
 
     if (GEO_FEATURES.postgisNearby) {
       try {
@@ -7336,7 +7348,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  ) AS image_data,
                  l.title, l.description, l.location,
                  l.price, l.created_at, l.tags, l.lat, l.lon,
-                 l.inquiry_enabled,
+                 l.inquiry_enabled, l.is_free,
                  u.username AS owner_username,
                  u.profile_picture_url AS owner_profile_picture_url,
                  u.supporter_badge AS owner_supporter_badge,
@@ -7417,7 +7429,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                ) AS image_data,
                l.title, l.description, l.location,
                l.price, l.created_at, l.tags, l.lat, l.lon,
-               l.inquiry_enabled,
+               l.inquiry_enabled, l.is_free,
                u.username AS owner_username,
                u.profile_picture_url AS owner_profile_picture_url,
                u.supporter_badge AS owner_supporter_badge,

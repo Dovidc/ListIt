@@ -35,6 +35,7 @@
       const isClickable = typeof onSelect === 'function';
       const hasDistance = Number.isFinite(item?.distance_m);
       const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
+      const isFree = !!item?.is_free;
 
       // Update src when item changes
       React.useEffect(() => {
@@ -131,7 +132,23 @@
               borderRadius: 4,
               boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
             }
-          }, distanceLabel)
+          }, distanceLabel),
+          // Free badge - pink indicator for free items
+          isFree && H('div', {
+            style: {
+              position: 'absolute',
+              bottom: 6,
+              right: 6,
+              background: '#ec4899',
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: 4,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              textTransform: 'uppercase'
+            }
+          }, 'Free')
         )
       );
     }, (prev, next) => {
@@ -140,7 +157,8 @@
       return (
         prev.item.id === next.item.id &&
         prev.item.__cover === next.item.__cover &&
-        prev.item.distance_m === next.item.distance_m
+        prev.item.distance_m === next.item.distance_m &&
+        prev.item.is_free === next.item.is_free
       );
     });
 

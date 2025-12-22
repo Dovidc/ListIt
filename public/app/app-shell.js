@@ -1735,7 +1735,8 @@
                                 { value: 'new', label: 'Newest' },
                                 { value: 'nearest', label: 'Nearest' },
                                 { value: 'price_asc', label: 'Price: Low' },
-                                { value: 'price_desc', label: 'Price: High' }
+                                { value: 'price_desc', label: 'Price: High' },
+                                { value: 'free', label: 'Free Items' }
                               ],
                               style: { width: '100%' }
                             })

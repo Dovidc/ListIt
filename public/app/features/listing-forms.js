@@ -895,6 +895,7 @@
         return !!autoListEnabled;
       });
       const [showInquiryHelp, setShowInquiryHelp] = useState(false);
+      const [markedFree, setMarkedFree] = useState(() => !!draft?.is_free);
 
       useEffect(() => {
         if (!Array.isArray(initialFiles)) return;
@@ -1133,15 +1134,16 @@
 
           const basePayload = {
             title: String(title || '').trim(),
-            description: String(description || 'No description').trim(),
+            description: String(description || '').trim(),
             location: trimmedLocation,
-            price: safePrice,
+            price: markedFree ? 0 : safePrice,
             tags: String(tags || '').trim(),
-            enable_nearby: enableNearby ? 1 : 0
+            enable_nearby: enableNearby ? 1 : 0,
+            is_free: markedFree ? 1 : 0
           };
 
           if (draft || inquiryEnabled) {
-            basePayload.inquiry_enabled = inquiryEnabled ? 1 : 0;
+            basePayload.inquiry_enabled = markedFree ? 0 : (inquiryEnabled ? 1 : 0);
           }
 
           if (enableNearby && !hasFixedGps) {
@@ -1430,20 +1432,31 @@
           ),
 
           // Price
-          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, opacity: markedFree ? 0.5 : 1, transition: 'opacity 0.2s ease' } },
             H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Price'),
             H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
               H('div', { style: { position: 'relative', flex: 1 } },
                 H('span', { style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 16, fontWeight: 500 } }, '$'),
                 H('input', {
-                  value: priceVal,
+                  value: markedFree ? '' : priceVal,
                   inputMode: 'decimal',
+                  disabled: markedFree,
                   onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
-                  placeholder: '0.00',
-                  style: { ...TOUCH_CONTROL_STYLE, paddingLeft: 28, borderRadius: 10, width: '100%' }
+                  placeholder: markedFree ? 'Free' : '0.00',
+                  style: { ...TOUCH_CONTROL_STYLE, paddingLeft: 28, borderRadius: 10, width: '100%', cursor: markedFree ? 'not-allowed' : 'text' }
                 })
               ),
-              showInquiryText && H('span', {
+              markedFree ? H('span', {
+                style: {
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  background: '#fdf2f8',
+                  color: '#be185d',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap'
+                }
+              }, 'Free') : (showInquiryText && H('span', {
                 style: {
                   fontSize: 12,
                   padding: '6px 10px',
@@ -1453,7 +1466,7 @@
                   fontWeight: 600,
                   whiteSpace: 'nowrap'
                 }
-              }, 'Wants offers')
+              }, 'Wants offers'))
             )
           ),
 
@@ -1466,18 +1479,21 @@
               padding: '12px 14px',
               background: '#f8fafc',
               borderRadius: 10,
-              cursor: 'pointer'
+              cursor: markedFree ? 'not-allowed' : 'pointer',
+              opacity: markedFree ? 0.5 : 1,
+              transition: 'opacity 0.2s ease'
             }
           },
             H('input', {
               type: 'checkbox',
-              checked: inquiryEnabled,
+              checked: markedFree ? false : inquiryEnabled,
+              disabled: markedFree,
               onChange: e => setInquiryEnabled(e.target.checked),
               style: { width: 20, height: 20, accentColor: '#2563eb' }
             }),
             H('div', { style: { flex: 1 } },
               H('div', { style: { fontSize: 14, fontWeight: 600, color: '#0f172a' } }, 'Display offer banner'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers will be more likely to make a lower offer')
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make a lower offer')
             ),
             H('button', {
               type: 'button',
@@ -1494,6 +1510,39 @@
                 cursor: 'pointer'
               }
             }, '?')
+          ),
+
+          // Mark as Free toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: markedFree ? '#fdf2f8' : '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer',
+              border: markedFree ? '1px solid #f9a8d4' : '1px solid transparent',
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: markedFree,
+              onChange: e => {
+                const checked = e.target.checked;
+                setMarkedFree(checked);
+                if (checked) {
+                  setPriceVal('');
+                  setInquiryEnabled(false);
+                }
+              },
+              style: { width: 20, height: 20, accentColor: '#ec4899' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: markedFree ? '#be185d' : '#0f172a' } }, 'Mark as Free'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Give this item away for free')
+            )
           )
         ),
 

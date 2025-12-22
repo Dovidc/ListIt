@@ -1242,7 +1242,7 @@
 
           const basePayload = {
             title: String(title || '').trim(),
-            description: String(description || 'No description').trim(),
+            description: String(description || '').trim(),
             location: trimmedLocation,
             price: safePrice,
             tags: String(tags || '').trim(),
@@ -1721,10 +1721,9 @@
               }
 
               const safePrice = (Number.isFinite(ai.suggested_price) && ai.suggested_price >= 0) ? ai.suggested_price : 0;
-              // AI descriptions disabled - always use 'No description'
               const payload = {
                 title: (ai.title || 'Item for sale').toString().slice(0, 80),
-                description: 'No description',
+                description: '',
                 location: normalizedLocation,
                 price: safePrice,
                 tags: Array.isArray(ai.tags) ? ai.tags.join(', ') : '',
@@ -3176,6 +3175,7 @@
       }, [showDistance, item?.id, item?.lat, item?.lon]);
 
       const isFree = Number(item?.price ?? 0) === 0;
+      const markedFree = !!item?.is_free;
       const wantsOffer = !!item?.inquiry_enabled;
       const [soldBusy, setSoldBusy] = useState(false);
       const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
@@ -3550,7 +3550,23 @@
               fontSize: 11,
               pointerEvents: 'none'
             }
-          }, 'Seller wants an offer') : null
+          }, 'Seller wants an offer') : null,
+          markedFree ? H('span', {
+            style: {
+              position: 'absolute',
+              bottom: 8,
+              right: 8,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: '3px 8px',
+              background: '#ec4899',
+              color: '#fff',
+              borderRadius: 4,
+              pointerEvents: 'none',
+              textTransform: 'uppercase',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+            }
+          }, 'Free') : null
         ),
         H('div', { style: { padding: 16 } },
           H('div', {
@@ -3630,6 +3646,7 @@
         prev.item.description === next.item.description &&
         prev.item.__cover === next.item.__cover &&
         prev.item.inquiry_enabled === next.item.inquiry_enabled &&
+        prev.item.is_free === next.item.is_free &&
         prev.showDistance === next.showDistance &&
         prev.canEdit === next.canEdit &&
         prev.user?.id === next.user?.id
