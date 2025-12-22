@@ -147,6 +147,12 @@ body.dark-mode main.container {
   background: #0f172a !important;
 }
 
+/* Remove ALL bottom padding on edit screen */
+main.container.listing-editor-container,
+main.listing-editor-container {
+  padding-bottom: 0 !important;
+}
+
 .brand-tagline {
   font-size: 0.7rem;
 }
