@@ -71,8 +71,19 @@
     const IMAGE_QUALITY = 0.85;
 
     async function compressImageForUpload(file) {
-      // Skip non-images
-      if (!file?.type?.startsWith?.('image/')) {
+      console.log('[Upload] compressImageForUpload called:', {
+        name: file?.name,
+        type: file?.type,
+        size: file?.size,
+        isBlob: file instanceof Blob,
+        isFile: file instanceof File
+      });
+
+      // Skip non-images (but allow files with no type - iOS sometimes doesn't set it)
+      const fileType = file?.type || '';
+      const isImage = fileType.startsWith('image/') ||
+                      /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file?.name || '');
+      if (!isImage) {
         console.log('[Upload] Skipping compression: not an image');
         return file;
       }
@@ -87,16 +98,27 @@
 
       return new Promise((resolve) => {
         const img = new Image();
+        let objectUrl = null;
+
+        // Set a timeout in case image never loads
+        const timeout = setTimeout(() => {
+          console.warn('[Upload] Image load timeout, using original');
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(file);
+        }, 10000);
+
         img.onload = () => {
+          clearTimeout(timeout);
           try {
             let width = img.width;
             let height = img.height;
+            console.log(`[Upload] Image loaded: ${width}x${height}`);
             const needsResize = width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
 
             // Skip if dimensions are fine AND file size is reasonable
             if (!needsResize && !fileSizeLarge) {
               console.log(`[Upload] Skipping compression: dimensions OK (${width}x${height}) and size OK`);
-              URL.revokeObjectURL(img.src);
+              if (objectUrl) URL.revokeObjectURL(objectUrl);
               resolve(file);
               return;
             }
@@ -120,7 +142,7 @@
 
             canvas.toBlob(
               (blob) => {
-                URL.revokeObjectURL(img.src);
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
                 if (blob) {
                   const compressed = new File([blob], file.name || 'image.jpg', { type: 'image/jpeg' });
                   console.log(`[Upload] Compressed: ${(file.size/1024).toFixed(0)}KB -> ${(compressed.size/1024).toFixed(0)}KB (${width}x${height})`);
@@ -135,16 +157,26 @@
             );
           } catch (e) {
             console.error('[Upload] Compression error:', e);
-            URL.revokeObjectURL(img.src);
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
             resolve(file); // Fallback to original on error
           }
         };
         img.onerror = (e) => {
+          clearTimeout(timeout);
           console.error('[Upload] Image load error:', e);
-          URL.revokeObjectURL(img.src);
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
           resolve(file); // Fallback to original on error
         };
-        img.src = URL.createObjectURL(file);
+
+        try {
+          objectUrl = URL.createObjectURL(file);
+          console.log('[Upload] Created object URL:', objectUrl);
+          img.src = objectUrl;
+        } catch (e) {
+          clearTimeout(timeout);
+          console.error('[Upload] createObjectURL failed:', e);
+          resolve(file);
+        }
       });
     }
 
