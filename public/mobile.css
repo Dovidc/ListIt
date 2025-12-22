@@ -572,7 +572,7 @@ main.container {
 
 /* Remove nav padding on edit screen - only footer buttons should show */
 main.container.listing-editor-container {
-  padding-bottom: 0;
+  padding-bottom: 0 !important;
 }
 
 label {
