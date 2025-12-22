@@ -36,6 +36,7 @@
       const hasDistance = Number.isFinite(item?.distance_m);
       const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
       const isFree = !!item?.is_free;
+      const wantsOffer = !!item?.inquiry_enabled;
 
       // Update src when item changes
       React.useEffect(() => {
@@ -126,10 +127,10 @@
               left: 6,
               background: '#059669',
               color: '#fff',
-              fontSize: 10,
+              fontSize: 8,
               fontWeight: 600,
-              padding: '2px 6px',
-              borderRadius: 4,
+              padding: '2px 5px',
+              borderRadius: 3,
               boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
             }
           }, distanceLabel),
@@ -141,14 +142,30 @@
               right: 6,
               background: '#ec4899',
               color: '#fff',
-              fontSize: 10,
+              fontSize: 8,
               fontWeight: 600,
-              padding: '2px 6px',
-              borderRadius: 4,
+              padding: '2px 5px',
+              borderRadius: 3,
               boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
               textTransform: 'uppercase'
             }
-          }, 'Free')
+          }, 'Free'),
+          // OBO badge - amber indicator for items wanting offers (only if not free)
+          (!isFree && wantsOffer) && H('div', {
+            style: {
+              position: 'absolute',
+              bottom: 6,
+              right: 6,
+              background: '#d97706',
+              color: '#fff',
+              fontSize: 8,
+              fontWeight: 600,
+              padding: '2px 5px',
+              borderRadius: 3,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              textTransform: 'uppercase'
+            }
+          }, 'OBO')
         )
       );
     }, (prev, next) => {
@@ -158,7 +175,8 @@
         prev.item.id === next.item.id &&
         prev.item.__cover === next.item.__cover &&
         prev.item.distance_m === next.item.distance_m &&
-        prev.item.is_free === next.item.is_free
+        prev.item.is_free === next.item.is_free &&
+        prev.item.inquiry_enabled === next.item.inquiry_enabled
       );
     });
 

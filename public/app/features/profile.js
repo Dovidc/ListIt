@@ -1518,14 +1518,14 @@
                 }),
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
-                  H('div', { style: { fontWeight: 700 } }, 'Offer Message'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'replace price with offer line')
+                  H('div', { style: { fontWeight: 700 } }, 'Or Best Offer'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Add OBO tags to all subsequent listings')
                 ),
                 H('button', {
                   type: 'button',
                   className: 'help-btn',
                   onClick: (e) => { e.preventDefault(); e.stopPropagation(); requestHelp('inquiry'); },
-                  title: 'Inquiry mode info',
+                  title: 'OBO info',
                   style: {
                     marginLeft: 6, width: 24, height: 24, lineHeight: '22px',
                     borderRadius: 12, cursor: 'pointer'

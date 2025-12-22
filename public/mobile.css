@@ -1583,3 +1583,9 @@ html[data-theme="dark"] .mobile-messages-thread-portal .message-composer-wrapper
 body.keyboard-open .mobile-messages-thread-portal .message-composer-wrapper {
   padding-bottom: 10px;
 }
+
+/* Listing form modal overlay - dark mode */
+[data-theme="dark"] .listing-form-modal-overlay,
+html[data-theme="dark"] .listing-form-modal-overlay {
+  background: #0f172a !important;
+}

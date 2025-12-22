@@ -835,6 +835,37 @@
           onModerationError
         });
 
+      // On mobile, render as a full-screen modal overlay to avoid tab bar z-index issues
+      if (isMobile) {
+        return H('div', {
+          className: 'listing-form-modal-overlay',
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'var(--bg-primary, #f8fafc)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }
+        },
+          H('div', {
+            style: {
+              flex: 1,
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              paddingLeft: 16,
+              paddingRight: 16
+            }
+          }, form)
+        );
+      }
+
+      // Desktop: render as before
       return H('section', {
         className: 'listing-form-screen',
         role: 'region',
@@ -890,9 +921,10 @@
       const [lat, setLat] = useState(draft?.lat ?? null);
       const [lon, setLon] = useState(draft?.lon ?? null);
       const [inquiryEnabled, setInquiryEnabled] = useState(() => {
+        // For existing listings, use their saved value
         if (draft?.inquiry_enabled != null) return !!draft.inquiry_enabled;
-        if (typeof autoInquiryEnabled === 'boolean') return autoInquiryEnabled;
-        return !!autoListEnabled;
+        // For new listings, use the global preference (defaults to true)
+        return !!autoInquiryEnabled;
       });
       const [showInquiryHelp, setShowInquiryHelp] = useState(false);
       const [markedFree, setMarkedFree] = useState(() => !!draft?.is_free);
@@ -949,18 +981,6 @@
         })();
       }, [draft?.id]);
 
-      // Set inquiry default only for new listings
-      useEffect(() => {
-        if (!draft?.id) {
-          if (!autoListEnabled) {
-            setInquiryEnabled(false);
-          } else if (typeof autoInquiryEnabled === 'boolean') {
-            setInquiryEnabled(autoInquiryEnabled);
-          } else {
-            setInquiryEnabled(true);
-          }
-        }
-      }, [draft?.id, autoListEnabled, autoInquiryEnabled]);
 
       async function runAI() {
         setAiErr('');
@@ -1244,7 +1264,7 @@
       return H('form', {
         className: 'compact-listing-form',
         onSubmit: submit,
-        style: { display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 80 }
+        style: { display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 140 }
       },
         // Hidden file input
         H('input', {
@@ -1477,11 +1497,12 @@
               alignItems: 'center',
               gap: 12,
               padding: '12px 14px',
-              background: '#f8fafc',
+              background: (!markedFree && inquiryEnabled) ? '#fef3c7' : '#f8fafc',
               borderRadius: 10,
               cursor: markedFree ? 'not-allowed' : 'pointer',
               opacity: markedFree ? 0.5 : 1,
-              transition: 'opacity 0.2s ease'
+              border: (!markedFree && inquiryEnabled) ? '1px solid #fcd34d' : '1px solid transparent',
+              transition: 'all 0.2s ease'
             }
           },
             H('input', {
@@ -1489,10 +1510,10 @@
               checked: markedFree ? false : inquiryEnabled,
               disabled: markedFree,
               onChange: e => setInquiryEnabled(e.target.checked),
-              style: { width: 20, height: 20, accentColor: '#2563eb' }
+              style: { width: 20, height: 20, accentColor: '#d97706' }
             }),
             H('div', { style: { flex: 1 } },
-              H('div', { style: { fontSize: 14, fontWeight: 600, color: '#0f172a' } }, 'Display offer banner'),
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#92400e' : '#0f172a' } }, 'Display offer banner'),
               H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make a lower offer')
             ),
             H('button', {
@@ -1542,6 +1563,36 @@
             H('div', { style: { flex: 1 } },
               H('div', { style: { fontSize: 14, fontWeight: 600, color: markedFree ? '#be185d' : '#0f172a' } }, 'Mark as Free'),
               H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Give this item away for free')
+            )
+          ),
+
+          // Show in Nearest searches toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: enableNearby ? '#ecfdf5' : '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer',
+              border: enableNearby ? '1px solid #6ee7b7' : '1px solid transparent',
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: enableNearby,
+              onChange: e => {
+                const checked = e.target.checked;
+                setEnableNearby(checked);
+                if (checked && !hasFixedGps) useMyLocation();
+              },
+              style: { width: 20, height: 20, accentColor: '#059669' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: enableNearby ? '#059669' : '#0f172a' } }, 'Show in Nearest searches'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the items distance from them')
             )
           )
         ),
@@ -1594,35 +1645,7 @@
             ),
             geoBusy ? 'Getting location...' : 'Use my current location'
           ),
-          geoErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, geoErr),
-
-          // Nearby toggle
-          H('label', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '12px 14px',
-              background: '#f8fafc',
-              borderRadius: 10,
-              cursor: 'pointer'
-            }
-          },
-            H('input', {
-              type: 'checkbox',
-              checked: enableNearby,
-              onChange: e => {
-                const checked = e.target.checked;
-                setEnableNearby(checked);
-                if (checked && !hasFixedGps) useMyLocation();
-              },
-              style: { width: 20, height: 20, accentColor: '#2563eb' }
-            }),
-            H('div', { style: { flex: 1 } },
-              H('div', { style: { fontSize: 14, fontWeight: 600, color: '#0f172a' } }, 'Show in Nearest searches'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the items distance from them')
-            )
-          )
+          geoErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, geoErr)
         ),
 
         // ==================== TAGS SECTION (COLLAPSIBLE) ====================

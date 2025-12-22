@@ -58,7 +58,7 @@
       }), [noop]);
     }
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
-    const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', true);
+    const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', false);
 
     function useAppPreferences() {
       const autoList = useAlwaysOnAutoList();
