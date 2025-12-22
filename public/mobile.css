@@ -570,6 +570,11 @@ main.container {
   /* min-height handled by fixed positioning above */
 }
 
+/* Remove nav padding on edit screen - only footer buttons should show */
+main.container.listing-editor-container {
+  padding-bottom: 0;
+}
+
 label {
   font-weight: 600;
 }
