@@ -1242,7 +1242,7 @@
       return H('form', {
         className: 'compact-listing-form',
         onSubmit: submit,
-        style: { display: 'flex', flexDirection: 'column', gap: 20 }
+        style: { display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 80 }
       },
         // Hidden file input
         H('input', {
@@ -1595,7 +1595,7 @@
               cursor: 'pointer'
             }
           },
-            H('span', null, 'Search tags (optional)'),
+            H('span', null, 'Search tags'),
             H('span', { style: { color: '#64748b' } }, showTags ? '▲' : '▼')
           ),
           showTags && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
@@ -1609,8 +1609,23 @@
           )
         ),
 
-        // ==================== ACTION BUTTONS ====================
-        H('section', { style: { display: 'flex', gap: 12, paddingTop: 8 } },
+        // ==================== FIXED FOOTER ACTION BUTTONS ====================
+        H('section', {
+          style: {
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            gap: 12,
+            padding: '12px 16px',
+            paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+            background: '#fff',
+            borderTop: '1px solid #e5e7eb',
+            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.08)',
+            zIndex: 100
+          }
+        },
           H('button', {
             className: 'btn',
             type: 'button',
