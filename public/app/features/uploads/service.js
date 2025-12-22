@@ -67,8 +67,8 @@
     }
 
     // Compress image to max dimension and quality
-    const MAX_IMAGE_DIMENSION = 2400;
-    const IMAGE_QUALITY = 0.85;
+    const MAX_IMAGE_DIMENSION = 1600;
+    const IMAGE_QUALITY = 0.75;
 
     async function compressImageForUpload(file) {
       console.log('[Upload] compressImageForUpload called:', {
