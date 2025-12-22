@@ -72,10 +72,18 @@
 
     async function compressImageForUpload(file) {
       // Skip non-images
-      if (!file?.type?.startsWith?.('image/')) return file;
+      if (!file?.type?.startsWith?.('image/')) {
+        console.log('[Upload] Skipping compression: not an image');
+        return file;
+      }
 
       // Skip small files (already compressed or small images)
-      if (file.size < 500 * 1024) return file; // < 500KB, skip
+      if (file.size < 500 * 1024) {
+        console.log(`[Upload] Skipping compression: file small (${(file.size/1024).toFixed(0)}KB)`);
+        return file;
+      }
+
+      const fileSizeLarge = file.size > 800 * 1024; // Consider re-encoding if > 800KB
 
       return new Promise((resolve) => {
         const img = new Image();
@@ -83,21 +91,25 @@
           try {
             let width = img.width;
             let height = img.height;
+            const needsResize = width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
 
-            // Only compress if larger than max dimension
-            if (width <= MAX_IMAGE_DIMENSION && height <= MAX_IMAGE_DIMENSION) {
+            // Skip if dimensions are fine AND file size is reasonable
+            if (!needsResize && !fileSizeLarge) {
+              console.log(`[Upload] Skipping compression: dimensions OK (${width}x${height}) and size OK`);
               URL.revokeObjectURL(img.src);
               resolve(file);
               return;
             }
 
-            // Calculate new dimensions (scale down longest edge)
-            if (width > height) {
-              height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
-              width = MAX_IMAGE_DIMENSION;
-            } else {
-              width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
-              height = MAX_IMAGE_DIMENSION;
+            // Calculate new dimensions (scale down longest edge) if needed
+            if (needsResize) {
+              if (width > height) {
+                height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+                width = MAX_IMAGE_DIMENSION;
+              } else {
+                width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+                height = MAX_IMAGE_DIMENSION;
+              }
             }
 
             const canvas = document.createElement('canvas');
@@ -114,6 +126,7 @@
                   console.log(`[Upload] Compressed: ${(file.size/1024).toFixed(0)}KB -> ${(compressed.size/1024).toFixed(0)}KB (${width}x${height})`);
                   resolve(compressed);
                 } else {
+                  console.warn('[Upload] toBlob failed, using original');
                   resolve(file); // Fallback to original
                 }
               },
@@ -121,11 +134,13 @@
               IMAGE_QUALITY
             );
           } catch (e) {
+            console.error('[Upload] Compression error:', e);
             URL.revokeObjectURL(img.src);
             resolve(file); // Fallback to original on error
           }
         };
-        img.onerror = () => {
+        img.onerror = (e) => {
+          console.error('[Upload] Image load error:', e);
           URL.revokeObjectURL(img.src);
           resolve(file); // Fallback to original on error
         };
