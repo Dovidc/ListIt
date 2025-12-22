@@ -1660,6 +1660,7 @@
 
         // ==================== FIXED FOOTER ACTION BUTTONS ====================
         H('section', {
+          className: 'listing-form-footer',
           style: {
             position: 'fixed',
             bottom: 0,
@@ -1668,7 +1669,6 @@
             display: 'flex',
             gap: 12,
             padding: '8px 16px',
-            paddingBottom: 'env(safe-area-inset-bottom, 8px)',
             background: '#fff',
             borderTop: '1px solid #e5e7eb',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.08)',
