@@ -1249,6 +1249,7 @@
         const bodyTrim = (input || '').trim();
         if (!bodyTrim && imgFiles.length === 0) return;
 
+        // Upload images first (can't be optimistic about this)
         const urls = [];
         try {
           for (const f of imgFiles) {
@@ -1265,81 +1266,127 @@
           return;
         }
 
-        let resp;
+        // Create optimistic message and add to UI immediately
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const optimisticMsg = {
+          id: tempId,
+          conversation_id: activeId,
+          sender_id: user?.id,
+          sender_username: user?.username || '',
+          body: bodyTrim,
+          created_at: new Date().toISOString(),
+          images: urls.map(url => ({ url, thumb: url })),
+          _pending: true
+        };
+
+        // Immediately update UI
+        setMsgs(prev => [...prev, optimisticMsg]);
+        setInput('');
+        setImgFiles([]);
+
+        // Scroll to bottom immediately
+        setTimeout(() => {
+          if (msgsContainerRef.current) {
+            msgsContainerRef.current.scrollTop = msgsContainerRef.current.scrollHeight;
+          }
+        }, 10);
+
+        // Send to server in background
         try {
-          resp = await api.sendMessage(activeId, bodyTrim, urls);
+          const resp = await api.sendMessage(activeId, bodyTrim, urls);
+
+          if (resp?.other_user_deleted) {
+            alert('Heads up: This user deleted the conversation. They may not see your new message.');
+          }
+
+          // Replace optimistic message with real one (silent refresh)
+          // This ensures we have the correct server-assigned ID
+          fetchMsgs({ silent: true });
+          fetchConvos();
         } catch (e) {
+          // Remove optimistic message on failure
+          setMsgs(prev => prev.filter(m => m.id !== tempId));
+
           const msg = e?.message || String(e);
           if (msg.includes('moderation_flagged') || msg.includes('flagged')) {
             setShowModerationModal(true);
           } else {
             alert(msg || 'Send failed');
           }
-          return;
         }
-
-        if (resp?.other_user_deleted) {
-          alert('Heads up: This user deleted the conversation. They may not see your new message.');
-        }
-
-        setInput('');
-        setImgFiles([]);
-        await fetchMsgs({ silent: true });
-        await fetchConvos();
-
-        setTimeout(() => {
-          if (msgsContainerRef.current) {
-            msgsContainerRef.current.scrollTop = msgsContainerRef.current.scrollHeight;
-          }
-        }, 100);
       }
 
       async function revealPaypal() {
         if (!activeId) return;
         if (!user?.paypal_email) { alert('Add your PayPal email in Profile first.'); return; }
-        const msg = `My payment info: ${user.paypal_email}`;
-        let resp;
-        try {
-          resp = await api.sendMessage(activeId, msg, []);
-        } catch (e) {
-          alert(e?.message || 'Send failed');
-          return;
-        }
+        const msgBody = `My payment info: ${user.paypal_email}`;
 
-        if (resp?.other_user_deleted) {
-          alert('Heads up: This user deleted the conversation. They may not see your new message.');
+        // Optimistic UI
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const optimisticMsg = {
+          id: tempId,
+          conversation_id: activeId,
+          sender_id: user?.id,
+          sender_username: user?.username || '',
+          body: msgBody,
+          created_at: new Date().toISOString(),
+          images: [],
+          _pending: true
+        };
+        setMsgs(prev => [...prev, optimisticMsg]);
+
+        try {
+          const resp = await api.sendMessage(activeId, msgBody, []);
+          if (resp?.other_user_deleted) {
+            alert('Heads up: This user deleted the conversation. They may not see your new message.');
+          }
+          fetchMsgs({ silent: true });
+          fetchConvos();
+        } catch (e) {
+          setMsgs(prev => prev.filter(m => m.id !== tempId));
+          alert(e?.message || 'Send failed');
         }
-        await fetchMsgs({ silent: true });
-        await fetchConvos();
       }
 
       async function sendLocationPreset() {
         if (!activeId) return false;
         const saved = (user?.location_preset || '').trim();
         if (!saved) { alert('Add your address in Profile first.'); return false; }
-        const msg = `My address: ${saved}`;
-        let resp;
-        try {
-          resp = await api.sendMessage(activeId, msg, []);
-        } catch (e) {
-          alert(e?.message || 'Send failed');
-          return false;
-        }
+        const msgBody = `My address: ${saved}`;
 
-        if (resp?.other_user_deleted) {
-          alert('Heads up: This user deleted the conversation. They may not see your new message.');
-        }
-
-        await fetchMsgs({ silent: true });
-        await fetchConvos();
+        // Optimistic UI
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const optimisticMsg = {
+          id: tempId,
+          conversation_id: activeId,
+          sender_id: user?.id,
+          sender_username: user?.username || '',
+          body: msgBody,
+          created_at: new Date().toISOString(),
+          images: [],
+          _pending: true
+        };
+        setMsgs(prev => [...prev, optimisticMsg]);
 
         setTimeout(() => {
           if (msgsContainerRef.current) {
             msgsContainerRef.current.scrollTop = msgsContainerRef.current.scrollHeight;
           }
-        }, 100);
+        }, 10);
 
-        return true;
+        try {
+          const resp = await api.sendMessage(activeId, msgBody, []);
+          if (resp?.other_user_deleted) {
+            alert('Heads up: This user deleted the conversation. They may not see your new message.');
+          }
+          fetchMsgs({ silent: true });
+          fetchConvos();
+          return true;
+        } catch (e) {
+          setMsgs(prev => prev.filter(m => m.id !== tempId));
+          alert(e?.message || 'Send failed');
+          return false;
+        }
       }
 
       const seenMap = loadSeen(user?.id);
