@@ -44,6 +44,7 @@
       isMobileDevice,
       isCapacitorNative,
       pickGalleryImages,
+      takePhoto,
       seenKey,
       loadSeen,
       saveSeen,
@@ -414,6 +415,9 @@
       api,
       helpers: {
         isMobileDevice,
+        isCapacitorNative,
+        pickGalleryImages,
+        takePhoto,
         fetchCoordsAndReverse
       },
       uploads: {
