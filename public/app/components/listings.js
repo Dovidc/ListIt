@@ -1798,22 +1798,23 @@
               }
             },
               TAG_COLORS.map(({ hex, name }) =>
-                H('button', {
+                H('div', {
                   key: hex,
-                  type: 'button',
                   title: name,
-                  disabled: !isPremium,
-                  onClick: () => setCustomTagColor(hex),
+                  role: 'button',
+                  tabIndex: isPremium ? 0 : -1,
+                  onClick: isPremium ? () => setCustomTagColor(hex) : undefined,
                   style: {
                     width: 28,
                     height: 28,
                     borderRadius: '50%',
-                    background: hex,
-                    border: customTagColor === hex ? '3px solid #0f172a' : '2px solid #e5e7eb',
+                    backgroundColor: hex,
+                    border: customTagColor === hex ? '3px solid #fff' : '2px solid rgba(255,255,255,0.3)',
                     cursor: isPremium ? 'pointer' : 'not-allowed',
-                    opacity: isPremium ? 1 : 0.5,
-                    boxShadow: customTagColor === hex ? '0 0 0 2px #fff inset' : 'none',
-                    transition: 'all 0.15s ease'
+                    opacity: isPremium ? 1 : 0.4,
+                    boxShadow: customTagColor === hex ? '0 0 8px rgba(255,255,255,0.5)' : '0 1px 3px rgba(0,0,0,0.3)',
+                    transition: 'all 0.15s ease',
+                    flexShrink: 0
                   }
                 })
               )
