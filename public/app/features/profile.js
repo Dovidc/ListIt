@@ -630,6 +630,31 @@
       const avatarBorderColor = borderColor || '#ffffff';
       const avatarBorderStyle = borderStyle === 'dashed' ? 'dashed' : 'solid';
 
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('theme') === 'dark');
+
+      // Theme colors
+      const theme = {
+        bg: isDarkMode ? '#1e293b' : '#fff',
+        bgSecondary: isDarkMode ? '#334155' : '#f8fafc',
+        bgTertiary: isDarkMode ? '#475569' : '#f1f5f9',
+        border: isDarkMode ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
+        text: isDarkMode ? '#f1f5f9' : '#0f172a',
+        textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+        textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+        sliderBg: isDarkMode ? '#475569' : '#e2e8f0',
+        errorBg: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2',
+        errorText: isDarkMode ? '#f87171' : '#991b1b',
+        premiumBg: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#dbeafe',
+        premiumBorder: isDarkMode ? 'rgba(147, 197, 253, 0.3)' : '#93c5fd',
+        premiumText: isDarkMode ? '#a5b4fc' : '#1e40af'
+      };
+
+      // Zoom range constants
+      const MAX_ZOOM = 5;
+
       // Profile card dimensions (scaled down ~75% to fit modal nicely)
       // Maintains same proportions as ProfilePreviewModal
       const PREVIEW_WIDTH = 280;
@@ -915,14 +940,14 @@
       const premiumMsg = !isPremium ? H('div', {
         style: {
           padding: '12px',
-          background: '#dbeafe',
-          border: '1px solid #93c5fd',
+          background: theme.premiumBg,
+          border: `1px solid ${theme.premiumBorder}`,
           borderRadius: 8,
           fontSize: 13,
-          color: '#1e40af',
+          color: theme.premiumText,
           marginBottom: 12
         }
-      }, '✨ Profile customization is a premium subscriber feature') : null;
+      }, 'Profile customization is a premium subscriber feature') : null;
 
       // Helper to render the profile card preview (matching ProfilePreviewModal exactly)
       const renderProfileCardPreview = (bannerSrc, isLive = false, onBannerClick = null) => {
@@ -992,10 +1017,16 @@
                   height: '100%',
                   display: 'grid',
                   placeItems: 'center',
-                  fontSize: 36,
                   color: 'rgba(248, 250, 252, 0.5)'
                 }
-              }, '🖼️'),
+              },
+                // Image/gallery placeholder icon SVG
+                H('svg', { width: 40, height: 40, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+                  H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+                  H('polyline', { points: '21 15 16 10 5 21' })
+                )
+              ),
               // Gradient overlay
               H('div', {
                 style: {
@@ -1022,13 +1053,17 @@
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 4,
+                    gap: 6,
                     color: '#fff',
                     fontSize: 13,
                     fontWeight: 600
                   }
                 },
-                  H('span', { style: { fontSize: 24 } }, '📷'),
+                  // Camera icon SVG
+                  H('svg', { width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    H('path', { d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
+                    H('circle', { cx: 12, cy: 13, r: 4 })
+                  ),
                   bannerSrc ? 'Tap to change' : 'Tap to add banner'
                 )
               )
@@ -1109,8 +1144,8 @@
                 maxWidth: '420px',
                 width: 'min(420px, 94vw)',
                 padding: '20px',
-                background: '#ffffff',
-                color: '#0f172a',
+                background: theme.bg,
+                color: theme.text,
                 borderRadius: 16,
                 display: 'grid',
                 gap: 16
@@ -1125,7 +1160,7 @@
                 }
               },
                 H('h2', {
-                  style: { fontSize: 18, fontWeight: 700, margin: 0 }
+                  style: { fontSize: 18, fontWeight: 700, margin: 0, color: theme.text }
                 }, 'Adjust Banner'),
                 H('button', {
                   onClick: handleCancelCrop,
@@ -1134,19 +1169,27 @@
                     height: 36,
                     borderRadius: '50%',
                     border: 'none',
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    fontSize: 20,
-                    cursor: 'pointer'
+                    background: theme.bgTertiary,
+                    color: theme.textSecondary,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }
-                }, '×')
+                },
+                  // X icon SVG
+                  H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                    H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                  )
+                )
               ),
 
               cropError && H('div', {
                 style: {
                   padding: 12,
-                  background: '#fee2e2',
-                  color: '#991b1b',
+                  background: theme.errorBg,
+                  color: theme.errorText,
                   borderRadius: 8,
                   fontSize: 14
                 }
@@ -1191,9 +1234,8 @@
                     height: 36,
                     borderRadius: 8,
                     border: 'none',
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    fontSize: 18,
+                    background: theme.bgTertiary,
+                    color: theme.textSecondary,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -1201,12 +1243,22 @@
                     flexShrink: 0
                   },
                   title: 'Choose different image'
-                }, '🖼️'),
-                H('span', { style: { fontSize: 16, color: '#64748b' } }, '−'),
+                },
+                  // Image/gallery icon SVG
+                  H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+                    H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+                    H('polyline', { points: '21 15 16 10 5 21' })
+                  )
+                ),
+                // Zoom out icon (minus)
+                H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+                ),
                 H('input', {
                   type: 'range',
                   min: getMinZoom(),
-                  max: '3',
+                  max: String(MAX_ZOOM),
                   step: '0.05',
                   value: zoom,
                   onChange: (e) => handleZoomChange(parseFloat(e.target.value)),
@@ -1215,15 +1267,19 @@
                     height: 8,
                     borderRadius: 4,
                     appearance: 'none',
-                    background: '#e2e8f0',
+                    background: theme.sliderBg,
                     cursor: 'pointer'
                   }
                 }),
-                H('span', { style: { fontSize: 16, color: '#64748b' } }, '+')
+                // Zoom in icon (plus)
+                H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+                  H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+                )
               ),
 
               H('p', {
-                style: { fontSize: 12, color: '#64748b', textAlign: 'center', margin: 0 }
+                style: { fontSize: 12, color: theme.textSecondary, textAlign: 'center', margin: 0 }
               }, 'Drag to reposition • Pinch or slider to zoom'),
 
               // Hidden canvas
@@ -1236,8 +1292,8 @@
                   style: {
                     flex: 1,
                     padding: '14px',
-                    background: '#f1f5f9',
-                    color: '#64748b',
+                    background: theme.bgTertiary,
+                    color: theme.textSecondary,
                     border: 'none',
                     borderRadius: 12,
                     fontSize: 15,
@@ -1278,8 +1334,8 @@
               maxWidth: '420px',
               width: 'min(420px, 92vw)',
               padding: '24px',
-              background: '#fff',
-              color: '#0f172a',
+              background: theme.bg,
+              color: theme.text,
               borderRadius: 16,
               display: 'grid',
               gap: 16,
@@ -1294,14 +1350,22 @@
                 right: '12px',
                 width: '36px',
                 height: '36px',
-                fontSize: '20px',
                 border: 'none',
-                background: '#f1f5f9',
+                background: theme.bgTertiary,
                 borderRadius: '50%',
                 cursor: 'pointer',
-                color: '#64748b'
+                color: theme.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }
-            }, '×'),
+            },
+              // X icon SVG
+              H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+              )
+            ),
 
             H('div', { style: { display: 'grid', gap: 4 } },
               H('h2', {
@@ -1309,6 +1373,7 @@
                   fontSize: 18,
                   fontWeight: 700,
                   margin: 0,
+                  color: theme.text,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8
@@ -1318,8 +1383,8 @@
                 !isPremium && H('span', {
                   style: {
                     padding: '2px 8px',
-                    background: '#dbeafe',
-                    color: '#1e40af',
+                    background: theme.premiumBg,
+                    color: theme.premiumText,
                     borderRadius: 10,
                     fontSize: 11,
                     fontWeight: 600
@@ -1327,7 +1392,7 @@
                 }, 'Premium')
               ),
               H('p', {
-                style: { fontSize: 13, color: '#64748b', margin: 0 }
+                style: { fontSize: 13, color: theme.textSecondary, margin: 0 }
               }, 'Customize how your profile appears to others')
             ),
 
@@ -1351,8 +1416,8 @@
               bgImageUploading && H('div', {
                 style: {
                   padding: 10,
-                  background: '#dbeafe',
-                  color: '#1e40af',
+                  background: theme.premiumBg,
+                  color: theme.premiumText,
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: 600,
@@ -1363,8 +1428,8 @@
               bgImageUploadError && H('div', {
                 style: {
                   padding: 10,
-                  background: '#fee2e2',
-                  color: '#991b1b',
+                  background: theme.errorBg,
+                  color: theme.errorText,
                   borderRadius: 8,
                   fontSize: 13
                 }
@@ -1373,8 +1438,8 @@
               statusMessage && H('div', {
                 style: {
                   padding: 10,
-                  background: '#d1fae5',
-                  color: '#065f46',
+                  background: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : '#d1fae5',
+                  color: isDarkMode ? '#34d399' : '#065f46',
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: 600

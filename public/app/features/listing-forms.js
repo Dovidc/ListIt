@@ -922,6 +922,11 @@
       const mountedRef = useRef(true);
       const [showModerationModal, setShowModerationModal] = useState(false);
 
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+         localStorage.getItem('theme') === 'dark');
+
       // Track mounted state to avoid setState on unmounted component
       useEffect(() => {
         mountedRef.current = true;
@@ -1301,8 +1306,8 @@
         // ==================== PHOTOS SECTION ====================
         H('section', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
           H('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-            H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Photos'),
-            H('span', { style: { fontSize: 13, color: '#64748b' } }, `${allImages.length} photo${allImages.length !== 1 ? 's' : ''}`)
+            H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: isDarkMode ? '#f1f5f9' : '#0f172a' } }, 'Photos'),
+            H('span', { style: { fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' } }, `${allImages.length} photo${allImages.length !== 1 ? 's' : ''}`)
           ),
 
           // Image grid - large images
@@ -1377,10 +1382,10 @@
               justifyContent: 'center',
               gap: 8,
               padding: '16px 20px',
-              border: '2px dashed #cbd5e1',
+              border: isDarkMode ? '2px dashed rgba(255,255,255,0.2)' : '2px dashed #cbd5e1',
               borderRadius: 12,
-              background: '#f8fafc',
-              color: '#475569',
+              background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+              color: isDarkMode ? '#94a3b8' : '#475569',
               fontSize: 15,
               fontWeight: 600,
               cursor: 'pointer',
@@ -1446,11 +1451,11 @@
 
         // ==================== DETAILS SECTION ====================
         H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Details'),
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: isDarkMode ? '#f1f5f9' : '#0f172a' } }, 'Details'),
 
           // Title
           H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Title'),
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: isDarkMode ? '#e2e8f0' : '#374151' } }, 'Title'),
             H('input', {
               value: title,
               maxLength: 80,
@@ -1462,7 +1467,7 @@
 
           // Description
           H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Description'),
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: isDarkMode ? '#e2e8f0' : '#374151' } }, 'Description'),
             H('textarea', {
               value: description,
               maxLength: 400,
@@ -1475,7 +1480,7 @@
 
           // Price
           H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, opacity: markedFree ? 0.5 : 1, transition: 'opacity 0.2s ease' } },
-            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Price'),
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: isDarkMode ? '#e2e8f0' : '#374151' } }, 'Price'),
             H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
               H('div', { style: { position: 'relative', flex: 1 } },
                 H('span', { style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 16, fontWeight: 500 } }, '$'),
@@ -1519,11 +1524,15 @@
               alignItems: 'center',
               gap: 12,
               padding: '12px 14px',
-              background: (!markedFree && inquiryEnabled) ? '#fef3c7' : '#f8fafc',
+              background: (!markedFree && inquiryEnabled)
+                ? (isDarkMode ? 'rgba(217, 119, 6, 0.15)' : '#fef3c7')
+                : (isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc'),
               borderRadius: 10,
               cursor: markedFree ? 'not-allowed' : 'pointer',
               opacity: markedFree ? 0.5 : 1,
-              border: (!markedFree && inquiryEnabled) ? '1px solid #fcd34d' : '1px solid transparent',
+              border: (!markedFree && inquiryEnabled)
+                ? (isDarkMode ? '1px solid rgba(252, 211, 77, 0.4)' : '1px solid #fcd34d')
+                : '1px solid transparent',
               transition: 'all 0.2s ease'
             }
           },
@@ -1535,8 +1544,8 @@
               style: { width: 20, height: 20, accentColor: '#d97706' }
             }),
             H('div', { style: { flex: 1 } },
-              H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#92400e' : '#0f172a' } }, 'Display offer banner'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make a lower offer')
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#fbbf24' : (isDarkMode ? '#e2e8f0' : '#0f172a') } }, 'Display offer banner'),
+              H('div', { style: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make a lower offer')
             ),
             H('button', {
               type: 'button',
@@ -1545,11 +1554,11 @@
                 width: 24,
                 height: 24,
                 borderRadius: '50%',
-                border: '1px solid #e5e7eb',
-                background: '#fff',
+                border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e5e7eb',
+                background: isDarkMode ? 'rgba(255,255,255,0.1)' : '#fff',
                 fontSize: 13,
                 fontWeight: 600,
-                color: '#64748b',
+                color: isDarkMode ? '#94a3b8' : '#64748b',
                 cursor: 'pointer'
               }
             }, '?')
@@ -1562,10 +1571,14 @@
               alignItems: 'center',
               gap: 12,
               padding: '12px 14px',
-              background: markedFree ? '#fdf2f8' : '#f8fafc',
+              background: markedFree
+                ? (isDarkMode ? 'rgba(236, 72, 153, 0.15)' : '#fdf2f8')
+                : (isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc'),
               borderRadius: 10,
               cursor: 'pointer',
-              border: markedFree ? '1px solid #f9a8d4' : '1px solid transparent',
+              border: markedFree
+                ? (isDarkMode ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid #f9a8d4')
+                : '1px solid transparent',
               transition: 'all 0.2s ease'
             }
           },
@@ -1583,8 +1596,8 @@
               style: { width: 20, height: 20, accentColor: '#ec4899' }
             }),
             H('div', { style: { flex: 1 } },
-              H('div', { style: { fontSize: 14, fontWeight: 600, color: markedFree ? '#be185d' : '#0f172a' } }, 'Mark as Free'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Give this item away for free')
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: markedFree ? '#f472b6' : (isDarkMode ? '#e2e8f0' : '#0f172a') } }, 'Mark as Free'),
+              H('div', { style: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, 'Give this item away for free')
             )
           ),
 
@@ -1595,10 +1608,14 @@
               alignItems: 'center',
               gap: 12,
               padding: '12px 14px',
-              background: enableNearby ? '#ecfdf5' : '#f8fafc',
+              background: enableNearby
+                ? (isDarkMode ? 'rgba(5, 150, 105, 0.15)' : '#ecfdf5')
+                : (isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc'),
               borderRadius: 10,
               cursor: 'pointer',
-              border: enableNearby ? '1px solid #6ee7b7' : '1px solid transparent',
+              border: enableNearby
+                ? (isDarkMode ? '1px solid rgba(110, 231, 183, 0.4)' : '1px solid #6ee7b7')
+                : '1px solid transparent',
               transition: 'all 0.2s ease'
             }
           },
@@ -1613,8 +1630,8 @@
               style: { width: 20, height: 20, accentColor: '#059669' }
             }),
             H('div', { style: { flex: 1 } },
-              H('div', { style: { fontSize: 14, fontWeight: 600, color: enableNearby ? '#059669' : '#0f172a' } }, 'Show in Nearest searches'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the items distance from them')
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: enableNearby ? '#34d399' : (isDarkMode ? '#e2e8f0' : '#0f172a') } }, 'Show in Nearest searches'),
+              H('div', { style: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, 'Buyers can see the items distance from them')
             )
           ),
 
@@ -1625,15 +1642,19 @@
               flexDirection: 'column',
               gap: 6,
               padding: '12px 14px',
-              background: customTag.trim() ? '#f0f9ff' : '#f8fafc',
+              background: isDarkMode
+                ? (customTag.trim() ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)')
+                : (customTag.trim() ? '#f0f9ff' : '#f8fafc'),
               borderRadius: 10,
-              border: customTag.trim() ? '1px solid #7dd3fc' : '1px solid transparent',
+              border: customTag.trim()
+                ? (isDarkMode ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid #7dd3fc')
+                : '1px solid transparent',
               opacity: isPremium ? 1 : 0.7,
               transition: 'all 0.2s ease'
             }
           },
             H('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-              H('label', { style: { fontSize: 14, fontWeight: 600, color: customTag.trim() ? '#0284c7' : '#374151' } }, 'Custom Tag'),
+              H('label', { style: { fontSize: 14, fontWeight: 600, color: customTag.trim() ? (isDarkMode ? '#a5b4fc' : '#0284c7') : (isDarkMode ? '#e2e8f0' : '#374151') } }, 'Custom Tag'),
               !isPremium && H('button', {
                 type: 'button',
                 onClick: (e) => { e.preventDefault(); onOpenPremiumModal?.(); },
@@ -1659,7 +1680,10 @@
                 ...TOUCH_CONTROL_STYLE,
                 borderRadius: 8,
                 cursor: isPremium ? 'text' : 'not-allowed',
-                background: isPremium ? '#fff' : '#f1f5f9'
+                background: isDarkMode
+                  ? (isPremium ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)')
+                  : (isPremium ? '#fff' : '#f1f5f9'),
+                color: isDarkMode ? '#e2e8f0' : undefined
               }
             }),
             // Color palette for custom tag
@@ -1693,7 +1717,7 @@
                 })
               )
             ),
-            H('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' } },
+            H('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b' } },
               H('span', null, 'Displays as a badge on your listing'),
               H('span', null, `${customTag.length}/12`)
             )
@@ -1702,10 +1726,10 @@
 
         // ==================== LOCATION SECTION ====================
         H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Location'),
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: isDarkMode ? '#f1f5f9' : '#0f172a' } }, 'Location'),
 
           H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'City or area'),
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: isDarkMode ? '#e2e8f0' : '#374151' } }, 'City or area'),
             H('input', {
               value: location,
               maxLength: 80,
@@ -1725,10 +1749,10 @@
               justifyContent: 'center',
               gap: 8,
               padding: '12px 16px',
-              border: '1px solid #e5e7eb',
+              border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e5e7eb',
               borderRadius: 10,
-              background: '#fff',
-              color: '#374151',
+              background: isDarkMode ? 'rgba(255,255,255,0.1)' : '#fff',
+              color: isDarkMode ? '#e2e8f0' : '#374151',
               fontSize: 14,
               fontWeight: 500,
               cursor: geoBusy ? 'not-allowed' : 'pointer'
@@ -1761,17 +1785,17 @@
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '12px 14px',
-              background: '#f8fafc',
-              border: '1px solid #e5e7eb',
+              background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+              border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb',
               borderRadius: 10,
               fontSize: 14,
               fontWeight: 500,
-              color: '#374151',
+              color: isDarkMode ? '#e2e8f0' : '#374151',
               cursor: 'pointer'
             }
           },
             H('span', null, 'Search tags'),
-            H('span', { style: { color: '#64748b' } }, showTags ? '▲' : '▼')
+            H('span', { style: { color: isDarkMode ? '#94a3b8' : '#64748b' } }, showTags ? '▲' : '▼')
           ),
           showTags && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
             H('input', {
@@ -1780,7 +1804,7 @@
               onChange: e => setTags(e.target.value),
               style: { ...TOUCH_CONTROL_STYLE, borderRadius: 10 }
             }),
-            H('p', { style: { margin: 0, fontSize: 12, color: '#64748b' } }, 'Separate tags with commas. Helps buyers find your listing.')
+            H('p', { style: { margin: 0, fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, 'Separate tags with commas. Helps buyers find your listing.')
           )
         ),
 
@@ -1795,9 +1819,9 @@
             display: 'flex',
             gap: 12,
             padding: '8px 16px',
-            background: '#fff',
-            borderTop: '1px solid #e5e7eb',
-            boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.08)',
+            background: isDarkMode ? 'var(--bg-primary, #1e293b)' : '#fff',
+            borderTop: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb',
+            boxShadow: isDarkMode ? '0 -4px 12px rgba(0, 0, 0, 0.3)' : '0 -4px 12px rgba(0, 0, 0, 0.08)',
             zIndex: 100
           }
         },
@@ -1809,10 +1833,10 @@
             style: {
               flex: 1,
               padding: '14px 20px',
-              border: '1px solid #e5e7eb',
+              border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e5e7eb',
               borderRadius: 12,
-              background: '#fff',
-              color: '#374151',
+              background: isDarkMode ? 'rgba(255,255,255,0.1)' : '#fff',
+              color: isDarkMode ? '#e2e8f0' : '#374151',
               fontSize: 16,
               fontWeight: 600,
               cursor: 'pointer'
@@ -1867,15 +1891,15 @@
         },
           H('div', {
             style: {
-              background: '#fff',
+              background: isDarkMode ? 'var(--bg-primary, #1e293b)' : '#fff',
               borderRadius: 12,
               padding: 16,
               width: 'min(320px, 90vw)',
               boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)'
             }
           },
-            H('div', { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, 'Offer Banner'),
-            H('p', { style: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.5 } },
+            H('div', { style: { fontWeight: 700, fontSize: 16, marginBottom: 8, color: isDarkMode ? '#f1f5f9' : undefined } }, 'Offer Banner'),
+            H('p', { style: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.5, color: isDarkMode ? '#cbd5e1' : undefined } },
               'Enable offer banner if you want an item gone ASAP.'
             ),
             H('button', {
@@ -1902,7 +1926,7 @@
         },
           H('div', {
             style: {
-              background: '#fff',
+              background: isDarkMode ? 'var(--bg-primary, #1e293b)' : '#fff',
               borderRadius: 16,
               padding: 24,
               width: 'min(360px, 90vw)',
@@ -1937,8 +1961,8 @@
                 H('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })
               )
             ),
-            H('h3', { style: { margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: '#0f172a' } }, 'Content Under Review'),
-            H('p', { style: { margin: '0 0 20px', fontSize: 14, lineHeight: 1.6, color: '#64748b' } },
+            H('h3', { style: { margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: isDarkMode ? '#f1f5f9' : '#0f172a' } }, 'Content Under Review'),
+            H('p', { style: { margin: '0 0 20px', fontSize: 14, lineHeight: 1.6, color: isDarkMode ? '#94a3b8' : '#64748b' } },
               'Your submission has been flagged and is being reviewed by our administrators. This helps us keep the platform safe for everyone.'
             ),
             H('button', {
@@ -1979,6 +2003,11 @@
       const mountedRef = useRef(true);
       const reloadMineRef = useRef(reloadMine);
       const reloadAllRef = useRef(reloadAll);
+
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('theme') === 'dark');
 
       useEffect(() => {
         mountedRef.current = true;
@@ -2080,7 +2109,7 @@
       },
         H('div', {
           style: {
-            background: '#fff',
+            background: isDarkMode ? 'var(--bg-primary, #1e293b)' : '#fff',
             borderRadius: 16,
             padding: 32,
             width: 'min(440px, 90vw)',
@@ -2100,7 +2129,7 @@
               border: 'none',
               fontSize: 24,
               cursor: 'pointer',
-              color: '#64748b',
+              color: isDarkMode ? '#94a3b8' : '#64748b',
               lineHeight: 1
             }
           }, '\u00D7'),
@@ -2140,7 +2169,7 @@
               margin: '0 0 8px',
               fontSize: 22,
               fontWeight: 700,
-              color: '#0f172a'
+              color: isDarkMode ? '#f1f5f9' : '#0f172a'
             }
           }, 'New Listing'),
 
@@ -2149,7 +2178,7 @@
             style: {
               margin: '0 0 24px',
               fontSize: 14,
-              color: '#64748b',
+              color: isDarkMode ? '#94a3b8' : '#64748b',
               lineHeight: 1.5
             }
           }, 'Select photos and AI will generate your listing automatically. You can edit details after.'),

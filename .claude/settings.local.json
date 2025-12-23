@@ -65,7 +65,8 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 9156dac4:public/app/features/uploads/service.js)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" diff public/app/app-shell.js public/app/features/listing-forms.js)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" check-ignore -v \"ios/App/App/public/app/bootstrap/browser-app.js\")",
-      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" status --short)"
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" status --short)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" checkout -- public/app/app-shell.js)"
     ],
     "deny": [],
     "ask": []

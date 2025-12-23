@@ -26,12 +26,34 @@
       const containerRef = useRef(null);
       const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('theme') === 'dark');
+
+      // Theme colors
+      const theme = {
+        bg: isDarkMode ? '#1e293b' : '#fff',
+        bgSecondary: isDarkMode ? '#334155' : '#f8fafc',
+        bgTertiary: isDarkMode ? '#475569' : '#f1f5f9',
+        border: isDarkMode ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
+        text: isDarkMode ? '#f1f5f9' : '#0f172a',
+        textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+        textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+        sliderBg: isDarkMode ? '#475569' : '#e2e8f0',
+        sliderThumb: isDarkMode ? '#3b82f6' : '#2563eb',
+        errorBg: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2',
+        errorText: isDarkMode ? '#f87171' : '#991b1b'
+      };
+
       const borderColorValue = typeof avatarBorderColor === 'string' && avatarBorderColor.trim()
         ? avatarBorderColor.trim()
         : '#ffffff';
       const borderStyleValue = avatarBorderStyle === 'dashed' ? 'dashed' : 'solid';
 
       const CROP_SIZE = 280; // Size of the crop area in the UI
+      const MIN_ZOOM = 0.25;
+      const MAX_ZOOM = 5;
 
       useEffect(() => {
         if (!open) {
@@ -140,7 +162,7 @@
       }, [isDragging, handlePointerMove, handlePointerUp]);
 
       const handleZoomChange = useCallback((newZoom) => {
-        const clampedZoom = Math.max(0.5, Math.min(3, newZoom));
+        const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
         setZoom(clampedZoom);
         // Re-clamp position with new zoom
         setPosition(prev => clampPosition(prev.x, prev.y, clampedZoom));
@@ -263,7 +285,7 @@
         H('div', {
           className: 'modal-content',
           style: {
-            background: '#fff',
+            background: theme.bg,
             borderRadius: 16,
             maxWidth: 440,
             width: '100%',
@@ -279,10 +301,10 @@
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '16px 20px',
-              borderBottom: '1px solid #e5e7eb'
+              borderBottom: `1px solid ${theme.border}`
             }
           },
-            H('h2', { style: { margin: 0, fontSize: 18, fontWeight: 700 } }, 'Profile Picture'),
+            H('h2', { style: { margin: 0, fontSize: 18, fontWeight: 700, color: theme.text } }, 'Profile Picture'),
             H('button', {
               onClick: onClose,
               style: {
@@ -290,14 +312,20 @@
                 height: 36,
                 borderRadius: '50%',
                 border: 'none',
-                background: '#f1f5f9',
+                background: theme.bgTertiary,
                 cursor: 'pointer',
-                fontSize: 20,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                color: theme.textSecondary
               }
-            }, '×')
+            },
+              // X icon SVG
+              H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+              )
+            )
           ),
 
           // Body
@@ -305,8 +333,8 @@
             error && H('div', {
               style: {
                 padding: 12,
-                background: '#fee2e2',
-                color: '#991b1b',
+                background: theme.errorBg,
+                color: theme.errorText,
                 borderRadius: 8,
                 marginBottom: 16,
                 fontSize: 14
@@ -325,7 +353,7 @@
                   margin: '0 auto 16px',
                   border: `4px ${borderStyleValue} ${borderColorValue}`,
                   overflow: 'hidden',
-                  background: '#f1f5f9',
+                  background: theme.bgTertiary,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -339,13 +367,16 @@
                       alt: 'Current profile picture',
                       style: { width: '100%', height: '100%', objectFit: 'cover' }
                     })
-                  : H('span', { style: { fontSize: 40, color: '#94a3b8' } }, '👤'),
+                  : H('svg', { width: 48, height: 48, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textMuted, strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                      H('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }),
+                      H('circle', { cx: 12, cy: 7, r: 4 })
+                    ),
                 // Overlay hint
                 H('div', {
                   style: {
                     position: 'absolute',
                     inset: 0,
-                    background: 'rgba(0, 0, 0, 0.4)',
+                    background: 'rgba(0, 0, 0, 0.5)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -353,10 +384,14 @@
                     color: '#fff',
                     fontSize: 12,
                     fontWeight: 600,
-                    gap: 2
+                    gap: 4
                   }
                 },
-                  H('span', { style: { fontSize: 20 } }, '📷'),
+                  // Camera icon SVG
+                  H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    H('path', { d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
+                    H('circle', { cx: 12, cy: 13, r: 4 })
+                  ),
                   currentPictureUrl ? 'Tap to change' : 'Tap to add'
                 )
               ),
@@ -433,11 +468,15 @@
                   marginBottom: 20
                 }
               },
-                H('span', { style: { fontSize: 18 } }, '🔍'),
+                // Zoom out icon (minus in circle)
+                H('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('circle', { cx: 11, cy: 11, r: 8 }),
+                  H('line', { x1: 8, y1: 11, x2: 14, y2: 11 })
+                ),
                 H('input', {
                   type: 'range',
-                  min: '0.5',
-                  max: '3',
+                  min: String(MIN_ZOOM),
+                  max: String(MAX_ZOOM),
                   step: '0.05',
                   value: zoom,
                   onChange: (e) => handleZoomChange(parseFloat(e.target.value)),
@@ -446,11 +485,16 @@
                     height: 6,
                     borderRadius: 3,
                     appearance: 'none',
-                    background: '#e2e8f0',
+                    background: theme.sliderBg,
                     cursor: 'pointer'
                   }
                 }),
-                H('span', { style: { fontSize: 18 } }, '🔎')
+                // Zoom in icon (plus in circle)
+                H('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('circle', { cx: 11, cy: 11, r: 8 }),
+                  H('line', { x1: 11, y1: 8, x2: 11, y2: 14 }),
+                  H('line', { x1: 8, y1: 11, x2: 14, y2: 11 })
+                )
               ),
 
               // Hidden canvas for cropping
@@ -472,8 +516,8 @@
                   style: {
                     flex: 1,
                     padding: '14px 20px',
-                    background: '#f1f5f9',
-                    color: '#475569',
+                    background: theme.bgTertiary,
+                    color: theme.text,
                     border: 'none',
                     borderRadius: 12,
                     fontSize: 15,
@@ -487,7 +531,7 @@
                   style: {
                     flex: 1,
                     padding: '14px 20px',
-                    background: uploading ? '#94a3b8' : '#2563eb',
+                    background: uploading ? theme.textMuted : '#2563eb',
                     color: '#fff',
                     border: 'none',
                     borderRadius: 12,
@@ -504,8 +548,8 @@
           !previewUrl && avatarBorderColor !== undefined && avatarBorderStyle !== undefined && H('div', {
             style: {
               padding: '16px 20px',
-              borderTop: '1px solid #e5e7eb',
-              background: '#f8fafc'
+              borderTop: `1px solid ${theme.border}`,
+              background: theme.bgSecondary
             }
           },
             H('div', {
@@ -516,17 +560,17 @@
                 marginBottom: 12
               }
             },
-              H('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Border Style'),
+              H('span', { style: { fontWeight: 600, fontSize: 14, color: theme.text } }, 'Border Style'),
               !isPremium && H('span', {
                 style: {
                   fontSize: 11,
                   padding: '2px 8px',
-                  background: '#dbeafe',
-                  color: '#1e40af',
+                  background: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#dbeafe',
+                  color: isDarkMode ? '#a5b4fc' : '#1e40af',
                   borderRadius: 10,
                   fontWeight: 600
                 }
-              }, '✨ Premium')
+              }, 'Premium')
             ),
             H('div', {
               style: {
@@ -537,7 +581,7 @@
               }
             },
               H('label', { style: { display: 'grid', gap: 4 } },
-                H('span', { style: { fontSize: 12, color: '#64748b' } }, 'Color'),
+                H('span', { style: { fontSize: 12, color: theme.textSecondary } }, 'Color'),
                 H('input', {
                   type: 'color',
                   value: borderColorValue,
@@ -547,14 +591,15 @@
                     width: '100%',
                     height: 40,
                     borderRadius: 8,
-                    border: '1px solid #e2e8f0',
+                    border: `1px solid ${theme.border}`,
                     cursor: isPremium ? 'pointer' : 'not-allowed',
-                    opacity: isPremium ? 1 : 0.5
+                    opacity: isPremium ? 1 : 0.5,
+                    background: theme.bg
                   }
                 })
               ),
               H('label', { style: { display: 'grid', gap: 4 } },
-                H('span', { style: { fontSize: 12, color: '#64748b' } }, 'Style'),
+                H('span', { style: { fontSize: 12, color: theme.textSecondary } }, 'Style'),
                 H('select', {
                   value: borderStyleValue,
                   onChange: (e) => onChangeBorderStyle?.(e.target.value),
@@ -563,10 +608,12 @@
                     width: '100%',
                     height: 40,
                     borderRadius: 8,
-                    border: '1px solid #e2e8f0',
+                    border: `1px solid ${theme.border}`,
                     padding: '0 12px',
                     cursor: isPremium ? 'pointer' : 'not-allowed',
-                    opacity: isPremium ? 1 : 0.5
+                    opacity: isPremium ? 1 : 0.5,
+                    background: theme.bg,
+                    color: theme.text
                   }
                 },
                   H('option', { value: 'solid' }, 'Solid'),
@@ -583,8 +630,8 @@
               style: {
                 width: '100%',
                 padding: '12px',
-                background: isPremium ? '#2563eb' : '#e2e8f0',
-                color: isPremium ? '#fff' : '#94a3b8',
+                background: isPremium ? '#2563eb' : theme.bgTertiary,
+                color: isPremium ? '#fff' : theme.textMuted,
                 border: 'none',
                 borderRadius: 10,
                 fontSize: 14,
