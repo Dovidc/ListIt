@@ -20,11 +20,16 @@ export function createListingQueueFeature({ React }) {
     const [queuePendingCount, setQueuePendingCount] = useState(0);
     const backgroundQueueEnabled = true;
 
-    // Show "Keep app open" toast - stays visible until hideUploadingToast is called
+    // Show "Listing in progress" toast - auto-hides after 2 seconds
     const showUploadingToast = useCallback(() => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       setUploadingCount(c => c + 1);
       setShowQueueToast(true);
+      // Auto-hide after 2 seconds
+      toastTimerRef.current = setTimeout(() => {
+        setUploadingCount(c => Math.max(0, c - 1));
+        setShowQueueToast(false);
+      }, 2000);
     }, []);
 
     // Hide the toast when upload is complete (safe to close app)
