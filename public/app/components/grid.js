@@ -36,7 +36,8 @@
       const hasDistance = Number.isFinite(item?.distance_m);
       const distanceLabel = hasDistance ? formatDistanceBadge(item.distance_m) : null;
       const isFree = !!item?.is_free;
-      const wantsOffer = !!item?.inquiry_enabled;
+      const customTag = item?.custom_tag ? String(item.custom_tag).trim().slice(0, 12) : null;
+      const customTagColor = item?.custom_tag_color || null;
 
       // Update src when item changes
       React.useEffect(() => {
@@ -119,53 +120,60 @@
                 fontSize: 12
               }
             }, 'No image'),
-          // Distance badge - green indicator for nearby listings
-          distanceLabel && H('div', {
-            style: {
-              position: 'absolute',
-              bottom: 6,
-              left: 6,
-              background: '#059669',
-              color: '#fff',
-              fontSize: 8,
-              fontWeight: 600,
-              padding: '2px 5px',
-              borderRadius: 3,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-            }
-          }, distanceLabel),
-          // Free badge - pink indicator for free items
-          isFree && H('div', {
+          // Bottom-right container for stacked badges (Custom tag on top, Free, then Distance)
+          (customTag || isFree || distanceLabel) && H('div', {
             style: {
               position: 'absolute',
               bottom: 6,
               right: 6,
-              background: '#ec4899',
-              color: '#fff',
-              fontSize: 8,
-              fontWeight: 600,
-              padding: '2px 5px',
-              borderRadius: 3,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-              textTransform: 'uppercase'
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 3
             }
-          }, 'Free'),
-          // OBO badge - amber indicator for items wanting offers (only if not free)
-          (!isFree && wantsOffer) && H('div', {
-            style: {
-              position: 'absolute',
-              bottom: 6,
-              right: 6,
-              background: '#d97706',
-              color: '#fff',
-              fontSize: 8,
-              fontWeight: 600,
-              padding: '2px 5px',
-              borderRadius: 3,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-              textTransform: 'uppercase'
-            }
-          }, 'OBO')
+          },
+            // Custom tag badge - user-selected color or default gradient (top of stack)
+            customTag && H('div', {
+              style: {
+                background: customTagColor || 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                color: '#fff',
+                fontSize: 8,
+                fontWeight: 600,
+                padding: '2px 5px',
+                borderRadius: 3,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                maxWidth: 70,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }
+            }, customTag),
+            // Free badge - pink indicator for free items
+            isFree && H('div', {
+              style: {
+                background: '#ec4899',
+                color: '#fff',
+                fontSize: 8,
+                fontWeight: 600,
+                padding: '2px 5px',
+                borderRadius: 3,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                textTransform: 'uppercase'
+              }
+            }, 'Free'),
+            // Distance badge - green indicator for nearby listings (bottom of stack)
+            distanceLabel && H('div', {
+              style: {
+                background: '#059669',
+                color: '#fff',
+                fontSize: 8,
+                fontWeight: 600,
+                padding: '2px 5px',
+                borderRadius: 3,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+              }
+            }, distanceLabel)
+          )
         )
       );
     }, (prev, next) => {
@@ -176,7 +184,8 @@
         prev.item.__cover === next.item.__cover &&
         prev.item.distance_m === next.item.distance_m &&
         prev.item.is_free === next.item.is_free &&
-        prev.item.inquiry_enabled === next.item.inquiry_enabled
+        prev.item.custom_tag === next.item.custom_tag &&
+        prev.item.custom_tag_color === next.item.custom_tag_color
       );
     });
 

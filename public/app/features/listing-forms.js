@@ -633,7 +633,7 @@
     // Poll for auto-listing job completion
     // This runs in the background and calls callbacks when the job completes
     // Returns a stop function that can be called to cancel polling
-    function pollAutoListingJob({ jobId, onCompleted, onFailed, maxAttempts = 60, intervalMs = 2000 }) {
+    function pollAutoListingJob({ jobId, onCompleted, onFailed, maxAttempts = 120, intervalMs = 500 }) {
       if (!jobId || typeof api.getAutoListingStatus !== 'function') {
         console.warn('[AutoList] Cannot poll - missing jobId or API method');
         return () => {};
@@ -685,8 +685,8 @@
         }
       };
 
-      // Start polling after a short delay (give server time to start processing)
-      timeoutId = setTimeout(poll, 1500);
+      // Start polling immediately
+      timeoutId = setTimeout(poll, 250);
 
       return stop;
     }
@@ -790,7 +790,7 @@
       );
     }
 
-    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError }) {
+    function ListingFormModal({ isOpen, draft, onClose, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError, isPremium = false, onOpenPremiumModal }) {
       if (!isOpen) return null;
 
       const isMobile = isMobileDevice();
@@ -818,7 +818,9 @@
           showTags,
           setShowTags,
           initialFiles,
-          onModerationError
+          onModerationError,
+          isPremium,
+          onOpenPremiumModal
         })
         : H(ListingForm, {
           draft,
@@ -832,7 +834,9 @@
           reloadMine,
           reloadAll,
           initialFiles,
-          onModerationError
+          onModerationError,
+          isPremium,
+          onOpenPremiumModal
         });
 
       // On mobile, render as a full-screen modal overlay to avoid tab bar z-index issues
@@ -877,7 +881,7 @@
       );
     }
 
-    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, showTags, setShowTags, initialFiles = [] }) {
+    function CompactListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, showTags, setShowTags, initialFiles = [], isPremium = false, onOpenPremiumModal }) {
       const fileRef = useRef();
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [existingUrls, setExistingUrls] = useState([]);
@@ -893,6 +897,22 @@
         if (Array.isArray(draft.tags)) return draft.tags.join(', ');
         return String(draft.tags);
       });
+      const [customTag, setCustomTag] = useState(draft?.custom_tag || '');
+      const [customTagColor, setCustomTagColor] = useState(draft?.custom_tag_color || '#6366f1');
+
+      // Available tag colors
+      const TAG_COLORS = [
+        { hex: '#6366f1', name: 'Indigo' },
+        { hex: '#8b5cf6', name: 'Purple' },
+        { hex: '#ec4899', name: 'Pink' },
+        { hex: '#ef4444', name: 'Red' },
+        { hex: '#f97316', name: 'Orange' },
+        { hex: '#eab308', name: 'Yellow' },
+        { hex: '#22c55e', name: 'Green' },
+        { hex: '#06b6d4', name: 'Cyan' },
+        { hex: '#3b82f6', name: 'Blue' },
+        { hex: '#64748b', name: 'Slate' }
+      ];
 
       const [aiBusy, setAiBusy] = useState(false);
       const [aiErr, setAiErr] = useState('');
@@ -1159,7 +1179,9 @@
             price: markedFree ? 0 : safePrice,
             tags: String(tags || '').trim(),
             enable_nearby: enableNearby ? 1 : 0,
-            is_free: markedFree ? 1 : 0
+            is_free: markedFree ? 1 : 0,
+            custom_tag: isPremium && customTag.trim() ? customTag.trim().slice(0, 12) : null,
+            custom_tag_color: isPremium && customTag.trim() ? customTagColor : null
           };
 
           if (draft || inquiryEnabled) {
@@ -1593,6 +1615,86 @@
             H('div', { style: { flex: 1 } },
               H('div', { style: { fontSize: 14, fontWeight: 600, color: enableNearby ? '#059669' : '#0f172a' } }, 'Show in Nearest searches'),
               H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the items distance from them')
+            )
+          ),
+
+          // Custom Tag input - Premium feature
+          H('div', {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              padding: '12px 14px',
+              background: customTag.trim() ? '#f0f9ff' : '#f8fafc',
+              borderRadius: 10,
+              border: customTag.trim() ? '1px solid #7dd3fc' : '1px solid transparent',
+              opacity: isPremium ? 1 : 0.7,
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+              H('label', { style: { fontSize: 14, fontWeight: 600, color: customTag.trim() ? '#0284c7' : '#374151' } }, 'Custom Tag'),
+              !isPremium && H('button', {
+                type: 'button',
+                onClick: (e) => { e.preventDefault(); onOpenPremiumModal?.(); },
+                style: {
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }
+              }, 'PREMIUM')
+            ),
+            H('input', {
+              value: customTag,
+              maxLength: 12,
+              disabled: !isPremium,
+              onChange: e => setCustomTag(e.target.value),
+              placeholder: isPremium ? 'e.g. Vintage, New, Sale' : 'Premium feature',
+              style: {
+                ...TOUCH_CONTROL_STYLE,
+                borderRadius: 8,
+                cursor: isPremium ? 'text' : 'not-allowed',
+                background: isPremium ? '#fff' : '#f1f5f9'
+              }
+            }),
+            // Color palette for custom tag
+            H('div', {
+              style: {
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
+                padding: '8px 0'
+              }
+            },
+              TAG_COLORS.map(({ hex, name }) =>
+                H('button', {
+                  key: hex,
+                  type: 'button',
+                  title: name,
+                  disabled: !isPremium,
+                  onClick: () => setCustomTagColor(hex),
+                  style: {
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: hex,
+                    border: customTagColor === hex ? '3px solid #0f172a' : '2px solid #e5e7eb',
+                    cursor: isPremium ? 'pointer' : 'not-allowed',
+                    opacity: isPremium ? 1 : 0.5,
+                    boxShadow: customTagColor === hex ? '0 0 0 2px #fff inset' : 'none',
+                    transition: 'all 0.15s ease'
+                  }
+                })
+              )
+            ),
+            H('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' } },
+              H('span', null, 'Displays as a badge on your listing'),
+              H('span', null, `${customTag.length}/12`)
             )
           )
         ),

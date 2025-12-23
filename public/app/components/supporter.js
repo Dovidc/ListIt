@@ -802,6 +802,23 @@
                       H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'Collect and award karma when selling and buying from other premium users')
                     )
+                  ),
+                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                    H('div', {
+                      style: {
+                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        color: '#fff',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 4,
+                        boxShadow: '0 2px 4px rgba(99,102,241,0.3)'
+                      }
+                    }, 'Custom'),
+                    H('div', null,
+                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Custom Listing Tags'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Add your own badge text to make listings stand out')
+                    )
                   )
                 )
               )

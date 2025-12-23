@@ -1499,7 +1499,9 @@
                   reloadMine: reloadMineOnly,
                   reloadAll: refreshListings,
                   initialFiles: initialListingFiles,
-                  onModerationError: () => setShowModerationModal(true)
+                  onModerationError: () => setShowModerationModal(true),
+                  isPremium: hasPremiumAccess,
+                  onOpenPremiumModal: () => setSupporterUpsellState(s => ({ ...s, open: true, mode: 'prompt' }))
                 })
                 : (
                   viewingSeller

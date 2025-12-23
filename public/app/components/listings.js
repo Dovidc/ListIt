@@ -862,8 +862,8 @@
       });
     }
 
-    // --- Listing Form (S3-first) ---
-    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError }) {
+    // --- Listing Form (S3-first) - Modern design matching mobile ---
+    function ListingForm({ draft, onCancel, onSaved, autoListEnabled, autoPostNearbyEnabled, autoInquiryEnabled, backgroundQueueEnabled, enqueueListingJob, reloadMine, reloadAll, initialFiles = [], onModerationError, isPremium = false, onOpenPremiumModal }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []); // Files to upload to S3
       const [existingUrls, setExistingUrls] = useState([]); // Show current images (editable)
       const [originalUrls, setOriginalUrls] = useState([]);
@@ -877,6 +877,22 @@
         if (Array.isArray(draft.tags)) return draft.tags.join(', ');
         return String(draft.tags);
       });
+      const [customTag, setCustomTag] = useState(draft?.custom_tag || '');
+      const [customTagColor, setCustomTagColor] = useState(draft?.custom_tag_color || '#6366f1');
+
+      const TAG_COLORS = [
+        { hex: '#6366f1', name: 'Indigo' },
+        { hex: '#8b5cf6', name: 'Purple' },
+        { hex: '#ec4899', name: 'Pink' },
+        { hex: '#ef4444', name: 'Red' },
+        { hex: '#f97316', name: 'Orange' },
+        { hex: '#eab308', name: 'Yellow' },
+        { hex: '#22c55e', name: 'Green' },
+        { hex: '#06b6d4', name: 'Cyan' },
+        { hex: '#3b82f6', name: 'Blue' },
+        { hex: '#64748b', name: 'Slate' }
+      ];
+
       const [aiBusy, setAiBusy] = useState(false);
       const [aiErr, setAiErr] = useState('');
       const [aiCooldown, setAiCooldown] = useState(0); // seconds remaining
@@ -884,6 +900,7 @@
       // auto-list guard
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
+      const [saving, setSaving] = useState(false);
       const [showModerationModal, setShowModerationModal] = useState(false);
 
       const hasFixedGps = !!draft?.lat;
@@ -900,8 +917,20 @@
         return !!autoListEnabled;
       });
       const [showInquiryHelp, setShowInquiryHelp] = useState(false);
+      const [markedFree, setMarkedFree] = useState(() => !!draft?.is_free);
 
       const isMobile = isMobileDevice();
+
+      // Touch-friendly input style (matching mobile)
+      const INPUT_STYLE = {
+        padding: '14px 16px',
+        fontSize: 16,
+        border: '1px solid #e5e7eb',
+        borderRadius: 10,
+        background: '#fff',
+        width: '100%',
+        boxSizing: 'border-box'
+      };
 
       useEffect(() => {
         if (!Array.isArray(initialFiles)) return;
@@ -1224,6 +1253,8 @@
       // Update the submit function (remove the duplicate and fix it):
       async function submit(e) {
         e.preventDefault();
+        if (saving) return;
+        setSaving(true);
         try {
           const totalImages = existingUrls.length + files.length;
           if (totalImages === 0) {
@@ -1244,13 +1275,16 @@
             title: String(title || '').trim(),
             description: String(description || '').trim(),
             location: trimmedLocation,
-            price: safePrice,
+            price: markedFree ? 0 : safePrice,
             tags: String(tags || '').trim(),
-            enable_nearby: enableNearby ? 1 : 0
+            enable_nearby: enableNearby ? 1 : 0,
+            is_free: markedFree ? 1 : 0,
+            custom_tag: isPremium && customTag.trim() ? customTag.trim().slice(0, 12) : null,
+            custom_tag_color: isPremium && customTag.trim() ? customTagColor : null
           };
 
           if (draft || inquiryEnabled) {
-            basePayload.inquiry_enabled = inquiryEnabled ? 1 : 0;
+            basePayload.inquiry_enabled = markedFree ? 0 : (inquiryEnabled ? 1 : 0);
           }
 
           if (enableNearby) {
@@ -1338,12 +1372,13 @@
           } else {
             alert(`Create/save failed: ${msg}`);
           }
+        } finally {
+          setSaving(false);
         }
       }
 
-      const isFree = !priceVal || !Number.isFinite(Number(priceVal)) || Number(priceVal) === 0;
-      const showInquiryText = !!inquiryEnabled;
-      const formattedPrice = isFree ? price(0) : price(Number(priceVal));
+      const showInquiryText = !markedFree && !!inquiryEnabled;
+      const formattedPrice = markedFree ? price(0) : price(Number(priceVal) || 0);
 
       // On desktop for new listings, show simplified upload-only view until files are added
       const isDesktopNewListing = !draft && !isMobile;
@@ -1416,156 +1451,556 @@
         );
       }
 
-      return H('form', { onSubmit: submit, className: 'row', style: { flexDirection: 'column', gap: 12, position: 'relative' } },
-
+      // Modern form design matching mobile
+      return H('form', {
+        onSubmit: submit,
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+          maxWidth: 600,
+          margin: '0 auto',
+          padding: '24px 0',
+          position: 'relative'
+        }
+      },
         // Auto-list overlay while it works
         autoBusy && H('div', {
           style: {
-            position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.85)',
-            display: 'grid', placeItems: 'center', zIndex: 5, borderRadius: 12
+            position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.9)',
+            display: 'grid', placeItems: 'center', zIndex: 5, borderRadius: 16
           }
-        }, H('div', null, H('div', { className: 'spinner' }), H('div', { style: { marginTop: 6, fontWeight: 700 } }, 'Auto-listing...'))),
+        }, H('div', { style: { textAlign: 'center' } },
+          H('div', { className: 'spinner', style: { marginBottom: 12 } }),
+          H('div', { style: { fontWeight: 600, color: '#374151' } }, 'Auto-listing...')
+        )),
 
-        // New uploads (go to S3)
-        H(MultiFilePicker, { files, onChange: setFiles }),
+        // ==================== IMAGES SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Photos'),
 
-        // UPDATED: Existing images with delete capability
-        (existingUrls.length > 0) && H('div', null,
-          H('div', { className: 'muted', style: { marginBottom: 8 } }, 'Existing images:'),
-          H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap' } },
-            ...existingUrls.map((src, i) =>
-              H('div', { key: i, style: { position: 'relative' } },
-                H(ImageWithSkeleton, { src, style: { width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid #ddd' } }),
-                H('button', {
-                  className: 'btn danger',
-                  type: 'button',
-                  style: { position: 'absolute', top: 4, right: 4, padding: '4px 8px' },
-                  onClick: () => {
-                    const next = [...existingUrls];
-                    next.splice(i, 1);
-                    setExistingUrls(next);
+          // Existing images with delete capability
+          (existingUrls.length > 0) && H('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+            H('div', { style: { fontSize: 13, color: '#64748b', fontWeight: 500 } }, 'Current images'),
+            H('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+              ...existingUrls.map((src, i) =>
+                H('div', {
+                  key: i,
+                  style: {
+                    position: 'relative',
+                    width: 100,
+                    height: 100,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                   }
-                }, 'x')
+                },
+                  H(ImageWithSkeleton, {
+                    src,
+                    style: { width: '100%', height: '100%', objectFit: 'cover' }
+                  }),
+                  H('button', {
+                    type: 'button',
+                    onClick: () => {
+                      const next = [...existingUrls];
+                      next.splice(i, 1);
+                      setExistingUrls(next);
+                    },
+                    style: {
+                      position: 'absolute',
+                      top: 6,
+                      right: 6,
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: 'rgba(239,68,68,0.9)',
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }
+                  }, '×')
+                )
               )
             )
-          )
-        ),
-
-        H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
-          aiCooldown > 0 && H('span', { style: { color: '#6b7280', fontSize: 14, minWidth: 32 } }, `${aiCooldown}s`),
-          H('button', { type: 'button', className: `btn ${(aiBusy || aiCooldown > 0) ? '' : 'primary'}`, disabled: aiBusy || aiCooldown > 0, onClick: runAI }, aiBusy ? 'Analyzing...' : 'Run AI analysis'),
-          aiErr && H('span', { className: 'muted', style: { color: '#b91c1c' } }, aiErr),
-          H('span', { className: 'muted' }, 'Only images are required. AI can suggest title/tags/price.')
-        ),
-
-        H('label', null, 'Title (optional)'),
-        H('input', { value: title, maxLength: 80, onChange: e => setTitle(e.target.value), placeholder: 'Optional' }),
-
-        H('label', null, 'Description (optional)'),
-        H('textarea', { value: description, maxLength: 400, onChange: e => setDescription(e.target.value), placeholder: 'Optional' }),
-
-        H('label', null, 'Location (required)'),
-        H('div', { className: 'row', style: { gap: 8 } },
-          H('input', { value: location, maxLength: 80, onChange: e => setLocation(e.target.value), placeholder: 'Required (City, State)' }),
-          H('button', { type: 'button', className: 'btn', onClick: useMyLocation, disabled: geoBusy }, geoBusy ? 'Locating...' : 'Use my location'),
-          geoErr && H('span', { className: 'muted', style: { color: '#b91c1c' } }, geoErr)
-        ),
-
-        isMobile && H('label', {
-          className: 'toggle-card',
-          style: { marginTop: 4, gap: 8, alignItems: 'flex-start' }
-        },
-          H('input', {
-            type: 'checkbox',
-            className: 'toggle-input',
-            checked: enableNearby,
-            onChange: e => {
-              const checked = e.target.checked;
-              setEnableNearby(checked);
-              if (checked && !hasFixedGps) useMyLocation();
-            }
-          }),
-          H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-          H('div', { className: 'toggle-copy' },
-            H('div', { style: { fontWeight: 700 } }, 'Enable Nearby searches'),
-            H('div', { className: 'muted', style: { fontSize: 12 } }, 'Shows distance in feet/miles to buyers.')
-          )
-        ),
-        (enableNearby && hasFixedGps) && H('span', { className: 'muted', style: { marginTop: 4 } }, 'Nearby GPS fixed at creation; cannot change.'),
-
-        H('label', null, 'Price (optional)'),
-        H('div', { className: 'row', style: { alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
-          H('div', { className: 'row', style: { alignItems: 'center', gap: 8 } },
-            H('input', {
-              value: priceVal,
-              inputMode: 'decimal',
-              onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
-              placeholder: 'Leave empty for $0.00'
-            }),
-            showInquiryText
-              ? H('span', { className: 'inquiry-badge' }, 'Seller wants an offer')
-              : H('span', {
-                className: 'muted',
-                style: { fontWeight: 700, color: isFree ? '#16a34a' : '#6b7280' }
-              }, formattedPrice)
           ),
-          H('div', { className: 'row', style: { alignItems: 'center', gap: 6 } },
-            H('label', { className: 'toggle-card', style: { padding: '6px 10px' } },
-              H('input', {
-                type: 'checkbox',
-                className: 'toggle-input',
-                checked: showInquiryText,
-                onChange: e => setInquiryEnabled(e.target.checked)
-              }),
-              H('span', { className: 'toggle-slider', 'aria-hidden': true }),
-              H('div', { className: 'toggle-copy' },
-                H('div', { style: { fontWeight: 700 } }, 'Offer Message'),
-                H('div', { className: 'muted', style: { fontSize: 12 } }, 'show offer message')
-              )
+
+          // New file picker
+          H(MultiFilePicker, { files, onChange: setFiles })
+        ),
+
+        // ==================== AI ANALYSIS ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          H('button', {
+            type: 'button',
+            disabled: aiBusy || aiCooldown > 0,
+            onClick: runAI,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '14px 20px',
+              background: (aiBusy || aiCooldown > 0) ? '#e2e8f0' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+              color: (aiBusy || aiCooldown > 0) ? '#64748b' : '#fff',
+              border: 'none',
+              borderRadius: 12,
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: (aiBusy || aiCooldown > 0) ? 'not-allowed' : 'pointer'
+            }
+          },
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('polygon', { points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2' })
+            ),
+            aiBusy ? 'Analyzing...' : (aiCooldown > 0 ? `Wait ${aiCooldown}s` : 'Auto-fill with AI')
+          ),
+          aiErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, aiErr)
+        ),
+
+        // ==================== DETAILS SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Details'),
+
+          // Title
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Title'),
+            H('input', {
+              value: title,
+              maxLength: 80,
+              onChange: e => setTitle(e.target.value),
+              placeholder: 'What are you selling?',
+              style: INPUT_STYLE
+            })
+          ),
+
+          // Description
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Description'),
+            H('textarea', {
+              value: description,
+              maxLength: 400,
+              rows: 4,
+              onChange: e => setDescription(e.target.value),
+              placeholder: 'Describe your item, condition, features...',
+              style: { ...INPUT_STYLE, lineHeight: '1.5', resize: 'none' }
+            })
+          ),
+
+          // Price
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, opacity: markedFree ? 0.5 : 1, transition: 'opacity 0.2s ease' } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'Price'),
+            H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              H('div', { style: { position: 'relative', flex: 1 } },
+                H('span', { style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 16, fontWeight: 500 } }, '$'),
+                H('input', {
+                  value: markedFree ? '' : priceVal,
+                  inputMode: 'decimal',
+                  disabled: markedFree,
+                  onChange: e => setPriceVal(e.target.value.replace(/[^0-9.]/g, '')),
+                  placeholder: markedFree ? 'Free' : '0.00',
+                  style: { ...INPUT_STYLE, paddingLeft: 28, cursor: markedFree ? 'not-allowed' : 'text' }
+                })
+              ),
+              markedFree ? H('span', {
+                style: {
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  background: '#fdf2f8',
+                  color: '#be185d',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap'
+                }
+              }, 'Free') : (showInquiryText && H('span', {
+                style: {
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap'
+                }
+              }, 'Wants offers'))
+            )
+          ),
+
+          // Inquiry toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: (!markedFree && inquiryEnabled) ? '#fef3c7' : '#f8fafc',
+              borderRadius: 10,
+              cursor: markedFree ? 'not-allowed' : 'pointer',
+              opacity: markedFree ? 0.5 : 1,
+              border: (!markedFree && inquiryEnabled) ? '1px solid #fcd34d' : '1px solid transparent',
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: markedFree ? false : inquiryEnabled,
+              disabled: markedFree,
+              onChange: e => setInquiryEnabled(e.target.checked),
+              style: { width: 20, height: 20, accentColor: '#d97706' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#92400e' : '#0f172a' } }, 'Display offer banner'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make an offer')
             ),
             H('button', {
               type: 'button',
               onClick: (e) => { e.preventDefault(); e.stopPropagation(); setShowInquiryHelp(true); },
-              title: 'Inquiry mode info',
               style: {
-                width: 24, height: 24, lineHeight: '22px',
-                borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer'
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                border: '1px solid #e5e7eb',
+                background: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#64748b',
+                cursor: 'pointer'
               }
             }, '?')
+          ),
+
+          // Mark as Free toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: markedFree ? '#fdf2f8' : '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer',
+              border: markedFree ? '1px solid #f9a8d4' : '1px solid transparent',
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: markedFree,
+              onChange: e => {
+                const checked = e.target.checked;
+                setMarkedFree(checked);
+                if (checked) {
+                  setPriceVal('');
+                  setInquiryEnabled(false);
+                }
+              },
+              style: { width: 20, height: 20, accentColor: '#ec4899' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: markedFree ? '#be185d' : '#0f172a' } }, 'Mark as Free'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Give this item away for free')
+            )
+          ),
+
+          // Show in Nearest searches toggle
+          H('label', {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 14px',
+              background: enableNearby ? '#ecfdf5' : '#f8fafc',
+              borderRadius: 10,
+              cursor: 'pointer',
+              border: enableNearby ? '1px solid #6ee7b7' : '1px solid transparent',
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('input', {
+              type: 'checkbox',
+              checked: enableNearby,
+              onChange: e => {
+                const checked = e.target.checked;
+                setEnableNearby(checked);
+                if (checked && !hasFixedGps) useMyLocation();
+              },
+              style: { width: 20, height: 20, accentColor: '#059669' }
+            }),
+            H('div', { style: { flex: 1 } },
+              H('div', { style: { fontSize: 14, fontWeight: 600, color: enableNearby ? '#059669' : '#0f172a' } }, 'Show in Nearest searches'),
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, 'Buyers can see the item\'s distance from them')
+            )
+          ),
+
+          // Custom Tag input - Premium feature
+          H('div', {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              padding: '12px 14px',
+              background: customTag.trim() ? '#f0f9ff' : '#f8fafc',
+              borderRadius: 10,
+              border: customTag.trim() ? '1px solid #7dd3fc' : '1px solid transparent',
+              opacity: isPremium ? 1 : 0.7,
+              transition: 'all 0.2s ease'
+            }
+          },
+            H('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+              H('label', { style: { fontSize: 14, fontWeight: 600, color: customTag.trim() ? '#0284c7' : '#374151' } }, 'Custom Tag'),
+              !isPremium && H('button', {
+                type: 'button',
+                onClick: (e) => { e.preventDefault(); onOpenPremiumModal?.(); },
+                style: {
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }
+              }, 'PREMIUM')
+            ),
+            H('input', {
+              value: customTag,
+              maxLength: 12,
+              disabled: !isPremium,
+              onChange: e => setCustomTag(e.target.value),
+              placeholder: isPremium ? 'e.g. Vintage, New, Sale' : 'Premium feature',
+              style: {
+                ...INPUT_STYLE,
+                cursor: isPremium ? 'text' : 'not-allowed',
+                background: isPremium ? '#fff' : '#f1f5f9'
+              }
+            }),
+            // Color palette for custom tag
+            H('div', {
+              style: {
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
+                padding: '8px 0'
+              }
+            },
+              TAG_COLORS.map(({ hex, name }) =>
+                H('button', {
+                  key: hex,
+                  type: 'button',
+                  title: name,
+                  disabled: !isPremium,
+                  onClick: () => setCustomTagColor(hex),
+                  style: {
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: hex,
+                    border: customTagColor === hex ? '3px solid #0f172a' : '2px solid #e5e7eb',
+                    cursor: isPremium ? 'pointer' : 'not-allowed',
+                    opacity: isPremium ? 1 : 0.5,
+                    boxShadow: customTagColor === hex ? '0 0 0 2px #fff inset' : 'none',
+                    transition: 'all 0.15s ease'
+                  }
+                })
+              )
+            ),
+            H('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' } },
+              H('span', null, 'Displays as a badge on your listing'),
+              H('span', null, `${customTag.length}/12`)
+            )
           )
         ),
 
-        H('div', { className: 'card search-tags-card', style: { padding: 12 } },
-          H('div', { className: 'search-tags-title', style: { fontWeight: 600, marginBottom: 6 } }, 'Search tags (private, optional)'),
-          H('div', { className: 'muted', style: { marginBottom: 6 } }, 'Not shown publicly; help others find your item. Example:"car, suv, 4x4".'),
-          H('input', { placeholder: 'e.g. car, suv, 4x4', value: tags, onChange: e => setTags(e.target.value) })
+        // ==================== LOCATION SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+          H('h2', { style: { fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' } }, 'Location'),
+
+          H('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            H('label', { style: { fontSize: 14, fontWeight: 600, color: '#374151' } }, 'City or area'),
+            H('input', {
+              value: location,
+              maxLength: 80,
+              onChange: e => setLocation(e.target.value),
+              placeholder: 'e.g. Brooklyn, NY',
+              style: INPUT_STYLE
+            })
+          ),
+
+          H('button', {
+            type: 'button',
+            onClick: useMyLocation,
+            disabled: geoBusy,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '12px 16px',
+              border: '1px solid #e5e7eb',
+              borderRadius: 10,
+              background: '#fff',
+              color: '#374151',
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: geoBusy ? 'not-allowed' : 'pointer'
+            }
+          },
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('circle', { cx: 12, cy: 12, r: 10 }),
+              H('circle', { cx: 12, cy: 12, r: 3 }),
+              H('line', { x1: 12, y1: 2, x2: 12, y2: 4 }),
+              H('line', { x1: 12, y1: 20, x2: 12, y2: 22 }),
+              H('line', { x1: 2, y1: 12, x2: 4, y2: 12 }),
+              H('line', { x1: 20, y1: 12, x2: 22, y2: 12 })
+            ),
+            geoBusy ? 'Getting location...' : 'Use my current location'
+          ),
+
+          geoErr && H('p', { style: { margin: 0, color: '#dc2626', fontSize: 13 } }, geoErr),
+          (enableNearby && hasFixedGps) && H('p', { style: { margin: 0, color: '#64748b', fontSize: 12 } }, 'GPS coordinates fixed at creation and cannot be changed.')
         ),
 
-        H('div', { className: 'row' },
-          H('button', { className: 'btn primary', type: 'submit', disabled: autoBusy }, draft ? 'Save changes' : 'Create listing'),
-          H('button', { className: 'btn', type: 'button', onClick: onCancel, disabled: autoBusy }, 'Cancel')
+        // ==================== SEARCH TAGS SECTION ====================
+        H('section', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+          H('div', null,
+            H('h2', { style: { fontSize: 18, fontWeight: 700, margin: '0 0 4px', color: '#0f172a' } }, 'Search Tags'),
+            H('p', { style: { margin: 0, fontSize: 13, color: '#64748b' } }, 'Private tags to help buyers find your item')
+          ),
+          H('input', {
+            value: tags,
+            onChange: e => setTags(e.target.value),
+            placeholder: 'e.g. vintage, electronics, collectible',
+            style: INPUT_STYLE
+          })
         ),
+
+        // ==================== FOOTER BUTTONS ====================
+        H('div', {
+          style: {
+            display: 'flex',
+            gap: 12,
+            padding: '16px 0',
+            borderTop: '1px solid #e5e7eb',
+            marginTop: 8
+          }
+        },
+          H('button', {
+            type: 'submit',
+            disabled: autoBusy || saving,
+            style: {
+              flex: 1,
+              padding: '14px 24px',
+              background: saving
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : (autoBusy ? '#94a3b8' : '#2563eb'),
+              color: '#fff',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: (autoBusy || saving) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'background 0.2s ease'
+            }
+          },
+            saving && H('span', {
+              style: {
+                width: 16,
+                height: 16,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }
+            }),
+            saving ? 'Saving...' : (draft ? 'Save Changes' : 'Create Listing')
+          ),
+          H('button', {
+            type: 'button',
+            onClick: onCancel,
+            disabled: autoBusy || saving,
+            style: {
+              padding: '14px 24px',
+              background: '#f1f5f9',
+              color: '#374151',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: (autoBusy || saving) ? 'not-allowed' : 'pointer'
+            }
+          }, 'Cancel')
+        ),
+
         showInquiryHelp && H(InquiryHelpModal, { onClose: () => setShowInquiryHelp(false) }),
 
         // Moderation flagged modal
         showModerationModal && H('div', {
-          className: 'modal-overlay',
-          onClick: () => setShowModerationModal(false),
-          style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 9999 }
+          style: {
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 9999
+          },
+          onClick: () => setShowModerationModal(false)
         },
           H('div', {
             onClick: e => e.stopPropagation(),
-            style: { padding: 24, maxWidth: 400, textAlign: 'center', background: '#fff', borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }
+            style: {
+              padding: 32,
+              maxWidth: 400,
+              textAlign: 'center',
+              background: '#fff',
+              borderRadius: 20,
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)'
+            }
           },
-            H('div', { style: { fontSize: 48, marginBottom: 12 } }, '\u26A0\uFE0F'),
-            H('h3', { style: { marginBottom: 12 } }, 'Submission Under Review'),
-            H('p', { style: { marginBottom: 16, color: '#666' } },
-              'Your submission has been flagged for review by our administrators. This is a routine check to ensure content meets our community guidelines. We will review it shortly.'
+            H('div', { style: { fontSize: 48, marginBottom: 16 } }, '\u26A0\uFE0F'),
+            H('h3', { style: { margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: '#0f172a' } }, 'Submission Under Review'),
+            H('p', { style: { margin: '0 0 20px', color: '#64748b', lineHeight: 1.5 } },
+              'Your submission has been flagged for review by our administrators. This is a routine check to ensure content meets our community guidelines.'
             ),
             H('button', {
-              className: 'btn primary',
               onClick: () => setShowModerationModal(false),
-              style: { width: '100%' }
+              style: {
+                width: '100%',
+                padding: '14px 24px',
+                background: '#2563eb',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }
             }, 'OK')
           )
         )

@@ -2067,8 +2067,22 @@ const PROHIBITED_ITEM_PATTERNS = [
   // Explosives
   /\b(explosive|explosives|grenade|grenades|bomb|bombs|dynamite|c-?4)\b/i,
   // Drugs (common)
-  /\b(cocaine|heroin|meth|methamphetamine|fentanyl|opioid|opioids)\b/i,
-  /\b(mdma|ecstasy|lsd|psilocybin|dmt)\b/i,
+  /\b(drugs?|cocaine|heroin|meth|methamphetamine|fentanyl|opioid|opioids)\b/i,
+  /\b(mdma|ecstasy|lsd|psilocybin|dmt|weed|marijuana|cannabis)\b/i,
+  // Profanity
+  /\b(fuck|fucking|fucked|fucker|fuckers|fck|wtf)\b/i,
+  /\b(shit|shits|shitty|bullshit)\b/i,
+  /\b(asshole|assholes)\b/i,
+  /\b(bitch|bitches)\b/i,
+  /\b(cunt|cunts)\b/i,
+  /\b(dick|dicks)\b/i,
+  /\b(pussy|pussies)\b/i,
+  /\b(whore|whores|slut|sluts)\b/i,
+  // Slurs
+  /\b(nigger|nigga|n[i1]gg[ae]r?)\b/i,
+  /\b(faggot|faggots|fag|fags)\b/i,
+  /\b(retard|retards|retarded)\b/i,
+  /\b(kike|spic|chink|gook|wetback)\b/i,
 ];
 
 function checkProhibitedItems(text) {
@@ -2082,7 +2096,7 @@ function checkProhibitedItems(text) {
   return null;
 }
 
-async function moderateListingContent({ title, description, tags, imageUrls }) {
+async function moderateListingContent({ title, description, tags, imageUrls, customTag }) {
 
   const client = getOpenAIClient();
 
@@ -2124,6 +2138,20 @@ async function moderateListingContent({ title, description, tags, imageUrls }) {
     });
   }
 
+  // Check custom tag
+  if (customTag && typeof customTag === 'string') {
+    const customTagCheck = checkProhibitedItems(customTag);
+    if (customTagCheck) {
+      flagged.push({
+        type: 'custom_tag',
+        target: customTag,
+        categories: ['prohibited_item'],
+        category_scores: { prohibited_item: 1.0 },
+        matched: customTagCheck.matched
+      });
+    }
+  }
+
   // If prohibited items found, return immediately (no need for OpenAI check)
   if (flagged.length > 0) {
     console.log('[moderateListingContent] Prohibited item detected:', flagged.map(f => f.matched).join(', '));
@@ -2148,6 +2176,11 @@ async function moderateListingContent({ title, description, tags, imageUrls }) {
 
     if (trimmed) entries.push({ type: 'description', value: trimmed });
 
+  }
+
+  if (typeof customTag === 'string') {
+    const trimmed = customTag.trim();
+    if (trimmed) entries.push({ type: 'custom_tag', value: trimmed });
   }
 
   if (Array.isArray(imageUrls)) {
@@ -5033,7 +5066,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free,
+      l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free, l.custom_tag, l.custom_tag_color,
 
       u.username AS owner_username,
 
@@ -5053,7 +5086,7 @@ app.get('/api/listings', async (req, res) => {
 
       l.title, l.description, l.location, l.price, l.created_at,
 
-      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free,
+      l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free, l.custom_tag, l.custom_tag_color,
 
       u.username AS owner_username,
 
@@ -5722,7 +5755,7 @@ app.post(
 
       if (isLockedAccount(req.user)) return respondLocked(res);
 
-      const { title, description, location, price, tags, enable_nearby, inquiry_enabled, is_free } = req.body || {};
+      const { title, description, location, price, tags, enable_nearby, inquiry_enabled, is_free, custom_tag } = req.body || {};
 
 
 
@@ -5846,7 +5879,9 @@ app.post(
 
           tags: tagStr,
 
-          imageUrls: uploads.map((item) => item.url)
+          imageUrls: uploads.map((item) => item.url),
+
+          customTag: custom_tag ? String(custom_tag).slice(0, 12).trim() : null
 
         });
 
@@ -5889,12 +5924,16 @@ app.post(
 
 
       const isFreeVal = is_free ? 1 : 0;
+      // custom_tag - max 12 chars, premium feature (validation happens client-side)
+      const customTagVal = custom_tag ? String(custom_tag).slice(0, 12).trim() || null : null;
+      // custom_tag_color - hex color for the tag badge
+      const customTagColorVal = req.body.custom_tag_color && /^#[0-9A-Fa-f]{6}$/.test(req.body.custom_tag_color) ? req.body.custom_tag_color : null;
 
       const info = await db.prepare(`
 
-      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled, is_free)
+      INSERT INTO listings (user_id, image_data, title, description, location, price, created_at, tags, lat, lon, enable_nearby, inquiry_enabled, is_free, custom_tag, custom_tag_color)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -5914,7 +5953,7 @@ app.post(
 
         tagStr,
 
-        lat, lon, enNearby, inquiryEnabled, isFreeVal
+        lat, lon, enNearby, inquiryEnabled, isFreeVal, customTagVal, customTagColorVal
 
       );
 
@@ -6942,6 +6981,11 @@ app.put(
 
       try {
 
+        // Get custom_tag if provided for moderation
+        const customTagForMod = typeof req.body.custom_tag !== 'undefined'
+          ? (req.body.custom_tag ? String(req.body.custom_tag).slice(0, 12).trim() : null)
+          : null;
+
         const flagged = await moderateListingContent({
 
           title: String(newTitle || ''),
@@ -6950,7 +6994,9 @@ app.put(
 
           tags: newTags,
 
-          imageUrls: remainingImageUrls
+          imageUrls: remainingImageUrls,
+
+          customTag: customTagForMod
 
         });
 
@@ -7121,6 +7167,22 @@ app.put(
 
         await db.prepare('UPDATE listings SET is_free=? WHERE id=?').run(req.body.is_free ? 1 : 0, id);
 
+      }
+
+      // custom_tag - premium feature, max 12 chars
+      if (typeof req.body.custom_tag !== 'undefined') {
+        const rawTag = req.body.custom_tag;
+        // Allow null/empty to clear the tag
+        const tagVal = (rawTag === null || rawTag === '') ? null : String(rawTag).slice(0, 12).trim() || null;
+        await db.prepare('UPDATE listings SET custom_tag=? WHERE id=?').run(tagVal, id);
+      }
+
+      // custom_tag_color - hex color for the tag badge
+      if (typeof req.body.custom_tag_color !== 'undefined') {
+        const rawColor = req.body.custom_tag_color;
+        // Allow null/empty to clear, validate hex format
+        const colorVal = (rawColor && /^#[0-9A-Fa-f]{6}$/.test(rawColor)) ? rawColor : null;
+        await db.prepare('UPDATE listings SET custom_tag_color=? WHERE id=?').run(colorVal, id);
       }
 
       if (typeof req.body.sold !== 'undefined') {
@@ -7348,7 +7410,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  ) AS image_data,
                  l.title, l.description, l.location,
                  l.price, l.created_at, l.tags, l.lat, l.lon,
-                 l.inquiry_enabled, l.is_free,
+                 l.inquiry_enabled, l.is_free, l.custom_tag, l.custom_tag_color,
                  u.username AS owner_username,
                  u.profile_picture_url AS owner_profile_picture_url,
                  u.supporter_badge AS owner_supporter_badge,
@@ -7429,7 +7491,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                ) AS image_data,
                l.title, l.description, l.location,
                l.price, l.created_at, l.tags, l.lat, l.lon,
-               l.inquiry_enabled, l.is_free,
+               l.inquiry_enabled, l.is_free, l.custom_tag, l.custom_tag_color,
                u.username AS owner_username,
                u.profile_picture_url AS owner_profile_picture_url,
                u.supporter_badge AS owner_supporter_badge,
@@ -7682,7 +7744,7 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
       }
 
-      const listing = await db.prepare('SELECT user_id, title, description FROM listings WHERE id = ?').get(lid);
+      const listing = await db.prepare('SELECT user_id, title, description, custom_tag FROM listings WHERE id = ?').get(lid);
 
       if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
@@ -7712,7 +7774,9 @@ app.post('/api/uploads/finalize', auth, uploadLimiter, async (req, res) => {
 
           description: String(listing.description || ''),
 
-          imageUrls
+          imageUrls,
+
+          customTag: listing.custom_tag || null
 
         });
 
