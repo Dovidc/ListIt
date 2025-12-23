@@ -21,6 +21,8 @@
     const {
       isMobileDevice,
       isCapacitorNative,
+      pickGalleryImages,
+      takePhoto,
       fetchCoordsAndReverse
     } = helpers;
     if (typeof isMobileDevice !== 'function') {
@@ -978,6 +980,39 @@
         if (fileRef.current) fileRef.current.value = '';
       }
 
+      // Handle camera button - use Capacitor Camera if available, else fallback to file input
+      async function handleCameraClick() {
+        if (isCapacitorNative()) {
+          const photo = await takePhoto();
+          if (photo) {
+            setFiles(prev => [...prev, photo]);
+          }
+        } else {
+          // Fallback for web: use file input with capture
+          fileRef.current?.click();
+        }
+      }
+
+      // Handle gallery button - use Capacitor picker if available, else fallback to file input
+      async function handleGalleryClick() {
+        if (isCapacitorNative()) {
+          const photos = await pickGalleryImages(12);
+          if (photos && photos.length > 0) {
+            const MAX_MB = 20;
+            const valid = photos.filter(f => {
+              if (f.size > MAX_MB * 1024 * 1024) { alert(`Each image must be under ${MAX_MB}MB`); return false; }
+              return true;
+            });
+            if (valid.length > 0) {
+              setFiles(prev => [...prev, ...valid]);
+            }
+          }
+        } else {
+          // Fallback for web: use regular file input
+          fileRef.current?.click();
+        }
+      }
+
       function removeFile(i) {
         const next = [...files];
         const [removed] = next.splice(i, 1);
@@ -1372,41 +1407,88 @@
             )
           ),
 
-          // Add Photos button
-          H('button', {
-            type: 'button',
-            onClick: () => fileRef.current?.click(),
+          // Camera and Gallery buttons
+          H('div', {
             style: {
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '16px 20px',
-              border: isDarkMode ? '2px dashed rgba(255,255,255,0.2)' : '2px dashed #cbd5e1',
-              borderRadius: 12,
-              background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-              color: isDarkMode ? '#94a3b8' : '#475569',
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
+              gap: 12
             }
           },
-            H('svg', {
-              width: 22,
-              height: 22,
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: 2,
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round'
+            // Camera button
+            H('button', {
+              type: 'button',
+              onClick: handleCameraClick,
+              style: {
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '16px 12px',
+                border: isDarkMode ? '2px dashed rgba(255,255,255,0.2)' : '2px dashed #cbd5e1',
+                borderRadius: 12,
+                background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+                color: isDarkMode ? '#94a3b8' : '#475569',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }
             },
-              H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
-              H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
-              H('polyline', { points: '21 15 16 10 5 21' })
+              // Camera icon
+              H('svg', {
+                width: 22,
+                height: 22,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('path', { d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
+                H('circle', { cx: 12, cy: 13, r: 4 })
+              ),
+              'Camera'
             ),
-            allImages.length > 0 ? 'Add More Photos' : 'Add Photos'
+            // Gallery button
+            H('button', {
+              type: 'button',
+              onClick: handleGalleryClick,
+              style: {
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '16px 12px',
+                border: isDarkMode ? '2px dashed rgba(255,255,255,0.2)' : '2px dashed #cbd5e1',
+                borderRadius: 12,
+                background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+                color: isDarkMode ? '#94a3b8' : '#475569',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }
+            },
+              // Gallery/image icon
+              H('svg', {
+                width: 22,
+                height: 22,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
+                H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
+                H('polyline', { points: '21 15 16 10 5 21' })
+              ),
+              'Gallery'
+            )
           )
         ),
 
@@ -1545,7 +1627,7 @@
             }),
             H('div', { style: { flex: 1 } },
               H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#fbbf24' : (isDarkMode ? '#e2e8f0' : '#0f172a') } }, 'Display offer banner'),
-              H('div', { style: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make a lower offer')
+              H('div', { style: { fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' } }, markedFree ? 'Not available for free items' : 'Invite buyers to make an offer')
             ),
             H('button', {
               type: 'button',

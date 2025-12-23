@@ -1663,7 +1663,7 @@
             }),
             H('div', { style: { flex: 1 } },
               H('div', { style: { fontSize: 14, fontWeight: 600, color: (!markedFree && inquiryEnabled) ? '#92400e' : '#0f172a' } }, 'Display offer banner'),
-              H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Buyers will be more likely to make an offer')
+              H('div', { style: { fontSize: 12, color: '#64748b' } }, markedFree ? 'Not available for free items' : 'Invite buyers to offer a price')
             ),
             H('button', {
               type: 'button',

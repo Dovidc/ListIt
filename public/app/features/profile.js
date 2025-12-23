@@ -1584,7 +1584,7 @@
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
                   H('div', { style: { fontWeight: 700 } }, 'Or Best Offer'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Add OBO tags to all subsequent listings')
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Add an offer banner to all subsequent listings')
                 ),
                 H('button', {
                   type: 'button',
@@ -1607,7 +1607,7 @@
                 H('span', { className: 'toggle-slider', 'aria-hidden': true }),
                 H('div', { className: 'toggle-copy' },
                   H('div', { style: { fontWeight: 700 } }, 'Distance Tag'),
-                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Displays item proximity')
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Apply listing proximity to all subsequent listings')
                 ),
                 H('button', {
                   type: 'button',
