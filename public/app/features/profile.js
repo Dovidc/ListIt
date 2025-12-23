@@ -1887,7 +1887,10 @@
       onToggleSold,
       onSupporterClick,
       onJoinSupporterProgram,
-      onListingsChanged
+      onListingsChanged,
+      onMessage,
+      onToggleSave,
+      savedListingIds: parentSavedIds = {}
     }) {
       const [helpModal, setHelpModal] = useState(null);
       const [profileSelected, setProfileSelected] = useState(null);
@@ -1982,6 +1985,50 @@
       }, []);
 
       const [profileTab, setProfileTab] = useState('active');
+      const [savedListings, setSavedListings] = useState([]);
+      const [savedListingsLoading, setSavedListingsLoading] = useState(false);
+
+      // Fetch saved listings when switching to saved tab
+      useEffect(() => {
+        if (profileTab !== 'saved' || !user) return;
+        let cancelled = false;
+        setSavedListingsLoading(true);
+        api.getSavedListings({ silent: true })
+          .then(result => {
+            if (cancelled) return;
+            const listings = (result?.listings || []).map(item => ({
+              ...item,
+              // Add __cover for grid display (use thumb_url or image_data)
+              __cover: item.thumb_url || item.image_data || '',
+              __fullCover: item.image_data || ''
+            }));
+            setSavedListings(listings);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setSavedListings([]);
+          })
+          .finally(() => {
+            if (!cancelled) setSavedListingsLoading(false);
+          });
+        return () => { cancelled = true; };
+      }, [profileTab, user]);
+
+      // Handle unsave from saved tab - calls parent toggle and closes modal
+      const handleToggleSave = useCallback(async (listing, save) => {
+        if (!user || !listing?.id) return;
+        if (!save) {
+          // Remove from local saved listings display immediately
+          setSavedListings(prev => prev.filter(l => l.id !== listing.id));
+          // Close the modal immediately when unsaving from saved tab
+          setProfileSelected(null);
+        }
+        // Call parent's toggle to update main app state
+        if (onToggleSave) {
+          await onToggleSave(listing, save);
+        }
+      }, [user, onToggleSave]);
+
       const [paypalEmailState, setPaypalEmailState] = useState(user?.paypal_email || '');
       const paypalEmailRef = useRef(paypalEmailState);
       const setPaypalEmail = useCallback((value) => {
@@ -2393,7 +2440,7 @@
 
       const activeItems = asArray(items).filter(it => !it?.sold);
       const soldItems = asArray(items).filter(it => !!it?.sold);
-      const shownItems = profileTab === 'sold' ? soldItems : activeItems;
+      const shownItems = profileTab === 'sold' ? soldItems : (profileTab === 'saved' ? savedListings : activeItems);
       const trimmedBgImageUrl = (profileBgImageUrl || '').trim();
       const hasCustomBanner = !!trimmedBgImageUrl;
       // Always show banner (custom or default)
@@ -2678,9 +2725,21 @@
               type: 'button',
               style: { flex: 1 },
               onClick: () => setProfileTab('sold')
-            }, 'Sold')
+            }, 'Sold'),
+            H('button', {
+              className: `btn ${profileTab === 'saved' ? 'primary' : ''}`,
+              type: 'button',
+              style: { flex: 1 },
+              onClick: () => setProfileTab('saved')
+            }, 'Saved')
           ),
-          (shownItems.length
+          // Loading state for saved tab
+          profileTab === 'saved' && savedListingsLoading && H('p', {
+            className: 'muted',
+            style: { textAlign: 'center', margin: '28px 0' }
+          }, 'Loading saved listings...'),
+          // Content for all tabs
+          !savedListingsLoading && (shownItems.length
             ? (ListingsGrid
               ? H(ListingsGrid, {
                 items: shownItems,
@@ -2694,7 +2753,7 @@
             : H('p', {
               className: 'muted',
               style: { textAlign: 'center', margin: '28px 0' }
-            }, profileTab === 'sold' ? 'No sold listings yet.' : 'No listings yet. Create your first one!')
+            }, profileTab === 'sold' ? 'No sold listings yet.' : (profileTab === 'saved' ? 'No saved listings yet.' : 'No listings yet. Create your first one!'))
           )
         ),
 
@@ -2913,14 +2972,19 @@
           onClose: () => setProfileSelected(null),
           cardProps: {
             user,
-            canEdit: true,
+            // Only allow edit for user's own listings (not saved listings from others)
+            canEdit: profileSelected?.user_id === user?.id,
             onEdit: handleEdit,
             onDelete: handleDelete,
             onAdminDelete: handleAdminDelete,
             onViewSeller,
-            onToggleSold,
+            onToggleSold: profileSelected?.user_id === user?.id ? onToggleSold : undefined,
             showDistance: false,
-            onSupporterClick
+            onSupporterClick,
+            // Show save button and message for saved listings (from other users)
+            onMessage: profileSelected?.user_id !== user?.id ? onMessage : undefined,
+            isSaved: !!parentSavedIds[profileSelected?.id],
+            onToggleSave: profileSelected?.user_id !== user?.id ? handleToggleSave : undefined
           }
         })
       ];

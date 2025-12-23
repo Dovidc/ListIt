@@ -356,6 +356,15 @@
     
     const markListingSold = (id, sold, meta) => updateListing(id, { sold: !!sold }, meta);  
     
+    // Saved listings  
+    const getSavedListings = (meta) => request('/api/me/saved', { method: 'GET' }, meta);  
+    
+    const getSavedListingIds = (meta) => request('/api/me/saved/ids', { method: 'GET' }, meta);  
+    
+    const saveListing = (id, meta) => request(`/api/listings/${id}/save`, { method: 'POST' }, meta);  
+    
+    const unsaveListing = (id, meta) => request(`/api/listings/${id}/save`, { method: 'DELETE' }, meta);  
+    
     const deleteListing = (id, meta) => request(`/api/listings/${id}`, { method: 'DELETE' }, meta);  
     
     const adminDeleteListing = (id, meta) => request(`/api/admin/listings/${id}`, { method: 'DELETE' }, meta);  
@@ -592,6 +601,10 @@
       listAutoListingJobs,  
       updateListing,  
       markListingSold,  
+      getSavedListings,  
+      getSavedListingIds,  
+      saveListing,  
+      unsaveListing,  
       deleteListing,  
       adminDeleteListing,  
       adminDeleteAll,  

@@ -3467,7 +3467,9 @@
       onToggleSold,
       onSupporterClick,
       showDistance = false,
-      viewContext = 'grid'
+      viewContext = 'grid',
+      isSaved = false,
+      onToggleSave
     }) {
 
       // Use full-size image for detail view, not thumbnail
@@ -3614,18 +3616,26 @@
       const markedFree = !!item?.is_free;
       const wantsOffer = !!item?.inquiry_enabled;
       const [soldBusy, setSoldBusy] = useState(false);
+      const [saveBusy, setSaveBusy] = useState(false);
+      // Local saved state for immediate UI feedback
+      const [localSaved, setLocalSaved] = useState(isSaved);
+      // Sync local state with prop when prop changes
+      useEffect(() => {
+        setLocalSaved(isSaved);
+      }, [isSaved]);
       const galleryCount = Array.isArray(galleryImages) ? galleryImages.length : 0;
       const coverSrc = item.image_data || (galleryCount ? galleryImages[0] : '');
 
-      // Build viewer action icons (Message, Report) for non-owners
+      // Build viewer action icons (Message, Save, Report) for non-owners
       const isViewer = !user || user.id !== item.user_id;
       const canReport = user && user.id !== item.user_id;
+      const canSave = user && user.id !== item.user_id && onToggleSave;
       const viewerActions = isViewer ? H('div', {
         className: 'listing-viewer-actions',
         style: {
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
+          gap: 6,
           marginLeft: 'auto'
         }
       },
@@ -3646,35 +3656,88 @@
             whiteSpace: 'nowrap'
           }
         }, 'Message seller'),
-        // Report icon (only if logged in)
-        canReport && H('button', {
-          key: 'report',
-          className: 'listing-action-icon listing-action-report',
-          onClick: () => setShowReport(true),
-          title: 'Report seller',
+        // Vertical stack: Bookmark on top, Report flag below
+        (canSave || canReport) && H('div', {
+          key: 'icon-stack',
           style: {
-            background: 'transparent',
-            border: 'none',
-            padding: 6,
-            borderRadius: 6,
-            cursor: 'pointer',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center'
+            gap: 0
           }
         },
-          H('svg', {
-            width: 18,
-            height: 18,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round'
+          // Save/Bookmark icon on top
+          canSave && H('button', {
+            key: 'save',
+            className: 'listing-action-icon listing-action-save' + (localSaved ? ' is-saved' : ''),
+            onClick: async () => {
+              if (saveBusy) return;
+              try {
+                setSaveBusy(true);
+                // Optimistic update - change UI immediately
+                setLocalSaved(!localSaved);
+                await onToggleSave(item, !localSaved);
+              } finally {
+                setSaveBusy(false);
+              }
+            },
+            disabled: saveBusy,
+            title: localSaved ? 'Remove from saved' : 'Save listing',
+            style: {
+              background: 'transparent',
+              border: 'none',
+              padding: 4,
+              borderRadius: 6,
+              cursor: saveBusy ? 'wait' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: saveBusy ? 0.5 : 1
+            }
           },
-            H('path', { d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z' }),
-            H('line', { x1: 4, y1: 22, x2: 4, y2: 15 })
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: localSaved ? '#3b82f6' : 'none',
+              stroke: localSaved ? '#3b82f6' : 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('path', { d: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z' })
+            )
+          ),
+          // Report icon below (only if logged in)
+          canReport && H('button', {
+            key: 'report',
+            className: 'listing-action-icon listing-action-report',
+            onClick: () => setShowReport(true),
+            title: 'Report seller',
+            style: {
+              background: 'transparent',
+              border: 'none',
+              padding: 4,
+              borderRadius: 6,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }
+          },
+            H('svg', {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round'
+            },
+              H('path', { d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z' }),
+              H('line', { x1: 4, y1: 22, x2: 4, y2: 15 })
+            )
           )
         )
       ) : null;
@@ -4085,7 +4148,8 @@
         prev.item.is_free === next.item.is_free &&
         prev.showDistance === next.showDistance &&
         prev.canEdit === next.canEdit &&
-        prev.user?.id === next.user?.id
+        prev.user?.id === next.user?.id &&
+        prev.isSaved === next.isSaved
       );
     });
 

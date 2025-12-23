@@ -458,6 +458,63 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
+      // Saved listings state - use object instead of Set for better React re-render detection
+      const [savedListingIds, setSavedListingIds] = useState({});
+
+      // Fetch saved listing IDs when user logs in
+      useEffect(() => {
+        if (!user) {
+          setSavedListingIds({});
+          return;
+        }
+        api.getSavedListingIds({ silent: true })
+          .then(result => {
+            if (result?.ids) {
+              const idsObj = {};
+              result.ids.forEach(id => { idsObj[id] = true; });
+              setSavedListingIds(idsObj);
+            }
+          })
+          .catch(() => {
+            // Silently fail - saved IDs are optional
+          });
+      }, [user?.id]);
+
+      // Toggle save/unsave for a listing (optimistic update)
+      const toggleSaveListing = useCallback(async (listing, save) => {
+        if (!user || !listing?.id) return;
+        // Optimistic update - update UI immediately
+        if (save) {
+          setSavedListingIds(prev => ({ ...prev, [listing.id]: true }));
+        } else {
+          setSavedListingIds(prev => {
+            const next = { ...prev };
+            delete next[listing.id];
+            return next;
+          });
+        }
+        try {
+          if (save) {
+            await api.saveListing(listing.id);
+          } else {
+            await api.unsaveListing(listing.id);
+          }
+        } catch (e) {
+          console.error('Failed to toggle save:', e);
+          // Revert on error
+          if (save) {
+            setSavedListingIds(prev => {
+              const next = { ...prev };
+              delete next[listing.id];
+              return next;
+            });
+          } else {
+            setSavedListingIds(prev => ({ ...prev, [listing.id]: true }));
+          }
+          throw e;
+        }
+      }, [user]);
+
       // Automatic geolocation refresh every 5 minutes
       const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
       useEffect(() => {
@@ -1451,7 +1508,8 @@
               tier: supporterInfoState.tier,
               isSelf: supporterInfoState.isSelf,
               onJoin: handleSupporterInfoJoin,
-              paymentsDisabled: premiumFreeForAll
+              paymentsDisabled: premiumFreeForAll,
+              isIOS: iapService && typeof iapService.isIOSNative === 'function' && iapService.isIOSNative()
             }),
             H(SupporterUpsellModal, {
               open: supporterUpsellState.open,
@@ -1840,7 +1898,9 @@
                             showDistance: sort === 'nearest',
                             onViewSeller: handleViewSeller,
                             onToggleSold: mineById[selectedListing?.id] ? toggleSoldWithKarma : undefined,
-                            onSupporterClick: handleSupporterBadgeClick
+                            onSupporterClick: handleSupporterBadgeClick,
+                            isSaved: !!savedListingIds[selectedListing?.id],
+                            onToggleSave: toggleSaveListing
                           }
                         })
                       ),
@@ -1894,7 +1954,10 @@
                         onToggleSold: toggleSoldWithKarma,
                         onSupporterClick: handleSupporterBadgeClick,
                         onJoinSupporterProgram: handleSupporterPromptCta,
-                        onListingsChanged: reloadMineOnly
+                        onListingsChanged: reloadMineOnly,
+                        onMessage: startMessage,
+                        onToggleSave: toggleSaveListing,
+                        savedListingIds
                       }),
 
                       (tab === 'admin') &&

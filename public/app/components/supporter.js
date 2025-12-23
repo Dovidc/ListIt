@@ -633,7 +633,7 @@
       }, [open, onClose]);
     }
 
-    function SupporterInfoModal({ open, onClose, username, since, tier, onJoin, isSelf = false, paymentsDisabled = false }) {
+    function SupporterInfoModal({ open, onClose, username, since, tier, onJoin, isSelf = false, paymentsDisabled = false, isIOS = false }) {
       useModalLifecycle(open, onClose);
       if (!open) return null;
 

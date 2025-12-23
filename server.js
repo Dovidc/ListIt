@@ -4977,6 +4977,125 @@ app.delete('/api/push/ios/unsubscribe', auth, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
+/* Saved Listings                                                      */
+
+/* ------------------------------------------------------------------ */
+
+// Get user's saved listings
+app.get('/api/me/saved', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const rows = await db.prepare(`
+      SELECT l.id, l.user_id, l.image_data, l.title, l.description, l.location, l.price, l.created_at,
+             l.tags, l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free,
+             l.custom_tag, l.custom_tag_color,
+             u.username AS owner_username, u.profile_picture_url AS owner_profile_picture_url,
+             u.supporter_badge AS owner_supporter_badge, u.supporter_tier AS owner_supporter_tier,
+             sl.created_at AS saved_at
+      FROM saved_listings sl
+      JOIN listings l ON sl.listing_id = l.id
+      JOIN users u ON l.user_id = u.id
+      WHERE sl.user_id = ? AND l.sold = 0
+      ORDER BY sl.created_at DESC
+    `).all(userId);
+
+    // Convert image_data URLs and generate thumb_url
+    for (const row of rows) {
+      if (row.image_data) {
+        row.image_data = canonicalAssetUrl(row.image_data);
+        // Generate thumb_url from image_data
+        const lastSlash = row.image_data.lastIndexOf('/');
+        const filename = lastSlash >= 0 ? row.image_data.slice(lastSlash + 1) : row.image_data;
+        row.thumb_url = filename.includes('.')
+          ? row.image_data.replace(/\.([^.]+)$/, '_thumb.jpg')
+          : `${row.image_data}_thumb.jpg`;
+      }
+    }
+
+    return res.json({ listings: rows });
+  } catch (e) {
+    console.error('[saved-listings] Failed to get saved listings:', e);
+    return res.status(500).json({ error: 'failed_to_get_saved' });
+  }
+});
+
+// Get IDs of all saved listings for current user (for quick lookup)
+app.get('/api/me/saved/ids', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const rows = await db.prepare(`
+      SELECT sl.listing_id
+      FROM saved_listings sl
+      JOIN listings l ON sl.listing_id = l.id
+      WHERE sl.user_id = ? AND l.sold = 0
+    `).all(userId);
+
+    const ids = rows.map(r => r.listing_id);
+    return res.json({ ids });
+  } catch (e) {
+    console.error('[saved-listings] Failed to get saved IDs:', e);
+    return res.status(500).json({ error: 'failed_to_get_saved_ids' });
+  }
+});
+
+// Save a listing
+app.post('/api/listings/:id/save', auth, writeLimiter, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const listingId = parseInt(req.params.id, 10);
+
+    if (!Number.isFinite(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    // Check listing exists and is not sold
+    const listing = await db.prepare('SELECT id, user_id, sold FROM listings WHERE id = ?').get(listingId);
+    if (!listing) {
+      return res.status(404).json({ error: 'listing_not_found' });
+    }
+    if (listing.sold) {
+      return res.status(400).json({ error: 'cannot_save_sold_listing' });
+    }
+    if (listing.user_id === userId) {
+      return res.status(400).json({ error: 'cannot_save_own_listing' });
+    }
+
+    // Insert (ignore if already exists due to unique constraint)
+    await db.prepare(`
+      INSERT INTO saved_listings (user_id, listing_id, created_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT (user_id, listing_id) DO NOTHING
+    `).run(userId, listingId, new Date().toISOString());
+
+    return res.json({ saved: true });
+  } catch (e) {
+    console.error('[saved-listings] Failed to save listing:', e);
+    return res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+// Unsave a listing
+app.delete('/api/listings/:id/save', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const listingId = parseInt(req.params.id, 10);
+
+    if (!Number.isFinite(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    await db.prepare('DELETE FROM saved_listings WHERE user_id = ? AND listing_id = ?').run(userId, listingId);
+
+    return res.json({ saved: false });
+  } catch (e) {
+    console.error('[saved-listings] Failed to unsave listing:', e);
+    return res.status(500).json({ error: 'failed_to_unsave' });
+  }
+});
+
+
+/* ------------------------------------------------------------------ */
+
 /* Listings                                                            */
 
 /* ------------------------------------------------------------------ */
@@ -7190,6 +7309,11 @@ app.put(
         const soldVal = req.body.sold ? 1 : 0;
 
         await db.prepare('UPDATE listings SET sold=? WHERE id=?').run(soldVal, id);
+
+        // When marking as sold, remove from ALL users' saved lists
+        if (soldVal === 1) {
+          await db.prepare('DELETE FROM saved_listings WHERE listing_id = ?').run(id);
+        }
 
       }
 
