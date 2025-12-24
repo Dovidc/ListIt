@@ -1924,6 +1924,10 @@
         return premiumFreeForAll || !!user?.supporter_tier || user?.supporter_badge || user?.subscription_status === 'active';
       }, [premiumFreeForAll, user?.supporter_tier, user?.supporter_badge, user?.subscription_status]);
 
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+         localStorage.getItem('theme') === 'dark');
+
       useEffect(() => {
         if (!user) return;
         const url = user.profile_picture_url || '';
@@ -2713,23 +2717,80 @@
         ),
 
         H('section', null,
-          H('div', { style: { display: 'flex', gap: 8, margin: '0 0 16px' } },
+          H('div', {
+            className: 'profile-tab-bar',
+            style: {
+              display: 'flex',
+              position: 'relative',
+              margin: '0 0 16px',
+              background: isDarkMode ? '#1f2937' : '#e5e7eb',
+              borderRadius: 10,
+              padding: 4
+            }
+          },
+            // Sliding indicator
+            H('div', {
+              style: {
+                position: 'absolute',
+                top: 4,
+                bottom: 4,
+                left: `calc(${profileTab === 'active' ? 0 : profileTab === 'sold' ? 33.333 : 66.666}% + 4px)`,
+                width: 'calc(33.333% - 8px)',
+                background: '#3b82f6',
+                borderRadius: 8,
+                transition: 'left 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+              }
+            }),
             H('button', {
-              className: `btn ${profileTab === 'active' ? 'primary' : ''}`,
               type: 'button',
-              style: { flex: 1 },
+              style: {
+                flex: 1,
+                padding: '10px 0',
+                border: 'none',
+                background: 'transparent',
+                color: profileTab === 'active' ? '#fff' : (isDarkMode ? '#9ca3af' : '#4b5563'),
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 1,
+                transition: 'color 0.2s ease'
+              },
               onClick: () => setProfileTab('active')
             }, 'Active'),
             H('button', {
-              className: `btn ${profileTab === 'sold' ? 'primary' : ''}`,
               type: 'button',
-              style: { flex: 1 },
+              style: {
+                flex: 1,
+                padding: '10px 0',
+                border: 'none',
+                background: 'transparent',
+                color: profileTab === 'sold' ? '#fff' : (isDarkMode ? '#9ca3af' : '#4b5563'),
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 1,
+                transition: 'color 0.2s ease'
+              },
               onClick: () => setProfileTab('sold')
             }, 'Sold'),
             H('button', {
-              className: `btn ${profileTab === 'saved' ? 'primary' : ''}`,
               type: 'button',
-              style: { flex: 1 },
+              style: {
+                flex: 1,
+                padding: '10px 0',
+                border: 'none',
+                background: 'transparent',
+                color: profileTab === 'saved' ? '#fff' : (isDarkMode ? '#9ca3af' : '#4b5563'),
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 1,
+                transition: 'color 0.2s ease'
+              },
               onClick: () => setProfileTab('saved')
             }, 'Saved')
           ),
