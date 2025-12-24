@@ -1313,9 +1313,10 @@
               payload.deletedImages = deletedImages;
             }
 
-            await api.updateListing(draft.id, payload);
+            const updated = await api.updateListing(draft.id, payload);
             if (files.length) await uploadFilesForListing(draft.id, files);
-            onSaved?.();
+            // Pass updated listing but mark as update (not new) so toast doesn't show
+            onSaved?.(updated, { isUpdate: true });
             return;
           }
 

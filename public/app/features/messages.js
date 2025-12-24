@@ -445,6 +445,11 @@
       const isMobile = isMobileDevice();
       const canSend = !otherUserDeleted && (input.trim() || hasImages);
 
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+         localStorage.getItem('theme') === 'dark');
+
       // Close attach menu when clicking outside
       useEffect(() => {
         if (!showAttachMenu) return;
@@ -529,8 +534,8 @@
                 height: 36,
                 borderRadius: '50%',
                 border: 'none',
-                background: '#e5e7eb',
-                color: '#374151',
+                background: isDarkMode ? '#4b5563' : '#e5e7eb',
+                color: isDarkMode ? '#e5e7eb' : '#374151',
                 fontSize: 24,
                 fontWeight: 300,
                 lineHeight: 1,
@@ -667,11 +672,12 @@
               flex: 1,
               minWidth: 0,
               padding: '10px 14px',
-              border: '1px solid #e5e7eb',
+              border: isDarkMode ? '1px solid #4b5563' : '1px solid #e5e7eb',
               borderRadius: 20,
               fontSize: 16,
               outline: 'none',
-              background: otherUserDeleted ? '#f3f4f6' : '#fff',
+              background: otherUserDeleted ? (isDarkMode ? '#374151' : '#f3f4f6') : (isDarkMode ? '#374151' : '#fff'),
+              color: isDarkMode ? '#f3f4f6' : '#1f2937',
               WebkitAppearance: 'none',
               WebkitTapHighlightColor: 'transparent',
               WebkitUserSelect: 'text',
@@ -806,7 +812,8 @@
           style: {
             width: 220,
             maxWidth: '100%',
-            resize: 'none'
+            resize: 'none',
+            color: '#1f2937' // Dark text (fixes dark mode)
           }
         }),
         H('button', {

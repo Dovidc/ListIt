@@ -918,6 +918,7 @@
 
       const [aiBusy, setAiBusy] = useState(false);
       const [aiErr, setAiErr] = useState('');
+      const lastAiTitle = useRef(''); // Track last AI-generated title for retry
       const autoRunning = useRef(false);
       const [autoBusy, setAutoBusy] = useState(false);
       const [saving, setSaving] = useState(false);
@@ -1078,14 +1079,21 @@
             return;
           }
 
-          // Don't send existing title/description as hint - it biases AI toward old content
-          // Only send hint if user explicitly typed something new (not from AI)
+          // If AI was already run and generated a title, tell it to try something different
+          let hint = '';
+          if (lastAiTitle.current) {
+            hint = `Previous identification "${lastAiTitle.current}" was wrong. Try a completely different interpretation of what this item is.`;
+          }
+
           const res = await api.aiAnalyze({
             images: sources.slice(0, AI_IMAGE_LIMIT),
-            hint: ''
+            hint
           });
 
-          if (res.title) setTitle(res.title);
+          if (res.title) {
+            setTitle(res.title);
+            lastAiTitle.current = res.title; // Track for potential retry
+          }
           if (Array.isArray(res.tags)) setTags(res.tags.join(', '));
           if (typeof res.suggested_price === 'number' && !Number.isNaN(res.suggested_price)) {
             setPriceVal(String(res.suggested_price));
@@ -1246,9 +1254,10 @@
             if (deletedImages.length > 0) {
               payload.deletedImages = deletedImages;
             }
-            await api.updateListing(draft.id, payload);
+            const updated = await api.updateListing(draft.id, payload);
             if (files.length) await uploadFilesForListing(draft.id, files);
-            onSaved?.();
+            // Pass updated listing but mark as update (not new) so toast doesn't show
+            onSaved?.(updated, { isUpdate: true });
             return;
           }
 

@@ -1080,28 +1080,32 @@
       }, [editorState, onTabChange, items, mineById, resetEditorState, setSelectedListing, tab]);
 
       // Edit toast functions
-      const showRecentListingToast = useCallback((listing) => {
-        if (!listing?.id) return;
-        setRecentlyCreatedListing(listing);
-        setShowEditToast(true);
+      // DISABLED: "Edit recent listing?" toast - uncomment to re-enable
+      const showRecentListingToast = useCallback((/* listing */) => {
+        // if (!listing?.id) return;
+        // setRecentlyCreatedListing(listing);
+        // setShowEditToast(true);
 
-        // Clear any existing timeout
-        if (editToastTimeoutRef.current) {
-          clearTimeout(editToastTimeoutRef.current);
-        }
+        // // Clear any existing timeout
+        // if (editToastTimeoutRef.current) {
+        //   clearTimeout(editToastTimeoutRef.current);
+        // }
 
-        // Auto-hide after 5 seconds (matches CSS animation duration)
-        editToastTimeoutRef.current = setTimeout(() => {
-          setShowEditToast(false);
-        }, 5000);
+        // // Auto-hide after 5 seconds (matches CSS animation duration)
+        // editToastTimeoutRef.current = setTimeout(() => {
+        //   setShowEditToast(false);
+        // }, 5000);
       }, []);
 
       // Stable callback for when a listing is created/saved
       // This is used by both inline and background queue creation
-      const handleListingSaved = useCallback(async (createdListing) => {
-        if (createdListing?.id) {
-          addListing(createdListing);
-          showRecentListingToast(createdListing);
+      const handleListingSaved = useCallback(async (listing, options = {}) => {
+        if (listing?.id) {
+          addListing(listing);
+          // Only show "Edit recent listing?" toast for new listings, not updates
+          if (!options.isUpdate) {
+            showRecentListingToast(listing);
+          }
         }
         // Note: reloadMine/reloadAll are now called directly in the background queue job
         // (similar to how MassList works) to ensure they use stable function references
