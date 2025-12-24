@@ -115,7 +115,7 @@ async function sendPasswordResetEmail(email, token) {
   const message = {
     to: email,
     from: FROM_ADDRESS,
-    subject: 'Reset your ListIt password',
+    subject: 'Reset your Trovelr password',
     text: `Use the following token to reset your password: ${token}`,
     html: `
       <p>Hello,</p>

@@ -1407,6 +1407,12 @@
   backdrop-filter: blur(12px);
 }
 
+@media (max-width: 768px) {
+  [data-theme="dark"] .messages-panel {
+    border: none;
+  }
+}
+
 .messages-panel .card {
   border: none !important;
   border-radius: 0 !important;

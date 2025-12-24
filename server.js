@@ -3743,42 +3743,43 @@ Email: support@trovelr.com`;
 }
 
 function getPrivacyPolicyContent() {
-  return `PRIVACY POLICY
+  return `TERMS OF USE & PRIVACY
 
 Effective Date: December 24, 2024
 
-By using Trovelr, you agree to this policy.
+By using Trovelr, you agree to the following:
+
+USER CONDUCT
+You agree NOT to:
+• Post inappropriate, offensive, or illegal content
+• Post advertisements or promotions in place of legitimate listings
+• Harass, spam, or scam other users
+• Create fake listings or misrepresent items
+• Circumvent our content moderation systems
+
+Violations may result in account suspension or permanent ban.
 
 WHAT WE COLLECT
 • Email, username, password (for your account)
 • Profile info, listings, photos, and messages you create
 • Device tokens for push notifications
 • IP address for security
+• Cookies to keep you signed in
 
 HOW WE USE IT
 • Run the marketplace and enable messaging
 • Send notifications
 • Moderate content and prevent abuse
 
-THIRD-PARTY SERVICES
-• OpenAI - content moderation
-• AWS - image storage
-• Stripe - payment processing
-• Apple/Google - push notifications
-
 DATA SHARING
 We do NOT sell your data. We share only:
 • Publicly visible info (username, listings)
-• With service providers listed above
 • If required by law
 
 YOUR RIGHTS
 • Update your info in profile settings
-• Delete your account anytime. We delete or de-identify your personal data, except where we must retain certain information for legal, security, fraud prevention, or backup purposes.
+• Delete your account anytime
 • Disable notifications in device settings
-
-COOKIES & LOCAL STORAGE
-We use local storage to keep you signed in and run core app features. We do not use analytics or advertising cookies.
 
 SECURITY
 Data is encrypted in transit (HTTPS) and passwords are securely hashed.
