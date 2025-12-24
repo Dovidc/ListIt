@@ -480,16 +480,16 @@
         }
       }, [api, editingAdId, locationSearchResult, locationRadius, loadAdLocations]);
 
-      const handleDeleteLocation = useCallback(async (locationId) => {
-        if (!editingAdId || !locationId) return;
+      const handleDeleteLocation = useCallback(async (adId, locationId) => {
+        if (!adId || !locationId) return;
         if (!window.confirm('Remove this location?')) return;
         try {
-          await api.adminDeleteAdLocation(editingAdId, locationId);
-          await loadAdLocations(editingAdId);
+          await api.adminDeleteAdLocation(adId, locationId);
+          await loadAdLocations(adId);
         } catch (err) {
           alert(err?.message || 'Failed to delete location');
         }
-      }, [api, editingAdId, loadAdLocations]);
+      }, [api, loadAdLocations]);
 
       const handleAdSubmit = useCallback(async (event) => {
         event?.preventDefault?.();

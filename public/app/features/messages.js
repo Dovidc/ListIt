@@ -1067,7 +1067,12 @@
               if (data.type === 'new_message') {
                 setActiveId((currentActiveId) => {
                   if (data.conversation_id === currentActiveId) {
-                    setMsgs((prev) => [...prev, data.message]);
+                    // Only add if message doesn't already exist (avoid duplicates from own sends)
+                    setMsgs((prev) => {
+                      const exists = prev.some(m => m.id === data.message.id);
+                      if (exists) return prev;
+                      return [...prev, data.message];
+                    });
 
                     if (data.sender_id !== user.id && isAtBottomRef.current) {
                       onSeenChange?.(data.conversation_id, data.message.id);

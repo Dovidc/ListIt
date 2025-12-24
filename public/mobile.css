@@ -8,6 +8,8 @@
 
 .ad-card__content {
   gap: 3px;
+  /* Leave room for the absolutely positioned image on the right */
+  max-width: calc(100% - var(--ad-image-size, 45%) - 12px);
 }
 
 .ad-card__tag {
@@ -23,10 +25,11 @@
 .ad-card__subtitle {
   font-size: 0.6rem;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ad-card__ctaRow {
