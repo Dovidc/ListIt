@@ -1065,16 +1065,22 @@
               const data = JSON.parse(event.data);
 
               if (data.type === 'new_message') {
+                // Skip our own messages - we handle those via optimistic UI + fetchMsgs
+                if (data.sender_id === user.id) {
+                  fetchConvos();
+                  return;
+                }
+
                 setActiveId((currentActiveId) => {
                   if (data.conversation_id === currentActiveId) {
-                    // Only add if message doesn't already exist (avoid duplicates from own sends)
+                    // Only add if message doesn't already exist
                     setMsgs((prev) => {
                       const exists = prev.some(m => m.id === data.message.id);
                       if (exists) return prev;
                       return [...prev, data.message];
                     });
 
-                    if (data.sender_id !== user.id && isAtBottomRef.current) {
+                    if (isAtBottomRef.current) {
                       onSeenChange?.(data.conversation_id, data.message.id);
                     }
                   }
