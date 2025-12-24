@@ -538,12 +538,14 @@
           H('label', null, 'Reset Code'),
           H('input', {
             type: 'text',
+            inputMode: 'numeric',
             value: resetToken,
-            onChange: (e) => setResetToken(e.target.value.trim()),
-            placeholder: 'Paste your reset code',
+            onChange: (e) => setResetToken(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)),
+            placeholder: '123456',
             required: true,
             disabled: loading,
-            autoComplete: 'one-time-code'
+            autoComplete: 'one-time-code',
+            style: { letterSpacing: '0.3em', textAlign: 'center', fontSize: 20 }
           })
         ),
         H('div', { className: 'form-group', key: 'password' },
