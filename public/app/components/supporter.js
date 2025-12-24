@@ -769,11 +769,18 @@
             ),
             isPrompt
               ? H('div', { style: { display: 'grid', gap: 16 } },
-                H('p', { className: 'supporter-modal__body', style: { marginBottom: 0, textAlign: 'center' } },
-                  'Subscribe to unlock exclusive premium features:'
-                ),
                 // Benefits list
                 H('div', { style: { display: 'grid', gap: 14, padding: '0 4px' } },
+                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                    H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none' },
+                      H('circle', { cx: 12, cy: 12, r: 10, fill: '#10b981', stroke: '#059669', strokeWidth: 1 }),
+                      H('path', { d: 'M8 12l2.5 2.5L16 9', stroke: '#fff', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' })
+                    ),
+                    H('div', null,
+                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Ad-Free Experience'),
+                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Browse listings without any advertisements')
+                    )
+                  ),
                   H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
                     H(CyclingSupporterBadge, { size: 28, interval: 3000 }),
                     H('div', null,

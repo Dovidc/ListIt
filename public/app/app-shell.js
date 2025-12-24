@@ -283,10 +283,16 @@
       // Wrapper for tab changes to save scroll position
       const onTabChange = useCallback((newTab) => {
         if (tab === 'browse') {
-          browseScrollPos.current = window.scrollY;
+          // On mobile, main.container is the scroll container
+          if (isMobile) {
+            const container = document.querySelector('main.container');
+            browseScrollPos.current = container ? container.scrollTop : 0;
+          } else {
+            browseScrollPos.current = window.scrollY;
+          }
         }
         handleTabChange(newTab);
-      }, [tab, handleTabChange]);
+      }, [tab, handleTabChange, isMobile]);
 
       // Restore scroll position when returning to browse
       React.useLayoutEffect(() => {
@@ -1246,6 +1252,7 @@
 
       function handleAuthSuccess(newUser) {
         setUser(newUser);
+        setLegalCheckDone(false); // Reset to trigger legal check for newly logged in user
         refreshListings();
         reloadMineOnly();
       }
@@ -1943,7 +1950,8 @@
                             if (userId && userId !== user?.id) {
                               handleViewSeller(userId, null);
                             }
-                          }
+                          },
+                          onHomeClick: () => onTabChange('browse')
                         })
                         : H('div', { className: 'muted', style: { padding: '16px 0' } }, 'Please log in to view messages.')
                       ),

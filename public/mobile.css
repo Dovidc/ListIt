@@ -1529,6 +1529,7 @@ body:has(.mobile-messages-thread-portal) .mobile-dashboard {
     rgba(148, 163, 184, 0.06) 28px,
     rgba(148, 163, 184, 0.06) 29px
   ) !important;
+  background-attachment: fixed !important;
   padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
 }
 
@@ -1541,6 +1542,7 @@ html[data-theme="dark"] .mobile-messages-thread-portal {
     rgba(100, 116, 139, 0.15) 28px,
     rgba(100, 116, 139, 0.15) 29px
   ) !important;
+  background-attachment: fixed !important;
 }
 
 /* Messages content area - slightly translucent for layered feel */
@@ -1580,6 +1582,18 @@ html[data-theme="dark"] .mobile-messages-thread-portal .messages-thread-header {
 html[data-theme="dark"] .mobile-messages-thread-portal .message-composer-wrapper {
   background: rgba(15, 23, 42, 0.9);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Location preset button */
+.location-preset-btn {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+[data-theme="dark"] .location-preset-btn,
+html[data-theme="dark"] .location-preset-btn {
+  background: #374151;
+  color: #9ca3af;
 }
 
 /* When keyboard is open, remove bottom safe area from composer */

@@ -565,8 +565,8 @@
                 height: 36,
                 borderRadius: '50%',
                 border: 'none',
-                background: isDarkMode ? '#4b5563' : '#e5e7eb',
-                color: isDarkMode ? '#e5e7eb' : '#374151',
+                background: isDarkMode ? '#374151' : '#e5e7eb',
+                color: isDarkMode ? '#9ca3af' : '#374151',
                 fontSize: 24,
                 fontWeight: 300,
                 lineHeight: 1,
@@ -645,14 +645,13 @@
           // Location preset button
           canSendLocation && !isDisabled && H('button', {
             type: 'button',
+            className: 'location-preset-btn',
             onClick: onRequestLocation,
             style: {
               width: 36,
               height: 36,
               borderRadius: '50%',
               border: 'none',
-              background: '#e5e7eb',
-              color: '#374151',
               fontSize: 16,
               display: 'flex',
               alignItems: 'center',
@@ -661,7 +660,7 @@
               flexShrink: 0
             },
             title: 'Send location'
-          }, H(LocationPresetIcon, { size: 20, stroke: '#6b7280' })),
+          }, H(LocationPresetIcon, { size: 20, stroke: 'currentColor' })),
 
           // Text input
           H('input', {
@@ -1746,7 +1745,7 @@
     }
 
     function MessagesPanel(props) {
-      const { user, onViewProfile } = props;
+      const { user, onViewProfile, onHomeClick } = props;
       if (!user) return H('div', { className: 'muted' }, 'Please log in to view messages.');
 
       const isMobile = isMobileDevice();
@@ -1898,10 +1897,10 @@
 
       // Build mobile-specific thread content with refs for keyboard handling
       const mobileThreadContent = H(React.Fragment, null,
-        // Back button
+        // Back buttons
         activeId && H('div', {
           className: 'messages-thread-header',
-          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb', flexShrink: 0 }
+          style: { marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #e5e7eb', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
         },
           H('button', {
             onClick: handleBackToList,
@@ -1910,14 +1909,29 @@
               border: 'none',
               padding: '4px 8px',
               cursor: 'pointer',
-              fontSize: 16,
+              fontSize: 14,
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              fontWeight: 600,
-              color: '#2563eb'
+              fontWeight: 500,
+              color: '#6b7280'
             }
-          }, '← Back to conversations')
+          }, '← Back to conversations'),
+          onHomeClick && H('button', {
+            onClick: onHomeClick,
+            style: {
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontWeight: 500,
+              color: '#6b7280'
+            }
+          }, 'Home →')
         ),
         !activeId && H('div', { className: 'muted' }, 'Select a conversation'),
         // Messages area wrapper (will have margin adjusted when keyboard opens)

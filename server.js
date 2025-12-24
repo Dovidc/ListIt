@@ -3745,142 +3745,48 @@ Email: support@trovelr.com`;
 function getPrivacyPolicyContent() {
   return `PRIVACY POLICY
 
-Effective Date: December 1, 2024
+Effective Date: December 24, 2024
 
-Trovelr ("we," "us," or "our") operates a local marketplace mobile application. This Privacy Policy explains what information we collect, how we use it, and your choices regarding your data.
+By using Trovelr, you agree to this policy.
 
-By using Trovelr, you agree to the collection and use of information in accordance with this policy.
+WHAT WE COLLECT
+• Email, username, password (for your account)
+• Profile info, listings, photos, and messages you create
+• Device tokens for push notifications
+• IP address for security
 
-
-INFORMATION WE COLLECT
-
-Account Information
-When you create an account, we collect:
-• Email address - used for account verification, login, and important notifications
-• Username - displayed publicly on your listings and profile
-• Password - stored using secure one-way hashing (we cannot see your password)
-
-Profile Information (Optional)
-You may choose to provide:
-• Profile picture
-• Bio/about text
-• Avatar border customization
-
-Listing Information
-When you create listings, we collect:
-• Photos of items you upload
-• Listing title, description, and price
-• City/location name
-• Geographic coordinates (latitude/longitude) if you enable location-based features
-
-Messages
-• Text messages exchanged with other users
-• Images shared in conversations
-
-Device & Technical Information
-• Push notification tokens (iOS/Android) for delivering notifications
-• IP address (for security and fraud prevention)
-• Timezone offset
-• Login timestamps
-
-
-HOW WE USE YOUR INFORMATION
-
-We use your information to:
-• Operate the marketplace - display listings, enable messaging between users
-• Authenticate your account and maintain security
-• Send push notifications about messages and relevant activity
-• Moderate content to keep the platform safe
-• Prevent fraud, spam, and abuse
-• Improve our services
-• Comply with legal obligations
-
-
-PROHIBITED CONTENT
-
-You agree NOT to upload, post, or share any content that:
-• Contains nudity, sexually explicit material, or pornography
-• Depicts or promotes violence, gore, or graphic content
-• Contains hate speech, discrimination, or harassment
-• Promotes illegal activities or substances
-• Infringes on intellectual property rights
-• Is fraudulent, deceptive, or misleading
-• Contains malware, viruses, or malicious code
-• Violates any applicable laws or regulations
-
-We use automated systems and human review to detect prohibited content. Content that violates these guidelines will be removed, and accounts may be suspended or permanently banned. We reserve the right to report illegal content to law enforcement authorities.
-
+HOW WE USE IT
+• Run the marketplace and enable messaging
+• Send notifications
+• Moderate content and prevent abuse
 
 THIRD-PARTY SERVICES
-
-We use the following third-party services to operate Trovelr:
-
-OpenAI
-We use OpenAI's content moderation API to automatically screen listings and messages for prohibited content (hate speech, violence, harassment, etc.). Text you submit may be sent to OpenAI for safety analysis.
-
-Amazon Web Services (AWS)
-Images you upload are stored securely on Amazon S3.
-
-Stripe
-If you use premium features, payment processing is handled by Stripe. We do not store your credit card information - Stripe handles all payment data securely.
-
-Apple Push Notification Service (APNs)
-Used to deliver push notifications to iOS devices.
-
-SendGrid
-Used to send transactional emails (verification codes, notifications).
-
+• OpenAI - content moderation
+• AWS - image storage
+• Stripe - payment processing
+• Apple/Google - push notifications
 
 DATA SHARING
-
-We do NOT sell your personal information.
-
-Your information may be shared:
-• Publicly - your username, profile picture, and listings are visible to other users
-• With service providers - third parties who help us operate the platform (listed above)
-• For legal reasons - if required by law, court order, or to protect our rights
-• Business transfers - in connection with a merger, acquisition, or sale of assets
-
-
-DATA RETENTION
-
-• Account data is retained while your account is active
-• You can delete your account at any time from your profile settings
-• When you delete your account, all your data is permanently removed including your profile, listings, messages, and conversations
-• We do not retain your data after account deletion
-
+We do NOT sell your data. We share only:
+• Publicly visible info (username, listings)
+• With service providers listed above
+• If required by law
 
 YOUR RIGHTS
+• Update your info in profile settings
+• Delete your account anytime. We delete or de-identify your personal data, except where we must retain certain information for legal, security, fraud prevention, or backup purposes.
+• Disable notifications in device settings
 
-You have the right to:
-• Correction - update your information via your profile settings
-• Deletion - delete your account and all associated data from your profile settings
-• Opt-out - disable push notifications in your device settings
-
+COOKIES & LOCAL STORAGE
+We use local storage to keep you signed in and run core app features. We do not use analytics or advertising cookies.
 
 SECURITY
+Data is encrypted in transit (HTTPS) and passwords are securely hashed.
 
-We implement security measures including:
-• HTTPS encryption for all data transmission
-• Secure password hashing (bcrypt)
-• Authentication tokens with expiration
-• Rate limiting to prevent abuse
+AGE REQUIREMENT
+You must be 18+ to use Trovelr.
 
-
-CHILDREN'S PRIVACY
-
-Trovelr is not intended for users under 18 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, please contact us.
-
-
-CHANGES TO THIS POLICY
-
-We may update this Privacy Policy from time to time. We will notify you of significant changes by displaying a notice in the app. Your continued use of Trovelr after changes indicates acceptance of the updated policy.
-
-
-CONTACT US
-
-For questions about this Privacy Policy or to exercise your privacy rights:
-
+CONTACT
 Email: support@trovelr.com`;
 }
 
