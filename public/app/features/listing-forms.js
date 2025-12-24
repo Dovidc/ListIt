@@ -302,6 +302,8 @@
       }
 
       // Step 4: Create shell listing with AI-generated content + background uploads
+      const createdAt = new Date().toISOString();
+
       try {
         const result = await backgroundUploadService.createListingWithBackgroundUpload({
           images: compressedBlobs,
@@ -318,11 +320,35 @@
           onListingCreated: ({ listing_id, images_pending }) => {
             console.log(`[AutoList/BG] Shell listing ${listing_id} created, ${images_pending} images pending`);
 
+            // Build a partial listing object with available data for immediate UI display
+            const partialListing = {
+              id: listing_id,
+              title: aiTitle || '',
+              description: aiDescription || '',
+              price: aiPrice,
+              location: locAuto,
+              lat: latAuto,
+              lon: lonAuto,
+              tags: aiTags || [],
+              created_at: createdAt,
+              is_sold: false,
+              enable_nearby: enableNearbyAuto,
+              inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true
+            };
+
             // Notify that job was "queued" - caller handles hiding "Keep app open" toast
+            // Also pass the partial listing for immediate display
             try {
-              onJobQueued?.({ listing_id, status: 'uploading', images_pending });
+              onJobQueued?.({ listing_id, status: 'uploading', images_pending, listing: partialListing });
             } catch (e) {
               console.warn('[AutoList/BG] onJobQueued callback error:', e);
+            }
+
+            // Call onCreated immediately with partial listing for instant UI update
+            try {
+              onCreated?.(partialListing);
+            } catch (e) {
+              console.warn('[AutoList/BG] onCreated callback error:', e);
             }
           },
 
@@ -338,20 +364,12 @@
           onAllComplete: async ({ listing_id, total }) => {
             console.log(`[AutoList/BG] All ${total} images uploaded for listing ${listing_id}`);
 
-            // Reload listings
+            // Reload listings to get full data from server (including owner_username etc)
             const mineFn = reloadMineRef?.current ?? reloadMine;
             const allFn = reloadAllRef?.current ?? reloadAll;
 
             try { await mineFn?.(); } catch { }
             try { await allFn?.({ preserveExisting: true }); } catch { }
-
-            // Fetch the completed listing
-            try {
-              // TODO: Could fetch the listing here to pass to onCreated
-              onCreated?.({ id: listing_id });
-            } catch (e) {
-              console.warn('[AutoList/BG] onCreated callback error:', e);
-            }
           },
 
           onError: (err) => {

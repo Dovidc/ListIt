@@ -510,7 +510,8 @@
         saveSeen,
         serializePushSubscription,
         base64UrlToUint8Array,
-        asArray
+        asArray,
+        getUserCoordsOnce
       },
       AppNav,
       features: {

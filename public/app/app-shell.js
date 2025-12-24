@@ -61,7 +61,8 @@
     const useRef = typeof providedUseRef === 'function' ? providedUseRef : ((initial) => ({ current: initial }));
 
     const {
-      H
+      H,
+      getUserCoordsOnce
     } = helpers || {};
 
     assertFunction(H, 'helpers.H');
@@ -426,7 +427,27 @@
         }
       }, [api, premiumFreeForAll, iapService, AppNav]);
 
-      const { ads, refreshAds } = useAds();
+      // User coordinates for location-based ads
+      const [userCoords, setUserCoords] = useState(null);
+      useEffect(() => {
+        console.log('[app-shell] Fetching user coords for ads...');
+        if (typeof getUserCoordsOnce === 'function') {
+          getUserCoordsOnce().then(coords => {
+            console.log('[app-shell] Got user coords:', coords);
+            if (coords) setUserCoords(coords);
+          }).catch((err) => {
+            console.error('[app-shell] Failed to get coords:', err);
+          });
+        } else {
+          console.warn('[app-shell] getUserCoordsOnce not available');
+        }
+      }, []);
+
+      const { ads, refreshAds } = useAds({
+        userLat: userCoords?.lat,
+        userLon: userCoords?.lon,
+        isPremium: hasPremiumAccess
+      });
 
       const listings = useListingsFeature({ user, currentTab: tab });
       const {

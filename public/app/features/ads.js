@@ -9,17 +9,32 @@
 
     const { useState, useCallback, useEffect } = React;
 
-    function useAds() {
+    function useAds({ userLat, userLon, isPremium } = {}) {
       const [ads, setAds] = useState([]);
 
       const refreshAds = useCallback(async () => {
+        console.log('[useAds] refreshAds called', { userLat, userLon, isPremium });
+        // Premium users see no ads at all
+        if (isPremium) {
+          console.log('[useAds] User is premium, showing no ads');
+          setAds([]);
+          return;
+        }
         try {
-          const rows = await api.listAds({ silent: true });
+          const params = {};
+          if (userLat != null && userLon != null) {
+            params.lat = userLat;
+            params.lon = userLon;
+          }
+          console.log('[useAds] Fetching ads with params:', params);
+          const rows = await api.listAds(params, { silent: true });
+          console.log('[useAds] Got ads:', rows);
           setAds(Array.isArray(rows) ? rows : []);
-        } catch {
+        } catch (err) {
+          console.error('[useAds] Error fetching ads:', err);
           setAds([]);
         }
-      }, [api]);
+      }, [userLat, userLon, isPremium]);
 
       useEffect(() => { refreshAds(); }, [refreshAds]);
 

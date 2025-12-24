@@ -377,7 +377,13 @@ function createApiClient(options = {}) {
 
   const adminDeleteSeedListings = (meta) => request('/api/admin/listings/seed', { method: 'DELETE' }, meta);
 
-  const listAds = (meta) => request('/api/ads', { method: 'GET' }, meta);
+  const listAds = (params, meta) => {
+    const searchParams = new URLSearchParams();
+    if (params?.lat != null) searchParams.set('lat', String(params.lat));
+    if (params?.lon != null) searchParams.set('lon', String(params.lon));
+    const query = searchParams.toString();
+    return request('/api/ads' + (query ? `?${query}` : ''), { method: 'GET' }, meta);
+  };
 
   const adminListFlagged = (meta) => request('/api/admin/flagged', { method: 'GET' }, meta);
 
@@ -398,6 +404,24 @@ function createApiClient(options = {}) {
   }, meta);
 
   const adminDeleteAd = (id, meta) => request(`/api/admin/ads/${id}`, { method: 'DELETE' }, meta);
+
+  // Ad location management (for local ads)
+  const adminGetAdLocations = (adId, meta) => request(`/api/admin/ads/${adId}/locations`, { method: 'GET' }, meta);
+
+  const adminAddAdLocation = (adId, payload, meta) => request(`/api/admin/ads/${adId}/locations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  }, meta);
+
+  const adminDeleteAdLocation = (adId, locationId, meta) => request(`/api/admin/ads/${adId}/locations/${locationId}`, { method: 'DELETE' }, meta);
+
+  // Forward geocoding (city name to lat/lon)
+  const forwardGeocode = (query, meta) => {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    return request('/api/geo/forward' + (params.toString() ? `?${params.toString()}` : ''), { method: 'GET' }, meta);
+  };
 
   const searchCities = (q, meta) => {
     const params = new URLSearchParams();
@@ -615,6 +639,10 @@ function createApiClient(options = {}) {
     adminCreateAd,
     adminUpdateAd,
     adminDeleteAd,
+    adminGetAdLocations,
+    adminAddAdLocation,
+    adminDeleteAdLocation,
+    forwardGeocode,
     searchCities,
     ensureConversation,
     listConversations,

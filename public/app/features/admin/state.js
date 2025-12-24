@@ -24,7 +24,8 @@
         cta_label: '',
         background: '',
         position: 0,
-        is_active: true
+        is_active: true,
+        is_local: false
       };
     }
 
@@ -38,7 +39,8 @@
         cta_label: String(source.cta_label || '').trim(),
         background: String(source.background || '').trim(),
         position: Number.isFinite(Number(source.position)) ? Math.round(Number(source.position)) : 0,
-        is_active: source.is_active ? 1 : 0
+        is_active: source.is_active ? 1 : 0,
+        is_local: source.is_local ? 1 : 0
       };
       if (payload.position > 9999) payload.position = 9999;
       if (payload.position < -9999) payload.position = -9999;
@@ -79,6 +81,16 @@
       const [adSaving, setAdSaving] = useState(false);
       const [editingAdId, setEditingAdId] = useState(null);
       const [adForm, setAdForm] = useState(() => createEmptyAdForm());
+
+      // Ad locations state (for local ads)
+      const [adLocations, setAdLocations] = useState([]);
+      const [adLocationsLoading, setAdLocationsLoading] = useState(false);
+      const [showLocationsModal, setShowLocationsModal] = useState(false);
+      const [locationSearch, setLocationSearch] = useState('');
+      const [locationSearchResult, setLocationSearchResult] = useState(null);
+      const [locationSearching, setLocationSearching] = useState(false);
+      const [locationRadius, setLocationRadius] = useState(24140); // 15 miles in meters
+      const [locationSaving, setLocationSaving] = useState(false);
       const [seedBusy, setSeedBusy] = useState(false);
       const [seedDeleteBusy, setSeedDeleteBusy] = useState(false);
       const [seedMessage, setSeedMessage] = useState('');
@@ -396,9 +408,88 @@
           cta_label: ad.cta_label || '',
           background: ad.background || '',
           position: Number.isFinite(Number(ad.position)) ? Number(ad.position) : 0,
-          is_active: !!ad.is_active
+          is_active: !!ad.is_active,
+          is_local: !!ad.is_local
         });
       }, []);
+
+      // Ad location management functions
+      const loadAdLocations = useCallback(async (adId) => {
+        if (!adId) return;
+        setAdLocationsLoading(true);
+        try {
+          const rows = await api.adminGetAdLocations(adId, { silent: true });
+          setAdLocations(Array.isArray(rows) ? rows : []);
+        } catch (err) {
+          console.error('Failed to load ad locations:', err);
+          setAdLocations([]);
+        } finally {
+          setAdLocationsLoading(false);
+        }
+      }, [api]);
+
+      const openLocationsModal = useCallback(async () => {
+        if (!editingAdId) return;
+        setShowLocationsModal(true);
+        setLocationSearch('');
+        setLocationSearchResult(null);
+        setLocationRadius(24140);
+        await loadAdLocations(editingAdId);
+      }, [editingAdId, loadAdLocations]);
+
+      const closeLocationsModal = useCallback(() => {
+        setShowLocationsModal(false);
+        setLocationSearch('');
+        setLocationSearchResult(null);
+      }, []);
+
+      const handleLocationSearch = useCallback(async () => {
+        const query = locationSearch.trim();
+        if (!query) return;
+        setLocationSearching(true);
+        setLocationSearchResult(null);
+        try {
+          const result = await api.forwardGeocode(query);
+          setLocationSearchResult(result);
+        } catch (err) {
+          console.error('Geocode failed:', err);
+          alert(err?.message || 'Location not found');
+        } finally {
+          setLocationSearching(false);
+        }
+      }, [api, locationSearch]);
+
+      const handleAddLocation = useCallback(async () => {
+        if (!editingAdId || !locationSearchResult) return;
+        setLocationSaving(true);
+        try {
+          await api.adminAddAdLocation(editingAdId, {
+            city: locationSearchResult.display_name,
+            lat: locationSearchResult.lat,
+            lon: locationSearchResult.lon,
+            radius_meters: locationRadius
+          });
+          setLocationSearch('');
+          setLocationSearchResult(null);
+          setLocationRadius(24140);
+          await loadAdLocations(editingAdId);
+        } catch (err) {
+          alert(err?.message || 'Failed to add location');
+        } finally {
+          setLocationSaving(false);
+        }
+      }, [api, editingAdId, locationSearchResult, locationRadius, loadAdLocations]);
+
+      const handleDeleteLocation = useCallback(async (locationId) => {
+        if (!editingAdId || !locationId) return;
+        if (!window.confirm('Remove this location?')) return;
+        try {
+          await api.adminDeleteAdLocation(editingAdId, locationId);
+          await loadAdLocations(editingAdId);
+        } catch (err) {
+          alert(err?.message || 'Failed to delete location');
+        }
+      }, [api, editingAdId, loadAdLocations]);
 
       const handleAdSubmit = useCallback(async (event) => {
         event?.preventDefault?.();
@@ -546,6 +637,22 @@
         handleEditAd,
         handleDeleteAd,
         handleToggleAdActive,
+        // Ad location management
+        adLocations,
+        adLocationsLoading,
+        showLocationsModal,
+        locationSearch,
+        setLocationSearch,
+        locationSearchResult,
+        locationSearching,
+        locationRadius,
+        setLocationRadius,
+        locationSaving,
+        openLocationsModal,
+        closeLocationsModal,
+        handleLocationSearch,
+        handleAddLocation,
+        handleDeleteLocation,
         seedBusy,
         seedDeleteBusy,
         seedMessage,

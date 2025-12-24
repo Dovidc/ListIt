@@ -79,6 +79,22 @@
         handleEditAd,
         handleDeleteAd,
         handleToggleAdActive,
+        // Ad location management
+        adLocations,
+        adLocationsLoading,
+        showLocationsModal,
+        locationSearch,
+        setLocationSearch,
+        locationSearchResult,
+        locationSearching,
+        locationRadius,
+        setLocationRadius,
+        locationSaving,
+        openLocationsModal,
+        closeLocationsModal,
+        handleLocationSearch,
+        handleAddLocation,
+        handleDeleteLocation,
         seedBusy,
         seedDeleteBusy,
         seedMessage,
@@ -253,7 +269,8 @@
           )
         : H('div', { className: 'muted', style: { marginTop: 12 } }, topError || (topLoading ? 'Loading...' : 'No reported accounts yet.'));
 
-      return H('div', { className: 'admin-dashboard', style: { display: 'grid', gap: 16 } },
+      return H(React.Fragment, null,
+        H('div', { className: 'admin-dashboard', style: { display: 'grid', gap: 16 } },
         H('div', { className: 'row', style: { gap: 8 } },
           H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
           H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
@@ -646,7 +663,32 @@
 
                 'Active'
 
-              )
+              ),
+
+              H('label', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+
+                H('input', {
+
+                  type: 'checkbox',
+
+                  checked: !!adForm.is_local,
+
+                  onChange: (e) => setAdForm(f => ({ ...f, is_local: e.target.checked })),
+
+                  disabled: adSaving
+
+                }),
+
+                'Local Ad'
+
+              ),
+
+              adForm.is_local && editingAdId && H('button', {
+                type: 'button',
+                className: 'btn',
+                onClick: () => openLocationsModal(editingAdId),
+                disabled: adSaving
+              }, 'Manage Locations')
 
             ),
 
@@ -701,7 +743,7 @@
 
                         H('div', { className: 'muted', style: { fontSize: 12 } }, ad.target_url),
 
-                        H('div', { className: 'muted', style: { fontSize: 12 } }, `Position: ${Number(ad.position || 0)} | ${ad.is_active ? 'Active' : 'Inactive'}`)
+                        H('div', { className: 'muted', style: { fontSize: 12 } }, `Position: ${Number(ad.position || 0)} | ${ad.is_active ? 'Active' : 'Inactive'} | ${ad.is_local ? 'Local' : 'Global'}`)
 
                       ),
 
@@ -851,6 +893,93 @@
             paymentsLoading && H('div', { className: 'muted', style: { fontSize: 12 } }, 'Loading latest setting…')
           ),
           H('div', { className: 'muted', style: { fontSize: 13 } }, 'When payments are disabled, Stripe checkout is unavailable and Premium features such as profile customization and karma awards are unlocked for everyone.')
+        )
+        ),
+
+        // Ad Locations Modal
+        showLocationsModal && H('div', {
+          className: 'modal open',
+          onClick: (e) => { if (e.target.classList?.contains('modal')) closeLocationsModal(); }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: { padding: 24, maxWidth: 500, width: '90%', maxHeight: '80vh', overflow: 'auto', background: '#fff', color: '#111', display: 'grid', gap: 16 }
+          },
+            H('button', { className: 'close', onClick: closeLocationsModal }, '×'),
+            H('h3', { style: { margin: 0, fontSize: 18 } }, 'Manage Ad Locations'),
+
+            // Add location form
+            H('div', { style: { display: 'grid', gap: 12, padding: 12, background: '#f5f5f5', borderRadius: 8 } },
+              H('div', { style: { fontWeight: 600, fontSize: 14 } }, 'Add Location'),
+              H('div', { className: 'row', style: { gap: 8 } },
+                H('input', {
+                  type: 'text',
+                  placeholder: 'City name (e.g., Pittsburgh, PA)',
+                  value: locationSearch,
+                  onChange: (e) => setLocationSearch(e.target.value),
+                  style: { flex: 1 },
+                  disabled: locationSearching || locationSaving
+                }),
+                H('button', {
+                  className: 'btn',
+                  onClick: handleLocationSearch,
+                  disabled: !locationSearch.trim() || locationSearching || locationSaving
+                }, locationSearching ? 'Searching...' : 'Search')
+              ),
+              locationSearchResult && H('div', { style: { display: 'grid', gap: 8, padding: 8, background: '#fff', borderRadius: 4 } },
+                H('div', { style: { fontSize: 13 } }, `Found: ${locationSearchResult.display_name}`),
+                H('div', { style: { fontSize: 12, color: '#666' } }, `Coordinates: ${locationSearchResult.lat.toFixed(4)}, ${locationSearchResult.lon.toFixed(4)}`),
+                H('label', { style: { display: 'grid', gap: 4, fontSize: 13 } },
+                  `Radius: ${Math.round(locationRadius / 1609.34)} miles`,
+                  H('input', {
+                    type: 'range',
+                    min: 8047,  // 5 miles
+                    max: 160934, // 100 miles
+                    step: 1609,  // 1 mile increments
+                    value: locationRadius,
+                    onChange: (e) => setLocationRadius(Number(e.target.value)),
+                    disabled: locationSaving
+                  })
+                ),
+                H('button', {
+                  className: 'btn primary',
+                  onClick: () => handleAddLocation(editingAdId, {
+                    city: locationSearchResult.display_name,
+                    lat: locationSearchResult.lat,
+                    lon: locationSearchResult.lon,
+                    radius_meters: locationRadius
+                  }),
+                  disabled: locationSaving
+                }, locationSaving ? 'Adding...' : 'Add Location')
+              )
+            ),
+
+            // Current locations list
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('div', { style: { fontWeight: 600, fontSize: 14 } }, 'Current Locations'),
+              adLocationsLoading
+                ? H('div', { style: { fontSize: 13, color: '#666' } }, 'Loading locations...')
+                : adLocations.length === 0
+                  ? H('div', { style: { fontSize: 13, color: '#666' } }, 'No locations added yet.')
+                  : adLocations.map(loc =>
+                      H('div', {
+                        key: loc.id,
+                        className: 'row',
+                        style: { justifyContent: 'space-between', alignItems: 'center', padding: 8, background: '#f5f5f5', borderRadius: 4 }
+                      },
+                        H('div', { style: { display: 'grid', gap: 2 } },
+                          H('div', { style: { fontSize: 13 } }, loc.city),
+                          H('div', { style: { fontSize: 11, color: '#666' } }, `${Math.round((loc.radius_meters || 24140) / 1609.34)} mile radius`)
+                        ),
+                        H('button', {
+                          className: 'btn danger',
+                          style: { fontSize: 12, padding: '4px 8px' },
+                          onClick: () => handleDeleteLocation(editingAdId, loc.id)
+                        }, 'Remove')
+                      )
+                    )
+            )
+          )
         )
       );
     }

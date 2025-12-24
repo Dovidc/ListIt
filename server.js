@@ -2383,6 +2383,8 @@ function formatAdRow(row) {
 
     is_active: row.is_active ? 1 : 0,
 
+    is_local: row.is_local ? 1 : 0,
+
     position: Number.isFinite(Number(row.position)) ? Number(row.position) : 0,
 
     created_at: row.created_at || null,
@@ -2391,6 +2393,19 @@ function formatAdRow(row) {
 
   };
 
+}
+
+function formatAdLocationRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ad_id: row.ad_id,
+    city: row.city || '',
+    lat: row.lat,
+    lon: row.lon,
+    radius_meters: row.radius_meters || 24140,
+    created_at: row.created_at || null
+  };
 }
 
 
@@ -9239,32 +9254,87 @@ app.delete('/api/admin/flagged/:id', auth, requireAdmin, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
-app.get('/api/ads', async (_req, res) => {
+// Haversine distance calculation (meters)
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth's radius in meters
+  const toRad = (deg) => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
+app.get('/api/ads', async (req, res) => {
   try {
+    const userLat = Number(req.query.lat);
+    const userLon = Number(req.query.lon);
+    const hasUserLocation = Number.isFinite(userLat) && Number.isFinite(userLon);
 
+    // Get all active ads with their locations
     const rows = await db.prepare(`
-
-      SELECT *
-
-        FROM ads
-
-       WHERE is_active = 1
-
-       ORDER BY position DESC, updated_at DESC, id DESC
-
+      SELECT a.id, a.title, a.subtitle, a.image_url, a.target_url, a.position,
+             a.is_active, a.is_local, a.cta_label, a.background, a.image_size,
+             a.created_at, a.updated_at,
+             STRING_AGG(al.id::text || '|' || al.lat::text || '|' || al.lon::text || '|' || al.radius_meters::text, ';;') as locations_raw
+        FROM ads a
+        LEFT JOIN ad_locations al ON al.ad_id = a.id
+       WHERE a.is_active = 1
+       GROUP BY a.id, a.title, a.subtitle, a.image_url, a.target_url, a.position,
+                a.is_active, a.is_local, a.cta_label, a.background, a.image_size,
+                a.created_at, a.updated_at
+       ORDER BY a.position DESC, a.updated_at DESC, a.id DESC
     `).all();
 
-    return res.json(rows.map(formatAdRow));
+    // Group ads by position
+    const byPosition = {};
+    for (const row of rows) {
+      const pos = row.position;
+      if (!byPosition[pos]) byPosition[pos] = { global: null, local: null };
+      if (row.is_local) {
+        byPosition[pos].local = row;
+      } else {
+        byPosition[pos].global = row;
+      }
+    }
 
+    // Select ads for user based on location
+    const result = [];
+    const positions = Object.keys(byPosition).map(Number).sort((a, b) => b - a);
+
+    for (const pos of positions) {
+      const { global, local } = byPosition[pos];
+
+      // Check if user is in range of local ad's locations
+      if (local && hasUserLocation && local.locations_raw) {
+        const locationStrs = local.locations_raw.split(';;').filter(Boolean);
+        const inRange = locationStrs.some(locStr => {
+          const [, lat, lon, radius] = locStr.split('|');
+          const locLat = Number(lat);
+          const locLon = Number(lon);
+          const locRadius = Number(radius) || 24140;
+          if (!Number.isFinite(locLat) || !Number.isFinite(locLon)) return false;
+          const distance = haversineDistanceMeters(userLat, userLon, locLat, locLon);
+          return distance <= locRadius;
+        });
+
+        if (inRange) {
+          result.push(formatAdRow(local));
+          continue;
+        }
+      }
+
+      // Fall back to global ad
+      if (global) {
+        result.push(formatAdRow(global));
+      }
+    }
+
+    return res.json(result);
   } catch (e) {
-
     console.error('Public ads fetch failed:', e);
-
     return res.status(500).json({ error: 'ads_fetch_failed' });
-
   }
-
 });
 
 
@@ -9293,7 +9363,7 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
   try {
 
-    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active, is_local } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -9344,14 +9414,28 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
     }
 
     const activeFlag = Number(is_active) === 0 ? 0 : 1;
+    const localFlag = is_local ? 1 : 0;
+
+    // Check for position conflict (only one global and one local per position)
+    const existingAtPosition = await db.prepare(`
+      SELECT id, is_local FROM ads WHERE position = ? AND is_local = ?
+    `).get(safePosition, localFlag);
+
+    if (existingAtPosition) {
+      const typeLabel = localFlag ? 'local' : 'global';
+      return res.status(400).json({
+        error: 'position_conflict',
+        message: `A ${typeLabel} ad already exists at position ${safePosition}`
+      });
+    }
 
     const now = nowIso();
 
     const info = await db.prepare(`
 
-      INSERT INTO ads (title, subtitle, target_url, image_url, image_size, cta_label, background, is_active, position, created_at, updated_at)
+      INSERT INTO ads (title, subtitle, target_url, image_url, image_size, cta_label, background, is_active, is_local, position, created_at, updated_at)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -9370,6 +9454,8 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
       safeBackground,
 
       activeFlag,
+
+      localFlag,
 
       safePosition,
 
@@ -9407,7 +9493,7 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
     }
 
-    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active, is_local } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -9458,6 +9544,20 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
     }
 
     const activeFlag = Number(is_active) === 0 ? 0 : 1;
+    const localFlag = is_local ? 1 : 0;
+
+    // Check for position conflict (only one global and one local per position, excluding self)
+    const existingAtPosition = await db.prepare(`
+      SELECT id, is_local FROM ads WHERE position = ? AND is_local = ? AND id != ?
+    `).get(safePosition, localFlag, adId);
+
+    if (existingAtPosition) {
+      const typeLabel = localFlag ? 'local' : 'global';
+      return res.status(400).json({
+        error: 'position_conflict',
+        message: `A ${typeLabel} ad already exists at position ${safePosition}`
+      });
+    }
 
     const now = nowIso();
 
@@ -9480,6 +9580,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
              background = ?,
 
              is_active = ?,
+
+             is_local = ?,
 
              position = ?,
 
@@ -9504,6 +9606,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
       safeBackground,
 
       activeFlag,
+
+      localFlag,
 
       safePosition,
 
@@ -9567,6 +9671,101 @@ app.delete('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
 });
 
+
+/* ------------------------------------------------------------------ */
+/* Ad Locations (for local ad targeting)                              */
+/* ------------------------------------------------------------------ */
+
+// Get all locations for an ad
+app.get('/api/admin/ads/:id/locations', auth, requireAdmin, async (req, res) => {
+  try {
+    const adId = Number(req.params.id);
+    if (!Number.isFinite(adId)) {
+      return res.status(400).json({ error: 'invalid_ad' });
+    }
+
+    const rows = await db.prepare(`
+      SELECT * FROM ad_locations WHERE ad_id = ? ORDER BY created_at DESC
+    `).all(adId);
+
+    return res.json(rows.map(formatAdLocationRow));
+  } catch (e) {
+    console.error('Get ad locations failed:', e);
+    return res.status(500).json({ error: 'get_ad_locations_failed' });
+  }
+});
+
+// Add a location to an ad
+app.post('/api/admin/ads/:id/locations', auth, requireAdmin, async (req, res) => {
+  try {
+    const adId = Number(req.params.id);
+    if (!Number.isFinite(adId)) {
+      return res.status(400).json({ error: 'invalid_ad' });
+    }
+
+    // Verify ad exists and is local
+    const ad = await db.prepare('SELECT * FROM ads WHERE id = ?').get(adId);
+    if (!ad) {
+      return res.status(404).json({ error: 'ad_not_found' });
+    }
+    if (!ad.is_local) {
+      return res.status(400).json({ error: 'ad_not_local', message: 'Can only add locations to local ads' });
+    }
+
+    const { city, lat, lon, radius_meters } = req.body || {};
+
+    const safeCity = String(city || '').trim().slice(0, 200);
+    if (!safeCity) {
+      return res.status(400).json({ error: 'city_required' });
+    }
+
+    const safeLat = Number(lat);
+    const safeLon = Number(lon);
+    if (!Number.isFinite(safeLat) || !Number.isFinite(safeLon)) {
+      return res.status(400).json({ error: 'invalid_coordinates' });
+    }
+
+    let safeRadius = Number.isFinite(Number(radius_meters)) ? Math.round(Number(radius_meters)) : 24140;
+    if (safeRadius < 1609) safeRadius = 1609; // Min 1 mile
+    if (safeRadius > 160934) safeRadius = 160934; // Max 100 miles
+
+    const now = nowIso();
+    const info = await db.prepare(`
+      INSERT INTO ad_locations (ad_id, city, lat, lon, radius_meters, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(adId, safeCity, safeLat, safeLon, safeRadius, now);
+
+    const row = await db.prepare('SELECT * FROM ad_locations WHERE id = ?').get(info.lastInsertRowid);
+    return res.json(formatAdLocationRow(row));
+  } catch (e) {
+    console.error('Add ad location failed:', e);
+    return res.status(500).json({ error: 'add_ad_location_failed' });
+  }
+});
+
+// Delete a location from an ad
+app.delete('/api/admin/ads/:id/locations/:locationId', auth, requireAdmin, async (req, res) => {
+  try {
+    const adId = Number(req.params.id);
+    const locationId = Number(req.params.locationId);
+    if (!Number.isFinite(adId) || !Number.isFinite(locationId)) {
+      return res.status(400).json({ error: 'invalid_params' });
+    }
+
+    const info = await db.prepare(`
+      DELETE FROM ad_locations WHERE id = ? AND ad_id = ?
+    `).run(locationId, adId);
+
+    if (!info.changes) {
+      return res.status(404).json({ error: 'location_not_found' });
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete ad location failed:', e);
+    return res.status(500).json({ error: 'delete_ad_location_failed' });
+  }
+});
 
 
 /* ------------------------------------------------------------------ */
@@ -9741,6 +9940,72 @@ app.get('/api/geo/reverse', geocodeLimiter, async (req, res) => {
 
 });
 
+// Forward geocoding - convert city name to lat/lon (for ad targeting)
+const forwardGeoCache = createSharedCache({
+  prefix: 'forward-geocode',
+  ttlMs: GEO_CACHE_TTL_MS,
+  maxSize: GEO_CACHE_MAX
+});
+
+app.get('/api/geo/forward', geocodeLimiter, async (req, res) => {
+  try {
+    if (!MAPBOX_ACCESS_TOKEN) {
+      console.error('forward geocode error: MAPBOX_ACCESS_TOKEN missing');
+      return res.status(500).json({ error: 'geocode_not_configured' });
+    }
+
+    const query = String(req.query.q || '').trim();
+    if (!query || query.length < 2) {
+      return res.status(400).json({ error: 'query_required' });
+    }
+
+    const key = query.toLowerCase();
+    let cached = null;
+    try {
+      cached = await forwardGeoCache.get(key);
+    } catch (err) {
+      console.warn('[forward-geocode-cache] get failed:', err?.message || err);
+    }
+    if (cached) return res.json(cached);
+
+    const params = new URLSearchParams({
+      access_token: MAPBOX_ACCESS_TOKEN,
+      limit: '1',
+      types: 'place,locality,region'
+    });
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.error('forward geocode error: mapbox request failed', resp.status);
+      return res.status(502).json({ error: 'geocode_failed' });
+    }
+
+    const data = await resp.json();
+    const feature = data && Array.isArray(data.features) ? data.features[0] : null;
+
+    if (!feature || !Array.isArray(feature.center) || feature.center.length < 2) {
+      return res.status(404).json({ error: 'location_not_found' });
+    }
+
+    const [lon, lat] = feature.center;
+    const display_name = feature.place_name || query;
+
+    const out = { lat, lon, display_name };
+
+    try {
+      await forwardGeoCache.set(key, out);
+    } catch (err) {
+      console.warn('[forward-geocode-cache] set failed:', err?.message || err);
+    }
+
+    res.json(out);
+  } catch (e) {
+    console.error('forward geocode error', e);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 
 
 /* ------------------------------------------------------------------ */
