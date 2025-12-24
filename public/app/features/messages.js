@@ -843,7 +843,9 @@
             width: 220,
             maxWidth: '100%',
             resize: 'none',
-            color: '#1f2937' // Dark text (fixes dark mode)
+            color: isDarkMode ? '#f3f4f6' : '#1f2937',
+            background: isDarkMode ? '#374151' : '#fff',
+            border: isDarkMode ? '1px solid #4b5563' : '1px solid #d1d5db'
           }
         }),
         H('button', {
