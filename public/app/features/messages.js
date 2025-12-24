@@ -322,6 +322,35 @@
       },
       H('div', { style: { display: 'flex', flexDirection: 'column', marginTop: 'auto' } },
         messages.map((message) => {
+        // Check if this is a system message (no sender_id or is_system_message flag)
+        const isSystemMessage = message.is_system_message || message.sender_id === null;
+
+        if (isSystemMessage) {
+          // Render system message with warning style
+          return H('div', {
+            key: message.id,
+            style: {
+              display: 'flex',
+              justifyContent: 'center',
+              margin: '12px 0'
+            }
+          },
+            H('div', {
+              style: {
+                textAlign: 'center',
+                color: '#dc2626',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontSize: 13,
+                fontWeight: 500,
+                maxWidth: '80%'
+              }
+            }, message.body)
+          );
+        }
+
         const ts = formatMessageTimestamp(message.created_at || message.updated_at);
         const isMine = message.sender_id === user?.id;
         const picture = isMine ? userPicture : otherUserPicture;
@@ -438,12 +467,14 @@
       onSend,
       inputRef,
       otherUserDeleted,
+      isBlocked,
       hasImages
     }) {
       const [showAttachMenu, setShowAttachMenu] = useState(false);
       const attachMenuRef = useRef(null);
       const isMobile = isMobileDevice();
-      const canSend = !otherUserDeleted && (input.trim() || hasImages);
+      const isDisabled = otherUserDeleted || isBlocked;
+      const canSend = !isDisabled && (input.trim() || hasImages);
 
       // Detect dark mode
       const isDarkMode = typeof document !== 'undefined' &&
@@ -477,8 +508,8 @@
             marginTop: 'auto'
           }
         },
-          // Warning when other user deleted the conversation
-          otherUserDeleted && H('div', {
+          // Warning when blocked or other user deleted the conversation
+          isDisabled && H('div', {
             style: {
               background: '#fef2f2',
               border: '1px solid #fecaca',
@@ -488,19 +519,19 @@
               color: '#dc2626',
               textAlign: 'center'
             }
-          }, 'This user deleted the conversation. You cannot send messages.'),
+          }, isBlocked ? 'You cannot message this user.' : 'This user deleted the conversation. You cannot send messages.'),
 
           H('div', {
             className: 'message-composer',
             ref: dropRef,
-            onDragOver: otherUserDeleted ? undefined : onDragOver,
-            onDrop: otherUserDeleted ? undefined : onDrop,
+            onDragOver: isDisabled ? undefined : onDragOver,
+            onDrop: isDisabled ? undefined : onDrop,
             style: {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
               padding: '8px 0',
-              opacity: otherUserDeleted ? 0.5 : 1
+              opacity: isDisabled ? 0.5 : 1
             }
           },
             // Hidden file inputs
@@ -510,7 +541,7 @@
               capture: 'environment',
               ref: cameraFileRef,
               onChange: onPickImages,
-              disabled: otherUserDeleted,
+              disabled: isDisabled,
               style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
             }),
             H('input', {
@@ -519,7 +550,7 @@
               multiple: true,
               ref: libraryFileRef,
               onChange: onPickImages,
-              disabled: otherUserDeleted,
+              disabled: isDisabled,
             style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
           }),
 
@@ -527,8 +558,8 @@
           H('div', { ref: attachMenuRef, style: { position: 'relative' } },
             H('button', {
               type: 'button',
-              onClick: otherUserDeleted ? undefined : () => setShowAttachMenu(!showAttachMenu),
-              disabled: otherUserDeleted,
+              onClick: isDisabled ? undefined : () => setShowAttachMenu(!showAttachMenu),
+              disabled: isDisabled,
               style: {
                 width: 36,
                 height: 36,
@@ -541,7 +572,7 @@
                 lineHeight: 1,
                 display: 'grid',
                 placeItems: 'center',
-                cursor: otherUserDeleted ? 'not-allowed' : 'pointer',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
                 flexShrink: 0
               },
               title: 'Attach'
@@ -612,7 +643,7 @@
           ),
 
           // Location preset button
-          canSendLocation && !otherUserDeleted && H('button', {
+          canSendLocation && !isDisabled && H('button', {
             type: 'button',
             onClick: onRequestLocation,
             style: {
@@ -640,11 +671,11 @@
             autoCorrect: 'off',
             autoCapitalize: 'sentences',
             enterKeyHint: 'send',
-            placeholder: otherUserDeleted ? 'Cannot send messages' : 'Message...',
+            placeholder: isDisabled ? 'Cannot send messages' : 'Message...',
             value: input,
             ref: inputRef,
-            disabled: otherUserDeleted,
-            onPaste: otherUserDeleted ? undefined : onComposerPaste,
+            disabled: isDisabled,
+            onPaste: isDisabled ? undefined : onComposerPaste,
             onFocus: () => {
               // Immediately hide dashboard on focus - must be 100% reliable
               document.body.classList.add('keyboard-open');
@@ -658,11 +689,11 @@
                 }
               }, 150);
             },
-            onChange: otherUserDeleted ? undefined : (event) => {
+            onChange: isDisabled ? undefined : (event) => {
               setInput(event.target.value);
               if (showAttachMenu) setShowAttachMenu(false);
             },
-            onKeyDown: otherUserDeleted ? undefined : (event) => {
+            onKeyDown: isDisabled ? undefined : (event) => {
               if (event.key === 'Enter' && !event.shiftKey && canSend) {
                 event.preventDefault();
                 onSend();
@@ -676,7 +707,7 @@
               borderRadius: 20,
               fontSize: 16,
               outline: 'none',
-              background: otherUserDeleted ? (isDarkMode ? '#374151' : '#f3f4f6') : (isDarkMode ? '#374151' : '#fff'),
+              background: isDisabled ? (isDarkMode ? '#374151' : '#f3f4f6') : (isDarkMode ? '#374151' : '#fff'),
               color: isDarkMode ? '#f3f4f6' : '#1f2937',
               WebkitAppearance: 'none',
               WebkitTapHighlightColor: 'transparent',
@@ -730,8 +761,8 @@
       return H('div', {
         style: { display: 'flex', flexDirection: 'column', gap: 8 }
       },
-        // Warning when other user deleted the conversation
-        otherUserDeleted && H('div', {
+        // Warning when blocked or other user deleted the conversation
+        isDisabled && H('div', {
           style: {
             background: '#fef2f2',
             border: '1px solid #fecaca',
@@ -741,14 +772,14 @@
             color: '#dc2626',
             textAlign: 'center'
           }
-        }, 'This user deleted the conversation. You cannot send messages.'),
+        }, isBlocked ? 'You cannot message this user.' : 'This user deleted the conversation. You cannot send messages.'),
 
         H('div', {
           className: 'row',
-          style: { alignItems: 'center', gap: 8, flexWrap: 'wrap', opacity: otherUserDeleted ? 0.5 : 1 },
+          style: { alignItems: 'center', gap: 8, flexWrap: 'wrap', opacity: isDisabled ? 0.5 : 1 },
           ref: dropRef,
-          onDragOver: otherUserDeleted ? undefined : onDragOver,
-          onDrop: otherUserDeleted ? undefined : onDrop
+          onDragOver: isDisabled ? undefined : onDragOver,
+          onDrop: isDisabled ? undefined : onDrop
         },
         H('input', {
           type: 'file',
@@ -756,7 +787,7 @@
           capture: 'environment',
           ref: cameraFileRef,
           onChange: onPickImages,
-          disabled: otherUserDeleted,
+          disabled: isDisabled,
           style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
         }),
         H('input', {
@@ -765,10 +796,10 @@
           multiple: true,
           ref: libraryFileRef,
           onChange: onPickImages,
-          disabled: otherUserDeleted,
+          disabled: isDisabled,
           style: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }
         }),
-        !otherUserDeleted && H('div', {
+        !isDisabled && H('div', {
           className: 'row',
           style: { alignItems: 'center', gap: 8, flexWrap: 'wrap' }
         },
@@ -797,13 +828,13 @@
           })
         ),
         H('textarea', {
-          placeholder: otherUserDeleted ? 'Cannot send messages' : 'Type a message...',
+          placeholder: isDisabled ? 'Cannot send messages' : 'Type a message...',
           value: input,
           rows: 1,
-          disabled: otherUserDeleted,
-          onPaste: otherUserDeleted ? undefined : onComposerPaste,
-          onChange: otherUserDeleted ? undefined : (event) => setInput(event.target.value),
-          onKeyDown: otherUserDeleted ? undefined : (event) => {
+          disabled: isDisabled,
+          onPaste: isDisabled ? undefined : onComposerPaste,
+          onChange: isDisabled ? undefined : (event) => setInput(event.target.value),
+          onKeyDown: isDisabled ? undefined : (event) => {
             if (event.key === 'Enter' && !event.shiftKey && canSend) {
               event.preventDefault();
               onSend();
@@ -1004,6 +1035,93 @@
       );
     });
 
+    const BlockedUserModal = memo(function BlockedUserModal({
+      open,
+      onClose
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '360px',
+              width: 'min(360px, 92vw)',
+              padding: '20px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 16,
+              textAlign: 'center'
+            }
+          },
+            H('div', {
+              style: {
+                width: 56,
+                height: 56,
+                margin: '0 auto',
+                background: '#fef2f2',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }
+            },
+              H('svg', {
+                width: 28,
+                height: 28,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: '#dc2626',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('circle', { cx: 12, cy: 12, r: 10 }),
+                H('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
+              )
+            ),
+            H('h3', {
+              style: {
+                margin: 0,
+                fontSize: 18,
+                fontWeight: 700
+              }
+            }, 'Cannot Message User'),
+            H('p', {
+              className: 'muted',
+              style: { margin: 0, fontSize: 14 }
+            }, 'You cannot send messages to this user.'),
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              className: 'btn primary',
+              style: {
+                marginTop: 8,
+                padding: '10px 24px'
+              }
+            }, 'OK')
+          )
+        ),
+        document.body
+      );
+    });
+
     function useMessagesPanelState({ user, initialActiveId, onSeenChange, onConversationsUpdate }) {
       const [convos, setConvos] = useState([]);
       const [activeId, setActiveId] = useState(initialActiveId || null);
@@ -1016,6 +1134,7 @@
       const libraryFileRef = useRef();
       const [lb, setLb] = useState({ open: false, images: [], index: 0 });
       const [showModerationModal, setShowModerationModal] = useState(false);
+      const [showBlockedModal, setShowBlockedModal] = useState(false);
       const dropRef = useRef();
       const wsRef = useRef(null);
       const reconnectTimeoutRef = useRef(null);
@@ -1328,6 +1447,9 @@
           const msg = e?.message || String(e);
           if (msg.includes('moderation_flagged') || msg.includes('flagged')) {
             setShowModerationModal(true);
+          } else if (msg.includes('cannot_message_user')) {
+            setShowBlockedModal(true);
+            fetchConvos(); // Refresh to get updated is_blocked status
           } else {
             alert(msg || 'Send failed');
           }
@@ -1362,7 +1484,13 @@
           fetchConvos();
         } catch (e) {
           setMsgs(prev => prev.filter(m => m.id !== tempId));
-          alert(e?.message || 'Send failed');
+          const msg = e?.message || String(e);
+          if (msg.includes('cannot_message_user')) {
+            setShowBlockedModal(true);
+            fetchConvos();
+          } else {
+            alert(msg || 'Send failed');
+          }
         }
       }
 
@@ -1402,7 +1530,13 @@
           return true;
         } catch (e) {
           setMsgs(prev => prev.filter(m => m.id !== tempId));
-          alert(e?.message || 'Send failed');
+          const msg = e?.message || String(e);
+          if (msg.includes('cannot_message_user')) {
+            setShowBlockedModal(true);
+            fetchConvos();
+          } else {
+            alert(msg || 'Send failed');
+          }
           return false;
         }
       }
@@ -1495,7 +1629,9 @@
         lb,
         markAllAsRead,
         showModerationModal,
-        setShowModerationModal
+        setShowModerationModal,
+        showBlockedModal,
+        setShowBlockedModal
       };
     }
 
@@ -1507,6 +1643,8 @@
       recomputeUnread,
       onAuthClick
     }) {
+      const [showBlockedModal, setShowBlockedModal] = useState(false);
+
       const startMessage = useCallback(async (item) => {
         if (!item) return;
         if (!user) { onAuthClick?.('login'); return; }
@@ -1528,9 +1666,14 @@
             onTabChange('messages');
           }
         } catch (err) {
-          alert(err?.message || 'Failed to open conversation.');
+          const msg = err?.message || String(err);
+          if (msg.includes('cannot_message_user')) {
+            setShowBlockedModal(true);
+          } else {
+            alert(msg || 'Failed to open conversation.');
+          }
         }
-      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick]);
+      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick, setShowBlockedModal]);
 
       const startDirectMessage = useCallback(async (userId) => {
         if (!user) { onAuthClick?.('login'); return; }
@@ -1551,9 +1694,14 @@
             onTabChange('messages');
           }
         } catch (err) {
-          alert(err?.message || 'Failed to open conversation.');
+          const msg = err?.message || String(err);
+          if (msg.includes('cannot_message_user')) {
+            setShowBlockedModal(true);
+          } else {
+            alert(msg || 'Failed to open conversation.');
+          }
         }
-      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick]);
+      }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick, setShowBlockedModal]);
 
       const handleSeen = useCallback((convoId, lastMsgId) => {
         if (!user) return;
@@ -1584,10 +1732,16 @@
         }
       }, [user, loadSeen, saveSeen, recomputeUnread]);
 
+      const blockedUserModal = H(BlockedUserModal, {
+        open: showBlockedModal,
+        onClose: () => setShowBlockedModal(false)
+      });
+
       return {
         startMessage,
         startDirectMessage,
-        handleSeen
+        handleSeen,
+        blockedUserModal
       };
     }
 
@@ -1633,7 +1787,9 @@
         sendLocationPreset,
         markAllAsRead,
         showModerationModal,
-        setShowModerationModal
+        setShowModerationModal,
+        showBlockedModal,
+        setShowBlockedModal
       } = useMessagesPanelState(props);
 
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
@@ -1815,6 +1971,7 @@
             onSend: send,
             inputRef: mobileInputRef,
             otherUserDeleted: active?.other_user_deleted,
+            isBlocked: active?.is_blocked,
             hasImages: imgPreviews.length > 0
           })
         ),
@@ -1892,6 +2049,12 @@
         document.body
       );
 
+      // Blocked user modal
+      const blockedModal = H(BlockedUserModal, {
+        open: showBlockedModal,
+        onClose: () => setShowBlockedModal(false)
+      });
+
       return H('div', { className: 'messages-panel' },
         // Left side: conversations list
         H('div', { className: 'messages-panel-left' },
@@ -1947,6 +2110,7 @@
             onSend: send,
             inputRef: mobileInputRef,
             otherUserDeleted: active?.other_user_deleted,
+            isBlocked: active?.is_blocked,
             hasImages: imgPreviews.length > 0
           }),
           H(Lightbox, {
@@ -1974,7 +2138,9 @@
         // Mobile portal
         mobileThreadPortal,
         // Moderation modal
-        moderationModal
+        moderationModal,
+        // Blocked user modal
+        blockedModal
       );
     }
 
@@ -1984,6 +2150,7 @@
       MessageComposer,
       ConfirmLocationModal,
       ConfirmPaypalModal,
+      BlockedUserModal,
       ImagePreviewStrip,
       MessagesThread,
       ConversationsSidebar,

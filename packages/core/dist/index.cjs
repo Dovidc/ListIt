@@ -478,6 +478,21 @@ function createApiClient(options = {}) {
     body: JSON.stringify(payload || {})
   }, meta);
 
+  // Block user
+  const blockUser = (userId, meta) => request(`/api/users/${userId}/block`, {
+    method: 'POST'
+  }, meta);
+
+  // Unblock user
+  const unblockUser = (userId, meta) => request(`/api/users/${userId}/block`, {
+    method: 'DELETE'
+  }, meta);
+
+  // Get block status between current user and target user
+  const getBlockStatus = (userId, meta) => request(`/api/users/${userId}/block-status`, {
+    method: 'GET'
+  }, meta);
+
   const adminSearchUsers = (params = {}, meta) => {
     const searchParams = new URLSearchParams();
     const q = params.q ?? params.query ?? '';
@@ -655,6 +670,9 @@ function createApiClient(options = {}) {
     reverseGeocode,
     listNearby,
     reportSeller,
+    blockUser,
+    unblockUser,
+    getBlockStatus,
     adminSearchUsers,
     adminGetUser,
     adminGetUserReports,

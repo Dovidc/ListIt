@@ -786,7 +786,7 @@
         setSelectedListing
       });
 
-      const { startMessage, startDirectMessage, handleSeen } = useMessageActions({
+      const { startMessage, startDirectMessage, handleSeen, blockedUserModal } = useMessageActions({
         user,
         onConversationOpened: setActiveConvoId,
         onTabChange: onTabChange,
@@ -1566,6 +1566,8 @@
               onAccepted: handleLegalAccepted,
               user
             }),
+
+            blockedUserModal,
 
             H('main', { className: isEditingScreen ? 'container listing-editor-container' : 'container' },
               isEditingScreen

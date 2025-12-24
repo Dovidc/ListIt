@@ -4698,6 +4698,8 @@
       const [tab, setTab] = useState('active');
       const [sellerInfo, setSellerInfo] = useState(null);
       const [coverById, setCoverById] = useState(() => (Object.create(null)));
+      const [isBlocked, setIsBlocked] = useState(false);
+      const [blockLoading, setBlockLoading] = useState(false);
 
       useEffect(() => {
         if (!Number.isFinite(Number(sellerId))) {
@@ -4728,6 +4730,32 @@
 
         return () => { mounted = false; };
       }, [api, sellerId]);
+
+      // Fetch block status (only when logged in and viewing another user)
+      useEffect(() => {
+        if (!user || !user.id || !sellerId || Number(sellerId) === Number(user.id)) {
+          setIsBlocked(false);
+          return undefined;
+        }
+        if (!api || typeof api.getBlockStatus !== 'function') {
+          return undefined;
+        }
+
+        let mounted = true;
+
+        (async () => {
+          try {
+            const status = await api.getBlockStatus(sellerId, { silent: true });
+            if (!mounted) return;
+            setIsBlocked(!!status?.i_blocked_them);
+          } catch (err) {
+            if (!mounted) return;
+            console.warn('Failed to fetch block status:', err);
+          }
+        })();
+
+        return () => { mounted = false; };
+      }, [api, sellerId, user]);
 
       useEffect(() => {
         let mounted = true;
@@ -4870,6 +4898,34 @@
           onAdminDelete(id);
         }
       }, [onAdminDelete]);
+
+      const handleBlockToggle = useCallback(async () => {
+        if (!user || !sellerId || blockLoading) return;
+        if (!api || typeof api.blockUser !== 'function' || typeof api.unblockUser !== 'function') return;
+
+        if (!isBlocked) {
+          // Confirm before blocking
+          if (!confirm(`Are you sure you want to block ${sellerUsername || 'this user'}? They won't be able to message you.`)) {
+            return;
+          }
+        }
+
+        setBlockLoading(true);
+        try {
+          if (isBlocked) {
+            await api.unblockUser(sellerId);
+            setIsBlocked(false);
+          } else {
+            await api.blockUser(sellerId);
+            setIsBlocked(true);
+          }
+        } catch (err) {
+          console.error('Failed to toggle block:', err);
+          alert('Failed to update block status. Please try again.');
+        } finally {
+          setBlockLoading(false);
+        }
+      }, [api, user, sellerId, sellerUsername, isBlocked, blockLoading]);
 
       const modalContent = selectedListing
         ? H('div', {
@@ -5163,8 +5219,24 @@
             }),
             sellerJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${sellerJoinedText}`)
           ),
-          // Right side: Back button
-          H('button', { className: 'btn', onClick: onBack, style: { padding: '8px 16px', fontSize: 14 } }, '← Back')
+          // Right side: Block button and Back button
+          H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            // Block/Unblock button (only shown when logged in and viewing another user)
+            user && user.id && Number(sellerId) !== Number(user.id) && H('button', {
+              className: 'btn',
+              onClick: handleBlockToggle,
+              disabled: blockLoading,
+              style: {
+                padding: '6px 12px',
+                fontSize: 13,
+                background: isBlocked ? '#16a34a' : '#dc2626',
+                color: '#fff',
+                border: 'none',
+                opacity: blockLoading ? 0.6 : 1
+              }
+            }, blockLoading ? '...' : (isBlocked ? 'Unblock' : 'Block')),
+            H('button', { className: 'btn', onClick: onBack, style: { padding: '6px 12px', fontSize: 13 } }, '← Back')
+          )
         ),
 
         H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },

@@ -7029,7 +7029,81 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
 });
 
+// ───────────────────────────────────────────────────────────────
+// Block User Endpoints
+// ───────────────────────────────────────────────────────────────
 
+// Block a user
+app.post('/api/users/:id/block', auth, async (req, res) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = Number(req.params.id);
+
+    if (blockerId === blockedId) {
+      return res.status(400).json({ error: 'cannot_block_self' });
+    }
+
+    // Check if target user exists
+    const targetUser = await db.prepare('SELECT id FROM users WHERE id = ?').get(blockedId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    // Insert block (ignore if already exists)
+    await db.prepare(`
+      INSERT INTO user_blocks (blocker_id, blocked_id, created_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT (blocker_id, blocked_id) DO NOTHING
+    `).run(blockerId, blockedId, nowIso());
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('POST /api/users/:id/block failed:', e);
+    return res.status(500).json({ error: 'block_failed' });
+  }
+});
+
+// Unblock a user
+app.delete('/api/users/:id/block', auth, async (req, res) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = Number(req.params.id);
+
+    await db.prepare('DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?')
+      .run(blockerId, blockedId);
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('DELETE /api/users/:id/block failed:', e);
+    return res.status(500).json({ error: 'unblock_failed' });
+  }
+});
+
+// Get block status between current user and target user
+app.get('/api/users/:id/block-status', auth, async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const targetUserId = Number(req.params.id);
+
+    // Check if current user blocked target
+    const iBlockedThem = await db.prepare(
+      'SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?'
+    ).get(currentUserId, targetUserId);
+
+    // Check if target blocked current user
+    const theyBlockedMe = await db.prepare(
+      'SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?'
+    ).get(targetUserId, currentUserId);
+
+    return res.json({
+      i_blocked_them: !!iBlockedThem,
+      they_blocked_me: !!theyBlockedMe
+    });
+  } catch (e) {
+    console.error('GET /api/users/:id/block-status failed:', e);
+    return res.status(500).json({ error: 'status_check_failed' });
+  }
+});
 
 
 
@@ -8571,7 +8645,15 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
     }
 
+    // Check if either user has blocked the other
+    const blockExists = await db.prepare(`
+      SELECT 1 FROM user_blocks
+      WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)
+    `).get(req.user.id, with_user_id, with_user_id, req.user.id);
 
+    if (blockExists) {
+      return res.status(403).json({ error: 'cannot_message_user' });
+    }
 
     if (isLockedAccount(req.user) && !target.is_admin) {
       return respondLocked(res);
@@ -8753,7 +8835,17 @@ app.get('/api/conversations', auth, async (req, res) => {
 
     `).all({ me });
 
+    // Get all blocked user pairs involving the current user
+    const blockedPairs = await db.prepare(`
+      SELECT blocker_id, blocked_id FROM user_blocks
+      WHERE blocker_id = ? OR blocked_id = ?
+    `).all(me, me);
 
+    const blockedSet = new Set();
+    for (const pair of blockedPairs) {
+      if (pair.blocker_id === me) blockedSet.add(pair.blocked_id);
+      else blockedSet.add(pair.blocker_id);
+    }
 
     const normalized = rows.map(row => ({
 
@@ -8761,7 +8853,9 @@ app.get('/api/conversations', auth, async (req, res) => {
 
       image_data: canonicalAssetUrl(row.image_data),
 
-      other_user_deleted: !!row.other_user_deleted
+      other_user_deleted: !!row.other_user_deleted,
+
+      is_blocked: blockedSet.has(row.other_user_id)
 
     }));
 
@@ -8934,6 +9028,16 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
     }
 
+    // Check if either user has blocked the other
+    const blockExists = await db.prepare(`
+      SELECT 1 FROM user_blocks
+      WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)
+    `).get(req.user.id, otherUserId, otherUserId, req.user.id);
+
+    if (blockExists) {
+      return res.status(403).json({ error: 'cannot_message_user' });
+    }
+
 
 
     const err = validateMsgImages(images);
@@ -8987,6 +9091,34 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
             flagged,
             images: imageUrls
           });
+
+          // Insert system message to notify recipient about prohibited content
+          try {
+            const senderUsername = req.user.username || 'A user';
+            const systemBody = `${senderUsername} tried sending prohibited content`;
+            const systemMsgInfo = await db.prepare(
+              'INSERT INTO messages (conversation_id, sender_id, body, created_at, is_system_message) VALUES (?, NULL, ?, ?, 1)'
+            ).run(id, systemBody, nowIso());
+
+            // Broadcast system message to recipient via WebSocket
+            const systemMsgId = systemMsgInfo.lastInsertRowid;
+            const systemMsg = await db.prepare('SELECT * FROM messages WHERE id = ?').get(systemMsgId);
+            if (systemMsg) {
+              await publishBackgroundEvent(TOPICS.MESSAGE_SENT, {
+                conversationId: id,
+                message: { ...systemMsg, images: [] },
+                senderId: null,
+                recipientId: otherUserId,
+                senderUsername: null,
+                listingId: convo.listing_id || null,
+                preview: systemBody.slice(0, 160)
+              }, { req });
+            }
+          } catch (sysErr) {
+            console.error('[DM] Failed to insert system message:', sysErr?.message || sysErr);
+            // Continue - don't block the moderation response
+          }
+
           return res.status(400).json({ error: 'moderation_flagged', flagged });
         }
       } catch (modErr) {
