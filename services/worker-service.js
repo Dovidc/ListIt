@@ -823,6 +823,7 @@ class WorkerService {
       case 'customer.subscription.deleted':
         return await this.handleSubscriptionDeleted(payload);
       case 'invoice.payment_succeeded':
+      case 'invoice.paid':
         return await this.handleInvoicePaymentSucceeded(payload);
       case 'invoice.payment_failed':
         return await this.handleInvoicePaymentFailed(payload);
@@ -869,7 +870,9 @@ class WorkerService {
     }
 
     const supporterSince = nowIso();
-    const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+    const periodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null;
 
     await db.prepare(`
       UPDATE users
@@ -899,7 +902,9 @@ class WorkerService {
     if (!subscription) return;
     console.log('Processing subscription.updated:', subscription.id);
 
-    const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+    const periodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null;
 
     await db.prepare(`
       UPDATE users
