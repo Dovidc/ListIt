@@ -2059,7 +2059,9 @@ const PROHIBITED_ITEM_PATTERNS = [
   /\b(glock|ar-?15|ak-?47|remington|smith\s*&?\s*wesson|sig\s*sauer|beretta|ruger|colt|mossberg)\b/i,
   /\b(semi-?auto|fully?\s*auto|assault\s*weapon|assault\s*rifle)\b/i,
   /\b(9mm|\.45|\.22|\.38|\.357|\.308|5\.56|7\.62)\s*(caliber|cal|ammo|ammunition|rounds?)?\b/i,
-  /\b(ammunition|ammo|bullets|cartridges|magazines?|clips?)\b/i,
+  /\b(ammunition|ammo|bullets|cartridges)\b/i,
+  /\b(gun|ammo|rifle|pistol|ar-?15)\s*(magazines?|clips?)\b/i,
+  /\b(magazines?|clips?)\s*(of\s+)?(ammo|ammunition|rounds?|bullets?)\b/i,
   /\b(holster|gun\s*case|gun\s*safe|gun\s*cabinet)\b/i,
   /\b(concealed\s*carry|ccw|open\s*carry)\b/i,
   // Weapons
