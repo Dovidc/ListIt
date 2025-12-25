@@ -23,7 +23,8 @@
       isCapacitorNative,
       pickGalleryImages,
       takePhoto,
-      fetchCoordsAndReverse
+      fetchCoordsAndReverse,
+      getCachedLocation
     } = helpers;
     if (typeof isMobileDevice !== 'function') {
       throw new Error('Listing forms feature requires isMobileDevice helper.');
@@ -264,6 +265,16 @@
           }
         } catch (err) {
           console.warn('[AutoList/BG] Location lookup failed:', err);
+          // Try stale cache as last resort
+          const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
+          if (stale?.lat != null && stale?.lon != null) {
+            if (autoPostNearbyEnabled) {
+              enableNearbyAuto = true;
+            }
+            latAuto = stale.lat;
+            lonAuto = stale.lon;
+            if (!locAuto) locAuto = formatLocationDisplay(stale, stale.display || '');
+          }
         }
       }
 
@@ -510,6 +521,12 @@
             return cachedCoords;
           } catch (err) {
             console.warn('[AutoList] Failed to get coords:', err);
+            // Try stale cache as last resort
+            const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
+            if (stale?.lat != null && stale?.lon != null) {
+              cachedCoords = stale;
+              return cachedCoords;
+            }
             return null;
           }
         }

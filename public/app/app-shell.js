@@ -908,9 +908,10 @@
           const overlayStartTime = Date.now();
           setIsResuming(true);
           try {
-            // Clear cached GPS coordinates so we get fresh location
-            if (typeof helpers?.clearCoordsCache === 'function') {
-              helpers.clearCoordsCache();
+            // Refresh location cache if stale (5 min TTL)
+            // This is fire-and-forget, won't block the resume flow
+            if (typeof helpers?.refreshCacheIfStale === 'function') {
+              helpers.refreshCacheIfStale();
             }
 
             // Check for pending fire-and-forget jobs that might have completed

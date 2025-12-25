@@ -1,4 +1,10 @@
 (() => {
+  // Global location cache - persists across createLocationHelpers calls
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  let cachedLocation = null; // { lat, lon, display }
+  let cachedAt = null; // timestamp
+  let fetchInProgress = null; // promise if fetch is in progress
+
   function createLocationHelpers({ api } = {}) {
     if (!api || typeof api.reverseGeocode !== 'function') {
       throw new Error('Location helpers require an API client with reverseGeocode.');
@@ -24,7 +30,19 @@
              window.Capacitor.isNativePlatform();
     }
 
-    async function fetchCoordsAndReverse({ silent = false } = {}) {
+    // Check if cache is still valid
+    function isCacheValid() {
+      if (!cachedLocation || !cachedAt) return false;
+      return (Date.now() - cachedAt) < CACHE_TTL_MS;
+    }
+
+    // Get cached location (may be stale but still usable as fallback)
+    function getCachedLocation() {
+      return cachedLocation ? { ...cachedLocation } : null;
+    }
+
+    // Internal fetch without caching logic
+    async function fetchFresh({ silent = false } = {}) {
       let lat, lon;
       // Use Capacitor Geolocation on native, browser API on web
       const isNative = window.Capacitor?.isNativePlatform?.();
@@ -54,8 +72,72 @@
       };
     }
 
+    // Main fetch function - uses cache, keeps last known on failure
+    async function fetchCoordsAndReverse({ silent = false, forceRefresh = false } = {}) {
+      // Return valid cache unless force refresh requested
+      if (!forceRefresh && isCacheValid()) {
+        return { ...cachedLocation };
+      }
+
+      // If fetch already in progress, wait for it
+      if (fetchInProgress) {
+        try {
+          return await fetchInProgress;
+        } catch (err) {
+          // If the in-progress fetch failed, return stale cache if available
+          if (cachedLocation) return { ...cachedLocation };
+          throw err;
+        }
+      }
+
+      // Start new fetch
+      fetchInProgress = (async () => {
+        try {
+          const result = await fetchFresh({ silent });
+          // Update cache on success
+          cachedLocation = result;
+          cachedAt = Date.now();
+          return { ...result };
+        } catch (err) {
+          // On failure, keep existing cache (don't clear it)
+          // If we have a stale cache, return it instead of throwing
+          if (cachedLocation) {
+            console.warn('[Location] Fetch failed, using stale cache:', err?.message || err);
+            return { ...cachedLocation };
+          }
+          // No cache at all, re-throw
+          throw err;
+        } finally {
+          fetchInProgress = null;
+        }
+      })();
+
+      return fetchInProgress;
+    }
+
+    // Refresh cache if stale (called on app resume)
+    // This is fire-and-forget - doesn't block, doesn't throw
+    function refreshCacheIfStale() {
+      if (isCacheValid()) return;
+      // Don't await - let it run in background
+      fetchCoordsAndReverse({ silent: true }).catch(err => {
+        console.warn('[Location] Background refresh failed:', err?.message || err);
+      });
+    }
+
+    // Initialize cache on app startup (fire-and-forget)
+    function initializeCache() {
+      fetchCoordsAndReverse({ silent: true }).catch(err => {
+        console.warn('[Location] Initial cache failed:', err?.message || err);
+      });
+    }
+
     return {
-      fetchCoordsAndReverse
+      fetchCoordsAndReverse,
+      getCachedLocation,
+      refreshCacheIfStale,
+      initializeCache,
+      isCacheValid
     };
   }
 

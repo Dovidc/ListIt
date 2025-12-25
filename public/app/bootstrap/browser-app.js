@@ -113,7 +113,15 @@
     if (typeof locationHelpersFactory !== 'function') {
       throw new Error('Location helpers bundle failed to load.');
     }
-    const { fetchCoordsAndReverse } = locationHelpersFactory({ api });
+    const {
+      fetchCoordsAndReverse,
+      getCachedLocation,
+      refreshCacheIfStale,
+      initializeCache
+    } = locationHelpersFactory({ api });
+
+    // Initialize location cache on app startup (fire-and-forget)
+    initializeCache();
 
     const authFeatureFactory = bundles?.features?.auth?.createAuthFeature;
     if (typeof authFeatureFactory !== 'function') {
@@ -381,6 +389,7 @@
         pickGalleryImages,
         createConcurrencyLimiter,
         fetchCoordsAndReverse,
+        getCachedLocation,
         getUserCoordsOnce,
         useBodyScrollLock,
         haversineMeters,
@@ -418,7 +427,8 @@
         isCapacitorNative,
         pickGalleryImages,
         takePhoto,
-        fetchCoordsAndReverse
+        fetchCoordsAndReverse,
+        getCachedLocation
       },
       uploads: {
         clearDraftCacheForFile,
@@ -511,7 +521,9 @@
         serializePushSubscription,
         base64UrlToUint8Array,
         asArray,
-        getUserCoordsOnce
+        getUserCoordsOnce,
+        refreshCacheIfStale,
+        getCachedLocation
       },
       AppNav,
       features: {

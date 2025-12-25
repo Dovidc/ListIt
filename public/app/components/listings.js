@@ -65,6 +65,7 @@
       pickGalleryImages,
       createConcurrencyLimiter,
       fetchCoordsAndReverse,
+      getCachedLocation,
       getUserCoordsOnce,
       useBodyScrollLock,
       haversineMeters,
@@ -2085,12 +2086,21 @@
 
         // MassList has no manual location field, so always attempt to fetch
         // coordinates regardless of the autoPostNearbyEnabled setting.
+        // The location cache (5 min TTL) is populated on app startup and resume,
+        // so fetchCoordsAndReverseInternal should return quickly from cache.
         let sharedNearby = { ok: false, lat: null, lon: null, display: '' };
         try {
           const c = await fetchCoordsAndReverseInternal();
           sharedNearby = { ok: true, lat: c.lat, lon: c.lon, display: c.display };
         } catch (_) {
-          sharedNearby = { ok: false, lat: null, lon: null, display: '' };
+          // fetchCoordsAndReverse already falls back to stale cache internally,
+          // but if it still fails, try getCachedLocation for any stale data
+          const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
+          if (stale?.display) {
+            sharedNearby = { ok: true, lat: stale.lat, lon: stale.lon, display: stale.display };
+          } else {
+            sharedNearby = { ok: false, lat: null, lon: null, display: '' };
+          }
         }
 
         const nearbyLocation = sharedNearby.display ? String(sharedNearby.display).trim() : '';
