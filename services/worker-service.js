@@ -573,6 +573,7 @@ class WorkerService {
         const flagged = await this.contentModerator({
           title,
           description,
+          tags,
           imageUrls
         });
         if (flagged?.length) {
