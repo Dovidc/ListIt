@@ -24,7 +24,12 @@
       pickGalleryImages,
       takePhoto,
       fetchCoordsAndReverse,
-      getCachedLocation
+      getLocationForListing,
+      getCachedDisplay,
+      getCachedLocation,
+      updateDisplayLocation,
+      shouldShowLocationWarning,
+      markLocationWarningShown
     } = helpers;
     if (typeof isMobileDevice !== 'function') {
       throw new Error('Listing forms feature requires isMobileDevice helper.');
@@ -245,35 +250,40 @@
 
       console.log(`[AutoList/BG] Compressed ${compressedBlobs.length} images in ${Date.now() - startTime}ms`);
 
-      // Step 2: Determine location (same as regular flow)
+      // Step 2: Determine location using new API
+      // Display is cached forever, coords only fetched if distance tags enabled
       const manualLocation = String(location || '').trim();
       let locAuto = manualLocation;
       let latAuto = null;
       let lonAuto = null;
       let enableNearbyAuto = false;
 
-      if (autoPostNearbyEnabled || !locAuto) {
-        try {
-          const c = await fetchCoordsAndReverse({ silent: true });
-          if (c && c.lat != null && c.lon != null) {
-            if (autoPostNearbyEnabled) {
-              enableNearbyAuto = true;
+      const needsCoords = autoPostNearbyEnabled;
+      if (typeof getLocationForListing === 'function') {
+        const locResult = await getLocationForListing({ needsCoords, silent: true });
+        if (!locAuto && locResult.display) {
+          locAuto = locResult.display;
+        }
+        if (needsCoords && locResult.lat != null && locResult.lon != null) {
+          enableNearbyAuto = true;
+          latAuto = locResult.lat;
+          lonAuto = locResult.lon;
+        }
+      } else {
+        // Fallback to legacy API
+        if (autoPostNearbyEnabled || !locAuto) {
+          try {
+            const c = await fetchCoordsAndReverse({ silent: true });
+            if (c && c.lat != null && c.lon != null) {
+              if (autoPostNearbyEnabled) {
+                enableNearbyAuto = true;
+              }
+              latAuto = c.lat;
+              lonAuto = c.lon;
+              if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
             }
-            latAuto = c.lat;
-            lonAuto = c.lon;
-            if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
-          }
-        } catch (err) {
-          console.warn('[AutoList/BG] Location lookup failed:', err);
-          // Try stale cache as last resort
-          const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
-          if (stale?.lat != null && stale?.lon != null) {
-            if (autoPostNearbyEnabled) {
-              enableNearbyAuto = true;
-            }
-            latAuto = stale.lat;
-            lonAuto = stale.lon;
-            if (!locAuto) locAuto = formatLocationDisplay(stale, stale.display || '');
+          } catch (err) {
+            console.warn('[AutoList/BG] Location lookup failed:', err);
           }
         }
       }
@@ -506,58 +516,63 @@
           throw firstUploadError || new Error('Failed to upload images');
         }
 
-        // Step 2: Determine location and coordinates (should be cached, fast)
+        // Step 2: Determine location using new API
+        // Display is cached forever, coords only fetched if distance tags enabled
         const manualLocation = String(location || '').trim();
         let locAuto = manualLocation;
         let latAuto = null;
         let lonAuto = null;
         let enableNearbyAuto = false;
-        let cachedCoords = null;
 
-        async function ensureCoords() {
-          if (cachedCoords) return cachedCoords;
-          try {
-            cachedCoords = await fetchCoordsAndReverse({ silent: true });
-            return cachedCoords;
-          } catch (err) {
-            console.warn('[AutoList] Failed to get coords:', err);
-            // Try stale cache as last resort
-            const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
-            if (stale?.lat != null && stale?.lon != null) {
-              cachedCoords = stale;
+        const needsCoords = autoPostNearbyEnabled;
+        if (typeof getLocationForListing === 'function') {
+          const locResult = await getLocationForListing({ needsCoords, silent: true });
+          if (!locAuto && locResult.display) {
+            locAuto = locResult.display;
+          }
+          if (needsCoords && locResult.lat != null && locResult.lon != null) {
+            enableNearbyAuto = true;
+            latAuto = locResult.lat;
+            lonAuto = locResult.lon;
+          }
+        } else {
+          // Fallback to legacy API
+          let cachedCoords = null;
+          async function ensureCoords() {
+            if (cachedCoords) return cachedCoords;
+            try {
+              cachedCoords = await fetchCoordsAndReverse({ silent: true });
               return cachedCoords;
+            } catch (err) {
+              console.warn('[AutoList] Failed to get coords:', err);
+              return null;
             }
-            return null;
           }
-        }
 
-        if (autoPostNearbyEnabled) {
-          try {
-            const c = await ensureCoords();
-            if (c && c.lat != null && c.lon != null) {
-              enableNearbyAuto = true;
-              latAuto = c.lat;
-              lonAuto = c.lon;
-              if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
-            }
-          } catch (err) {
-            console.warn('[AutoList] Nearby coords failed:', err);
-            enableNearbyAuto = false;
-          }
-        }
-
-        if (!locAuto) {
-          try {
-            const c = await ensureCoords();
-            if (c) {
-              locAuto = formatLocationDisplay(c, c?.display || '');
-              if (enableNearbyAuto) {
+          if (autoPostNearbyEnabled) {
+            try {
+              const c = await ensureCoords();
+              if (c && c.lat != null && c.lon != null) {
+                enableNearbyAuto = true;
                 latAuto = c.lat;
                 lonAuto = c.lon;
+                if (!locAuto) locAuto = formatLocationDisplay(c, c.display || '');
               }
+            } catch (err) {
+              console.warn('[AutoList] Nearby coords failed:', err);
+              enableNearbyAuto = false;
             }
-          } catch (err) {
-            console.warn('[AutoList] Location lookup failed:', err);
+          }
+
+          if (!locAuto) {
+            try {
+              const c = await ensureCoords();
+              if (c) {
+                locAuto = formatLocationDisplay(c, c?.display || '');
+              }
+            } catch (err) {
+              console.warn('[AutoList] Location lookup failed:', err);
+            }
           }
         }
 

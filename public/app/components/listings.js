@@ -65,7 +65,11 @@
       pickGalleryImages,
       createConcurrencyLimiter,
       fetchCoordsAndReverse,
+      getLocationForListing,
+      getCachedDisplay,
       getCachedLocation,
+      shouldShowLocationWarning,
+      markLocationWarningShown,
       getUserCoordsOnce,
       useBodyScrollLock,
       haversineMeters,
@@ -860,6 +864,21 @@
           'Overlay the listing image with a message inviting buyers to make an offer.'
         ],
         footer: 'Disable Offer Message to allow only the price.'
+      });
+    }
+
+    // --- Location Warning Modal ---
+    function LocationWarningModal({ onClose }) {
+      return H(InfoHelpModal, {
+        onClose,
+        title: 'Location Access Required',
+        intro: 'We couldn\'t access your location. This may affect your listings:',
+        bullets: [
+          'Your listing will show "Unknown location" instead of your city.',
+          'Buyers won\'t be able to find you in nearby searches.',
+          'Distance tags won\'t work for your listings.'
+        ],
+        footer: 'To fix this, enable location access in your device settings and tap "Use my current location" when creating a listing.'
       });
     }
 
@@ -2016,6 +2035,7 @@
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
       const [showModerationModal, setShowModerationModal] = useState(false);
+      const [showLocationWarningModal, setShowLocationWarningModal] = useState(false);
       const filePreviews = useFilePreviews(files);
 
       const cameraRef = useRef();
@@ -2084,32 +2104,39 @@
 
         updateProgress(0, 0);
 
-        // MassList has no manual location field, so always attempt to fetch
-        // coordinates regardless of the autoPostNearbyEnabled setting.
-        // The location cache (5 min TTL) is populated on app startup and resume,
-        // so fetchCoordsAndReverseInternal should return quickly from cache.
-        let sharedNearby = { ok: false, lat: null, lon: null, display: '' };
-        try {
-          const c = await fetchCoordsAndReverseInternal();
-          sharedNearby = { ok: true, lat: c.lat, lon: c.lon, display: c.display };
-        } catch (_) {
-          // fetchCoordsAndReverse already falls back to stale cache internally,
-          // but if it still fails, try getCachedLocation for any stale data
-          const stale = typeof getCachedLocation === 'function' ? getCachedLocation() : null;
-          if (stale?.display) {
-            sharedNearby = { ok: true, lat: stale.lat, lon: stale.lon, display: stale.display };
-          } else {
-            sharedNearby = { ok: false, lat: null, lon: null, display: '' };
+        // MassList has no manual location field.
+        // Use new location API: display is cached forever, coords only if distance tags enabled.
+        const needsCoords = autoPostNearbyEnabled;
+        let locationResult = { display: null, lat: null, lon: null, error: null };
+
+        if (typeof getLocationForListing === 'function') {
+          locationResult = await getLocationForListing({ needsCoords, silent: true });
+        } else {
+          // Fallback to legacy API
+          try {
+            const c = await fetchCoordsAndReverseInternal();
+            locationResult = { display: c.display, lat: c.lat, lon: c.lon };
+          } catch (err) {
+            const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
+            locationResult = { display: cached, lat: null, lon: null, error: err };
           }
         }
 
-        const nearbyLocation = sharedNearby.display ? String(sharedNearby.display).trim() : '';
-        const presetLocation = typeof user?.location_preset === 'string'
-          ? user.location_preset.trim()
-          : '';
-        // When geolocation fails or is unavailable, fall back to the saved
-        // profile preset, then to the generic placeholder.
-        const normalizedLocation = nearbyLocation || presetLocation || 'Unknown location';
+        // If location fetch failed and we should show warning, flag it
+        let showWarning = false;
+        if (locationResult.error && !locationResult.display) {
+          if (typeof shouldShowLocationWarning === 'function' && shouldShowLocationWarning()) {
+            showWarning = true;
+          }
+        }
+
+        const normalizedLocation = locationResult.display || 'Unknown location';
+        const sharedNearby = {
+          ok: !!(locationResult.lat && locationResult.lon),
+          lat: locationResult.lat,
+          lon: locationResult.lon,
+          display: normalizedLocation
+        };
 
         const limiter = createConcurrencyLimiter(3);
 
@@ -2217,7 +2244,12 @@
         // so we don't need reloadAll which would replace the listings array
         try { await reloadMine(); } catch { }
 
-        return { total, created: total - failedCount, failed: failedCount, moderationFlagged };
+        // Mark warning as shown if we're about to show it
+        if (showWarning && typeof markLocationWarningShown === 'function') {
+          markLocationWarningShown();
+        }
+
+        return { total, created: total - failedCount, failed: failedCount, moderationFlagged, showLocationWarning: showWarning };
       };
 
       async function runMassList() {
@@ -2238,6 +2270,10 @@
               setShowModerationModal(true);
             }
             return { shouldClose: false };
+          }
+          // Show location warning if needed (throttled to once per hour)
+          if (stats.showLocationWarning) {
+            setShowLocationWarningModal(true);
           }
           onDone && onDone(stats);
           return { shouldClose: true };
@@ -2423,8 +2459,13 @@
         )
       );
 
+      // Location warning modal
+      const locationWarningModal = showLocationWarningModal && H(LocationWarningModal, {
+        onClose: () => setShowLocationWarningModal(false)
+      });
+
       return ReactDOM.createPortal(
-        H(React.Fragment, null, modal, moderationModal),
+        H(React.Fragment, null, modal, moderationModal, locationWarningModal),
         document.body
       );
     }
@@ -5284,6 +5325,7 @@
       MultiFilePicker,
       InfoHelpModal,
       AutoListHelpModal,
+      LocationWarningModal,
       ListingForm,
       MassListModal,
       ReportSellerModal,

@@ -908,10 +908,10 @@
           const overlayStartTime = Date.now();
           setIsResuming(true);
           try {
-            // Refresh location cache if stale (5 min TTL)
+            // Refresh coords cache if stale (15 min TTL)
             // This is fire-and-forget, won't block the resume flow
-            if (typeof helpers?.refreshCacheIfStale === 'function') {
-              helpers.refreshCacheIfStale();
+            if (typeof helpers?.refreshCoordsIfStale === 'function') {
+              helpers.refreshCoordsIfStale();
             }
 
             // Check for pending fire-and-forget jobs that might have completed

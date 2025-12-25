@@ -114,9 +114,17 @@
       throw new Error('Location helpers bundle failed to load.');
     }
     const {
+      // New API
+      getLocationForListing,
+      getCachedDisplay,
+      getCachedCoords,
+      updateDisplayLocation,
+      refreshCoordsIfStale,
+      shouldShowLocationWarning,
+      markLocationWarningShown,
+      // Legacy API
       fetchCoordsAndReverse,
       getCachedLocation,
-      refreshCacheIfStale,
       initializeCache
     } = locationHelpersFactory({ api });
 
@@ -389,7 +397,11 @@
         pickGalleryImages,
         createConcurrencyLimiter,
         fetchCoordsAndReverse,
+        getLocationForListing,
+        getCachedDisplay,
         getCachedLocation,
+        shouldShowLocationWarning,
+        markLocationWarningShown,
         getUserCoordsOnce,
         useBodyScrollLock,
         haversineMeters,
@@ -428,7 +440,12 @@
         pickGalleryImages,
         takePhoto,
         fetchCoordsAndReverse,
-        getCachedLocation
+        getLocationForListing,
+        getCachedDisplay,
+        getCachedLocation,
+        updateDisplayLocation,
+        shouldShowLocationWarning,
+        markLocationWarningShown
       },
       uploads: {
         clearDraftCacheForFile,
@@ -522,7 +539,7 @@
         base64UrlToUint8Array,
         asArray,
         getUserCoordsOnce,
-        refreshCacheIfStale,
+        refreshCoordsIfStale,
         getCachedLocation
       },
       AppNav,
