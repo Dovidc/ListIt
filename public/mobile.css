@@ -1521,28 +1521,45 @@ body:has(.mobile-messages-thread-portal) .mobile-dashboard {
 }
 
 /* DM conversation background - subtle diagonal lines */
+/* Using ::before pseudo-element for truly fixed background on iOS */
 .mobile-messages-thread-portal {
+  background: #f8fafc !important;
+  padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
+  position: relative;
+}
+
+.mobile-messages-thread-portal::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #f8fafc repeating-linear-gradient(
     -45deg,
     transparent,
     transparent 28px,
     rgba(148, 163, 184, 0.06) 28px,
     rgba(148, 163, 184, 0.06) 29px
-  ) !important;
-  background-attachment: fixed !important;
-  padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
+  );
+  pointer-events: none;
+  z-index: -1;
 }
 
 [data-theme="dark"] .mobile-messages-thread-portal,
 html[data-theme="dark"] .mobile-messages-thread-portal {
+  background: #1e293b !important;
+}
+
+[data-theme="dark"] .mobile-messages-thread-portal::before,
+html[data-theme="dark"] .mobile-messages-thread-portal::before {
   background: #1e293b repeating-linear-gradient(
     -45deg,
     transparent,
     transparent 28px,
     rgba(100, 116, 139, 0.15) 28px,
     rgba(100, 116, 139, 0.15) 29px
-  ) !important;
-  background-attachment: fixed !important;
+  );
 }
 
 /* Messages content area - slightly translucent for layered feel */

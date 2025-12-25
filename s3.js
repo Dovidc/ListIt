@@ -100,7 +100,13 @@ function getS3() {
     ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
     const region = process.env.AWS_REGION || process.env.S3_REGION;
     if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
-    _s3 = new S3Client({ region });
+    // Disable automatic checksum - SDK v3 adds CRC32 by default which causes 403
+    // errors when client-side compression changes the file bytes after signing
+    _s3 = new S3Client({
+      region,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
+    });
   }
   return _s3;
 }
