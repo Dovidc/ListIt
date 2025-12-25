@@ -161,6 +161,13 @@
                 bytes: null
               }, { silent: true });
 
+              // Check for moderation or other errors in response
+              if (finalizeResult?.error) {
+                console.error('[BackgroundUpload] Finalize error:', finalizeResult.error);
+                onError?.(new Error(finalizeResult.error));
+                return;
+              }
+
               onComplete?.({
                 listingId,
                 slot,
@@ -233,6 +240,14 @@
                 bytes: blob.size
               }, { silent: true });
 
+              // Check for moderation or other errors in response
+              if (finalizeResult?.error) {
+                const err = new Error(finalizeResult.error);
+                onError?.(err);
+                reject(err);
+                return;
+              }
+
               onComplete?.({
                 listingId,
                 slot,
@@ -241,11 +256,13 @@
               });
               resolve({ success: true });
             } catch (err) {
+              console.error('[BackgroundUpload] Web finalize caught error:', err?.message || err);
               onError?.(err);
               reject(err);
             }
           } else {
             const err = new Error(`Upload failed: ${xhr.status}`);
+            console.error('[BackgroundUpload] Web upload HTTP error:', xhr.status);
             onError?.(err);
             reject(err);
           }

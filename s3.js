@@ -130,8 +130,6 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
   const maxImageBytes = (+process.env.MAX_IMAGE_MB || 20) * 1024 * 1024;
   const maxVideoBytes = (+process.env.MAX_VIDEO_MB || 10) * 1024 * 1024;
 
-  let cacheControl = 'public, max-age=31536000, immutable';
-
   if (imageRegex.test(contentType)) {
     if (bytes > maxImageBytes) throw new Error('Image too large');
   } else if (videoRegex.test(contentType)) {
@@ -144,10 +142,15 @@ async function presignUpload({ filename = 'upload.bin', contentType, bytes = 0 }
     Bucket,
     Key,
     ContentType: contentType,
-    CacheControl: cacheControl,
+    // Note: CacheControl is set via bucket policy or after upload, not in presign
+    // Adding it here requires client to send the exact same header value
   });
 
-  const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 });
+  // signableHeaders: only sign content-type, not other headers that client might not send
+  const uploadUrl = await getSignedUrl(s3, cmd, {
+    expiresIn: 300,  // 5 minutes (was 60s, too tight)
+    signableHeaders: new Set(['content-type', 'host'])
+  });
   const base = PUBLIC_BASE || `https://${Bucket}.s3.${region}.amazonaws.com`;
   const publicUrl = `${base.replace(/\/+$/,'')}/${Key}`;
   return { Bucket, Key, uploadUrl, publicUrl };

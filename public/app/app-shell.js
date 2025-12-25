@@ -1372,6 +1372,10 @@
               try { hideUploadingToast(); } catch (e) { /* ignore */ }
             }
             console.error('[Mobile AutoList] Failed:', err);
+            const msg = err?.message || String(err);
+            if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+              setShowModerationModal(true);
+            }
           }
           return;
         }

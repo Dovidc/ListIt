@@ -144,7 +144,9 @@
               (blob) => {
                 if (objectUrl) URL.revokeObjectURL(objectUrl);
                 if (blob) {
-                  const compressed = new File([blob], file.name || 'image.jpg', { type: 'image/jpeg' });
+                  // Always use .jpg extension since we're outputting JPEG
+                  const baseName = (file.name || 'image').replace(/\.[^.]+$/, '');
+                  const compressed = new File([blob], baseName + '.jpg', { type: 'image/jpeg' });
                   console.log(`[Upload] Compressed: ${(file.size/1024).toFixed(0)}KB -> ${(compressed.size/1024).toFixed(0)}KB (${width}x${height})`);
                   resolve(compressed);
                 } else {

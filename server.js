@@ -2055,7 +2055,7 @@ function validateMsgImages(images) {
 // Prohibited items keyword patterns (case-insensitive)
 const PROHIBITED_ITEM_PATTERNS = [
   // Firearms
-  /\b(gun|guns|firearm|firearms|pistol|pistols|rifle|rifles|shotgun|shotguns|handgun|handguns)\b/i,
+  /\b(gun|guns|pistol|pistols|rifle|rifles|shotgun|shotguns|handgun|handguns)\b/i,
   /\b(glock|ar-?15|ak-?47|remington|smith\s*&?\s*wesson|sig\s*sauer|beretta|ruger|colt|mossberg)\b/i,
   /\b(semi-?auto|fully?\s*auto|assault\s*weapon|assault\s*rifle)\b/i,
   /\b(9mm|\.45|\.22|\.38|\.357|\.308|5\.56|7\.62)\s*(caliber|cal|ammo|ammunition|rounds?)?\b/i,
@@ -2096,6 +2096,48 @@ function checkProhibitedItems(text) {
     }
   }
   return null;
+}
+
+// Minimum confidence threshold for moderation flags (0-1)
+// Categories below this threshold will be ignored to reduce false positives
+const MODERATION_THRESHOLDS = {
+  // Very low threshold - almost always block
+  'sexual/minors': 0.1,
+  'illicit/violent': 0.1,
+
+  // Medium threshold - block if reasonably confident
+  'harassment/threatening': 0.3,
+  'hate/threatening': 0.3,
+  'self-harm/intent': 0.3,
+  'self-harm/instructions': 0.3,
+
+  // Higher threshold - common false positives in marketplace context
+  'violence': 0.5,           // Comics, video games, kitchen knives, etc.
+  'violence/graphic': 0.5,
+  'harassment': 0.5,
+  'hate': 0.5,
+  'sexual': 0.5,
+  'self-harm': 0.5,
+  'illicit': 0.5,
+};
+const DEFAULT_MODERATION_THRESHOLD = 0.4;
+
+/**
+ * Check if moderation result exceeds our confidence thresholds
+ * Returns array of categories that exceed threshold, or empty array if none
+ */
+function getSignificantFlags(categoryScores) {
+  if (!categoryScores || typeof categoryScores !== 'object') return [];
+
+  const significant = [];
+  for (const [category, score] of Object.entries(categoryScores)) {
+    if (typeof score !== 'number') continue;
+    const threshold = MODERATION_THRESHOLDS[category] ?? DEFAULT_MODERATION_THRESHOLD;
+    if (score >= threshold) {
+      significant.push(category);
+    }
+  }
+  return significant;
 }
 
 async function moderateListingContent({ title, description, tags, imageUrls, customTag }) {
@@ -2226,12 +2268,15 @@ async function moderateListingContent({ title, description, tags, imageUrls, cus
 
       textModeration.results?.forEach((result, index) => {
         if (!result?.flagged) return;
+        const scores = result.category_scores || {};
+        const significantCategories = getSignificantFlags(scores);
+        if (!significantCategories.length) return; // Below our thresholds
         const entry = textEntries[index];
         flagged.push({
           type: entry.type,
           target: entry.value,
-          categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
-          category_scores: result.category_scores || {}
+          categories: significantCategories,
+          category_scores: scores
         });
       });
     } catch (err) {
@@ -2258,12 +2303,16 @@ async function moderateListingContent({ title, description, tags, imageUrls, cus
 
       const result = imageModeration.results?.[0];
       if (result?.flagged) {
-        flagged.push({
-          type: 'image',
-          target: imageEntry.value,
-          categories: Object.keys(result.categories || {}).filter((key) => result.categories[key]),
-          category_scores: result.category_scores || {}
-        });
+        const scores = result.category_scores || {};
+        const significantCategories = getSignificantFlags(scores);
+        if (significantCategories.length) {
+          flagged.push({
+            type: 'image',
+            target: imageEntry.value,
+            categories: significantCategories,
+            category_scores: scores
+          });
+        }
       }
     } catch (err) {
       console.error('[moderateListingContent] Image moderation failed for', imageEntry.value?.slice(0, 50), err?.message || err);
@@ -2305,21 +2354,25 @@ async function moderateImageUrl(imageUrl) {
     'openai_moderation'
   );
 
-  const flagged = result.results?.[0]?.flagged;
-  if (flagged) {
-    console.log('[moderateImageUrl] Image FLAGGED:', url.slice(0, 80));
-    const categories = result.results?.[0]?.categories || {};
-    const flaggedCategories = Object.keys(categories).filter(k => categories[k]);
-    console.log('[moderateImageUrl] Flagged categories:', flaggedCategories.join(', '));
-    return {
-      flagged: true,
-      details: [{
-        type: 'image',
-        target: url,
-        categories: flaggedCategories,
-        category_scores: result.results?.[0]?.category_scores || {}
-      }]
-    };
+  const openAIFlagged = result.results?.[0]?.flagged;
+  if (openAIFlagged) {
+    const scores = result.results?.[0]?.category_scores || {};
+    const significantCategories = getSignificantFlags(scores);
+    if (significantCategories.length) {
+      console.log('[moderateImageUrl] Image FLAGGED:', url.slice(0, 80));
+      console.log('[moderateImageUrl] Flagged categories:', significantCategories.join(', '));
+      return {
+        flagged: true,
+        details: [{
+          type: 'image',
+          target: url,
+          categories: significantCategories,
+          category_scores: scores
+        }]
+      };
+    } else {
+      console.log('[moderateImageUrl] Image flagged by OpenAI but below our thresholds:', url.slice(0, 80));
+    }
   } else {
     console.log('[moderateImageUrl] Image passed moderation');
   }
@@ -8217,11 +8270,15 @@ app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
           const hintOffset = hint ? 1 : 0;
           moderation.results?.forEach((result, index) => {
             if (!result || !result.flagged) return;
+            const scores = result.category_scores || {};
+            const significantCategories = getSignificantFlags(scores);
+            if (!significantCategories.length) return; // Below our thresholds
+
             const entry = {
               target: null,
               type: null,
-              categories: [],
-              category_scores: result.category_scores || {}
+              categories: significantCategories,
+              category_scores: scores
             };
 
             if (hint && index === 0) {
@@ -8233,8 +8290,6 @@ app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
               entry.target = images[imgIndex] || openAIImages[imgIndex];
             }
 
-            const categories = result.categories || {};
-            entry.categories = Object.keys(categories).filter((key) => categories[key]);
             flagged.push(entry);
           });
 

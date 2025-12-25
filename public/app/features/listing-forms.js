@@ -472,6 +472,7 @@
 
         console.log('[AutoList] Using presigned URL upload path...');
 
+        let firstUploadError = null;
         const uploadPromises = validFiles.slice(0, 12).map(async (file, i) => {
           try {
             const result = await uploadFileDraft(file);
@@ -479,6 +480,8 @@
             return result.uploadToken;
           } catch (e) {
             console.error(`[AutoList] Failed to upload image ${i}:`, e);
+            // Preserve first error (especially moderation errors)
+            if (!firstUploadError) firstUploadError = e;
             return null;
           }
         });
@@ -488,7 +491,8 @@
         console.log(`[AutoList] Uploaded ${uploadTokens.length} images in ${Date.now() - startTime}ms`);
 
         if (!uploadTokens.length) {
-          throw new Error('Failed to upload images');
+          // Re-throw original error if available (preserves moderation_flagged message)
+          throw firstUploadError || new Error('Failed to upload images');
         }
 
         // Step 2: Determine location and coordinates (should be cached, fast)
