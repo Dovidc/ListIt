@@ -154,7 +154,8 @@
     const {
       MassListModal,
       ListingModal,
-      SellerProfile
+      SellerProfile,
+      LocationWarningModal
     } = listingComponents;
     const { SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponents;
     const { LegalAcceptanceModal } = legalComponents;
@@ -231,6 +232,26 @@
 
       // Moderation flagged modal state
       const [showModerationModal, setShowModerationModal] = useState(false);
+
+      // Location warning modal state
+      const [showLocationWarning, setShowLocationWarning] = useState(false);
+
+      // Initialize location cache on app startup and show warning if needed
+      useEffect(() => {
+        if (typeof helpers?.initializeCache !== 'function') return;
+
+        helpers.initializeCache().then(result => {
+          if (!result.success) {
+            // Location failed - check if we should show warning (hourly throttle)
+            if (typeof helpers?.shouldShowLocationWarning === 'function' && helpers.shouldShowLocationWarning()) {
+              if (typeof helpers?.markLocationWarningShown === 'function') {
+                helpers.markLocationWarningShown();
+              }
+              setShowLocationWarning(true);
+            }
+          }
+        });
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
       // Desktop location accuracy warning toast
       const [showDesktopAccuracyToast, setShowDesktopAccuracyToast] = useState(false);
@@ -912,6 +933,26 @@
             // This is fire-and-forget, won't block the resume flow
             if (typeof helpers?.refreshCoordsIfStale === 'function') {
               helpers.refreshCoordsIfStale();
+            }
+
+            // Check if we still have no location cached and should warn
+            if (typeof helpers?.getCachedLocation === 'function') {
+              const cached = helpers.getCachedLocation();
+              if (!cached?.display) {
+                // No cached location - try to get it and warn if failed
+                if (typeof helpers?.initializeCache === 'function') {
+                  helpers.initializeCache().then(result => {
+                    if (!result.success) {
+                      if (typeof helpers?.shouldShowLocationWarning === 'function' && helpers.shouldShowLocationWarning()) {
+                        if (typeof helpers?.markLocationWarningShown === 'function') {
+                          helpers.markLocationWarningShown();
+                        }
+                        setShowLocationWarning(true);
+                      }
+                    }
+                  });
+                }
+              }
             }
 
             // Check for pending fire-and-forget jobs that might have completed
@@ -2157,6 +2198,11 @@
                 }, 'I Understand')
               )
             ),
+
+            // Location warning modal
+            showLocationWarning && LocationWarningModal && H(LocationWarningModal, {
+              onClose: () => setShowLocationWarning(false)
+            }),
 
             // Edit listing toast with rotating cog
             showEditToast && H('div', {

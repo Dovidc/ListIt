@@ -869,17 +869,74 @@
 
     // --- Location Warning Modal ---
     function LocationWarningModal({ onClose }) {
-      return H(InfoHelpModal, {
-        onClose,
-        title: 'Location Access Required',
-        intro: 'We couldn\'t access your location. This may affect your listings:',
-        bullets: [
-          'Your listing will show "Unknown location" instead of your city.',
-          'Buyers won\'t be able to find you in nearby searches.',
-          'Distance tags won\'t work for your listings.'
-        ],
-        footer: 'To fix this, enable location access in your device settings and tap "Use my current location" when creating a listing.'
-      });
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal-backdrop',
+          style: {
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(17,24,39,0.7)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 10001
+          },
+          onClick: (e) => { if (e.target === e.currentTarget) onClose?.(); }
+        },
+          H('div', {
+            style: {
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              width: 'min(340px, 90vw)',
+              boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+              textAlign: 'center'
+            }
+          },
+            // Exclamation icon
+            H('div', {
+              style: {
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: '#fef3c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px'
+              }
+            },
+              H('svg', {
+                width: 28,
+                height: 28,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: '#d97706',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              },
+                H('circle', { cx: 12, cy: 12, r: 10 }),
+                H('line', { x1: 12, y1: 8, x2: 12, y2: 12 }),
+                H('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })
+              )
+            ),
+            H('h3', { style: { margin: '0 0 8px', fontSize: 18, fontWeight: 600, color: '#111' } }, 'Location Unavailable'),
+            H('p', { style: { margin: '0 0 16px', color: '#666', fontSize: 14, lineHeight: 1.5 } },
+              'Your listings will show "Unknown location" and won\'t appear in nearby searches.'
+            ),
+            H('p', { style: { margin: '0 0 20px', color: '#888', fontSize: 13 } },
+              'Enable location in your device settings.'
+            ),
+            H('button', {
+              type: 'button',
+              className: 'btn primary',
+              style: { width: '100%', padding: '12px 20px', fontSize: 15 },
+              onClick: onClose
+            }, 'OK')
+          )
+        ),
+        document.body
+      );
     }
 
     // --- Listing Form (S3-first) - Modern design matching mobile ---
@@ -2122,9 +2179,9 @@
           }
         }
 
-        // If location fetch failed and we should show warning, flag it
+        // If location fetch failed, show warning (throttled to once per hour)
         let showWarning = false;
-        if (locationResult.error && !locationResult.display) {
+        if (locationResult.error) {
           if (typeof shouldShowLocationWarning === 'function' && shouldShowLocationWarning()) {
             showWarning = true;
           }

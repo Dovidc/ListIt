@@ -289,15 +289,20 @@
     }
 
     // Initialize on app startup - fetch display location if not cached
-    function initializeCache() {
+    // Returns a promise that resolves to { success: boolean, error?: Error }
+    async function initializeCache() {
       if (getStoredDisplay()) {
         // Already have permanent display cache, no need to fetch
-        return;
+        return { success: true, cached: true };
       }
-      // Fire-and-forget fetch to populate display cache
-      fetchDisplayLocation({ silent: true }).catch(err => {
+      // Try to fetch and populate display cache
+      try {
+        await fetchDisplayLocation({ silent: true });
+        return { success: true, cached: false };
+      } catch (err) {
         console.warn('[Location] Initial cache failed:', err?.message || err);
-      });
+        return { success: false, error: err };
+      }
     }
 
     // Refresh coords if stale (called on app resume when distance tags enabled)

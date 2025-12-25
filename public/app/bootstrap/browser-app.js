@@ -128,8 +128,7 @@
       initializeCache
     } = locationHelpersFactory({ api });
 
-    // Initialize location cache on app startup (fire-and-forget)
-    initializeCache();
+    // Location cache initialization is handled in app-shell so it can show warning modal
 
     const authFeatureFactory = bundles?.features?.auth?.createAuthFeature;
     if (typeof authFeatureFactory !== 'function') {
@@ -368,6 +367,7 @@
       MultiFilePicker,
       InfoHelpModal,
       AutoListHelpModal,
+      LocationWarningModal,
       ListingForm,
       MassListModal,
       ReportSellerModal,
@@ -540,7 +540,10 @@
         asArray,
         getUserCoordsOnce,
         refreshCoordsIfStale,
-        getCachedLocation
+        getCachedLocation,
+        initializeCache,
+        shouldShowLocationWarning,
+        markLocationWarningShown
       },
       AppNav,
       features: {
@@ -569,7 +572,8 @@
         listing: {
           MassListModal,
           ListingModal,
-          SellerProfile
+          SellerProfile,
+          LocationWarningModal
         },
         supporter: { SupporterBadge, SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal },
         legal: { LegalAcceptanceModal }
