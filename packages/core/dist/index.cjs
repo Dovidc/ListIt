@@ -468,7 +468,15 @@ function createApiClient(options = {}) {
   const reverseGeocode = (lat, lon, meta) => request(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: 'GET' }, meta);
 
   const listNearby = (lat, lon, radiusMeters = 150, meta) => {
-    const url = `/api/listings/nearby?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&radius_m=${encodeURIComponent(radiusMeters)}`;
+    const params = new URLSearchParams();
+    params.set('lat', lat);
+    params.set('lon', lon);
+    params.set('radius_m', radiusMeters);
+    if (meta?.limit) params.set('limit', meta.limit);
+    if (meta?.cursor) params.set('cursor', meta.cursor);
+    if (meta?.q) params.set('q', meta.q);
+    if (meta?.sort) params.set('sort', meta.sort);
+    const url = `/api/listings/nearby?${params.toString()}`;
     return request(url, { method: 'GET' }, meta);
   };
 
