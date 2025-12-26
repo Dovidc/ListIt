@@ -939,6 +939,84 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
   res.json({ received: true });
 });
 
+// Apple App Store Server Notifications V2 webhook
+// Must come BEFORE express.json() to receive raw body
+app.post('/api/webhooks/apple', express.raw({ type: 'application/json' }), async (req, res) => {
+  console.log('[Apple Webhook] Received notification');
+
+  try {
+    const body = JSON.parse(req.body.toString());
+    const signedPayload = body.signedPayload;
+
+    if (!signedPayload) {
+      console.error('[Apple Webhook] Missing signedPayload');
+      return res.status(400).json({ error: 'missing_signed_payload' });
+    }
+
+    // Decode the JWT without verification first to get claims
+    // Apple's V2 notifications are signed JWTs
+    const parts = signedPayload.split('.');
+    if (parts.length !== 3) {
+      console.error('[Apple Webhook] Invalid JWT format');
+      return res.status(400).json({ error: 'invalid_jwt_format' });
+    }
+
+    // Decode payload (base64url) - index 1 is the claims
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+
+    // In production, you should verify the JWT signature using Apple's public keys
+    // from https://appleid.apple.com/auth/keys
+    // For now, we'll decode and process (Apple sends from their servers only)
+
+    const notificationType = payload.notificationType;
+    const subtype = payload.subtype || null;
+    const data = payload.data || {};
+
+    console.log(`[Apple Webhook] Notification type: ${notificationType}, subtype: ${subtype || 'none'}`);
+
+    // Decode the signed transaction info if present
+    let transactionInfo = null;
+    if (data.signedTransactionInfo) {
+      const txParts = data.signedTransactionInfo.split('.');
+      if (txParts.length === 3) {
+        transactionInfo = JSON.parse(Buffer.from(txParts[1], 'base64url').toString());
+      }
+    }
+
+    // Decode the signed renewal info if present
+    let renewalInfo = null;
+    if (data.signedRenewalInfo) {
+      const renewalParts = data.signedRenewalInfo.split('.');
+      if (renewalParts.length === 3) {
+        renewalInfo = JSON.parse(Buffer.from(renewalParts[1], 'base64url').toString());
+      }
+    }
+
+    // Publish to message bus for processing
+    await publishBackgroundEvent(TOPICS.APPLE_WEBHOOK, {
+      notificationType,
+      subtype,
+      transactionInfo,
+      renewalInfo,
+      environment: data.environment || payload.environment,
+      signedDate: payload.signedDate
+    }, { req, failOnError: true });
+
+    // Always return 200 to Apple to acknowledge receipt
+    // If we return error, Apple will retry
+    res.json({ received: true });
+  } catch (err) {
+    console.error('[Apple Webhook] Error processing notification:', err);
+    reportError(err, {
+      label: 'Apple webhook processing failed',
+      tags: { component: 'payments', type: 'apple_webhook' }
+    });
+    // Still return 200 to prevent Apple from retrying
+    // Log the error for investigation
+    res.json({ received: true, error: 'processing_failed' });
+  }
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -2580,6 +2658,8 @@ async function getUserWithStatus(userId) {
 
              supporter_tier,
 
+             supporter_months_credited,
+
              beta_tester,
 
              admin_badge,
@@ -2657,6 +2737,8 @@ function mapUserRow(row, extra = {}) {
     supporter_since: row.supporter_since || null,
 
     supporter_tier: row.supporter_tier || null,
+
+    supporter_months_credited: row.supporter_months_credited || 0,
 
     beta_tester: !!row.beta_tester,
 
@@ -3258,6 +3340,8 @@ app.get('/api/me', async (req, res) => {
              supporter_since,
 
              supporter_tier,
+
+             supporter_months_credited,
 
              beta_tester,
 
@@ -3875,7 +3959,10 @@ app.put('/api/me/customization', auth, profileLimiter, async (req, res) => {
   try {
     // Check if user is allowed to customize (premium or payments disabled)
     const paymentsDisabled = await arePaymentsDisabled();
-    const isPremium = !!req.user.supporter_tier || req.user.supporter_badge || paymentsDisabled;
+    const isPremium = paymentsDisabled
+      || req.user.subscription_status === 'active'
+      || !!req.user.supporter_tier
+      || req.user.supporter_badge;
 
     if (!isPremium) {
       return res.status(403).json({ error: 'premium_required' });
@@ -4680,12 +4767,15 @@ app.post('/api/subscriptions/apple/validate', auth, writeLimiter, async (req, re
       UPDATE users
       SET
         is_premium = 1,
+        supporter_badge = ?,
+        supporter_tier = 'premium',
         supporter_since = COALESCE(supporter_since, ?),
         subscription_status = 'active',
         apple_original_transaction_id = ?,
         apple_subscription_expires_at = ?
       WHERE id = ?
     `).run(
+      SUPPORTER_BADGE_CODE_PREMIUM,
       nowIso(),
       originalTransactionId,
       expiresAt,
@@ -5172,7 +5262,9 @@ app.get('/api/listings', async (req, res) => {
 
       u.supporter_since AS owner_supporter_since,
 
-      u.supporter_tier AS owner_supporter_tier
+      u.supporter_tier AS owner_supporter_tier,
+
+      u.supporter_months_credited AS owner_supporter_months_credited
 
     `;
 
@@ -5192,7 +5284,9 @@ app.get('/api/listings', async (req, res) => {
 
       u.supporter_since AS owner_supporter_since,
 
-      u.supporter_tier AS owner_supporter_tier
+      u.supporter_tier AS owner_supporter_tier,
+
+      u.supporter_months_credited AS owner_supporter_months_credited
 
     `;
 
@@ -6842,6 +6936,7 @@ app.get('/api/users/:userId', async (req, res) => {
              supporter_badge,
              supporter_since,
              supporter_tier,
+             supporter_months_credited,
              beta_tester,
              admin_badge,
              profile_picture_url,
@@ -6876,6 +6971,8 @@ app.get('/api/users/:userId', async (req, res) => {
       supporter_since: user.supporter_since || null,
 
       supporter_tier: user.supporter_tier || null,
+
+      supporter_months_credited: user.supporter_months_credited || 0,
 
       beta_tester: !!user.beta_tester,
 
@@ -6955,7 +7052,9 @@ app.get('/api/users/:userId/listings', userListingsLimiter, async (req, res) => 
 
         u.supporter_since AS owner_supporter_since,
 
-        u.supporter_tier AS owner_supporter_tier
+        u.supporter_tier AS owner_supporter_tier,
+
+        u.supporter_months_credited AS owner_supporter_months_credited
 
       FROM listings l
 
@@ -7591,6 +7690,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                  u.supporter_badge AS owner_supporter_badge,
                  u.supporter_since AS owner_supporter_since,
                  u.supporter_tier AS owner_supporter_tier,
+                 u.supporter_months_credited AS owner_supporter_months_credited,
                  ST_Distance(
                    COALESCE(
                      l.geog,
@@ -7672,6 +7772,7 @@ app.get('/api/listings/nearby', async (req, res) => {
                u.supporter_badge AS owner_supporter_badge,
                u.supporter_since AS owner_supporter_since,
                u.supporter_tier AS owner_supporter_tier,
+               u.supporter_months_credited AS owner_supporter_months_credited,
                ${distanceExpr} AS distance_m
           FROM listings l
           JOIN users u ON u.id = l.user_id

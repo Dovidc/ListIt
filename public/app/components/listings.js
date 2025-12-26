@@ -179,15 +179,16 @@
     }
 
     // --- Tiered Supporter Badge (Copper -> Unobtainium) ---
-    function TieredSupporterBadge({ since, size = 20, onClick }) {
+    function TieredSupporterBadge({ since, monthsCredited = 0, size = 20, onClick }) {
       const [showTooltip, setShowTooltip] = useState(false);
       const badgeRef = useRef(null);
 
-      // Calculate duration from supporter_since
+      // Calculate duration from supporter_since + credited months
       const sinceDate = since ? new Date(since) : null;
       const now = Date.now();
       const timeDiff = sinceDate ? now - sinceDate.getTime() : 0;
-      const monthsSince = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
+      const monthsFromCurrent = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 30));
+      const monthsSince = monthsFromCurrent + (monthsCredited || 0);
       const yearsSince = Math.floor(monthsSince / 12);
       const remainingMonths = monthsSince % 12;
 
@@ -3977,7 +3978,8 @@
         username: item?.owner_username ? item.owner_username : null,
         since: item?.owner_supporter_since || null,
         badge: item?.owner_supporter_badge || null,
-        tier: item?.owner_supporter_tier || null
+        tier: item?.owner_supporter_tier || null,
+        monthsCredited: item?.owner_supporter_months_credited || 0
       } : null;
 
       const handleSupporterBadgeClick = () => {
@@ -4057,7 +4059,7 @@
           sellerPill,
           H(TieredSupporterBadge, {
             since: supporterData.since,
-            tier: supporterData.tier,
+            monthsCredited: supporterData.monthsCredited,
             size: 18
           })
         );
@@ -4292,7 +4294,8 @@
           username: sellerInfo.username,
           since: sellerInfo.supporter_since,
           badge: sellerInfo.supporter_badge,
-          tier: sellerInfo.supporter_tier
+          tier: sellerInfo.supporter_tier,
+          monthsCredited: sellerInfo.supporter_months_credited || 0
         }
         : null;
       const avatarBorderColor = sellerInfo.profile_avatar_border_color || '#ffffff';
@@ -4522,7 +4525,7 @@
                     sellerSupporter && H(TieredSupporterBadge, {
                       size: 18,
                       since: sellerSupporter.since,
-                      tier: sellerSupporter.tier
+                      monthsCredited: sellerSupporter.monthsCredited
                     }),
                     // Beta Tester Badge (separate from supporter badge)
                     sellerInfo?.beta_tester && (() => {
@@ -5092,7 +5095,8 @@
         ? {
           username: sellerLabel,
           since: sellerSupporterSince,
-          badge: sellerInfo.supporter_badge
+          badge: sellerInfo.supporter_badge,
+          monthsCredited: sellerInfo?.supporter_months_credited || 0
         }
         : null;
 

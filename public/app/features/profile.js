@@ -2083,7 +2083,8 @@
         return {
           username: usernameLabel,
           since: user.supporter_since || null,
-          tier: user.supporter_tier || null
+          tier: user.supporter_tier || null,
+          monthsCredited: user.supporter_months_credited || 0
         };
       }, [user]);
       const userCreatedAt = user?.created_at || null;

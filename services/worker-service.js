@@ -78,6 +78,23 @@ class WorkerService {
   }
 
   /**
+   * Calculate months since a given date (for supporter badge crediting)
+   * Returns 0 if date is null/invalid
+   */
+  calculateMonthsSince(dateStr) {
+    if (!dateStr) return 0;
+    try {
+      const since = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - since;
+      const months = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
+      return Math.max(0, months);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
    * Start the worker service
    */
   async start() {
@@ -86,6 +103,10 @@ class WorkerService {
     // Subscribe to relevant topics
     this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
       await this.handleStripeWebhook(event);
+    });
+
+    this.messageBus.subscribe(TOPICS.APPLE_WEBHOOK, async (event) => {
+      await this.handleAppleWebhook(event);
     });
 
     this.messageBus.subscribe(TOPICS.USER_REGISTERED, async (event) => {
@@ -922,20 +943,25 @@ class WorkerService {
     console.log('Processing subscription.deleted:', subscription.id);
 
     const user = await db.prepare(`
-      SELECT supporter_tier, supporter_since FROM users WHERE stripe_subscription_id = ?
+      SELECT id, supporter_tier, supporter_since, supporter_months_credited FROM users WHERE stripe_subscription_id = ?
     `).get(subscription.id);
 
     if (user) {
+      // Calculate months to credit from current subscription period
+      const monthsToCredit = this.calculateMonthsSince(user.supporter_since);
+
       await db.prepare(`
         UPDATE users
         SET supporter_badge = NULL,
             supporter_tier = NULL,
             subscription_status = 'canceled',
-            stripe_subscription_id = NULL
+            stripe_subscription_id = NULL,
+            supporter_months_credited = supporter_months_credited + ?,
+            supporter_since = NULL
         WHERE stripe_subscription_id = ?
-      `).run(subscription.id);
+      `).run(monthsToCredit, subscription.id);
 
-      console.log(`Subscription ${subscription.id} canceled, badge removed`);
+      console.log(`Subscription ${subscription.id} canceled, credited ${monthsToCredit} months, badge removed`);
     }
   }
 
@@ -965,6 +991,260 @@ class WorkerService {
 
       console.log(`Payment failed for subscription ${invoice.subscription}, marked as past_due`);
     }
+  }
+
+  /**
+   * Handle Apple App Store webhook event
+   */
+  async handleAppleWebhook(event) {
+    if (!event || !event.notificationType) {
+      console.warn('[Worker] Received invalid Apple webhook event');
+      return;
+    }
+    await this.processAppleEvent(event);
+  }
+
+  /**
+   * Process Apple App Store Server Notification
+   */
+  async processAppleEvent(event) {
+    const { notificationType, subtype, transactionInfo, renewalInfo } = event;
+
+    console.log(`[Worker] Processing Apple event: ${notificationType}${subtype ? ` (${subtype})` : ''}`);
+
+    switch (notificationType) {
+      case 'DID_RENEW':
+        return await this.handleAppleRenewal(transactionInfo);
+      case 'SUBSCRIBED':
+        return await this.handleAppleSubscribed(transactionInfo);
+      case 'DID_CHANGE_RENEWAL_STATUS':
+        return await this.handleAppleRenewalStatusChange(transactionInfo, renewalInfo, subtype);
+      case 'EXPIRED':
+        return await this.handleAppleExpired(transactionInfo);
+      case 'DID_FAIL_TO_RENEW':
+        return await this.handleAppleFailedRenewal(transactionInfo, subtype);
+      case 'REFUND':
+        return await this.handleAppleRefund(transactionInfo);
+      case 'REVOKE':
+        return await this.handleAppleRevoke(transactionInfo);
+      case 'GRACE_PERIOD_EXPIRED':
+        return await this.handleAppleGracePeriodExpired(transactionInfo);
+      default:
+        console.log(`[Worker] No handler for Apple notification type: ${notificationType}`);
+    }
+  }
+
+  /**
+   * Handle Apple subscription renewal
+   */
+  async handleAppleRenewal(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId, expiresDate } = transactionInfo;
+    console.log(`[Apple] Processing renewal for transaction: ${originalTransactionId}`);
+
+    const expiresAt = expiresDate ? new Date(expiresDate).toISOString() : null;
+
+    // Restore badge and tier in case they were removed after expiration
+    const result = await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'active',
+          supporter_badge = ?,
+          supporter_tier = 'premium',
+          apple_subscription_expires_at = ?
+      WHERE apple_original_transaction_id = ?
+    `).run(SUPPORTER_BADGE_CODE_PREMIUM, expiresAt, originalTransactionId);
+
+    if (result.changes > 0) {
+      console.log(`[Apple] Subscription renewed for transaction ${originalTransactionId}, expires: ${expiresAt}`);
+    } else {
+      console.warn(`[Apple] No user found with transaction ID: ${originalTransactionId}`);
+    }
+  }
+
+  /**
+   * Handle new Apple subscription
+   */
+  async handleAppleSubscribed(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId, expiresDate } = transactionInfo;
+    console.log(`[Apple] Processing new subscription for transaction: ${originalTransactionId}`);
+
+    // New subscriptions are handled by the receipt validation endpoint
+    // This is a confirmation notification - ensure badge is set
+    const expiresAt = expiresDate ? new Date(expiresDate).toISOString() : null;
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'active',
+          supporter_badge = ?,
+          supporter_tier = 'premium',
+          apple_subscription_expires_at = ?
+      WHERE apple_original_transaction_id = ?
+    `).run(SUPPORTER_BADGE_CODE_PREMIUM, expiresAt, originalTransactionId);
+  }
+
+  /**
+   * Handle Apple renewal status change (user toggled auto-renew)
+   */
+  async handleAppleRenewalStatusChange(transactionInfo, renewalInfo, subtype) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    const autoRenewStatus = renewalInfo?.autoRenewStatus;
+
+    console.log(`[Apple] Renewal status change for ${originalTransactionId}: autoRenew=${autoRenewStatus}, subtype=${subtype}`);
+
+    // subtype: AUTO_RENEW_DISABLED means user cancelled (won't renew)
+    // subtype: AUTO_RENEW_ENABLED means user re-enabled auto-renew
+    if (subtype === 'AUTO_RENEW_DISABLED') {
+      await db.prepare(`
+        UPDATE users
+        SET subscription_status = 'canceling'
+        WHERE apple_original_transaction_id = ?
+      `).run(originalTransactionId);
+      console.log(`[Apple] User cancelled auto-renew for ${originalTransactionId}`);
+    } else if (subtype === 'AUTO_RENEW_ENABLED') {
+      await db.prepare(`
+        UPDATE users
+        SET subscription_status = 'active'
+        WHERE apple_original_transaction_id = ?
+      `).run(originalTransactionId);
+      console.log(`[Apple] User re-enabled auto-renew for ${originalTransactionId}`);
+    }
+  }
+
+  /**
+   * Handle Apple subscription expiration
+   */
+  async handleAppleExpired(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    console.log(`[Apple] Subscription expired for transaction: ${originalTransactionId}`);
+
+    // Get user to calculate months to credit
+    const user = await db.prepare(`
+      SELECT supporter_since FROM users WHERE apple_original_transaction_id = ?
+    `).get(originalTransactionId);
+
+    const monthsToCredit = this.calculateMonthsSince(user?.supporter_since);
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'expired',
+          supporter_badge = NULL,
+          supporter_tier = NULL,
+          supporter_months_credited = supporter_months_credited + ?,
+          supporter_since = NULL
+      WHERE apple_original_transaction_id = ?
+    `).run(monthsToCredit, originalTransactionId);
+
+    console.log(`[Apple] Subscription expired, credited ${monthsToCredit} months, badge removed for ${originalTransactionId}`);
+  }
+
+  /**
+   * Handle Apple failed renewal (billing issue)
+   */
+  async handleAppleFailedRenewal(transactionInfo, subtype) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    console.log(`[Apple] Failed renewal for ${originalTransactionId}, subtype: ${subtype}`);
+
+    // subtype: GRACE_PERIOD means user is in billing grace period
+    // subtype: (none) means renewal failed
+    const status = subtype === 'GRACE_PERIOD' ? 'past_due' : 'past_due';
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = ?
+      WHERE apple_original_transaction_id = ?
+    `).run(status, originalTransactionId);
+
+    console.log(`[Apple] Marked subscription as ${status} for ${originalTransactionId}`);
+  }
+
+  /**
+   * Handle Apple refund
+   */
+  async handleAppleRefund(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    console.log(`[Apple] Refund issued for transaction: ${originalTransactionId}`);
+
+    // Get user to calculate months to credit
+    const user = await db.prepare(`
+      SELECT supporter_since FROM users WHERE apple_original_transaction_id = ?
+    `).get(originalTransactionId);
+
+    const monthsToCredit = this.calculateMonthsSince(user?.supporter_since);
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'refunded',
+          supporter_badge = NULL,
+          supporter_tier = NULL,
+          apple_subscription_expires_at = NULL,
+          supporter_months_credited = supporter_months_credited + ?,
+          supporter_since = NULL
+      WHERE apple_original_transaction_id = ?
+    `).run(monthsToCredit, originalTransactionId);
+
+    console.log(`[Apple] Refund processed, credited ${monthsToCredit} months, access revoked for ${originalTransactionId}`);
+  }
+
+  /**
+   * Handle Apple subscription revoke (family sharing removed, etc.)
+   */
+  async handleAppleRevoke(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    console.log(`[Apple] Subscription revoked for transaction: ${originalTransactionId}`);
+
+    // Get user to calculate months to credit
+    const user = await db.prepare(`
+      SELECT supporter_since FROM users WHERE apple_original_transaction_id = ?
+    `).get(originalTransactionId);
+
+    const monthsToCredit = this.calculateMonthsSince(user?.supporter_since);
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'revoked',
+          supporter_badge = NULL,
+          supporter_tier = NULL,
+          apple_subscription_expires_at = NULL,
+          supporter_months_credited = supporter_months_credited + ?,
+          supporter_since = NULL
+      WHERE apple_original_transaction_id = ?
+    `).run(monthsToCredit, originalTransactionId);
+
+    console.log(`[Apple] Subscription revoked, credited ${monthsToCredit} months, access removed for ${originalTransactionId}`);
+  }
+
+  /**
+   * Handle Apple grace period expiration
+   */
+  async handleAppleGracePeriodExpired(transactionInfo) {
+    if (!transactionInfo) return;
+    const { originalTransactionId } = transactionInfo;
+    console.log(`[Apple] Grace period expired for transaction: ${originalTransactionId}`);
+
+    // Get user to calculate months to credit
+    const user = await db.prepare(`
+      SELECT supporter_since FROM users WHERE apple_original_transaction_id = ?
+    `).get(originalTransactionId);
+
+    const monthsToCredit = this.calculateMonthsSince(user?.supporter_since);
+
+    await db.prepare(`
+      UPDATE users
+      SET subscription_status = 'expired',
+          supporter_badge = NULL,
+          supporter_tier = NULL,
+          supporter_months_credited = supporter_months_credited + ?,
+          supporter_since = NULL
+      WHERE apple_original_transaction_id = ?
+    `).run(monthsToCredit, originalTransactionId);
+
+    console.log(`[Apple] Grace period expired, credited ${monthsToCredit} months, access removed for ${originalTransactionId}`);
   }
 
   /**
