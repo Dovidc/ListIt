@@ -293,15 +293,22 @@
           }
 
           setListings(prev => {
-            if (replace || cursor == null) return newRows;
+            if (replace || cursor == null) {
+              console.log('[Listings] Replacing all items:', { replace, cursor, newCount: newRows.length });
+              return newRows;
+            }
             if (!prev?.length) return newRows;
 
             // Deduplicate
             const existingIds = new Set(prev.map(r => r.id));
             const toAppend = newRows.filter(r => !existingIds.has(r.id));
-            if (!toAppend.length) return prev;
+            if (!toAppend.length) {
+              console.log('[Listings] No new items to append (all duplicates)');
+              return prev;
+            }
 
             const merged = [...prev, ...toAppend];
+            console.log('[Listings] Merged items:', { prevCount: prev.length, appendCount: toAppend.length, totalCount: merged.length });
             // Cap at 500 listings to prevent memory issues on long sessions
             return merged.length > 500 ? merged.slice(-500) : merged;
           });
