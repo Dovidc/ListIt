@@ -776,9 +776,23 @@
           isMobile: !!isMobile,
           onSelect: handleSelectListing,
           isLoading: isLoadingMore,
-          hasMore: hasMore,
-          sentinelRef: sentinelRef
+          hasMore: hasMore
         }),
+
+        // Sentinel for infinite scroll - placed OUTSIDE grid so it scrolls with page
+        hasMore && H('div', {
+          ref: sentinelRef,
+          style: { height: 1, width: '100%' }
+        }),
+
+        // Loading indicator
+        isLoadingMore && H('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '16px 0'
+          }
+        }, H('div', { className: 'spinner' })),
 
         // "No more listings" message shown below grid (show when not loading, no more pages, and items exist)
         !isLoadingMore && !busy && !hasMore && hasItems && H('div', {

@@ -249,6 +249,7 @@
           if (reqId !== requestIdRef.current) return;
 
           const { rows, hasNext, nextCursor } = normalizeListingsResponse(res, limit);
+          console.log('[Listings] Response:', { count: rows?.length, hasNext, nextCursor, sort });
           const newRows = rows || [];
 
           // Normalize empty-string cursors to null so we can fall back to page-based
