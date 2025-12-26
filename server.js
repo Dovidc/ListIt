@@ -5475,7 +5475,7 @@ app.get('/api/listings', async (req, res) => {
         `;
       }
 
-      if (!isCursorById && !isNearestSort) {
+      if (!isCursorById) {
 
         sql += ' OFFSET @off';
 
