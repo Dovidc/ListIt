@@ -116,8 +116,8 @@ function validateRegisterRequest(raw = {}) {
     issues.push(issue('username', 'Username is required', 'required'));
   } else if (username.length < 3) {
     issues.push(issue('username', 'Username must be at least 3 characters', 'too_short'));
-  } else if (username.length > 32) {
-    issues.push(issue('username', 'Username must be 3-32 characters', 'too_long'));
+  } else if (username.length > 14) {
+    issues.push(issue('username', 'Username must be 3-14 characters', 'too_long'));
   }
 
   if (!email) {

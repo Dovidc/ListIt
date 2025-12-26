@@ -1816,7 +1816,7 @@
                   }
                 },
                   H('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
-                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 100px', minWidth: 0 } },
+                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0 } },
                       H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Start time'),
                       H('input', {
                         type: 'time',
@@ -1832,7 +1832,7 @@
                         }
                       })
                     ),
-                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 100px', minWidth: 0 } },
+                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0 } },
                       H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'End time'),
                       H('input', {
                         type: 'time',
