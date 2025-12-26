@@ -121,6 +121,7 @@ const {
 
 const mailService = require('./mail-service');
 const { createMessageBus, TOPICS } = require('./lib/message-bus');
+const { verifyAppleJWT } = require('./lib/apple-jwt');
 const pushService = require('./lib/push-service');
 const { runMigrations } = require('./lib/run-migrations');
 const { createSharedCache } = require('./lib/shared-cache');
@@ -953,20 +954,15 @@ app.post('/api/webhooks/apple', express.raw({ type: 'application/json' }), async
       return res.status(400).json({ error: 'missing_signed_payload' });
     }
 
-    // Decode the JWT without verification first to get claims
-    // Apple's V2 notifications are signed JWTs
-    const parts = signedPayload.split('.');
-    if (parts.length !== 3) {
-      console.error('[Apple Webhook] Invalid JWT format');
-      return res.status(400).json({ error: 'invalid_jwt_format' });
+    // Verify the JWT signature using Apple's public keys
+    let payload;
+    try {
+      payload = await verifyAppleJWT(signedPayload);
+      console.log('[Apple Webhook] JWT signature verified successfully');
+    } catch (verifyErr) {
+      console.error('[Apple Webhook] JWT verification failed:', verifyErr.message);
+      return res.status(401).json({ error: 'invalid_signature' });
     }
-
-    // Decode payload (base64url) - index 1 is the claims
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-
-    // In production, you should verify the JWT signature using Apple's public keys
-    // from https://appleid.apple.com/auth/keys
-    // For now, we'll decode and process (Apple sends from their servers only)
 
     const notificationType = payload.notificationType;
     const subtype = payload.subtype || null;

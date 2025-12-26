@@ -193,6 +193,8 @@ class WorkerService {
         return await this.sendPushNotification(job.payload);
       case 'process_stripe_event':
         return await this.processStripeEvent(job.payload);
+      case 'process_apple_event':
+        return await this.processAppleEvent(job.payload);
       case 'notify_nearby_listing':
         return await this.notifyNearbyListing(job.payload);
       case 'auto_create_listing':
@@ -207,6 +209,15 @@ class WorkerService {
     const stripeEventId = job?.payload?.id;
     if (job.type === 'process_stripe_event' && stripeEventId) {
       return `stripe:${stripeEventId}`;
+    }
+
+    // Apple events: use notificationType + originalTransactionId + signedDate for uniqueness
+    if (job.type === 'process_apple_event') {
+      const { notificationType, transactionInfo, signedDate } = job.payload || {};
+      const txId = transactionInfo?.originalTransactionId;
+      if (notificationType && txId) {
+        return `apple:${notificationType}:${txId}:${signedDate || Date.now()}`;
+      }
     }
 
     if (job.type === 'send_push') {
@@ -225,6 +236,14 @@ class WorkerService {
     if (job.type === 'process_stripe_event' && job?.payload?.id) {
       return `stripe:${job.payload.id}`;
     }
+    // Apple events: idempotency based on notification type + transaction + signed date
+    if (job.type === 'process_apple_event') {
+      const { notificationType, transactionInfo, signedDate } = job.payload || {};
+      const txId = transactionInfo?.originalTransactionId;
+      if (notificationType && txId && signedDate) {
+        return `apple:${notificationType}:${txId}:${signedDate}`;
+      }
+    }
     if (job.type === 'send_push' && job?.payload?.userId && job?.payload?.notification?.id) {
       return `push:${job.payload.userId}:${job.payload.notification.id}`;
     }
@@ -242,7 +261,7 @@ class WorkerService {
       const result = await this.processJob(job);
       this.metrics.processed += 1;
       recordWorkerProcessed(true);
-      if (job.type === 'process_stripe_event') {
+      if (job.type === 'process_stripe_event' || job.type === 'process_apple_event') {
         this.metrics.webhookProcessed += 1;
       }
       if (job.type === 'send_push') {
@@ -1001,7 +1020,12 @@ class WorkerService {
       console.warn('[Worker] Received invalid Apple webhook event');
       return;
     }
-    await this.processAppleEvent(event);
+
+    await this.enqueueJob({
+      type: 'process_apple_event',
+      payload: event,
+      priority: 10 // High priority, same as Stripe
+    });
   }
 
   /**
