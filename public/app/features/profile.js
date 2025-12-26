@@ -1815,7 +1815,7 @@
                     gap: 12
                   }
                 },
-                  H('div', { style: { display: 'grid', gap: 12 } },
+                  H('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
                     H('label', { style: { display: 'grid', gap: 4 } },
                       H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Start time'),
                       H('input', {
@@ -1823,11 +1823,10 @@
                         value: quietHoursStart || '20:30',
                         onChange: (e) => setQuietHoursStart?.(e.target.value),
                         style: {
-                          padding: '8px 12px',
+                          padding: '8px 4px',
                           border: '1px solid #d1d5db',
                           borderRadius: 8,
                           fontSize: 14,
-                          width: '100%',
                           boxSizing: 'border-box'
                         }
                       })
@@ -1839,11 +1838,10 @@
                         value: quietHoursEnd || '09:30',
                         onChange: (e) => setQuietHoursEnd?.(e.target.value),
                         style: {
-                          padding: '8px 12px',
+                          padding: '8px 4px',
                           border: '1px solid #d1d5db',
                           borderRadius: 8,
                           fontSize: 14,
-                          width: '100%',
                           boxSizing: 'border-box'
                         }
                       })
