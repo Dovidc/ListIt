@@ -5105,7 +5105,7 @@ app.get('/api/listings', async (req, res) => {
     // Distance calculation params (used for any sort when coords are available)
     const earthRadius = 6371000;
     const deg2rad = Math.PI / 180;
-    const maxDistanceMeters = 305; // 1000 feet
+    const maxDistanceMeters = 457; // 1500 feet
 
 
 
