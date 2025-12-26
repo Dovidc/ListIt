@@ -2112,8 +2112,8 @@ const MODERATION_THRESHOLDS = {
   'self-harm/instructions': 0.3,
 
   // Higher threshold - common false positives in marketplace context
-  'violence': 0.5,           // Comics, video games, kitchen knives, etc.
-  'violence/graphic': 0.5,
+  'violence': 0.8,           // Comics, video games, kitchen knives, etc.
+  'violence/graphic': 0.8,
   'harassment': 0.5,
   'hate': 0.5,
   'sexual': 0.5,
@@ -8319,7 +8319,7 @@ app.post('/api/ai/analyze', auth, aiAnalyzeLimiter, async (req, res) => {
 
           '"title": concise <=80 chars, no emojis. Identify the actual product/brand name - do NOT describe logos or visual elements. For example: "Razer Laptop" not "Laptop with Green Snake Logo", "Nike Shoes" not "Shoes with Swoosh", "Apple iPhone" not "Phone with Apple Logo";',
 
-          '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
+          '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings. NEVER include profanity, slurs, offensive language, or references to weapons/firearms/rifles/guns in tags;',
 
           '"price_usd": fair used-market price in USD as a number;',
 
@@ -8474,7 +8474,7 @@ async function runAIAnalysis({ images, hint }) {
       'You are a listing assistant for a local marketplace.',
       'Analyze the item images and output STRICT JSON with:',
       '"title": concise <=80 chars, no emojis. Identify the actual product/brand name - do NOT describe logos or visual elements. For example: "Razer Laptop" not "Laptop with Green Snake Logo", "Nike Shoes" not "Shoes with Swoosh", "Apple iPhone" not "Phone with Apple Logo";',
-      '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings;',
+      '"tags": array of 40-50 short, lowercase search terms covering synonyms, related items, categories, brands, styles, materials, colors, and common misspellings. NEVER include profanity, slurs, offensive language, or references to weapons/firearms/rifles/guns in tags;',
       '"price_usd": fair used-market price in USD as a number;',
       'Return ONLY JSON.'
     ].join('\n')

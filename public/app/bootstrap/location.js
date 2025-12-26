@@ -5,7 +5,7 @@
   const WARNING_SHOWN_KEY = 'listit_location_warning_shown'; // hourly throttle
 
   // === TTLs ===
-  const COORDS_TTL_MS = 15 * 60 * 1000; // 15 minutes for lat/lon
+  const COORDS_TTL_MS = 10 * 60 * 1000; // 10 minutes for lat/lon
   const WARNING_THROTTLE_MS = 60 * 60 * 1000; // 1 hour between warnings
 
   // === IN-MEMORY CACHE (for coords during session) ===
