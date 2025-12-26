@@ -1815,35 +1815,37 @@
                     gap: 12
                   }
                 },
-                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
-                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0 } },
+                  H('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap', overflow: 'hidden' } },
+                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0, overflow: 'hidden' } },
                       H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Start time'),
                       H('input', {
                         type: 'time',
                         value: quietHoursStart || '20:30',
                         onChange: (e) => setQuietHoursStart?.(e.target.value),
                         style: {
-                          padding: '8px 10px',
+                          padding: '8px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: 8,
                           fontSize: 14,
                           width: '100%',
+                          maxWidth: '100%',
                           boxSizing: 'border-box'
                         }
                       })
                     ),
-                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0 } },
+                    H('label', { style: { display: 'grid', gap: 4, flex: '1 1 140px', minWidth: 0, overflow: 'hidden' } },
                       H('span', { style: { fontSize: 13, fontWeight: 600 } }, 'End time'),
                       H('input', {
                         type: 'time',
                         value: quietHoursEnd || '09:30',
                         onChange: (e) => setQuietHoursEnd?.(e.target.value),
                         style: {
-                          padding: '8px 10px',
+                          padding: '8px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: 8,
                           fontSize: 14,
                           width: '100%',
+                          maxWidth: '100%',
                           boxSizing: 'border-box'
                         }
                       })
