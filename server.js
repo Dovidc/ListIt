@@ -1007,9 +1007,8 @@ app.post('/api/webhooks/apple', express.raw({ type: 'application/json' }), async
       label: 'Apple webhook processing failed',
       tags: { component: 'payments', type: 'apple_webhook' }
     });
-    // Still return 200 to prevent Apple from retrying
-    // Log the error for investigation
-    res.json({ received: true, error: 'processing_failed' });
+    // Return 500 so Apple will retry the webhook
+    res.status(500).json({ error: 'processing_failed' });
   }
 });
 
