@@ -1,5 +1,5 @@
 config:
-  target: "http://localhost:3001"
+  target: "https://trovelr.com"
   phases:
     # Light warm up
     - duration: 20
@@ -18,9 +18,12 @@ config:
   # Load test user credentials - create a test user first
   # You can create one via: POST /api/register or use existing credentials
   # Update these with your actual test user credentials
-  variables:
-    testEmail: "test@test.com"
-    testPassword: "test123"
+  payload:
+    path: "load-test-users.csv"
+    fields:
+      - "testEmail"
+      - "testPassword"
+    order: random
 
   # Store auth cookie across requests
   http:
@@ -157,3 +160,76 @@ scenarios:
           url: "/api/me"
       - get:
           url: "/api/conversations"
+
+  # ============================================
+  # WRITE OPERATIONS (10% of traffic)
+  # ============================================
+
+  - name: "Update profile"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      - put:
+          url: "/api/me/profile-about"
+          json:
+            about: "Load test profile update {{ $timestamp }}"
+      - get:
+          url: "/api/me"
+
+  - name: "Start conversation"
+    weight: 3
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=10&noimg=1"
+          capture:
+            - json: "$[0].id"
+              as: "listingId"
+            - json: "$[0].user_id"
+              as: "sellerId"
+      - think: 1
+      - post:
+          url: "/api/conversations"
+          json:
+            listing_id: "{{ listingId }}"
+            recipient_id: "{{ sellerId }}"
+            message: "Load test message {{ $timestamp }}"
+          expect:
+            - statusCode:
+                - 200
+                - 201
+                - 400
+                - 409
+
+  - name: "Award karma"
+    weight: 2
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+      - think: 1
+      - get:
+          url: "/api/listings?limit=10&noimg=1"
+          capture:
+            - json: "$[0].id"
+              as: "listingId"
+      - think: 1
+      - post:
+          url: "/api/listings/{{ listingId }}/award-karma"
+          expect:
+            - statusCode:
+                - 200
+                - 400
+                - 429

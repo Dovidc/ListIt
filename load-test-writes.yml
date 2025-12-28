@@ -3,7 +3,7 @@
 # Creates test listings, sends messages, etc.
 
 config:
-  target: "http://localhost:3001"
+  target: "https://trovelr.com"
   phases:
     # Very light load for write tests
     - duration: 30
@@ -15,10 +15,13 @@ config:
       rampTo: 5
       name: "Moderate writes"
 
-  # Update these with your actual test user credentials
-  variables:
-    testEmail: "YOUR_TEST_EMAIL"
-    testPassword: "YOUR_TEST_PASSWORD"
+  # Load test user credentials
+  payload:
+    path: "load-test-users.csv"
+    fields:
+      - "testEmail"
+      - "testPassword"
+    order: random
 
   http:
     cookieJar: true
