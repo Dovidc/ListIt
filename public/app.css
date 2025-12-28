@@ -947,6 +947,16 @@
   color: var(--text-primary, #c0caf5) !important;
 }
 
+/* Profile settings modal - override overflow:hidden from .modal-inner */
+.modal-inner.profile-settings-modal {
+  overflow: visible;
+  background: #fff;
+}
+
+[data-theme="dark"] .modal-inner.profile-settings-modal {
+  background: var(--bg-secondary, #24283b);
+}
+
 /* Search tags card in listing form */
 .search-tags-card {
   background: #fafafa;

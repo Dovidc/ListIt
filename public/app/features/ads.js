@@ -9,11 +9,16 @@
 
     const { useState, useCallback, useEffect } = React;
 
-    function useAds({ userLat, userLon, isPremium } = {}) {
+    function useAds({ userLat, userLon, isPremium, loading } = {}) {
       const [ads, setAds] = useState([]);
 
       const refreshAds = useCallback(async () => {
-        console.log('[useAds] refreshAds called', { userLat, userLon, isPremium });
+        console.log('[useAds] refreshAds called', { userLat, userLon, isPremium, loading });
+        // Don't fetch ads while auth is still loading - we don't know premium status yet
+        if (loading) {
+          console.log('[useAds] Auth still loading, skipping ads fetch');
+          return;
+        }
         // Premium users see no ads at all
         if (isPremium) {
           console.log('[useAds] User is premium, showing no ads');
@@ -34,7 +39,7 @@
           console.error('[useAds] Error fetching ads:', err);
           setAds([]);
         }
-      }, [userLat, userLon, isPremium]);
+      }, [userLat, userLon, isPremium, loading]);
 
       useEffect(() => { refreshAds(); }, [refreshAds]);
 

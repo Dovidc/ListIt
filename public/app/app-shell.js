@@ -473,7 +473,8 @@
       const { ads, refreshAds } = useAds({
         userLat: userCoords?.lat,
         userLon: userCoords?.lon,
-        isPremium: hasPremiumAccess
+        isPremium: hasPremiumAccess,
+        loading: loadingUser
       });
 
       const listings = useListingsFeature({ user, currentTab: tab });

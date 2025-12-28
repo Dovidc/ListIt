@@ -1571,6 +1571,30 @@
               position: 'relative'
             }
           },
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              'aria-label': 'Close',
+              style: {
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 28,
+                height: 28,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#dc2626',
+                fontSize: 22,
+                fontWeight: 'bold',
+                lineHeight: 1,
+                zIndex: 10
+              }
+            }, '\u00D7'),
             H('div', { style: { display: 'grid', gap: 12 } },
               H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
                 H('input', {
