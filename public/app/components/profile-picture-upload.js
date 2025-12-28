@@ -25,11 +25,16 @@
       const imageRef = useRef(null);
       const containerRef = useRef(null);
       const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+      const pinchStartRef = useRef({ distance: 0, zoom: 1 });
 
       // Detect dark mode
       const isDarkMode = typeof document !== 'undefined' &&
         (document.documentElement.getAttribute('data-theme') === 'dark' ||
         localStorage.getItem('theme') === 'dark');
+
+      // Detect if desktop (no touch support or wide screen)
+      const isDesktop = typeof window !== 'undefined' &&
+        (!('ontouchstart' in window) || window.innerWidth >= 1024);
 
       // Theme colors
       const theme = {
@@ -125,11 +130,34 @@
         const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
         const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
         dragStartRef.current = { x: clientX, y: clientY, posX: position.x, posY: position.y };
-      }, [position]);
+
+        // Handle pinch-to-zoom start
+        if (evt.touches && evt.touches.length === 2) {
+          const dx = evt.touches[0].clientX - evt.touches[1].clientX;
+          const dy = evt.touches[0].clientY - evt.touches[1].clientY;
+          pinchStartRef.current = {
+            distance: Math.sqrt(dx * dx + dy * dy),
+            zoom: zoom
+          };
+        }
+      }, [position, zoom]);
 
       const handlePointerMove = useCallback((evt) => {
         if (!isDragging) return;
         evt.preventDefault();
+
+        // Handle pinch-to-zoom
+        if (evt.touches && evt.touches.length === 2) {
+          const dx = evt.touches[0].clientX - evt.touches[1].clientX;
+          const dy = evt.touches[0].clientY - evt.touches[1].clientY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const scale = distance / pinchStartRef.current.distance;
+          const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartRef.current.zoom * scale));
+          setZoom(newZoom);
+          setPosition(prev => clampPosition(prev.x, prev.y, newZoom));
+          return;
+        }
+
         const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
         const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
         const deltaX = clientX - dragStartRef.current.x;
@@ -440,8 +468,8 @@
                     userSelect: 'none'
                   }
                 }),
-                // Overlay hint
-                H('div', {
+                // Overlay hint (mobile only - shows "Pinch to zoom")
+                !isDesktop && H('div', {
                   style: {
                     position: 'absolute',
                     bottom: 12,
@@ -455,11 +483,11 @@
                     pointerEvents: 'none',
                     opacity: isDragging ? 0 : 0.8
                   }
-                }, 'Drag to reposition')
+                }, 'Pinch to zoom')
               ),
 
-              // Zoom slider
-              H('div', {
+              // Zoom slider (desktop only)
+              isDesktop && H('div', {
                 style: {
                   display: 'flex',
                   alignItems: 'center',

@@ -109,7 +109,7 @@ html[data-theme="dark"] body,
 body.dark-mode,
 html.dark-mode,
 html.dark-mode body {
-  background: #0f172a !important;
+  background: #1e293b !important;
 }
 
 body {
@@ -147,7 +147,7 @@ main.container {
 
 html[data-theme="dark"] main.container,
 body.dark-mode main.container {
-  background: #0f172a !important;
+  background: #1e293b !important;
 }
 
 /* Remove ALL bottom padding on edit screen */

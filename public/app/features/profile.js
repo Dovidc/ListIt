@@ -637,6 +637,10 @@
         (document.documentElement.getAttribute('data-theme') === 'dark' ||
         localStorage.getItem('theme') === 'dark');
 
+      // Detect if desktop (no touch support or wide screen)
+      const isDesktop = typeof window !== 'undefined' &&
+        (!('ontouchstart' in window) || window.innerWidth >= 1024);
+
       // Theme colors
       const theme = {
         bg: isDarkMode ? '#1e293b' : '#fff',
@@ -653,9 +657,6 @@
         premiumBorder: isDarkMode ? 'rgba(147, 197, 253, 0.3)' : '#93c5fd',
         premiumText: isDarkMode ? '#a5b4fc' : '#1e40af'
       };
-
-      // Zoom range constants
-      const MAX_ZOOM = 5;
 
       // Profile card dimensions (scaled down ~75% to fit modal nicely)
       // Maintains same proportions as ProfilePreviewModal
@@ -1252,15 +1253,32 @@
                     H('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
                     H('polyline', { points: '21 15 16 10 5 21' })
                   )
-                ),
+                )
+              ),
+
+              // Mobile hint text
+              !isDesktop && H('p', {
+                style: { fontSize: 12, color: theme.textSecondary, textAlign: 'center', margin: 0 }
+              }, 'Pinch to zoom'),
+
+              // Desktop zoom slider
+              isDesktop && H('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginTop: 8
+                }
+              },
                 // Zoom out icon (minus)
                 H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                  H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+                  H('circle', { cx: 11, cy: 11, r: 8 }),
+                  H('line', { x1: 8, y1: 11, x2: 14, y2: 11 })
                 ),
                 H('input', {
                   type: 'range',
                   min: getMinZoom(),
-                  max: String(MAX_ZOOM),
+                  max: '3',
                   step: '0.05',
                   value: zoom,
                   onChange: (e) => handleZoomChange(parseFloat(e.target.value)),
@@ -1275,14 +1293,11 @@
                 }),
                 // Zoom in icon (plus)
                 H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: theme.textSecondary, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                  H('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
-                  H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+                  H('circle', { cx: 11, cy: 11, r: 8 }),
+                  H('line', { x1: 11, y1: 8, x2: 11, y2: 14 }),
+                  H('line', { x1: 8, y1: 11, x2: 14, y2: 11 })
                 )
               ),
-
-              H('p', {
-                style: { fontSize: 12, color: theme.textSecondary, textAlign: 'center', margin: 0 }
-              }, 'Drag to reposition • Pinch or slider to zoom'),
 
               // Hidden canvas
               H('canvas', { ref: canvasRef, style: { display: 'none' } }),
