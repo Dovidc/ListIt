@@ -1489,6 +1489,14 @@
       subscriptionStatus: modalSubscriptionStatus
     }) {
       const [clearingLocations, setClearingLocations] = useState(false);
+      const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
+
+      useEffect(() => {
+        if (!open) {
+          setDangerZoneOpen(false);
+        }
+      }, [open]);
+
       const [isDarkMode, setIsDarkMode] = useState(() => {
         if (typeof localStorage !== 'undefined') {
           return localStorage.getItem('theme') === 'dark';
@@ -1703,45 +1711,63 @@
                   borderTop: '1px solid #e5e7eb'
                 }
               },
-                H('div', { style: { fontWeight: 700, marginBottom: 8, color: '#dc2626' } }, 'Danger Zone'),
-                H('div', { className: 'muted', style: { fontSize: 13, marginBottom: 12 } },
-                  'Clear coordinates from all your listings, doing so will remove the distance tag from all your listings that have them.'
-                ),
                 H('button', {
+                  onClick: () => setDangerZoneOpen(!dangerZoneOpen),
                   className: 'btn',
-                  onClick: async () => {
-                    if (!confirm('Are you sure you want to remove location data from ALL your listings? This cannot be undone.')) {
-                      return;
-                    }
-                    setClearingLocations(true);
-                    try {
-                      await onClearListingLocations?.();
-                    } catch (e) {
-                      alert('Failed to clear locations. Please try again.');
-                    } finally {
-                      setClearingLocations(false);
-                    }
-                  },
-                  disabled: clearingLocations,
                   style: {
                     width: '100%',
-                    background: '#f59e0b',
-                    color: 'white',
-                    border: 'none',
-                    marginBottom: 12,
-                    opacity: clearingLocations ? 0.7 : 1
+                    background: 'transparent',
+                    color: '#dc2626',
+                    border: '1px solid #dc2626',
+                    fontWeight: 700
                   }
-                }, clearingLocations ? 'Clearing...' : 'Clear distance tags'),
-                H('button', {
-                  className: 'btn',
-                  onClick: onRequestDeleteAccount,
+                }, 'Danger Zone'),
+                dangerZoneOpen && H('div', {
                   style: {
-                    width: '100%',
-                    background: '#dc2626',
-                    color: 'white',
-                    border: 'none'
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: '1px solid #e5e7eb'
                   }
-                }, 'Delete Account')
+                },
+                  H('div', { className: 'muted', style: { fontSize: 13, marginBottom: 12 } },
+                    'Clear coordinates from all your listings, doing so will remove the distance tag from all your listings that have them.'
+                  ),
+                  H('button', {
+                    className: 'btn',
+                    onClick: async () => {
+                      if (!confirm('Are you sure you want to remove location data from ALL your listings? This cannot be undone.')) {
+                        return;
+                      }
+                      setClearingLocations(true);
+                      try {
+                        await onClearListingLocations?.();
+                      } catch (e) {
+                        alert('Failed to clear locations. Please try again.');
+                      } finally {
+                        setClearingLocations(false);
+                      }
+                    },
+                    disabled: clearingLocations,
+                    style: {
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#f59e0b',
+                      border: '1px solid #f59e0b',
+                      marginBottom: 12,
+                      opacity: clearingLocations ? 0.7 : 1
+                    }
+                  }, clearingLocations ? 'Clearing...' : 'Clear distance tags'),
+                  H('button', {
+                    className: 'btn',
+                    onClick: onRequestDeleteAccount,
+                    style: {
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#dc2626',
+                      border: '1px solid #dc2626'
+                    }
+                  }, 'Delete Account')
+                )
               )
             )
           )
