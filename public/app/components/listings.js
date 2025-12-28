@@ -5401,21 +5401,68 @@
                 opacity: blockLoading ? 0.6 : 1
               }
             }, blockLoading ? '...' : (isBlocked ? 'Unblock' : 'Block')),
-            H('button', { className: 'btn', onClick: onBack, style: { padding: '6px 12px', fontSize: 13 } }, '← Back')
           )
         ),
 
-        H('div', { className: 'row', style: { gap: 8, margin: '0 0 16px' } },
+        // Sliding tab toggle for Active/Sold
+        H('div', {
+          style: {
+            display: 'flex',
+            position: 'relative',
+            margin: '0 0 16px',
+            background: 'transparent',
+            borderRadius: 10,
+            padding: 4
+          }
+        },
+          // Sliding indicator
+          H('div', {
+            style: {
+              position: 'absolute',
+              top: 4,
+              bottom: 4,
+              left: `calc(${tab === 'active' ? 0 : 50}% + 4px)`,
+              width: 'calc(50% - 8px)',
+              background: '#3b82f6',
+              borderRadius: 8,
+              transition: 'left 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            }
+          }),
           H('button', {
-            className: `btn ${tab === 'active' ? 'primary' : ''}`,
             type: 'button',
+            style: {
+              flex: 1,
+              padding: '10px 0',
+              border: 'none',
+              background: 'transparent',
+              color: tab === 'active' ? '#fff' : (document.documentElement.dataset.theme === 'dark' ? '#9ca3af' : '#4b5563'),
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: 'pointer',
+              position: 'relative',
+              zIndex: 1,
+              transition: 'color 0.2s ease'
+            },
             onClick: () => setTab('active')
-          }, 'Active listings'),
+          }, 'Active'),
           H('button', {
-            className: `btn ${tab === 'sold' ? 'primary' : ''}`,
             type: 'button',
+            style: {
+              flex: 1,
+              padding: '10px 0',
+              border: 'none',
+              background: 'transparent',
+              color: tab === 'sold' ? '#fff' : (document.documentElement.dataset.theme === 'dark' ? '#9ca3af' : '#4b5563'),
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: 'pointer',
+              position: 'relative',
+              zIndex: 1,
+              transition: 'color 0.2s ease'
+            },
             onClick: () => setTab('sold')
-          }, 'Sold listings')
+          }, 'Sold')
         ),
 
         shownListings.length === 0

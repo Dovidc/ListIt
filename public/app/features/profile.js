@@ -2765,7 +2765,7 @@
               display: 'flex',
               position: 'relative',
               margin: '0 0 16px',
-              background: isDarkMode ? '#1f2937' : '#e5e7eb',
+              background: 'transparent',
               borderRadius: 10,
               padding: 4
             }
