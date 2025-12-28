@@ -6250,7 +6250,18 @@ app.post(
 
 
 
-      const row = await db.prepare('SELECT * FROM listings WHERE id = ?').get(listingId);
+      const row = await db.prepare(`
+        SELECT l.*,
+          u.username AS owner_username,
+          u.profile_picture_url AS owner_profile_picture_url,
+          u.supporter_badge AS owner_supporter_badge,
+          u.supporter_since AS owner_supporter_since,
+          u.supporter_tier AS owner_supporter_tier,
+          u.supporter_months_credited AS owner_supporter_months_credited
+        FROM listings l
+        JOIN users u ON u.id = l.user_id
+        WHERE l.id = ?
+      `).get(listingId);
 
       if (row && Object.prototype.hasOwnProperty.call(row, 'image_data')) {
 
