@@ -3877,14 +3877,15 @@ Email: support@trovelr.com`;
 }
 
 function getPrivacyPolicyContent() {
-  return `TERMS OF USE & PRIVACY
+  return `TERMS OF USE & PRIVACY POLICY
 
-Effective Date: December 24, 2024
+Effective Date: December 28, 2025
 
-By using Trovelr, you agree to the following:
+By using Trovelr, you agree to these terms.
 
 USER CONDUCT
-You agree NOT to:
+
+You agree not to:
 • Post inappropriate, offensive, or illegal content
 • Post advertisements or promotions in place of legitimate listings
 • Harass, spam, or scam other users
@@ -3893,36 +3894,36 @@ You agree NOT to:
 
 Violations may result in account suspension or permanent ban.
 
-WHAT WE COLLECT
-• Email, username, password (for your account)
-• Profile info, listings, photos, and messages you create
-• Device tokens for push notifications
-• IP address for security
-• Cookies to keep you signed in
+INFORMATION WE COLLECT
 
-HOW WE USE IT
-• Run the marketplace and enable messaging
-• Send notifications
-• Moderate content and prevent abuse
+• Account information (email, username, password)
+• Content you create (profile, listings, photos, messages)
+• Device tokens for push notifications
+• IP address and cookies for security and session management
+
+HOW WE USE YOUR INFORMATION
+
+• To operate the marketplace and messaging features
+• To send notifications about your account and activity
+• To moderate content and prevent abuse
 
 DATA SHARING
-We do NOT sell your data. We share only:
-• Publicly visible info (username, listings)
-• If required by law
+
+We do not sell your personal information. We may share data only when required by law or to display publicly visible content (such as your username and listings).
 
 YOUR RIGHTS
-• Update your info in profile settings
-• Delete your account anytime
-• Disable notifications in device settings
 
-SECURITY
-Data is encrypted in transit (HTTPS) and passwords are securely hashed.
+• Update your information in profile settings
+• Delete your account at any time
+• Manage notification preferences in your device settings
 
 AGE REQUIREMENT
-You must be 18+ to use Trovelr.
+
+You must be 18 years or older to use Trovelr.
 
 CONTACT
-Email: support@trovelr.com`;
+
+support@trovelr.com`;
 }
 
 app.put('/api/me/profile-about', auth, profileLimiter, async (req, res) => {
