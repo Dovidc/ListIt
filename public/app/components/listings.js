@@ -4812,6 +4812,12 @@
       const [isBlocked, setIsBlocked] = useState(false);
       const [blockLoading, setBlockLoading] = useState(false);
 
+      // Batched cover fetching - refs to avoid recreating ensureCover on every render
+      const pendingCoverIdsRef = useRef(new Set());
+      const coverBatchTimerRef = useRef(null);
+      const coverByIdRef = useRef(coverById);
+      coverByIdRef.current = coverById;
+
       useEffect(() => {
         if (!Number.isFinite(Number(sellerId))) {
           setSellerInfo(null);
@@ -4945,22 +4951,70 @@
         setTab('active');
       }, [sellerId]);
 
-      const ensureCover = useCallback(async (id) => {
-        if (id == null) return;
-        if (Object.prototype.hasOwnProperty.call(coverById, id)) return;
-        try {
-          const arr = await api.getListingImages(id, { silent: true });
-          let obj = null;
-          if (Array.isArray(arr) && arr.length) {
-            obj = typeof arr[0] === 'string'
-              ? { url: arr[0], w: null, h: null }
-              : { url: arr[0]?.url, w: arr[0]?.w ?? null, h: arr[0]?.h ?? null };
+      // Cleanup batch timer on unmount
+      useEffect(() => {
+        return () => {
+          if (coverBatchTimerRef.current) {
+            clearTimeout(coverBatchTimerRef.current);
           }
-          setCoverById((prev) => ({ ...prev, [id]: obj }));
-        } catch {
-          setCoverById((prev) => ({ ...prev, [id]: null }));
+        };
+      }, []);
+
+      // Flush pending cover IDs as a batch request
+      const flushCoverBatch = useCallback(async () => {
+        const ids = Array.from(pendingCoverIdsRef.current);
+        pendingCoverIdsRef.current.clear();
+        if (!ids.length) return;
+
+        // Filter out IDs we already have
+        const idsToFetch = ids.filter(id => !Object.prototype.hasOwnProperty.call(coverByIdRef.current, id));
+        if (!idsToFetch.length) return;
+
+        // Fetch in batches of 12 (same as main feed)
+        const batchSize = 12;
+        for (let i = 0; i < idsToFetch.length; i += batchSize) {
+          const batch = idsToFetch.slice(i, i + batchSize);
+          try {
+            const covers = await api.getCoversBatch(batch, { silent: true });
+            if (Array.isArray(covers) && covers.length) {
+              const patch = {};
+              covers.forEach(r => {
+                if (!r || r.id == null) return;
+                if (r.image_data) {
+                  patch[r.id] = { url: r.image_data, thumb_url: r.thumb_url || null };
+                } else {
+                  patch[r.id] = null;
+                }
+              });
+              if (Object.keys(patch).length) {
+                setCoverById(prev => ({ ...prev, ...patch }));
+              }
+            }
+          } catch {
+            // Mark failed IDs as null so we don't retry them
+            const failPatch = {};
+            batch.forEach(id => { failPatch[id] = null; });
+            setCoverById(prev => ({ ...prev, ...failPatch }));
+          }
         }
-      }, [coverById, api]);
+      }, []);
+
+      // Batched ensureCover - collects IDs and fetches them together
+      const ensureCover = useCallback((id) => {
+        if (id == null) return;
+        // Check using ref to avoid stale closure issues
+        if (Object.prototype.hasOwnProperty.call(coverByIdRef.current, id)) return;
+        if (pendingCoverIdsRef.current.has(id)) return;
+
+        pendingCoverIdsRef.current.add(id);
+
+        // Debounce: wait 100ms to collect more IDs before fetching
+        if (coverBatchTimerRef.current) clearTimeout(coverBatchTimerRef.current);
+        coverBatchTimerRef.current = setTimeout(() => {
+          coverBatchTimerRef.current = null;
+          flushCoverBatch();
+        }, 100);
+      }, [flushCoverBatch]);
 
       const activeListings = useMemo(
         () => listings.filter((item) => !item?.sold),
