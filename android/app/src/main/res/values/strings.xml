@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trovelr</string>
+    <string name="title_activity_main">Trovelr</string>
+    <string name="package_name">com.listit.app</string>
+    <string name="custom_url_scheme">com.listit.app</string>
+</resources>
