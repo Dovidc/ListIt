@@ -681,6 +681,14 @@
       const RETURN_TO_TOP_ITEM_THRESHOLD = 90;
       const RETURN_TO_TOP_SCROLL_THRESHOLD = 600; // pixels from top
 
+      // Dashboard hide-on-scroll state
+      const [dashboardHidden, setDashboardHidden] = useState(false);
+      const lastScrollY = useRef(0);
+      const lastScrollTime = useRef(Date.now());
+      const scrollVelocity = useRef(0);
+      const scrollUpAccumulator = useRef(0); // Track cumulative scroll-up distance
+      const scrollDownAccumulator = useRef(0); // Track cumulative scroll-down distance
+
       // Show/hide return to top based on items count AND scroll position
       useEffect(() => {
         if (tab !== 'browse' || items.length < RETURN_TO_TOP_ITEM_THRESHOLD) {
@@ -714,6 +722,77 @@
           return () => container.removeEventListener('scroll', handleScroll);
         }
       }, [items.length, tab, isMobile]);
+
+      // Dashboard hide-on-scroll effect (only on browse tab, mobile)
+      useEffect(() => {
+        if (!isMobile || tab !== 'browse') {
+          setDashboardHidden(false);
+          return;
+        }
+
+        const container = document.querySelector('main.container');
+        if (!container) return;
+
+        const HIDE_SCROLL_DISTANCE = 50; // Scroll down this many pixels to hide dashboard
+        const SHOW_SCROLL_DISTANCE = 50; // Scroll up this many pixels to show dashboard
+
+        const handleDashboardScroll = () => {
+          const currentScrollY = container.scrollTop;
+          const currentTime = Date.now();
+          const deltaY = currentScrollY - lastScrollY.current;
+          const deltaTime = currentTime - lastScrollTime.current;
+
+          // Calculate velocity (px/ms)
+          if (deltaTime > 0) {
+            scrollVelocity.current = Math.abs(deltaY) / deltaTime;
+          }
+
+          // Scrolling down - accumulate distance
+          if (deltaY > 0) {
+            scrollDownAccumulator.current += deltaY;
+            scrollUpAccumulator.current = 0; // Reset up accumulator
+            // Hide dashboard once we've scrolled down enough
+            if (scrollDownAccumulator.current >= HIDE_SCROLL_DISTANCE) {
+              setDashboardHidden(true);
+            }
+          }
+          // Scrolling up - accumulate distance
+          else if (deltaY < 0) {
+            scrollUpAccumulator.current += Math.abs(deltaY);
+            scrollDownAccumulator.current = 0; // Reset down accumulator
+            // Show dashboard once we've scrolled up enough
+            if (scrollUpAccumulator.current >= SHOW_SCROLL_DISTANCE) {
+              setDashboardHidden(false);
+            }
+          }
+
+          // At top of page - always show
+          if (currentScrollY <= 0) {
+            setDashboardHidden(false);
+            scrollUpAccumulator.current = 0;
+            scrollDownAccumulator.current = 0;
+          }
+
+          lastScrollY.current = currentScrollY;
+          lastScrollTime.current = currentTime;
+        };
+
+        container.addEventListener('scroll', handleDashboardScroll, { passive: true });
+        return () => container.removeEventListener('scroll', handleDashboardScroll);
+      }, [isMobile, tab]);
+
+      // Calculate dashboard transition duration based on scroll velocity
+      const getDashboardTransition = () => {
+        if (!isMobile) return {};
+        const velocity = scrollVelocity.current;
+        // Slow scroll (< 0.3 px/ms) = slow transition (400ms)
+        // Fast scroll (> 1.0 px/ms) = fast transition (150ms)
+        const duration = velocity < 0.3 ? 400 : velocity > 1.0 ? 150 : 250;
+        return {
+          transform: dashboardHidden ? 'translateY(100%)' : 'translateY(0)',
+          transition: `transform ${duration}ms ease-out`
+        };
+      };
 
       const handleReturnToTop = useCallback(async () => {
         setShowReturnToTop(false);
@@ -2277,7 +2356,8 @@
             isMobile && !isEditingScreen && !supporterUpsellState.open && H('nav', {
               className: 'mobile-dashboard',
               role: 'navigation',
-              'aria-label': 'Primary'
+              'aria-label': 'Primary',
+              style: getDashboardTransition()
             },
               // Browse
               H('button', {

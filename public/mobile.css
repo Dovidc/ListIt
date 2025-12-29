@@ -518,6 +518,9 @@ textarea {
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
   z-index: 1200;
   min-height: 70px;
+  /* Hide-on-scroll animation */
+  will-change: transform;
+  transform: translateY(0);
 }
 
 .mobile-dashboard__button {
