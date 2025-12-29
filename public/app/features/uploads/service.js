@@ -70,7 +70,7 @@
     const MAX_IMAGE_DIMENSION = 1200;
     const IMAGE_QUALITY = 0.65;
 
-    async function compressImageForUpload(file) {
+    async function compressImageForUpload(file, quality = IMAGE_QUALITY) {
       console.log('[Upload] compressImageForUpload called:', {
         name: file?.name,
         type: file?.type,
@@ -155,7 +155,7 @@
                 }
               },
               'image/jpeg',
-              IMAGE_QUALITY
+              quality
             );
           } catch (e) {
             console.error('[Upload] Compression error:', e);
@@ -355,9 +355,10 @@
     }
 
     async function uploadOneImage(listingId, file) {
-      const result = await smartUpload(file);
+      const compressedFile = await compressImageForUpload(file, 0.75);
+      const result = await smartUpload(compressedFile);
 
-      const dims = await measureImageFile(file);
+      const dims = await measureImageFile(compressedFile);
 
       await api.finalizeUpload({
         listingId,
@@ -365,7 +366,7 @@
         url: result.publicUrl,
         width: dims.width,
         height: dims.height,
-        bytes: file.size
+        bytes: compressedFile.size
       });
 
       return result.publicUrl;
