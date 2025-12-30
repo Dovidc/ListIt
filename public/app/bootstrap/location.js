@@ -138,9 +138,21 @@
       const isNative = window.Capacitor?.isNativePlatform?.();
       if (isNative && window.Capacitor?.Plugins?.Geolocation) {
         const { Geolocation } = window.Capacitor.Plugins;
+        // First check/request permissions - this doesn't have a timeout
+        const permStatus = await Geolocation.checkPermissions();
+        if (permStatus.location === 'prompt' || permStatus.location === 'prompt-with-rationale') {
+          // Request permissions first - user might take time to decide
+          const reqResult = await Geolocation.requestPermissions();
+          if (reqResult.location !== 'granted') {
+            throw new Error('Location permission denied');
+          }
+        } else if (permStatus.location === 'denied') {
+          throw new Error('Location permission denied');
+        }
+        // Now get position - permission already granted, so timeout is just for GPS fix
         const position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 8000,
+          timeout: 15000,
           maximumAge: 60000
         });
         lat = position.coords.latitude;
@@ -148,7 +160,7 @@
       } else {
         if (!('geolocation' in navigator)) throw new Error('Geolocation not supported');
         const { coords } = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 })
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 })
         );
         lat = coords.latitude;
         lon = coords.longitude;
