@@ -236,13 +236,23 @@
       // Location warning modal state
       const [showLocationWarning, setShowLocationWarning] = useState(false);
 
-      // Initialize location cache on app startup and show warning if needed
+      // Initialize location cache on app startup and show warning if user denies permission
       useEffect(() => {
         if (typeof helpers?.initializeCache !== 'function') return;
 
         helpers.initializeCache().then(result => {
           if (!result.success) {
-            // Location failed - check if we should show warning (hourly throttle)
+            const errorMsg = result.error?.message || '';
+            const wasDenied = errorMsg.toLowerCase().includes('denied');
+            const isNative = window.Capacitor?.isNativePlatform?.();
+
+            // On native apps, only show warning if user denied permission
+            // On web, show warning for any location failure
+            if (isNative && !wasDenied) {
+              return; // Native app, not denied - don't show warning yet
+            }
+
+            // Show warning (with hourly throttle)
             if (typeof helpers?.shouldShowLocationWarning === 'function' && helpers.shouldShowLocationWarning()) {
               if (typeof helpers?.markLocationWarningShown === 'function') {
                 helpers.markLocationWarningShown();
