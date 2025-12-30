@@ -153,7 +153,13 @@
             listenersRef.current.push(errorListener);
 
             // NOW call register() after listeners are ready
-            await PushNotifications.register();
+            try {
+              await PushNotifications.register();
+            } catch (registerErr) {
+              console.error('Push register() failed:', registerErr);
+              pushSetupRef.current = { userId: user.id, permission: 'error', platform: 'native' };
+              return;
+            }
 
             // Listen for push notifications received while app is open
             const receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification) => {

@@ -1,4 +1,4 @@
-package com.listit.app;
+package com.trovelr.app;
 
 import com.getcapacitor.BridgeActivity;
 
