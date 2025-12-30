@@ -426,7 +426,7 @@
           return;
         }
 
-        // Use Stripe for web/desktop
+        // Use Stripe for web/desktop/Android
         try {
           const response = await api.startSupporterCheckout(tier);
           if (response && typeof response.amount !== 'undefined') {
@@ -438,7 +438,13 @@
             }));
           }
           if (response?.url) {
-            if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
+            // On Android native, open in external browser so user can complete Stripe checkout
+            const isAndroidNative = window.Capacitor?.getPlatform?.() === 'android';
+            if (isAndroidNative) {
+              // Open external browser for Stripe checkout
+              window.open(response.url, '_system');
+              setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '' }));
+            } else if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
               window.location.assign(response.url);
             }
             return;
