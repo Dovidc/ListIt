@@ -176,7 +176,7 @@ let helmet; try { helmet = require('helmet'); } catch { }
 
 let rateLimit; try { rateLimit = require('express-rate-limit'); } catch { }
 
-let OpenAI; try { OpenAI = require('openai'); } catch { }
+let OpenAI; try { OpenAI = require('openai'); } catch (e) { console.error('[OpenAI] Failed to load module:', e?.message || e); }
 let cachedOpenAIClient = null;
 
 let Stripe;
