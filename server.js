@@ -2505,6 +2505,8 @@ function formatAdRow(row) {
 
     image_size: Number.isFinite(Number(row.image_size)) ? Number(row.image_size) : 50,
 
+    display_mode: row.display_mode === 'fullbleed' ? 'fullbleed' : 'standard',
+
     cta_label: row.cta_label || '',
 
     background: row.background || '',
@@ -9479,14 +9481,14 @@ app.get('/api/ads', async (req, res) => {
     const rows = await db.prepare(`
       SELECT a.id, a.title, a.subtitle, a.image_url, a.target_url, a.position,
              a.is_active, a.is_local, a.cta_label, a.background, a.image_size,
-             a.created_at, a.updated_at,
+             a.display_mode, a.created_at, a.updated_at,
              STRING_AGG(al.id::text || '|' || al.lat::text || '|' || al.lon::text || '|' || al.radius_meters::text, ';;') as locations_raw
         FROM ads a
         LEFT JOIN ad_locations al ON al.ad_id = a.id
        WHERE a.is_active = 1
        GROUP BY a.id, a.title, a.subtitle, a.image_url, a.target_url, a.position,
                 a.is_active, a.is_local, a.cta_label, a.background, a.image_size,
-                a.created_at, a.updated_at
+                a.display_mode, a.created_at, a.updated_at
        ORDER BY a.position DESC, a.updated_at DESC, a.id DESC
     `).all();
 
@@ -9567,7 +9569,7 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
   try {
 
-    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active, is_local } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, display_mode, cta_label, background, position, is_active, is_local } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -9582,6 +9584,8 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
     const safeCta = String(cta_label || '').trim().slice(0, 40) || null;
 
     const safeBackground = String(background || '').trim().slice(0, 160) || null;
+
+    const safeDisplayMode = display_mode === 'fullbleed' ? 'fullbleed' : 'standard';
 
     let safePosition = Number.isFinite(Number(position)) ? Math.round(Number(position)) : 0;
 
@@ -9637,9 +9641,9 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
     const info = await db.prepare(`
 
-      INSERT INTO ads (title, subtitle, target_url, image_url, image_size, cta_label, background, is_active, is_local, position, created_at, updated_at)
+      INSERT INTO ads (title, subtitle, target_url, image_url, image_size, display_mode, cta_label, background, is_active, is_local, position, created_at, updated_at)
 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     `).run(
 
@@ -9652,6 +9656,8 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
       normalizedImage || null,
 
       safeImageSize,
+
+      safeDisplayMode,
 
       safeCta,
 
@@ -9683,7 +9689,59 @@ app.post('/api/admin/ads', auth, requireAdmin, async (req, res) => {
 
 });
 
+// Admin-only image upload for ads - no compression, no AI moderation
+app.post('/api/admin/ads/upload', auth, requireAdmin, async (req, res) => {
+  try {
+    const { image } = req.body || {};
+    if (!image || typeof image !== 'string') {
+      return res.status(400).json({ error: 'image_required' });
+    }
 
+    // Parse base64 data URL
+    const match = image.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/i);
+    if (!match) {
+      return res.status(400).json({ error: 'invalid_image_format' });
+    }
+
+    const contentType = match[1];
+    const base64Data = match[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Size limit: 20MB for admin uploads
+    const maxBytes = 20 * 1024 * 1024;
+    if (buffer.length > maxBytes) {
+      return res.status(400).json({ error: 'image_too_large', max_mb: 20 });
+    }
+
+    // Upload directly to S3 - no compression, no thumbnail, no AI
+    const s3Module = require('./s3');
+    const ext = contentType.split('/')[1].replace('jpeg', 'jpg');
+    const result = await s3Module.presignUpload({
+      filename: `ad_fullbleed.${ext}`,
+      contentType,
+      bytes: buffer.length
+    });
+
+    // Upload directly using fetch (client-side presigned URL approach)
+    const uploadResponse = await fetch(result.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: buffer
+    });
+
+    if (!uploadResponse.ok) {
+      console.error('[AdminUpload] S3 upload failed:', uploadResponse.status);
+      return res.status(500).json({ error: 'upload_failed' });
+    }
+
+    console.log('[AdminUpload] Ad image uploaded:', result.publicUrl);
+    return res.json({ url: result.publicUrl });
+
+  } catch (e) {
+    console.error('Admin ad upload failed:', e);
+    return res.status(500).json({ error: 'admin_upload_failed' });
+  }
+});
 
 app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
@@ -9697,7 +9755,7 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
     }
 
-    const { title, subtitle, target_url, image_url, image_size, cta_label, background, position, is_active, is_local } = req.body || {};
+    const { title, subtitle, target_url, image_url, image_size, display_mode, cta_label, background, position, is_active, is_local } = req.body || {};
 
     const safeTitle = String(title || '').trim().slice(0, 120);
 
@@ -9712,6 +9770,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
     const safeCta = String(cta_label || '').trim().slice(0, 40) || null;
 
     const safeBackground = String(background || '').trim().slice(0, 160) || null;
+
+    const safeDisplayMode = display_mode === 'fullbleed' ? 'fullbleed' : 'standard';
 
     let safePosition = Number.isFinite(Number(position)) ? Math.round(Number(position)) : 0;
 
@@ -9779,6 +9839,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
 
              image_size = ?,
 
+             display_mode = ?,
+
              cta_label = ?,
 
              background = ?,
@@ -9804,6 +9866,8 @@ app.put('/api/admin/ads/:id', auth, requireAdmin, async (req, res) => {
       normalizedImage || null,
 
       safeImageSize,
+
+      safeDisplayMode,
 
       safeCta,
 

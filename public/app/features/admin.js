@@ -10,7 +10,7 @@
       throw new Error('Admin feature requires an API client.');
     }
 
-    const { useCallback } = React;
+    const { useCallback, useState } = React;
 
     const H = (tag, props, ...children) => React.createElement(tag, props || null, ...children);
 
@@ -126,6 +126,46 @@
         loadKarmaTop,
         loadKarmaChanges
       } = useAdminDashboardState({ onAdsUpdated, onMessageUser });
+
+      // Local state for fullbleed image upload
+      const [adImageUploading, setAdImageUploading] = useState(false);
+
+      const handleAdImageUpload = useCallback(async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.match(/^image\/(png|jpe?g|webp|gif)$/i)) {
+          alert('Please select a valid image file (PNG, JPG, WEBP, or GIF)');
+          return;
+        }
+
+        // Read file as base64
+        setAdImageUploading(true);
+        try {
+          const reader = new FileReader();
+          const dataUrl = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Upload to server
+          const response = await api.adminUploadAdImage(dataUrl);
+          if (response?.url) {
+            setAdForm(f => ({ ...f, image_url: response.url }));
+          } else {
+            throw new Error('No URL returned');
+          }
+        } catch (err) {
+          console.error('[Admin] Image upload failed:', err);
+          alert(err?.message || 'Image upload failed');
+        } finally {
+          setAdImageUploading(false);
+          // Reset file input
+          e.target.value = '';
+        }
+      }, [api, setAdForm]);
 
       function formatDate(value) {
         if (!value) return '--';
@@ -551,23 +591,79 @@
 
             H('label', { style: { display: 'grid', gap: 4 } },
 
-              'Image URL',
+              'Display Mode',
 
-              H('input', {
+              H('select', {
 
-                value: adForm.image_url,
+                value: adForm.display_mode || 'standard',
 
-                onChange: (e) => setAdForm(f => ({ ...f, image_url: e.target.value })),
+                onChange: (e) => setAdForm(f => ({ ...f, display_mode: e.target.value })),
 
-                placeholder: 'https://cdn.example.com/banner.jpg',
+                disabled: adSaving || adImageUploading,
 
-                disabled: adSaving
+                style: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd' }
 
-              })
+              },
+
+                H('option', { value: 'standard' }, 'Standard (Text + Image)'),
+
+                H('option', { value: 'fullbleed' }, 'Fullbleed (Image Only)')
+
+              )
 
             ),
 
             H('label', { style: { display: 'grid', gap: 4 } },
+
+              adForm.display_mode === 'fullbleed' ? 'Fullbleed Image (1200x900 recommended)' : 'Image URL',
+
+              H('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+
+                H('input', {
+
+                  value: adForm.image_url,
+
+                  onChange: (e) => setAdForm(f => ({ ...f, image_url: e.target.value })),
+
+                  placeholder: adForm.display_mode === 'fullbleed' ? 'Upload or paste URL' : 'https://cdn.example.com/banner.jpg',
+
+                  disabled: adSaving || adImageUploading,
+
+                  style: { flex: 1 }
+
+                }),
+
+                adForm.display_mode === 'fullbleed' && H('label', {
+
+                  className: 'btn',
+
+                  style: { cursor: adImageUploading ? 'wait' : 'pointer', opacity: adImageUploading ? 0.6 : 1, whiteSpace: 'nowrap' }
+
+                },
+
+                  adImageUploading ? 'Uploading...' : 'Upload',
+
+                  H('input', {
+
+                    type: 'file',
+
+                    accept: 'image/png,image/jpeg,image/webp,image/gif',
+
+                    onChange: handleAdImageUpload,
+
+                    disabled: adSaving || adImageUploading,
+
+                    style: { display: 'none' }
+
+                  })
+
+                )
+
+              )
+
+            ),
+
+            adForm.display_mode !== 'fullbleed' && H('label', { style: { display: 'grid', gap: 4 } },
 
               `Image Size: ${adForm.image_size || 50}%`,
 

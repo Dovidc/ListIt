@@ -405,6 +405,13 @@ function createApiClient(options = {}) {
 
   const adminDeleteAd = (id, meta) => request(`/api/admin/ads/${id}`, { method: 'DELETE' }, meta);
 
+  // Admin ad image upload (fullbleed ads, no compression, no AI)
+  const adminUploadAdImage = (imageDataUrl, meta) => request('/api/admin/ads/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: imageDataUrl })
+  }, meta);
+
   // Ad location management (for local ads)
   const adminGetAdLocations = (adId, meta) => request(`/api/admin/ads/${adId}/locations`, { method: 'GET' }, meta);
 
@@ -662,6 +669,7 @@ function createApiClient(options = {}) {
     adminCreateAd,
     adminUpdateAd,
     adminDeleteAd,
+    adminUploadAdImage,
     adminGetAdLocations,
     adminAddAdLocation,
     adminDeleteAdLocation,
