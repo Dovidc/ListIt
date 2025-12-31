@@ -38,18 +38,18 @@
         anchorProps.tabIndex = -1;
       }
 
-      // Fullbleed mode: image fills entire card
+      // Fullbleed mode: image fills entire card, small "Ad" pill in corner
       if (isFullbleed) {
         return H('a', anchorProps,
           H('div', { className: 'ad-card__fullbleed-image' },
             H(ImageWithSkeleton, {
               src: ad.image_url,
-              alt: ad.title ? `${ad.title}` : 'Sponsored',
+              alt: ad.title ? `${ad.title}` : 'Ad',
               loading: 'lazy',
               decoding: 'async'
             })
           ),
-          H('span', { className: 'ad-card__tag ad-card__tag--overlay' }, 'Sponsored')
+          H('span', { className: 'ad-card__pill' }, 'Ad')
         );
       }
 
