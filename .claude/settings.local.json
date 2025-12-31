@@ -85,7 +85,11 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" reset HEAD firebase-service-account.json)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add .gitignore migrations/20251230_message_push_dedup.js services/worker-service.js)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"$\\(cat <<''EOF''\nfix: deduplicate push notifications for multi-instance deployments\n\nWhen running multiple server instances with Redis pub/sub, each instance\nreceives MESSAGE_SENT events and would send duplicate push notifications.\nThis adds database-based deduplication to ensure only one instance sends\neach push notification.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\migrations\\\\20251230_message_push_dedup.js\")"
+      "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\migrations\\\\20251230_message_push_dedup.js\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add server.js)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"debug: log OpenAI module load failure\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add package.json)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"fix: pin openai to 4.77.0 to avoid chatkit.js bug\")"
     ],
     "deny": [],
     "ask": []

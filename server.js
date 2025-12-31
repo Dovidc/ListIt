@@ -11423,6 +11423,138 @@ app.get('/support', (_req, res) => {
   res.send('email support@trovelr.com for assistance.');
 });
 
+app.get('/ads', (_req, res) => {
+  res.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advertise with Trovelr</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 50px 40px;
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+    h1 {
+      color: #1a1a2e;
+      font-size: 32px;
+      margin-bottom: 15px;
+      font-weight: 700;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 17px;
+      line-height: 1.6;
+      margin-bottom: 35px;
+    }
+    .ad-types {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 35px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .ad-type {
+      flex: 1;
+      min-width: 200px;
+      background: #f8f9fa;
+      border-radius: 16px;
+      padding: 25px 20px;
+      text-align: left;
+    }
+    .ad-type h3 {
+      color: #1a1a2e;
+      font-size: 18px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ad-type h3 svg {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .ad-type p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .contact-box {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      border-radius: 12px;
+      padding: 25px;
+    }
+    .contact-label {
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .contact-email {
+      color: white;
+      font-size: 22px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .contact-email:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Advertise with Trovelr</h1>
+    <p class="subtitle">Connect your brand with engaged buyers and sellers. We offer flexible advertising options to fit your goals.</p>
+
+    <div class="ad-types">
+      <div class="ad-type">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+            <circle cx="12" cy="10" r="3"/>
+            <path d="M12 2a8 8 0 0 0-8 8c0 5.4 7 11 8 12 1-1 8-6.6 8-12a8 8 0 0 0-8-8z"/>
+          </svg>
+          Local Ads
+        </h3>
+        <p>Target users in specific cities or regions. Perfect for local businesses looking to reach nearby customers.</p>
+      </div>
+      <div class="ad-type">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          Global Ads
+        </h3>
+        <p>Reach our entire user base across all locations. Ideal for brands and national campaigns.</p>
+      </div>
+    </div>
+
+    <div class="contact-box">
+      <div class="contact-label">Ready to get started?</div>
+      <a href="mailto:support@trovelr.com?subject=Advertising%20Inquiry" class="contact-email">support@trovelr.com</a>
+    </div>
+  </div>
+</body>
+</html>`);
+});
+
 app.get('/privacy', (_req, res) => {
   res.type('text/html').send(`<!DOCTYPE html>
 <html lang="en">
