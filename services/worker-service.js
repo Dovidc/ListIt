@@ -381,7 +381,8 @@ class WorkerService {
         template: 'verification',
         userId,
         code: verificationCode
-      }
+      },
+      idempotencyKey: `email:verification:${userId}:${verificationCode}`
     });
   }
 
@@ -398,7 +399,8 @@ class WorkerService {
         to: email,
         template: 'welcome',
         userId
-      }
+      },
+      idempotencyKey: `email:welcome:${userId}`
     });
   }
 
@@ -426,7 +428,8 @@ class WorkerService {
         template: 'password_reset',
         token: event.token
       },
-      priority: 8
+      priority: 8,
+      idempotencyKey: `email:reset:${event.email}:${event.token}`
     });
   }
 
@@ -439,7 +442,8 @@ class WorkerService {
     await this.enqueueJob({
       type: 'notify_nearby_listing',
       payload: event.listing,
-      priority: 4
+      priority: 4,
+      idempotencyKey: `nearby:${event.listing.id}`
     });
   }
 
