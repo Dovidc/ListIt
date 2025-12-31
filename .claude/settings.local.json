@@ -76,7 +76,9 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 2b70547 --stat)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 2b70547 -- server.js)",
       "Bash(npm uninstall:*)",
-      "Bash(npx cap:*)"
+      "Bash(npx cap:*)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline -15 --format=\"%h %ai %s\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show HEAD --stat)"
     ],
     "deny": [],
     "ask": []

@@ -142,6 +142,16 @@ class WorkerService {
 
     await this.refreshQueueDepth();
 
+    // Start periodic cleanup for push deduplication table (every hour)
+    this._dedupCleanupInterval = setInterval(() => {
+      this.cleanupPushDedupRecords().catch(err => {
+        console.warn('[Worker] Push dedup cleanup error:', err?.message || err);
+      });
+    }, 60 * 60 * 1000); // 1 hour
+
+    // Run initial cleanup
+    this.cleanupPushDedupRecords().catch(() => {});
+
     console.log('[Worker] Service started');
   }
 
@@ -149,9 +159,34 @@ class WorkerService {
    * Stop the worker service
    */
   async stop() {
+    if (this._dedupCleanupInterval) {
+      clearInterval(this._dedupCleanupInterval);
+      this._dedupCleanupInterval = null;
+    }
     await this.jobQueue.shutdown();
 
     console.log('[Worker] Service stopped');
+  }
+
+  /**
+   * Clean up old push deduplication records (older than 1 hour)
+   * This prevents the table from growing indefinitely
+   */
+  async cleanupPushDedupRecords() {
+    try {
+      const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
+      const result = await db.prepare(`
+        DELETE FROM message_push_dedup WHERE created_at < ?
+      `).run(cutoff);
+      if (result.changes > 0) {
+        console.log('[Worker] Cleaned up', result.changes, 'old push dedup records');
+      }
+    } catch (err) {
+      // Table might not exist yet if migration hasn't run
+      if (!err?.message?.includes('no such table')) {
+        console.warn('[Worker] Push dedup cleanup error:', err?.message || err);
+      }
+    }
   }
 
   /**
@@ -410,13 +445,42 @@ class WorkerService {
 
   /**
    * Handle chat message events for push notifications
+   * Uses database-based deduplication to prevent duplicate pushes
+   * when multiple server instances receive the same MESSAGE_SENT event
    */
   async handleMessageSent(event) {
-    console.log('[Worker] handleMessageSent called:', { recipientId: event?.recipientId, senderId: event?.senderId });
+    console.log('[Worker] handleMessageSent called:', { recipientId: event?.recipientId, senderId: event?.senderId, messageId: event?.message?.id });
 
     if (!event || !event.recipientId) {
       console.log('[Worker] No recipientId, skipping push');
       return;
+    }
+
+    const messageId = event.message?.id;
+    const recipientId = event.recipientId;
+
+    // Database-based deduplication: try to insert a record
+    // If it already exists (unique constraint violation), another instance handled it
+    if (messageId) {
+      try {
+        const now = nowIso();
+        await db.prepare(`
+          INSERT INTO message_push_dedup (message_id, recipient_id, created_at)
+          VALUES (?, ?, ?)
+        `).run(messageId, recipientId, now);
+        console.log('[Worker] Dedup record inserted, proceeding with push:', { messageId, recipientId });
+      } catch (err) {
+        // UNIQUE constraint violation means another instance already processed this
+        if (err?.code === 'SQLITE_CONSTRAINT' ||
+            err?.code === '23505' || // PostgreSQL unique violation
+            err?.message?.includes('UNIQUE constraint') ||
+            err?.message?.includes('duplicate key')) {
+          console.log('[Worker] Duplicate push skipped (already handled by another instance):', { messageId, recipientId });
+          return;
+        }
+        // Log unexpected errors but continue - don't block push if dedup check fails
+        console.warn('[Worker] Dedup check error (continuing anyway):', err?.message || err);
+      }
     }
 
     const payload = this.buildMessagePushPayload(event);
