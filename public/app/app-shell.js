@@ -2446,6 +2446,10 @@
               const { StatusBar } = window.Capacitor.Plugins;
               console.log('StatusBar plugin:', StatusBar);
               if (StatusBar) {
+                // Ensure status bar is visible on Android
+                StatusBar.show().catch(() => {});
+                // Set overlay mode so content goes under status bar (edge-to-edge)
+                StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
                 // Capacitor StatusBar naming is counterintuitive:
                 // 'Light' = light/white TEXT (use on dark backgrounds)
                 // 'Dark' = dark/black TEXT (use on light backgrounds)

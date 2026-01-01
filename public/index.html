@@ -1583,6 +1583,8 @@
         (event) => {
           if (!shouldLock(event.target)) return;
           applyLockedViewport();
+          // Add keyboard-open class to hide bottom nav on Android/iOS
+          document.body.classList.add('keyboard-open');
         },
         { passive: true }
       );
@@ -1592,11 +1594,41 @@
         (event) => {
           if (!shouldLock(event.target)) return;
           restoreViewport();
+          // Remove keyboard-open class to show bottom nav again
+          document.body.classList.remove('keyboard-open');
         },
         { passive: true }
       );
 
       document.addEventListener('gesturestart', restoreViewport, { passive: true });
+    })();
+  </script>
+
+  <!-- Android keyboard detection - hide bottom nav when keyboard opens -->
+  <script>
+    (function() {
+      // Only run on Android
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (!isAndroid) return;
+
+      const isInput = (el) => el && el.matches && el.matches('input, textarea, select');
+
+      window.addEventListener('focusin', (e) => {
+        if (isInput(e.target)) {
+          document.body.classList.add('keyboard-open');
+        }
+      }, { passive: true, capture: true });
+
+      window.addEventListener('focusout', (e) => {
+        if (isInput(e.target)) {
+          // Small delay to handle focus switching between inputs
+          setTimeout(() => {
+            if (!document.activeElement || !isInput(document.activeElement)) {
+              document.body.classList.remove('keyboard-open');
+            }
+          }, 100);
+        }
+      }, { passive: true, capture: true });
     })();
   </script>
 
