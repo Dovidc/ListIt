@@ -4252,6 +4252,11 @@ app.post('/api/listings/:id/award-karma', auth, karmaLimiter, async (req, res) =
       return res.status(400).json({ error: 'buyer_id required' });
     }
 
+    // Prevent self-transactions
+    if (buyerId === req.user.id) {
+      return res.status(400).json({ error: 'cannot_self_transact' });
+    }
+
     // Verify user owns this listing
     const listing = await db.prepare('SELECT user_id, sold FROM listings WHERE id = ?').get(listingId);
     if (!listing) {
@@ -4259,6 +4264,9 @@ app.post('/api/listings/:id/award-karma', auth, karmaLimiter, async (req, res) =
     }
     if (listing.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not your listing' });
+    }
+    if (!listing.sold) {
+      return res.status(400).json({ error: 'listing_not_sold' });
     }
 
     // Get buyer info
