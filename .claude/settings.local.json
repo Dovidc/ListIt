@@ -90,7 +90,20 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"debug: log OpenAI module load failure\")",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add package.json)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"fix: pin openai to 4.77.0 to avoid chatkit.js bug\")",
-      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" ls-files)"
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" ls-files)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" ls-files:*)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline --since=\"2025-12-27\" --until=\"2026-01-01\" --format=\"%h %ai %s\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline -20 --all -- \"android/app/build.gradle\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9:android/app/build.gradle)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 7b998045:android/app/build.gradle)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" log --oneline -30 --all -- \"android/app/src/main/java/**/*.java\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9:android/app/src/main/AndroidManifest.xml)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 7c83c7d3:android/app/src/main/java/com/trovelr/app/MainActivity.java)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 7c83c7d3 --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9:android/app/src/main/java/com/trovelr/app/MainActivity.java)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9 --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" diff 7b998045..7c83c7d3 -- public/app/features/push.js)",
+      "Bash(git -C:*)"
     ],
     "deny": [],
     "ask": []

@@ -23,6 +23,10 @@ const config: CapacitorConfig = {
     scrollEnabled: true,
     keyboardResize: 'native',
   },
+  android: {
+    // Resize the web view when keyboard appears so content isn't hidden
+    keyboardResize: 'native',
+  },
 };
 
 export default config;
