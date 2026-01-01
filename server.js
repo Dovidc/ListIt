@@ -4764,7 +4764,6 @@ app.post('/api/subscriptions/apple/validate', auth, writeLimiter, async (req, re
     await db.prepare(`
       UPDATE users
       SET
-        is_premium = 1,
         supporter_badge = ?,
         supporter_tier = 'premium',
         supporter_since = COALESCE(supporter_since, ?),

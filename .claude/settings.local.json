@@ -89,7 +89,8 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add server.js)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"debug: log OpenAI module load failure\")",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" add package.json)",
-      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"fix: pin openai to 4.77.0 to avoid chatkit.js bug\")"
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" commit -m \"fix: pin openai to 4.77.0 to avoid chatkit.js bug\")",
+      "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" ls-files)"
     ],
     "deny": [],
     "ask": []
