@@ -2175,9 +2175,8 @@
           onJoinSupporterProgram();
         }
       }, [onJoinSupporterProgram]);
-      // Hide supporter CTA on Android until Google Play Billing is implemented
-      const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
-      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll && !isAndroid;
+      // Show supporter CTA on all platforms (RevenueCat handles iOS and Android)
+      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll;
       const visuallyHidden = {
         position: 'absolute',
         width: 1,

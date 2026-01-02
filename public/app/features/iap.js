@@ -8,9 +8,14 @@
   const REVENUECAT_ANDROID_KEY = 'goog_MSMwTBUetahviEwzUZTmVmcbGVc';
   const ENTITLEMENT_ID = 'Trovelr Premium';
 
-  function createIAPService({ api } = {}) {
+  // Get RevenueCat Purchases from Capacitor plugins
+  // The plugin is registered as 'Purchases' by @revenuecat/purchases-capacitor
+  function getPurchases() {
+    return window.Capacitor?.Plugins?.Purchases || null;
+  }
+
+  function createIAPService() {
     let initialized = false;
-    let Purchases = null;
 
     // Check if running in native app (iOS or Android)
     function isNativeApp() {
@@ -54,11 +59,13 @@
         return true;
       }
 
-      try {
-        // Dynamic import for RevenueCat
-        const RC = await import('@revenuecat/purchases-capacitor');
-        Purchases = RC.Purchases;
+      const Purchases = getPurchases();
+      if (!Purchases) {
+        console.error('[RevenueCat] PurchasesPlugin not available');
+        return false;
+      }
 
+      try {
         const platform = window.Capacitor.getPlatform();
         const apiKey = platform === 'ios' ? REVENUECAT_IOS_KEY : REVENUECAT_ANDROID_KEY;
 
@@ -70,7 +77,7 @@
 
         // If we have a user ID, log them in
         if (userId) {
-          await Purchases.logIn({ appUserID: userId });
+          await Purchases.logIn({ appUserID: String(userId) });
           console.log('[RevenueCat] Logged in user:', userId);
         }
 
@@ -85,10 +92,13 @@
 
     // Log in a user (call after user authenticates)
     async function login(userId) {
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         await initialize(userId);
         return;
       }
+
+      const Purchases = getPurchases();
+      if (!Purchases) return;
 
       try {
         await Purchases.logIn({ appUserID: String(userId) });
@@ -100,7 +110,10 @@
 
     // Log out user
     async function logout() {
-      if (!Purchases || !initialized) return;
+      if (!initialized) return;
+
+      const Purchases = getPurchases();
+      if (!Purchases) return;
 
       try {
         await Purchases.logOut();
@@ -112,9 +125,12 @@
 
     // Check if user has active premium subscription
     async function hasActiveSubscription() {
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         return false;
       }
+
+      const Purchases = getPurchases();
+      if (!Purchases) return false;
 
       try {
         const { customerInfo } = await Purchases.getCustomerInfo();
@@ -129,9 +145,12 @@
 
     // Get customer info
     async function getCustomerInfo() {
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         return null;
       }
+
+      const Purchases = getPurchases();
+      if (!Purchases) return null;
 
       try {
         const { customerInfo } = await Purchases.getCustomerInfo();
@@ -144,9 +163,12 @@
 
     // Get available offerings (products)
     async function getOfferings() {
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         return null;
       }
+
+      const Purchases = getPurchases();
+      if (!Purchases) return null;
 
       try {
         const { offerings } = await Purchases.getOfferings();
@@ -180,11 +202,16 @@
         throw new Error('IAP only available in native app');
       }
 
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         const success = await initialize();
         if (!success) {
           throw new Error('RevenueCat not initialized');
         }
+      }
+
+      const Purchases = getPurchases();
+      if (!Purchases) {
+        throw new Error('RevenueCat not available');
       }
 
       try {
@@ -267,10 +294,11 @@
         return { restored: false };
       }
 
-      if (!Purchases || !initialized) {
+      if (!initialized) {
         await initialize();
       }
 
+      const Purchases = getPurchases();
       if (!Purchases) {
         return { restored: false };
       }

@@ -837,15 +837,8 @@
             error && H('div', { className: 'supporter-modal__error' }, error),
             // Bottom section with buttons and cancel text
             isPrompt ? H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 16 } },
-              // Subscribe button - shows on iOS (IAP) and web (Stripe), hidden on Android until Google Play Billing is implemented
+              // Subscribe button - shows on all platforms (RevenueCat handles iOS and Android, Stripe for web)
               (() => {
-                const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
-                if (isAndroid) {
-                  return H('div', { style: { textAlign: 'center', padding: '12px 16px', background: '#f3f4f6', borderRadius: 8 } },
-                    H('div', { style: { fontSize: 14, color: '#6b7280', marginBottom: 4 } }, 'Premium subscriptions coming soon to Android!'),
-                    H('div', { style: { fontSize: 12, color: '#9ca3af' } }, 'Subscribe via trovelr.com in the meantime')
-                  );
-                }
                 return typeof onJoin === 'function' && H('button', {
                   type: 'button',
                   className: 'btn primary',
