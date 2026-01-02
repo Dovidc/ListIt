@@ -1604,12 +1604,24 @@
     })();
   </script>
 
-  <!-- Android keyboard detection - hide bottom nav when keyboard opens -->
+  <!-- Android detection and keyboard handling -->
   <script>
     (function() {
       // Only run on Android
       const isAndroid = /Android/i.test(navigator.userAgent);
       if (!isAndroid) return;
+
+      // Add Android class when DOM is ready
+      function addAndroidClass() {
+        if (document.body) {
+          document.body.classList.add('is-android');
+        } else {
+          document.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('is-android');
+          });
+        }
+      }
+      addAndroidClass();
 
       const isInput = (el) => el && el.matches && el.matches('input, textarea, select');
 

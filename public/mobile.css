@@ -1626,3 +1626,39 @@ body.keyboard-open .mobile-messages-thread-portal .message-composer-wrapper {
 html[data-theme="dark"] .listing-form-modal-overlay {
   background: #0f172a !important;
 }
+
+/* ==========================================================================
+   ANDROID-SPECIFIC FIXES
+   Android doesn't use env(safe-area-inset-*), so we detect via body class
+   ========================================================================== */
+
+/* Android: Add padding for status bar (set via JS when Android detected) */
+body.is-android main.container {
+  padding-top: 34px !important;
+}
+
+/* Android: Hide Trovelr title text to save space */
+body.is-android .mobile-home-title {
+  display: none !important;
+}
+
+/* Android: Extend dashboard background to cover system nav bar */
+body.is-android .mobile-dashboard {
+  padding-bottom: 12px !important;
+}
+
+body.is-android .mobile-dashboard::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -50px;
+  height: 50px;
+  background: inherit;
+  background-color: #ffffff;
+}
+
+[data-theme="dark"] body.is-android .mobile-dashboard::after,
+body.is-android[data-theme="dark"] .mobile-dashboard::after {
+  background-color: var(--bg-secondary, #24283b);
+}
