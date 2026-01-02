@@ -2330,7 +2330,9 @@
             return { shouldClose: false };
           }
           // Show location warning if needed (throttled to once per hour)
-          if (stats.showLocationWarning) {
+          // Skip on Android
+          const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
+          if (stats.showLocationWarning && !isAndroid) {
             setShowLocationWarningModal(true);
           }
           onDone && onDone(stats);

@@ -252,6 +252,10 @@
               return; // Native app, not denied - don't show warning yet
             }
 
+            // Skip location warning modal on Android (users find it annoying)
+            const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
+            if (isAndroid) return;
+
             // Show warning (with hourly throttle)
             if (typeof helpers?.shouldShowLocationWarning === 'function' && helpers.shouldShowLocationWarning()) {
               if (typeof helpers?.markLocationWarningShown === 'function') {
@@ -1039,6 +1043,10 @@
                 if (typeof helpers?.initializeCache === 'function') {
                   helpers.initializeCache().then(result => {
                     if (!result.success) {
+                      // Skip location warning modal on Android
+                      const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
+                      if (isAndroid) return;
+
                       if (typeof helpers?.shouldShowLocationWarning === 'function' && helpers.shouldShowLocationWarning()) {
                         if (typeof helpers?.markLocationWarningShown === 'function') {
                           helpers.markLocationWarningShown();
