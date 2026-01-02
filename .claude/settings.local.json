@@ -103,7 +103,11 @@
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9:android/app/src/main/java/com/trovelr/app/MainActivity.java)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" show 6d828be9 --stat)",
       "Bash(git -C \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\" diff 7b998045..7c83c7d3 -- public/app/features/push.js)",
-      "Bash(git -C:*)"
+      "Bash(git -C:*)",
+      "Bash(where:*)",
+      "Bash(.gradlew.bat assembleRelease)",
+      "Bash(cmd /c \"cd /d c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\android && gradlew.bat assembleRelease\")",
+      "Bash(cmd /c \"cd /d c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\android && call gradlew.bat assembleRelease 2>&1\")"
     ],
     "deny": [],
     "ask": []

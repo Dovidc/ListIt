@@ -1012,6 +1012,94 @@ app.post('/api/webhooks/apple', express.raw({ type: 'application/json' }), async
   }
 });
 
+// RevenueCat webhook - handles subscription events from RevenueCat
+// Must come BEFORE express.json() to receive raw body
+app.post('/api/webhooks/revenuecat', express.raw({ type: 'application/json' }), async (req, res) => {
+  console.log('[RevenueCat Webhook] Received notification');
+
+  try {
+    const body = JSON.parse(req.body.toString());
+    const event = body.event;
+
+    if (!event) {
+      console.error('[RevenueCat Webhook] Missing event data');
+      return res.status(400).json({ error: 'missing_event' });
+    }
+
+    console.log(`[RevenueCat Webhook] Event type: ${event.type}`);
+
+    const appUserId = event.app_user_id;
+    const originalAppUserId = event.original_app_user_id;
+    const productId = event.product_id;
+    const entitlementIds = event.entitlement_ids || [];
+
+    // Find user by RevenueCat ID or app user ID
+    let user = null;
+    if (appUserId && !appUserId.startsWith('$RCAnonymousID:')) {
+      // Try to find by user ID (we use our user ID as app_user_id)
+      user = await db('users').where('id', appUserId).first();
+    }
+
+    if (!user && originalAppUserId && !originalAppUserId.startsWith('$RCAnonymousID:')) {
+      user = await db('users').where('id', originalAppUserId).first();
+    }
+
+    if (!user) {
+      console.log('[RevenueCat Webhook] User not found for app_user_id:', appUserId);
+      // Return 200 anyway - user might not be linked yet
+      return res.json({ received: true, user_found: false });
+    }
+
+    // Handle different event types
+    const isPremiumActive = entitlementIds.includes('Trovelr Premium');
+
+    switch (event.type) {
+      case 'INITIAL_PURCHASE':
+      case 'RENEWAL':
+      case 'PRODUCT_CHANGE':
+      case 'UNCANCELLATION':
+        if (isPremiumActive) {
+          await db('users').where('id', user.id).update({
+            supporter_badge: 'trovelr_platinum',
+            supporter_tier: 'premium',
+            supporter_since: user.supporter_since || new Date().toISOString(),
+            subscription_status: 'active'
+          });
+          console.log(`[RevenueCat Webhook] User ${user.id} subscription activated`);
+        }
+        break;
+
+      case 'CANCELLATION':
+      case 'EXPIRATION':
+        await db('users').where('id', user.id).update({
+          subscription_status: 'cancelled'
+          // Don't remove badge immediately - let it expire naturally
+        });
+        console.log(`[RevenueCat Webhook] User ${user.id} subscription cancelled/expired`);
+        break;
+
+      case 'BILLING_ISSUE':
+        await db('users').where('id', user.id).update({
+          subscription_status: 'billing_issue'
+        });
+        console.log(`[RevenueCat Webhook] User ${user.id} has billing issue`);
+        break;
+
+      default:
+        console.log(`[RevenueCat Webhook] Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('[RevenueCat Webhook] Error processing notification:', err);
+    reportError(err, {
+      label: 'RevenueCat webhook processing failed',
+      tags: { component: 'payments', type: 'revenuecat_webhook' }
+    });
+    res.status(500).json({ error: 'processing_failed' });
+  }
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -4804,6 +4892,55 @@ app.post('/api/subscriptions/apple/validate', auth, writeLimiter, async (req, re
       tags: { component: 'payments' }
     });
     return res.status(500).json({ error: 'validation_failed' });
+  }
+});
+
+// RevenueCat sync endpoint - called by client after purchase to sync subscription status
+app.post('/api/subscriptions/revenuecat/sync', auth, writeLimiter, async (req, res) => {
+  const { revenuecatUserId, entitlements } = req.body;
+
+  console.log('[RevenueCat Sync] User:', req.user.id, 'RC User:', revenuecatUserId, 'Entitlements:', entitlements);
+
+  try {
+    const isPremium = entitlements && entitlements.includes('Trovelr Premium');
+
+    if (isPremium) {
+      // Activate supporter status
+      const user = await db('users').where('id', req.user.id).first();
+
+      await db('users').where('id', req.user.id).update({
+        supporter_badge: 'trovelr_platinum',
+        supporter_tier: 'premium',
+        supporter_since: user.supporter_since || new Date().toISOString(),
+        subscription_status: 'active'
+      });
+
+      console.log('[RevenueCat Sync] Subscription activated for user:', req.user.id);
+
+      // Return updated user
+      const refreshed = await getUserWithStatus(req.user.id);
+      const updatedUser = await mapUserWithPayments(refreshed);
+
+      return res.json({
+        success: true,
+        user: updatedUser,
+        premium: true
+      });
+    }
+
+    // No premium entitlement
+    return res.json({
+      success: true,
+      premium: false
+    });
+  } catch (err) {
+    console.error('[RevenueCat Sync] Error:', err);
+    reportError(err, {
+      label: 'RevenueCat sync failed',
+      user: req.user,
+      tags: { component: 'payments' }
+    });
+    return res.status(500).json({ error: 'sync_failed' });
   }
 });
 

@@ -837,16 +837,25 @@
             error && H('div', { className: 'supporter-modal__error' }, error),
             // Bottom section with buttons and cancel text
             isPrompt ? H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 16 } },
-              // Subscribe button - shows on all platforms (iOS will use IAP, web uses Stripe)
-              typeof onJoin === 'function' && H('button', {
-                type: 'button',
-                className: 'btn primary',
-                onClick: () => {
-                  onJoin('premium');
-                },
-                disabled: busy || paymentsDisabled,
-                style: { width: '100%', padding: '14px 24px', fontSize: 16, fontWeight: 600 }
-              }, paymentsDisabled ? 'Payments disabled' : (busy ? 'Redirecting...' : 'Subscribe at $2.99 / month')),
+              // Subscribe button - shows on iOS (IAP) and web (Stripe), hidden on Android until Google Play Billing is implemented
+              (() => {
+                const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
+                if (isAndroid) {
+                  return H('div', { style: { textAlign: 'center', padding: '12px 16px', background: '#f3f4f6', borderRadius: 8 } },
+                    H('div', { style: { fontSize: 14, color: '#6b7280', marginBottom: 4 } }, 'Premium subscriptions coming soon to Android!'),
+                    H('div', { style: { fontSize: 12, color: '#9ca3af' } }, 'Subscribe via trovelr.com in the meantime')
+                  );
+                }
+                return typeof onJoin === 'function' && H('button', {
+                  type: 'button',
+                  className: 'btn primary',
+                  onClick: () => {
+                    onJoin('premium');
+                  },
+                  disabled: busy || paymentsDisabled,
+                  style: { width: '100%', padding: '14px 24px', fontSize: 16, fontWeight: 600 }
+                }, paymentsDisabled ? 'Payments disabled' : (busy ? 'Redirecting...' : 'Subscribe at $2.99 / month'));
+              })(),
               H('button', {
                 type: 'button',
                 className: 'btn',

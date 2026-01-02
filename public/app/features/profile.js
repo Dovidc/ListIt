@@ -2175,7 +2175,9 @@
           onJoinSupporterProgram();
         }
       }, [onJoinSupporterProgram]);
-      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll;
+      // Hide supporter CTA on Android until Google Play Billing is implemented
+      const isAndroid = window.Capacitor?.getPlatform?.() === 'android';
+      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll && !isAndroid;
       const visuallyHidden = {
         position: 'absolute',
         width: 1,
