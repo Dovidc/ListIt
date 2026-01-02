@@ -4265,9 +4265,7 @@ app.post('/api/listings/:id/award-karma', auth, karmaLimiter, async (req, res) =
     if (listing.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not your listing' });
     }
-    if (!listing.sold) {
-      return res.status(400).json({ error: 'listing_not_sold' });
-    }
+    // Note: karma is awarded BEFORE listing is marked as sold (that's the flow)
 
     // Get buyer info
     const buyer = await db.prepare('SELECT id, supporter_tier, supporter_badge, subscription_status FROM users WHERE id = ?').get(buyerId);
