@@ -295,10 +295,12 @@
         return () => clearTimeout(hideTimer);
       }, [showDesktopAccuracyToast]);
 
-      // Initialize IAP service on iOS native
+      // Initialize IAP service on native apps (iOS/Android)
       useEffect(() => {
         if (iapService && typeof iapService.initialize === 'function') {
-          iapService.initialize().catch(() => {
+          // Pass user ID if already logged in, so RevenueCat can track purchases
+          const userId = user?.id ? String(user.id) : null;
+          iapService.initialize(userId).catch(() => {
             // Silent fail - IAP will initialize on demand when user tries to purchase
           });
         }
@@ -414,8 +416,8 @@
         }
         setSupporterUpsellState((prev) => ({ ...prev, busy: true, error: '', notice: '' }));
 
-        // Use IAP on iOS native
-        if (iapService && typeof iapService.isIOSNative === 'function' && iapService.isIOSNative()) {
+        // Use IAP on iOS or Android native (RevenueCat)
+        if (iapService && typeof iapService.isNativeApp === 'function' && iapService.isNativeApp()) {
           try {
             await iapService.initialize();
             const result = await iapService.purchase();
@@ -440,7 +442,7 @@
           return;
         }
 
-        // Use Stripe for web/desktop/Android
+        // Use Stripe for web/desktop
         try {
           const response = await api.startSupporterCheckout(tier);
           if (response && typeof response.amount !== 'undefined') {
@@ -452,13 +454,8 @@
             }));
           }
           if (response?.url) {
-            // On Android native, open in external browser so user can complete Stripe checkout
-            const isAndroidNative = window.Capacitor?.getPlatform?.() === 'android';
-            if (isAndroidNative) {
-              // Open external browser for Stripe checkout
-              window.open(response.url, '_system');
-              setSupporterUpsellState((prev) => ({ ...prev, busy: false, error: '' }));
-            } else if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
+            // Redirect to Stripe checkout (web only - native apps use RevenueCat)
+            if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
               window.location.assign(response.url);
             }
             return;
@@ -1410,11 +1407,19 @@
         setLegalCheckDone(false); // Reset to trigger legal check for newly logged in user
         refreshListings();
         reloadMineOnly();
+        // Log in to RevenueCat with user ID for subscription tracking
+        if (iapService && typeof iapService.login === 'function' && newUser?.id) {
+          iapService.login(String(newUser.id)).catch(() => {});
+        }
       }
 
       async function logoutFromProfile() {
         await removePushSubscription();
         await api.logout();
+        // Log out of RevenueCat
+        if (iapService && typeof iapService.logout === 'function') {
+          iapService.logout().catch(() => {});
+        }
         setUser(null);
         onTabChange('browse');
       }
