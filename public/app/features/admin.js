@@ -316,7 +316,8 @@
           H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
           H('button', { className: `btn ${tab === 'flagged' ? 'primary' : ''}`, onClick: () => setTab('flagged') }, 'Flagged'),
           H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
-          H('button', { className: `btn ${tab === 'karma' ? 'primary' : ''}`, onClick: () => setTab('karma') }, 'Karma'),
+          // KARMA DISABLED
+          // H('button', { className: `btn ${tab === 'karma' ? 'primary' : ''}`, onClick: () => setTab('karma') }, 'Karma'),
           H('button', { className: `btn ${tab === 'testing' ? 'primary' : ''}`, onClick: () => setTab('testing') }, 'Testing'),
           H('button', { className: `btn ${tab === 'settings' ? 'primary' : ''}`, onClick: () => setTab('settings') }, 'Settings')
         ),
@@ -865,73 +866,74 @@
 
         ),
 
-        tab === 'karma' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
-          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
-            H('h3', { style: { margin: 0, fontSize: 18 } }, 'Karma Leaderboard'),
-            H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
-              H('button', {
-                className: `btn ${karmaView === 'total' ? 'primary' : ''}`,
-                onClick: () => setKarmaView('total')
-              }, 'Total Karma'),
-              H('button', {
-                className: `btn ${karmaView === 'changes' ? 'primary' : ''}`,
-                onClick: () => setKarmaView('changes')
-              }, 'Recent Changes'),
-              karmaView === 'changes' && H('select', {
-                value: karmaChangeDays,
-                onChange: (e) => setKarmaChangeDays(Number(e.target.value)),
-                style: { padding: 6 }
-              },
-                H('option', { value: 1 }, '1 day'),
-                H('option', { value: 3 }, '3 days'),
-                H('option', { value: 10 }, '10 days')
-              ),
-              H('button', {
-                className: 'btn',
-                onClick: () => karmaView === 'total' ? loadKarmaTop() : loadKarmaChanges(karmaChangeDays),
-                disabled: karmaLoading
-              }, karmaLoading ? 'Loading...' : 'Refresh')
-            )
-          ),
-          karmaError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, karmaError),
-          karmaLoading && !(karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).length
-            ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading karma data...')
-            : null,
-          (karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).length
-            ? H('div', { style: { display: 'grid', gap: 8, marginTop: 8 } },
-                (karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).map((user, idx) =>
-                  H('div', {
-                    key: user.id,
-                    className: 'card',
-                    style: { padding: 12, border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }
-                  },
-                    H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-                      H('span', { style: { fontWeight: 700, fontSize: 16, color: '#6b7280', minWidth: 28 } }, `#${idx + 1}`),
-                      H('div', { style: { display: 'grid', gap: 2 } },
-                        H('div', { style: { fontWeight: 600 } }, user.username || '(no username)'),
-                        H('div', { className: 'muted', style: { fontSize: 12 } }, user.email || 'No email')
-                      )
-                    ),
-                    H('div', { style: { display: 'grid', gap: 2, textAlign: 'right' } },
-                      H('div', { style: { fontWeight: 700, fontSize: 18, color: '#2563eb' } },
-                        karmaView === 'total'
-                          ? `${user.karma || 0} karma`
-                          : `+${user.points_earned_period || 0}`
-                      ),
-                      karmaView === 'changes' && H('div', { className: 'muted', style: { fontSize: 11 } },
-                        `${user.transactions_period || 0} transactions`
-                      ),
-                      karmaView === 'total' && H('div', { className: 'muted', style: { fontSize: 11 } },
-                        `Total karma`
-                      )
-                    )
-                  )
-                )
-              )
-            : (!karmaLoading && !karmaError
-                ? H('div', { className: 'muted', style: { marginTop: 8, fontSize: 13 } }, 'No karma data found.')
-                : null)
-        ),
+        // KARMA DISABLED
+        // tab === 'karma' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+        //   H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+        //     H('h3', { style: { margin: 0, fontSize: 18 } }, 'Karma Leaderboard'),
+        //     H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+        //       H('button', {
+        //         className: `btn ${karmaView === 'total' ? 'primary' : ''}`,
+        //         onClick: () => setKarmaView('total')
+        //       }, 'Total Karma'),
+        //       H('button', {
+        //         className: `btn ${karmaView === 'changes' ? 'primary' : ''}`,
+        //         onClick: () => setKarmaView('changes')
+        //       }, 'Recent Changes'),
+        //       karmaView === 'changes' && H('select', {
+        //         value: karmaChangeDays,
+        //         onChange: (e) => setKarmaChangeDays(Number(e.target.value)),
+        //         style: { padding: 6 }
+        //       },
+        //         H('option', { value: 1 }, '1 day'),
+        //         H('option', { value: 3 }, '3 days'),
+        //         H('option', { value: 10 }, '10 days')
+        //       ),
+        //       H('button', {
+        //         className: 'btn',
+        //         onClick: () => karmaView === 'total' ? loadKarmaTop() : loadKarmaChanges(karmaChangeDays),
+        //         disabled: karmaLoading
+        //       }, karmaLoading ? 'Loading...' : 'Refresh')
+        //     )
+        //   ),
+        //   karmaError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, karmaError),
+        //   karmaLoading && !(karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).length
+        //     ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading karma data...')
+        //     : null,
+        //   (karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).length
+        //     ? H('div', { style: { display: 'grid', gap: 8, marginTop: 8 } },
+        //         (karmaView === 'total' ? karmaTopUsers : karmaChangesUsers).map((user, idx) =>
+        //           H('div', {
+        //             key: user.id,
+        //             className: 'card',
+        //             style: { padding: 12, border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }
+        //           },
+        //             H('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+        //               H('span', { style: { fontWeight: 700, fontSize: 16, color: '#6b7280', minWidth: 28 } }, `#${idx + 1}`),
+        //               H('div', { style: { display: 'grid', gap: 2 } },
+        //                 H('div', { style: { fontWeight: 600 } }, user.username || '(no username)'),
+        //                 H('div', { className: 'muted', style: { fontSize: 12 } }, user.email || 'No email')
+        //               )
+        //             ),
+        //             H('div', { style: { display: 'grid', gap: 2, textAlign: 'right' } },
+        //               H('div', { style: { fontWeight: 700, fontSize: 18, color: '#2563eb' } },
+        //                 karmaView === 'total'
+        //                   ? `${user.karma || 0} karma`
+        //                   : `+${user.points_earned_period || 0}`
+        //               ),
+        //               karmaView === 'changes' && H('div', { className: 'muted', style: { fontSize: 11 } },
+        //                 `${user.transactions_period || 0} transactions`
+        //               ),
+        //               karmaView === 'total' && H('div', { className: 'muted', style: { fontSize: 11 } },
+        //                 `Total karma`
+        //               )
+        //             )
+        //           )
+        //         )
+        //       )
+        //     : (!karmaLoading && !karmaError
+        //         ? H('div', { className: 'muted', style: { marginTop: 8, fontSize: 13 } }, 'No karma data found.')
+        //         : null)
+        // ),
 
         tab === 'testing' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
           H('h3', { style: { margin: 0, fontSize: 18 } }, 'Testing utilities'),
@@ -988,7 +990,7 @@
             H('div', { className: 'muted', style: { fontSize: 12 } }, paymentsUpdatedAt ? `Last updated: ${formatDateTime(paymentsUpdatedAt)}` : 'Last updated: --'),
             paymentsLoading && H('div', { className: 'muted', style: { fontSize: 12 } }, 'Loading latest setting…')
           ),
-          H('div', { className: 'muted', style: { fontSize: 13 } }, 'When payments are disabled, Stripe checkout is unavailable and Premium features such as profile customization and karma awards are unlocked for everyone.')
+          H('div', { className: 'muted', style: { fontSize: 13 } }, 'When payments are disabled, Stripe checkout is unavailable and Premium features such as profile customization are unlocked for everyone.')
         )
         ),
 

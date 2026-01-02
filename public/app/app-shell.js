@@ -157,7 +157,7 @@
       SellerProfile,
       LocationWarningModal
     } = listingComponents;
-    const { SupporterInfoModal, SupporterUpsellModal, SelectBuyerModal } = supporterComponents;
+    const { SupporterInfoModal, SupporterUpsellModal /* KARMA DISABLED: SelectBuyerModal */ } = supporterComponents;
     const { LegalAcceptanceModal } = legalComponents;
 
     assertFunction(Header, 'components.layout.Header');
@@ -826,56 +826,65 @@
         }
       }, [refreshListings, isMobile]);
 
-      // Karma modal state
-      const [karmaModalOpen, setKarmaModalOpen] = useState(false);
-      const [karmaListingId, setKarmaListingId] = useState(null);
+      // KARMA DISABLED - commented out for now, can re-enable later
+      // // Karma modal state
+      // const [karmaModalOpen, setKarmaModalOpen] = useState(false);
+      // const [karmaListingId, setKarmaListingId] = useState(null);
 
-      // Wrap toggleSold with karma logic for premium users
-      const toggleSoldWithKarma = useCallback(async (listing, makeSold) => {
-        if (makeSold && hasPremiumAccess) {
-          // Show karma modal for premium users when marking as sold
-          setKarmaListingId(listing.id);
-          setKarmaModalOpen(true);
-          // Don't mark as sold yet - wait for modal
-        } else {
-          // Non-premium users or unmarking sold - proceed normally
-          await toggleSold?.(listing, makeSold);
-          // Close the listing modal after marking as sold (non-premium flow)
-          if (makeSold) {
-            setSelectedListing(null);
-          }
+      // // Wrap toggleSold with karma logic for premium users
+      // const toggleSoldWithKarma = useCallback(async (listing, makeSold) => {
+      //   if (makeSold && hasPremiumAccess) {
+      //     // Show karma modal for premium users when marking as sold
+      //     setKarmaListingId(listing.id);
+      //     setKarmaModalOpen(true);
+      //     // Don't mark as sold yet - wait for modal
+      //   } else {
+      //     // Non-premium users or unmarking sold - proceed normally
+      //     await toggleSold?.(listing, makeSold);
+      //     // Close the listing modal after marking as sold (non-premium flow)
+      //     if (makeSold) {
+      //       setSelectedListing(null);
+      //     }
+      //   }
+      // }, [user, toggleSold, hasPremiumAccess]);
+
+      // const handleKarmaBuyerSelected = useCallback(async (result) => {
+      //   setKarmaModalOpen(false);
+      //   const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
+      //   if (listing) {
+      //     // Now mark as sold after karma is awarded
+      //     await toggleSold?.(listing, true);
+      //   }
+      //   setKarmaListingId(null);
+      //   // Close the listing modal after marking as sold
+      //   setSelectedListing(null);
+      // }, [karmaListingId, mine, all, toggleSold]);
+
+      // const handleKarmaModalClose = useCallback(() => {
+      //   // User clicked X or outside modal - just close without marking as sold
+      //   setKarmaModalOpen(false);
+      //   setKarmaListingId(null);
+      // }, []);
+
+      // const handleKarmaSkip = useCallback(async () => {
+      //   // User clicked Skip - mark as sold without awarding karma
+      //   setKarmaModalOpen(false);
+      //   const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
+      //   if (listing) {
+      //     await toggleSold?.(listing, true);
+      //   }
+      //   setKarmaListingId(null);
+      //   // Close the listing modal after marking as sold
+      //   setSelectedListing(null);
+      // }, [karmaListingId, mine, all, toggleSold]);
+
+      // Simple toggleSold wrapper that closes modal after marking sold (replaces karma flow)
+      const toggleSoldSimple = useCallback(async (listing, makeSold) => {
+        await toggleSold?.(listing, makeSold);
+        if (makeSold) {
+          setSelectedListing(null);
         }
-      }, [user, toggleSold, hasPremiumAccess]);
-
-      const handleKarmaBuyerSelected = useCallback(async (result) => {
-        setKarmaModalOpen(false);
-        const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
-        if (listing) {
-          // Now mark as sold after karma is awarded
-          await toggleSold?.(listing, true);
-        }
-        setKarmaListingId(null);
-        // Close the listing modal after marking as sold
-        setSelectedListing(null);
-      }, [karmaListingId, mine, all, toggleSold]);
-
-      const handleKarmaModalClose = useCallback(() => {
-        // User clicked X or outside modal - just close without marking as sold
-        setKarmaModalOpen(false);
-        setKarmaListingId(null);
-      }, []);
-
-      const handleKarmaSkip = useCallback(async () => {
-        // User clicked Skip - mark as sold without awarding karma
-        setKarmaModalOpen(false);
-        const listing = mine.find(it => it.id === karmaListingId) || all.find(it => it.id === karmaListingId);
-        if (listing) {
-          await toggleSold?.(listing, true);
-        }
-        setKarmaListingId(null);
-        // Close the listing modal after marking as sold
-        setSelectedListing(null);
-      }, [karmaListingId, mine, all, toggleSold]);
+      }, [toggleSold]);
 
       const {
         activeConvoId,
@@ -1709,14 +1718,15 @@
               notice: supporterUpsellState.notice
             }),
 
-            H(SelectBuyerModal, {
-              open: karmaModalOpen,
-              onClose: handleKarmaModalClose,
-              listingId: karmaListingId,
-              onBuyerSelected: handleKarmaBuyerSelected,
-              onSkip: handleKarmaSkip,
-              premiumFreeForAll
-            }),
+            // KARMA DISABLED
+            // H(SelectBuyerModal, {
+            //   open: karmaModalOpen,
+            //   onClose: handleKarmaModalClose,
+            //   listingId: karmaListingId,
+            //   onBuyerSelected: handleKarmaBuyerSelected,
+            //   onSkip: handleKarmaSkip,
+            //   premiumFreeForAll
+            // }),
 
             LegalAcceptanceModal && H(LegalAcceptanceModal, {
               open: showLegalModal,
@@ -2081,7 +2091,7 @@
                             onAdminDelete: handleAdminDelete,
                             showDistance: sort === 'nearest',
                             onViewSeller: handleViewSeller,
-                            onToggleSold: mineById[selectedListing?.id] ? toggleSoldWithKarma : undefined,
+                            onToggleSold: mineById[selectedListing?.id] ? toggleSoldSimple : undefined,
                             onSupporterClick: handleSupporterBadgeClick,
                             isSaved: !!savedListingIds[selectedListing?.id],
                             onToggleSave: toggleSaveListing
@@ -2136,7 +2146,7 @@
                         autoInquiryEnabled,
                         setAutoInquiryEnabled,
                         onViewSeller: handleViewSeller,
-                        onToggleSold: toggleSoldWithKarma,
+                        onToggleSold: toggleSoldSimple,
                         onSupporterClick: handleSupporterBadgeClick,
                         onJoinSupporterProgram: handleSupporterPromptCta,
                         onListingsChanged: reloadMineOnly,

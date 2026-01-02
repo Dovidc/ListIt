@@ -801,15 +801,16 @@
                       H('div', { style: { fontSize: 13, color: '#666' } }, 'Upload a custom banner image to personalize your profile')
                     )
                   ),
-                  H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
-                    H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none' },
-                      H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24', stroke: '#f59e0b', strokeWidth: 1 })
-                    ),
-                    H('div', null,
-                      H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
-                      H('div', { style: { fontSize: 13, color: '#666' } }, 'Collect and award karma when selling and buying from other premium users')
-                    )
-                  ),
+                  // KARMA DISABLED
+                  // H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
+                  //   H('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none' },
+                  //     H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24', stroke: '#f59e0b', strokeWidth: 1 })
+                  //   ),
+                  //   H('div', null,
+                  //     H('div', { style: { fontWeight: 700, fontSize: 14, marginBottom: 2 } }, 'Karma System'),
+                  //     H('div', { style: { fontSize: 13, color: '#666' } }, 'Collect and award karma when selling and buying from other premium users')
+                  //   )
+                  // ),
                   H('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 } },
                     H('div', {
                       style: {
@@ -870,226 +871,228 @@
       );
     }
 
-    function SelectBuyerModal({
-      open,
-      onClose,
-      listingId,
-      onBuyerSelected,
-      onSkip,
-      busy = false,
-      error = '',
-      premiumFreeForAll = false
-    }) {
-      const [buyers, setBuyers] = useState([]);
-      const [loading, setLoading] = useState(false);
-      const [selecting, setSelecting] = useState(false);
-      const [closing, setClosing] = useState(false);
+    // KARMA DISABLED - SelectBuyerModal commented out, can re-enable later
+    // function SelectBuyerModal({
+    //   open,
+    //   onClose,
+    //   listingId,
+    //   onBuyerSelected,
+    //   onSkip,
+    //   busy = false,
+    //   error = '',
+    //   premiumFreeForAll = false
+    // }) {
+    //   const [buyers, setBuyers] = useState([]);
+    //   const [loading, setLoading] = useState(false);
+    //   const [selecting, setSelecting] = useState(false);
+    //   const [closing, setClosing] = useState(false);
 
-      useModalLifecycle(open, onClose);
+    //   useModalLifecycle(open, onClose);
 
-      // Reset closing state when modal opens
-      useEffect(() => {
-        if (open) setClosing(false);
-      }, [open]);
+    //   // Reset closing state when modal opens
+    //   useEffect(() => {
+    //     if (open) setClosing(false);
+    //   }, [open]);
 
-      const safeClose = useCallback(() => {
-        if (closing || busy || selecting) return;
-        setClosing(true);
-        onClose?.();
-      }, [closing, busy, selecting, onClose]);
+    //   const safeClose = useCallback(() => {
+    //     if (closing || busy || selecting) return;
+    //     setClosing(true);
+    //     onClose?.();
+    //   }, [closing, busy, selecting, onClose]);
 
-      useEffect(() => {
-        if (!open || !listingId) {
-          setBuyers([]);
-          setSelecting(false);
-          return;
-        }
+    //   useEffect(() => {
+    //     if (!open || !listingId) {
+    //       setBuyers([]);
+    //       setSelecting(false);
+    //       return;
+    //     }
 
-        setLoading(true);
-        setSelecting(false);
-        fetch(`/api/listings/${listingId}/potential-buyers`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-          .then(res => res.json())
-          .then(data => {
-            setBuyers(data.buyers || []);
-            setLoading(false);
-          })
-          .catch(err => {
-            console.error('Failed to load buyers:', err);
-            setLoading(false);
-          });
-      }, [open, listingId]);
+    //     setLoading(true);
+    //     setSelecting(false);
+    //     fetch(`/api/listings/${listingId}/potential-buyers`, {
+    //       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    //     })
+    //       .then(res => res.json())
+    //       .then(data => {
+    //         setBuyers(data.buyers || []);
+    //         setLoading(false);
+    //       })
+    //       .catch(err => {
+    //         console.error('Failed to load buyers:', err);
+    //         setLoading(false);
+    //       });
+    //   }, [open, listingId]);
 
-      const handleOverlay = (evt) => {
-        if (evt.target === evt.currentTarget) {
-          safeClose();
-        }
-      };
+    //   const handleOverlay = (evt) => {
+    //     if (evt.target === evt.currentTarget) {
+    //       safeClose();
+    //     }
+    //   };
 
-      const handleSelectBuyer = async (buyerId) => {
-        if (selecting || busy || closing) return;
-        setSelecting(true);
+    //   const handleSelectBuyer = async (buyerId) => {
+    //     if (selecting || busy || closing) return;
+    //     setSelecting(true);
 
-        try {
-          const response = await fetch(`/api/listings/${listingId}/award-karma`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ buyer_id: buyerId })
-          });
+    //     try {
+    //       const response = await fetch(`/api/listings/${listingId}/award-karma`, {
+    //         method: 'POST',
+    //         headers: {
+    //           'Content-Type': 'application/json',
+    //           Authorization: `Bearer ${localStorage.getItem('token')}`
+    //         },
+    //         body: JSON.stringify({ buyer_id: buyerId })
+    //       });
 
-          const result = await response.json();
+    //       const result = await response.json();
 
-          if (!response.ok) {
-            throw new Error(result.error || 'Failed to award karma');
-          }
+    //       if (!response.ok) {
+    //         throw new Error(result.error || 'Failed to award karma');
+    //       }
 
-          setSelecting(false);
-          onBuyerSelected?.(result);
-        } catch (err) {
-          console.error('Award karma error:', err);
-          setSelecting(false);
-        }
-      };
+    //       setSelecting(false);
+    //       onBuyerSelected?.(result);
+    //     } catch (err) {
+    //       console.error('Award karma error:', err);
+    //       setSelecting(false);
+    //     }
+    //   };
 
-      const handleSkip = () => {
-        if (busy || selecting || closing) return;
-        // Call onSkip if provided, otherwise fall back to safeClose
-        if (onSkip) {
-          setClosing(true);
-          onSkip();
-        } else {
-          safeClose();
-        }
-      };
+    //   const handleSkip = () => {
+    //     if (busy || selecting || closing) return;
+    //     // Call onSkip if provided, otherwise fall back to safeClose
+    //     if (onSkip) {
+    //       setClosing(true);
+    //       onSkip();
+    //     } else {
+    //       safeClose();
+    //     }
+    //   };
 
-      if (!open) return null;
+    //   if (!open) return null;
 
-      return ReactDOM.createPortal(
-        H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
-          H('div', {
-            className: 'supporter-modal__card',
-            role: 'dialog',
-            'aria-modal': 'true',
-            'aria-label': 'Select buyer for karma',
-            onClick: (e) => e.stopPropagation()
-          },
-            H('button', {
-              type: 'button',
-              className: 'supporter-modal__close',
-              onClick: safeClose,
-              disabled: busy || selecting || closing
-            }, '×'),
-            H('h2', { className: 'supporter-modal__title' }, 'Who bought this item?'),
-            H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
-              'Select the buyer'
-            ),
-            loading
-              ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')
-              : buyers.length === 0
-                ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } },
-                  'No one messaged you about this item.'
-                )
-                : H('div', {
-                  className: 'buyer-list',
-                  style: {
-                    display: 'grid',
-                    gap: 12,
-                    maxHeight: 400,
-                    overflowY: 'auto',
-                    marginBottom: 16
-                  }
-                },
-                  ...buyers.map(buyer =>
-                    H('button', {
-                      key: buyer.id,
-                      type: 'button',
-                      className: 'buyer-item',
-                      onClick: () => handleSelectBuyer(buyer.id),
-                      disabled: selecting || busy,
-                      style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 12,
-                        border: '1px solid #e5e7eb',
-                        borderRadius: 8,
-                        background: 'white',
-                        cursor: selecting || busy ? 'default' : 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s',
-                        opacity: selecting || busy ? 0.6 : 1
-                      }
-                    },
-                      H('img', {
-                        src: buyer.profile_picture_url || '/img/default-profile.png',
-                        alt: buyer.username,
-                        style: {
-                          width: 48,
-                          height: 48,
-                          borderRadius: '50%',
-                          objectFit: 'cover'
-                        }
-                      }),
-                      H('div', { style: { flex: 1 } },
-                        H('div', { style: { fontWeight: 600, marginBottom: 4 } }, buyer.username),
-                        buyer.last_message_at && H('div', {
-                          className: 'muted',
-                          style: { fontSize: 13 }
-                        }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
-                      ),
-                      buyer.supporter_badge && H(SupporterBadge, {
-                        size: 'sm',
-                        badge: buyer.supporter_badge,
-                        tier: buyer.supporter_tier
-                      })
-                    )
-                  )
-                ),
-            error && H('div', {
-              className: 'supporter-modal__error',
-              style: { marginBottom: 12 }
-            }, error),
-            H('div', {
-              className: 'supporter-modal__actions',
-              style: { justifyContent: 'center' }
-            },
-              H('button', {
-                type: 'button',
-                className: 'btn',
-                onClick: handleSkip,
-                disabled: busy || selecting || closing,
-                style: {
-                  fontSize: 13,
-                  padding: '6px 12px',
-                  opacity: 0.7
-                }
-              }, 'Skip')
-            ),
-            selecting && H('div', {
-              style: {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(255,255,255,0.8)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 16,
-                fontSize: 14,
-                color: '#666'
-              }
-            }, 'Awarding karma...')
-          )
-        ),
-        document.body
-      );
-    }
+    //   return ReactDOM.createPortal(
+    //     H('div', { className: 'supporter-modal__overlay', onClick: handleOverlay },
+    //       H('div', {
+    //         className: 'supporter-modal__card',
+    //         role: 'dialog',
+    //         'aria-modal': 'true',
+    //         'aria-label': 'Select buyer for karma',
+    //         onClick: (e) => e.stopPropagation()
+    //       },
+    //         H('button', {
+    //           type: 'button',
+    //           className: 'supporter-modal__close',
+    //           onClick: safeClose,
+    //           disabled: busy || selecting || closing
+    //         }, '×'),
+    //         H('h2', { className: 'supporter-modal__title' }, 'Who bought this item?'),
+    //         H('p', { className: 'supporter-modal__body', style: { marginBottom: 16 } },
+    //           'Select the buyer'
+    //         ),
+    //         loading
+    //           ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } }, 'Loading...')
+    //           : buyers.length === 0
+    //             ? H('div', { style: { textAlign: 'center', padding: 32, color: '#999' } },
+    //               'No one messaged you about this item.'
+    //             )
+    //             : H('div', {
+    //               className: 'buyer-list',
+    //               style: {
+    //                 display: 'grid',
+    //                 gap: 12,
+    //                 maxHeight: 400,
+    //                 overflowY: 'auto',
+    //                 marginBottom: 16
+    //               }
+    //             },
+    //               ...buyers.map(buyer =>
+    //                 H('button', {
+    //                   key: buyer.id,
+    //                   type: 'button',
+    //                   className: 'buyer-item',
+    //                   onClick: () => handleSelectBuyer(buyer.id),
+    //                   disabled: selecting || busy,
+    //                   style: {
+    //                     display: 'flex',
+    //                     alignItems: 'center',
+    //                     gap: 12,
+    //                     padding: 12,
+    //                     border: '1px solid #e5e7eb',
+    //                     borderRadius: 8,
+    //                     background: 'white',
+    //                     cursor: selecting || busy ? 'default' : 'pointer',
+    //                     textAlign: 'left',
+    //                     transition: 'all 0.2s',
+    //                     opacity: selecting || busy ? 0.6 : 1
+    //                   }
+    //                 },
+    //                   H('img', {
+    //                     src: buyer.profile_picture_url || '/img/default-profile.png',
+    //                     alt: buyer.username,
+    //                     style: {
+    //                       width: 48,
+    //                       height: 48,
+    //                       borderRadius: '50%',
+    //                       objectFit: 'cover'
+    //                     }
+    //                   }),
+    //                   H('div', { style: { flex: 1 } },
+    //                     H('div', { style: { fontWeight: 600, marginBottom: 4 } }, buyer.username),
+    //                     buyer.last_message_at && H('div', {
+    //                       className: 'muted',
+    //                       style: { fontSize: 13 }
+    //                     }, `Last messaged ${new Date(buyer.last_message_at).toLocaleDateString()}`)
+    //                   ),
+    //                   buyer.supporter_badge && H(SupporterBadge, {
+    //                     size: 'sm',
+    //                     badge: buyer.supporter_badge,
+    //                     tier: buyer.supporter_tier
+    //                   })
+    //                 )
+    //               )
+    //             ),
+    //         error && H('div', {
+    //           className: 'supporter-modal__error',
+    //           style: { marginBottom: 12 }
+    //         }, error),
+    //         H('div', {
+    //           className: 'supporter-modal__actions',
+    //           style: { justifyContent: 'center' }
+    //         },
+    //           H('button', {
+    //             type: 'button',
+    //             className: 'btn',
+    //             onClick: handleSkip,
+    //             disabled: busy || selecting || closing,
+    //             style: {
+    //               fontSize: 13,
+    //               padding: '6px 12px',
+    //               opacity: 0.7
+    //             }
+    //           }, 'Skip')
+    //         ),
+    //         selecting && H('div', {
+    //           style: {
+    //             position: 'absolute',
+    //             top: 0,
+    //             left: 0,
+    //             right: 0,
+    //             bottom: 0,
+    //             background: 'rgba(255,255,255,0.8)',
+    //             display: 'flex',
+    //             alignItems: 'center',
+    //             justifyContent: 'center',
+    //             borderRadius: 16,
+    //             fontSize: 14,
+    //             color: '#666'
+    //           }
+    //         }, 'Awarding karma...')
+    //       )
+    //     ),
+    //     document.body
+    //   );
+    // }
+    function SelectBuyerModal() { return null; } // KARMA DISABLED - stub
 
     return {
       SupporterBadge,

@@ -698,8 +698,8 @@
       adminTopReports,  
       adminClearUserReports,  
       adminGetPaymentsStatus,  
-      adminGetKarmaTop,  
-      adminGetKarmaChanges,  
+      // adminGetKarmaTop, // KARMA DISABLED  
+      // adminGetKarmaChanges, // KARMA DISABLED  
       adminSetPaymentsStatus,  
       signUpload,  
       finalizeUpload,  

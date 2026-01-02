@@ -245,89 +245,91 @@
         H('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }));
     }
 
-    // Karma badge component - circle with count, pill if 100+
-    function KarmaBadge({ karma, size = 'md', onClick }) {
-      const [showTooltip, setShowTooltip] = React.useState(false);
-      const badgeRef = React.useRef(null);
+    // KARMA DISABLED - commented out for now, can re-enable later
+    // // Karma badge component - circle with count, pill if 100+
+    // function KarmaBadge({ karma, size = 'md', onClick }) {
+    //   const [showTooltip, setShowTooltip] = React.useState(false);
+    //   const badgeRef = React.useRef(null);
 
-      // Click outside to dismiss
-      React.useEffect(() => {
-        if (!showTooltip) return;
-        const handleClickOutside = (e) => {
-          if (badgeRef.current && !badgeRef.current.contains(e.target)) {
-            setShowTooltip(false);
-          }
-        };
-        document.addEventListener('click', handleClickOutside, true);
-        return () => document.removeEventListener('click', handleClickOutside, true);
-      }, [showTooltip]);
+    //   // Click outside to dismiss
+    //   React.useEffect(() => {
+    //     if (!showTooltip) return;
+    //     const handleClickOutside = (e) => {
+    //       if (badgeRef.current && !badgeRef.current.contains(e.target)) {
+    //         setShowTooltip(false);
+    //       }
+    //     };
+    //     document.addEventListener('click', handleClickOutside, true);
+    //     return () => document.removeEventListener('click', handleClickOutside, true);
+    //   }, [showTooltip]);
 
-      if (typeof karma !== 'number' || karma <= 0) return null;
+    //   if (typeof karma !== 'number' || karma <= 0) return null;
 
-      const sizes = {
-        sm: { size: 24, fontSize: 11, minWidth: 24 },
-        md: { size: 28, fontSize: 13, minWidth: 28 }
-      };
-      const s = sizes[size] || sizes.md;
+    //   const sizes = {
+    //     sm: { size: 24, fontSize: 11, minWidth: 24 },
+    //     md: { size: 28, fontSize: 13, minWidth: 28 }
+    //   };
+    //   const s = sizes[size] || sizes.md;
 
-      // Determine if we need pill shape (3+ digits)
-      const isPill = karma >= 100;
-      const displayKarma = karma >= 1000 ? `${(karma / 1000).toFixed(1)}k` : karma;
+    //   // Determine if we need pill shape (3+ digits)
+    //   const isPill = karma >= 100;
+    //   const displayKarma = karma >= 1000 ? `${(karma / 1000).toFixed(1)}k` : karma;
 
-      const handleClick = (e) => {
-        e.stopPropagation();
-        setShowTooltip(true);
-        onClick?.();
-      };
+    //   const handleClick = (e) => {
+    //     e.stopPropagation();
+    //     setShowTooltip(true);
+    //     onClick?.();
+    //   };
 
-      return H('div', { ref: badgeRef, style: { position: 'relative', display: 'inline-flex' } },
-        H('div', {
-          onClick: handleClick,
-          style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minWidth: isPill ? s.minWidth + 8 : s.size,
-            height: s.size,
-            padding: isPill ? '0 8px' : 0,
-            background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-            borderRadius: isPill ? s.size / 2 : '50%',
-            fontSize: s.fontSize,
-            fontWeight: 800,
-            color: '#fff',
-            cursor: 'pointer',
-            boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
-            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-            transition: 'transform 0.15s ease',
-            userSelect: 'none',
-            transform: showTooltip ? 'scale(1.1)' : 'scale(1)'
-          }
-        }, displayKarma),
-        showTooltip && H('div', {
-          style: {
-            position: 'absolute',
-            bottom: '100%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            marginBottom: 8,
-            background: 'rgba(0, 0, 0, 0.9)',
-            color: '#fff',
-            padding: '8px 12px',
-            borderRadius: 8,
-            fontSize: 12,
-            fontWeight: 500,
-            whiteSpace: 'nowrap',
-            zIndex: 1000,
-            pointerEvents: 'none',
-            border: '1px solid rgba(251, 191, 36, 0.6)',
-            textAlign: 'center'
-          }
-        },
-          H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
-          H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
-        )
-      );
-    }
+    //   return H('div', { ref: badgeRef, style: { position: 'relative', display: 'inline-flex' } },
+    //     H('div', {
+    //       onClick: handleClick,
+    //       style: {
+    //         display: 'inline-flex',
+    //         alignItems: 'center',
+    //         justifyContent: 'center',
+    //         minWidth: isPill ? s.minWidth + 8 : s.size,
+    //         height: s.size,
+    //         padding: isPill ? '0 8px' : 0,
+    //         background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+    //         borderRadius: isPill ? s.size / 2 : '50%',
+    //         fontSize: s.fontSize,
+    //         fontWeight: 800,
+    //         color: '#fff',
+    //         cursor: 'pointer',
+    //         boxShadow: '0 2px 6px rgba(245, 158, 11, 0.4)',
+    //         textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+    //         transition: 'transform 0.15s ease',
+    //         userSelect: 'none',
+    //         transform: showTooltip ? 'scale(1.1)' : 'scale(1)'
+    //       }
+    //     }, displayKarma),
+    //     showTooltip && H('div', {
+    //       style: {
+    //         position: 'absolute',
+    //         bottom: '100%',
+    //         left: '50%',
+    //         transform: 'translateX(-50%)',
+    //         marginBottom: 8,
+    //         background: 'rgba(0, 0, 0, 0.9)',
+    //         color: '#fff',
+    //         padding: '8px 12px',
+    //         borderRadius: 8,
+    //         fontSize: 12,
+    //         fontWeight: 500,
+    //         whiteSpace: 'nowrap',
+    //         zIndex: 1000,
+    //         pointerEvents: 'none',
+    //         border: '1px solid rgba(251, 191, 36, 0.6)',
+    //         textAlign: 'center'
+    //       }
+    //     },
+    //       H('div', { style: { fontWeight: 700, marginBottom: 4, color: '#fbbf24' } }, 'Karma'),
+    //       H('div', { style: { fontSize: 11, color: '#d1d5db' } }, 'Points earned from successful sales')
+    //     )
+    //   );
+    // }
+    function KarmaBadge() { return null; } // KARMA DISABLED - stub
 
     // Default profile banner with trovelr branding
     function DefaultProfileBanner() {
@@ -2595,35 +2597,36 @@
                   color: '#f8fafc',
                   fontWeight: 600
                 }
-              }, '✅ ', soldItems.length, ' sold'),
-              // Karma pill (only for supporters with karma > 0)
-              profileSupporter && user.karma > 0 && H('span', {
-                style: {
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 12px',
-                  borderRadius: 999,
-                  border: '1px solid rgba(251, 191, 36, 0.4)',
-                  background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
-                  fontSize: 13,
-                  color: '#fbbf24',
-                  fontWeight: 600
-                }
-              },
-                H('svg', {
-                  viewBox: '0 0 24 24',
-                  width: 14,
-                  height: 14,
-                  fill: 'currentColor',
-                  style: { flexShrink: 0 }
-                },
-                  H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
-                ),
-                ' ',
-                user.karma,
-                ' karma'
-              )
+              }, '✅ ', soldItems.length, ' sold')
+              // KARMA DISABLED
+              // // Karma pill (only for supporters with karma > 0)
+              // profileSupporter && user.karma > 0 && H('span', {
+              //   style: {
+              //     display: 'inline-flex',
+              //     alignItems: 'center',
+              //     gap: 6,
+              //     padding: '6px 12px',
+              //     borderRadius: 999,
+              //     border: '1px solid rgba(251, 191, 36, 0.4)',
+              //     background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
+              //     fontSize: 13,
+              //     color: '#fbbf24',
+              //     fontWeight: 600
+              //   }
+              // },
+              //   H('svg', {
+              //     viewBox: '0 0 24 24',
+              //     width: 14,
+              //     height: 14,
+              //     fill: 'currentColor',
+              //     style: { flexShrink: 0 }
+              //   },
+              //     H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
+              //   ),
+              //   ' ',
+              //   user.karma,
+              //   ' karma'
+              // )
             )
           )
         ),

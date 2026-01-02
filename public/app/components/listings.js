@@ -4313,11 +4313,13 @@
       const initials = username.trim().slice(0, 1).toUpperCase() || 'S';
       const activeCount = Math.max(0, Number(activeListingCount) || 0);
       const soldCount = Math.max(0, Number(soldListingCount) || 0);
-      const karmaValue = Number.isFinite(Number(sellerInfo.karma)) ? Number(sellerInfo.karma) : null;
+      // KARMA DISABLED
+      // const karmaValue = Number.isFinite(Number(sellerInfo.karma)) ? Number(sellerInfo.karma) : null;
       const stats = [
         { label: 'Active listings', value: activeCount },
-        { label: 'Sold', value: soldCount },
-        ...(karmaValue && karmaValue > 0 ? [{ label: 'Karma', value: karmaValue, isKarma: true }] : [])
+        { label: 'Sold', value: soldCount }
+        // KARMA DISABLED
+        // ...(karmaValue && karmaValue > 0 ? [{ label: 'Karma', value: karmaValue, isKarma: true }] : [])
       ];
       const avatarSize = 96;
       const avatarOverlap = 34;
@@ -5178,7 +5180,8 @@
         fontWeight: 600
       };
 
-      const sellerKarmaValue = typeof sellerInfo?.karma === 'number' ? sellerInfo.karma : 0;
+      // KARMA DISABLED
+      // const sellerKarmaValue = typeof sellerInfo?.karma === 'number' ? sellerInfo.karma : 0;
 
       const sellerProfileHeaderContent = H('div', { style: { position: 'relative', minHeight: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' } },
         H('div', { className: 'row', style: { gap: 12, alignItems: 'center', position: 'absolute', bottom: -6, left: -8 } },
@@ -5225,35 +5228,36 @@
               // Active listings pill
               H('span', { style: sellerStatPillStyle }, '🛍️ ', activeListings.length, ' active'),
               // Sold pill
-              H('span', { style: sellerStatPillStyle }, '✅ ', soldListings.length, ' sold'),
-              // Karma pill (only for supporters with karma > 0)
-              sellerSupporter && sellerKarmaValue > 0 && H('span', {
-                style: {
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 12px',
-                  borderRadius: 999,
-                  border: '1px solid rgba(251, 191, 36, 0.4)',
-                  background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
-                  fontSize: 13,
-                  color: '#fbbf24',
-                  fontWeight: 600
-                }
-              },
-                H('svg', {
-                  viewBox: '0 0 24 24',
-                  width: 14,
-                  height: 14,
-                  fill: 'currentColor',
-                  style: { flexShrink: 0 }
-                },
-                  H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
-                ),
-                ' ',
-                sellerKarmaValue,
-                ' karma'
-              )
+              H('span', { style: sellerStatPillStyle }, '✅ ', soldListings.length, ' sold')
+              // KARMA DISABLED
+              // // Karma pill (only for supporters with karma > 0)
+              // sellerSupporter && sellerKarmaValue > 0 && H('span', {
+              //   style: {
+              //     display: 'inline-flex',
+              //     alignItems: 'center',
+              //     gap: 6,
+              //     padding: '6px 12px',
+              //     borderRadius: 999,
+              //     border: '1px solid rgba(251, 191, 36, 0.4)',
+              //     background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15))',
+              //     fontSize: 13,
+              //     color: '#fbbf24',
+              //     fontWeight: 600
+              //   }
+              // },
+              //   H('svg', {
+              //     viewBox: '0 0 24 24',
+              //     width: 14,
+              //     height: 14,
+              //     fill: 'currentColor',
+              //     style: { flexShrink: 0 }
+              //   },
+              //     H('path', { d: 'M13 2L3 14h8l-1 8 10-12h-8l1-8z', fill: '#fbbf24' })
+              //   ),
+              //   ' ',
+              //   sellerKarmaValue,
+              //   ' karma'
+              // )
             )
           )
         )
