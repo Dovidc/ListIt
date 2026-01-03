@@ -14,17 +14,17 @@
 
       const refreshAds = useCallback(async () => {
         console.log('[useAds] refreshAds called', { userLat, userLon, isPremium, loading });
-        // Don't fetch ads while auth is still loading - we don't know premium status yet
+        // Don't fetch ads while auth is still loading
         if (loading) {
           console.log('[useAds] Auth still loading, skipping ads fetch');
           return;
         }
-        // Premium users see no ads at all
-        if (isPremium) {
-          console.log('[useAds] User is premium, showing no ads');
-          setAds([]);
-          return;
-        }
+        // PAYMENTS DISABLED - App is free, show ads to everyone
+        // if (isPremium) {
+        //   console.log('[useAds] User is premium, showing no ads');
+        //   setAds([]);
+        //   return;
+        // }
         try {
           const params = {};
           if (userLat != null && userLon != null) {

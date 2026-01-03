@@ -1696,32 +1696,33 @@
             ),
             H(GlobalLoader, { active: loadingCount > 0 }),
             H(ResumeOverlay, { active: isResuming }),
-            H(SupporterInfoModal, {
-              open: supporterInfoState.open,
-              onClose: handleSupporterInfoClose,
-              username: supporterInfoState.username,
-              since: supporterInfoState.since,
-              tier: supporterInfoState.tier,
-              isSelf: supporterInfoState.isSelf,
-              onJoin: handleSupporterInfoJoin,
-              paymentsDisabled: premiumFreeForAll,
-              isIOS: iapService && typeof iapService.isIOSNative === 'function' && iapService.isIOSNative()
-            }),
-            H(SupporterUpsellModal, {
-              open: supporterUpsellState.open,
-              mode: supporterUpsellState.mode,
-              onClose: closeSupporterUpsell,
-              onJoin: handleJoinSupporterProgram,
-              busy: supporterUpsellState.busy,
-              error: supporterUpsellState.error,
-              amount: supporterUpsellState.amount,
-              currency: supporterUpsellState.currency,
-              premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
-              selectedTier: supporterUpsellState.selectedTier,
-              onTierChange: handleTierChange,
-              paymentsDisabled: premiumFreeForAll,
-              notice: supporterUpsellState.notice
-            }),
+            // PAYMENTS DISABLED - App is free
+            // H(SupporterInfoModal, {
+            //   open: supporterInfoState.open,
+            //   onClose: handleSupporterInfoClose,
+            //   username: supporterInfoState.username,
+            //   since: supporterInfoState.since,
+            //   tier: supporterInfoState.tier,
+            //   isSelf: supporterInfoState.isSelf,
+            //   onJoin: handleSupporterInfoJoin,
+            //   paymentsDisabled: premiumFreeForAll,
+            //   isIOS: iapService && typeof iapService.isIOSNative === 'function' && iapService.isIOSNative()
+            // }),
+            // H(SupporterUpsellModal, {
+            //   open: supporterUpsellState.open,
+            //   mode: supporterUpsellState.mode,
+            //   onClose: closeSupporterUpsell,
+            //   onJoin: handleJoinSupporterProgram,
+            //   busy: supporterUpsellState.busy,
+            //   error: supporterUpsellState.error,
+            //   amount: supporterUpsellState.amount,
+            //   currency: supporterUpsellState.currency,
+            //   premiumAmount: SUPPORTER_PREMIUM_AMOUNT,
+            //   selectedTier: supporterUpsellState.selectedTier,
+            //   onTierChange: handleTierChange,
+            //   paymentsDisabled: premiumFreeForAll,
+            //   notice: supporterUpsellState.notice
+            // }),
 
             // KARMA DISABLED
             // H(SelectBuyerModal, {
@@ -1758,7 +1759,7 @@
                   initialFiles: initialListingFiles,
                   onModerationError: () => setShowModerationModal(true),
                   isPremium: hasPremiumAccess,
-                  onOpenPremiumModal: () => setSupporterUpsellState(s => ({ ...s, open: true, mode: 'prompt' }))
+                  onOpenPremiumModal: null // PAYMENTS DISABLED - App is free
                 })
                 : (
                   viewingSeller
@@ -2153,7 +2154,7 @@
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldSimple,
                         onSupporterClick: handleSupporterBadgeClick,
-                        onJoinSupporterProgram: handleSupporterPromptCta,
+                        onJoinSupporterProgram: null, // PAYMENTS DISABLED - App is free
                         onListingsChanged: reloadMineOnly,
                         onMessage: startMessage,
                         onToggleSave: toggleSaveListing,

@@ -2175,8 +2175,9 @@
           onJoinSupporterProgram();
         }
       }, [onJoinSupporterProgram]);
-      // Show supporter CTA on all platforms (RevenueCat handles iOS and Android)
-      const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll;
+      // DISABLED: Payment removed from app - app is free
+      // const showSupporterCta = !profileSupporter && typeof onJoinSupporterProgram === 'function' && !premiumFreeForAll;
+      const showSupporterCta = false;
       const visuallyHidden = {
         position: 'absolute',
         width: 1,
