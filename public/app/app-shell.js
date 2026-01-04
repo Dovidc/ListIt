@@ -1407,6 +1407,8 @@
         setLegalCheckDone(false); // Reset to trigger legal check for newly logged in user
         refreshListings();
         reloadMineOnly();
+        // Close any open listing modal so it re-opens with correct auth state
+        setSelectedListing(null);
         // Log in to RevenueCat with user ID for subscription tracking
         if (iapService && typeof iapService.login === 'function' && newUser?.id) {
           iapService.login(String(newUser.id)).catch(() => {});
@@ -1421,6 +1423,11 @@
           iapService.logout().catch(() => {});
         }
         setUser(null);
+        // Close any open listing modal to prevent stale UI state
+        setSelectedListing(null);
+        // Refresh all listings so UI re-evaluates with logged-out state
+        refreshListings();
+        reloadMineOnly();
         onTabChange('browse');
       }
 
