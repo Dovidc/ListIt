@@ -11790,7 +11790,59 @@ app.get('/privacy', (_req, res) => {
 </html>`);
 });
 
+app.get('/delete-account', (_req, res) => {
+  res.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Your Account - Trovelr</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+    h1 { color: #333; }
+    h2 { color: #555; margin-top: 1.5em; }
+    p { color: #444; }
+    ol { color: #444; }
+    li { margin-bottom: 10px; }
+    .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .contact { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>Delete Your Trovelr Account</h1>
+  <p>We're sorry to see you go. Follow the steps below to delete your account and all associated data.</p>
 
+  <h2>How to Delete Your Account</h2>
+  <ol>
+    <li>Open the Trovelr app on your device</li>
+    <li>Tap on your <strong>Profile</strong> tab</li>
+    <li>Tap the <strong>Toggles</strong> icon in the top right</li>
+    <li>Scroll down to the <strong>Danger Zone</strong> section</li>
+    <li>Tap <strong>Delete Account</strong></li>
+    <li>Confirm your decision when prompted</li>
+  </ol>
+
+  <div class="warning">
+    <strong>Warning:</strong> Account deletion is permanent and cannot be undone. All your data will be permanently removed, including:
+    <ul>
+      <li>Your profile information</li>
+      <li>All your listings</li>
+      <li>Your messages and conversations</li>
+      <li>Your saved items and preferences</li>
+    </ul>
+  </div>
+
+  <h2>Data Retention</h2>
+  <p>When you delete your account, your personal data (profile, listings, messages, and preferences) is permanently deleted from our database. Images are stored on secure AWS cloud infrastructure and are periodically purged in accordance with our data retention policies.</p>
+
+  <div class="contact">
+    <h2>Need Help?</h2>
+    <p>If you're having trouble deleting your account or have any questions, please contact us:</p>
+    <p><strong>Email:</strong> support@trovelr.com</p>
+  </div>
+</body>
+</html>`);
+});
 
 app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
