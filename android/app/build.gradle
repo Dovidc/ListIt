@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.trovelr.app"
+    namespace "com.trovelr.marketplace"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.trovelr.app"
+        applicationId "com.trovelr.marketplace"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 44

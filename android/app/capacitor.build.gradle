@@ -13,8 +13,7 @@ dependencies {
     implementation project(':capacitor-geolocation')
     implementation project(':capacitor-push-notifications')
     implementation project(':capacitor-status-bar')
-    implementation project(':revenuecat-purchases-capacitor')
-    implementation "com.android.billingclient:billing:7.1.1"
+
 }
 
 

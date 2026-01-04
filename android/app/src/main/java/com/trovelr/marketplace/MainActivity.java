@@ -1,4 +1,4 @@
-package com.trovelr.app;
+package com.trovelr.marketplace;
 
 import android.os.Bundle;
 import android.view.View;
