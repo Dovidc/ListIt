@@ -4278,7 +4278,7 @@ app.put('/api/me/profile-customization', auth, profileLimiter, async (req, res) 
 
   } catch (e) {
 
-    console.error('Update profile customization failed:', e);
+    console.error('Update profile customization has failed:', e);
 
     return res.status(500).json({ error: 'update_failed' });
 
