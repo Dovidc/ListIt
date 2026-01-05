@@ -9,6 +9,10 @@ console.log('Using PostgreSQL');
 
 const pool = new Pool(poolConfig);
 
+// Increase max listeners to match pool size (prevents MaxListenersExceededWarning)
+// The pg library adds internal 'wakeup' listeners per connection
+pool.setMaxListeners(Math.max(poolConfig.max || 20, 20) + 5);
+
 // Add pool monitoring for debugging
 pool.on('error', (err) => {
   console.error('Unexpected database pool error:', err);
