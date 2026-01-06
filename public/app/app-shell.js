@@ -1031,7 +1031,13 @@
         };
         // Handle hash changes (e.g., pasting a new URL while on the page)
         const handleHashChange = () => {
-          openListingFromHash();
+          const hash = window.location.hash;
+          if (hash.startsWith('#listing/')) {
+            openListingFromHash();
+          } else {
+            // Hash cleared or changed to non-listing - close modal
+            setSelectedListing(null);
+          }
         };
         window.addEventListener('popstate', handlePopState);
         window.addEventListener('hashchange', handleHashChange);
@@ -1471,9 +1477,8 @@
         setLegalCheckDone(false); // Reset to trigger legal check for newly logged in user
         refreshListings();
         reloadMineOnly();
-        // Close any open listing modal so it re-opens with correct auth state
-        setSelectedListing(null);
-        clearListingHash();
+        // Keep listing modal open so user can immediately message after signing in
+        // The UI will update automatically with the new auth state
         // Log in to RevenueCat with user ID for subscription tracking
         if (iapService && typeof iapService.login === 'function' && newUser?.id) {
           iapService.login(String(newUser.id)).catch(() => {});
@@ -2147,6 +2152,7 @@
                       !items.length && !isFetchingListings && !listingError && H('p', { className: 'muted', style: { textAlign: 'center', margin: '28px 0' } }, 'No listings yet.'),
 
                         H(ListingModal, {
+                          key: `listing-modal-${user?.id || 'guest'}`,
                           open: !!selectedListing,
                           item: selectedListing,
                           onClose: closeListingModal,

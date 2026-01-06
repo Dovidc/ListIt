@@ -942,9 +942,12 @@
         setSelectedListing(payload);
         if (listing?.id) {
           warmListingImages(listing.id, images);
-          // Update URL hash for shareable links
+          // Update URL hash for shareable links (only if not already set)
           if (typeof window !== 'undefined') {
-            window.history.pushState({ listingId: listing.id }, '', `#listing/${listing.id}`);
+            const expectedHash = `#listing/${listing.id}`;
+            if (window.location.hash !== expectedHash) {
+              window.history.pushState({ listingId: listing.id }, '', expectedHash);
+            }
           }
         }
       }, [setSelectedListing]);
