@@ -354,7 +354,9 @@
       body: JSON.stringify(payload || {})  
     }, meta);  
     
-    const markListingSold = (id, sold, meta) => updateListing(id, { sold: !!sold }, meta);  
+    const markListingSold = (id, sold, meta) => updateListing(id, { sold: !!sold }, meta);
+
+    const getListing = (id, meta) => request(`/api/listing/${id}`, { method: 'GET' }, meta);  
     
     // Saved listings  
     const getSavedListings = (meta) => request('/api/me/saved', { method: 'GET' }, meta);  
@@ -654,7 +656,8 @@
       getAutoListingStatus,  
       listAutoListingJobs,  
       updateListing,  
-      markListingSold,  
+      markListingSold,
+      getListing,  
       getSavedListings,  
       getSavedListingIds,  
       saveListing,  

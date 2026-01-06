@@ -47,9 +47,9 @@
       useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        // Set initial state
+        // Set initial state (preserve hash for shareable listing links)
         if (!window.history.state?.tab) {
-          window.history.replaceState({ tab }, '', window.location.pathname);
+          window.history.replaceState({ tab }, '', window.location.pathname + window.location.hash);
         }
 
         const handlePopState = (event) => {

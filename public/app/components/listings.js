@@ -3793,6 +3793,62 @@
             H('path', { d: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z' })
           )
         ),
+        // Share icon
+        H('button', {
+          key: 'share',
+          className: 'listing-action-icon listing-action-share',
+          onClick: async () => {
+            const shareUrl = `${window.location.origin}${window.location.pathname}#listing/${item.id}`;
+            const shareData = {
+              title: item.title || 'Check out this listing',
+              url: shareUrl
+            };
+            try {
+              if (navigator.share && navigator.canShare?.(shareData)) {
+                await navigator.share(shareData);
+              } else {
+                await navigator.clipboard.writeText(shareUrl);
+                alert('Link copied to clipboard!');
+              }
+            } catch (e) {
+              // User cancelled or error - try clipboard fallback
+              try {
+                await navigator.clipboard.writeText(shareUrl);
+                alert('Link copied to clipboard!');
+              } catch {
+                // Ignore
+              }
+            }
+          },
+          title: 'Share listing',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            color: '#9ca3af',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            // Arrow pointing up and out of box
+            H('path', { d: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8' }),
+            H('polyline', { points: '16 6 12 2 8 6' }),
+            H('line', { x1: 12, y1: 2, x2: 12, y2: 15 })
+          )
+        ),
         // Report icon (only if logged in)
         canReport && H('button', {
           key: 'report',
@@ -3840,10 +3896,10 @@
             fontWeight: 600,
             whiteSpace: 'nowrap'
           }
-        }, 'Message seller')
+        }, 'Message')
       ) : null;
 
-      // Build owner action icons (Edit, Sold, Delete)
+      // Build owner action icons (Share, Edit, Sold, Delete)
       const isSold = !!item?.sold;
       const ownerActions = canEdit ? H('div', {
         className: 'listing-owner-actions',
@@ -3854,6 +3910,61 @@
           marginLeft: 'auto'
         }
       },
+        // Share icon (for owners) - first so it's on the left
+        H('button', {
+          key: 'share',
+          className: 'listing-action-icon listing-action-share',
+          onClick: async () => {
+            const shareUrl = `${window.location.origin}${window.location.pathname}#listing/${item.id}`;
+            const shareData = {
+              title: item.title || 'Check out this listing',
+              url: shareUrl
+            };
+            try {
+              if (navigator.share && navigator.canShare?.(shareData)) {
+                await navigator.share(shareData);
+              } else {
+                await navigator.clipboard.writeText(shareUrl);
+                alert('Link copied to clipboard!');
+              }
+            } catch (e) {
+              try {
+                await navigator.clipboard.writeText(shareUrl);
+                alert('Link copied to clipboard!');
+              } catch {
+                // Ignore
+              }
+            }
+          },
+          title: 'Share listing',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            padding: 6,
+            borderRadius: 6,
+            cursor: 'pointer',
+            color: '#9ca3af',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }
+        },
+          H('svg', {
+            width: 18,
+            height: 18,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round'
+          },
+            // Arrow pointing up and out of box
+            H('path', { d: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8' }),
+            H('polyline', { points: '16 6 12 2 8 6' }),
+            H('line', { x1: 12, y1: 2, x2: 12, y2: 15 })
+          )
+        ),
         // Edit icon
         H('button', {
           key: 'e',

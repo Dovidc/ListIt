@@ -7710,6 +7710,42 @@ app.delete('/api/listings/:id', auth, writeLimiter, async (req, res) => {
 });
 
 
+// GET single listing by ID (for shareable links)
+// Note: Must be defined before /api/listings/:id/images to avoid route conflicts
+app.get('/api/listing/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid listing ID' });
+    }
+
+    const listing = await db.prepare(`
+      SELECT
+        l.id, l.user_id, l.image_data,
+        l.title, l.description, l.location, l.price, l.created_at,
+        l.lat, l.lon, l.enable_nearby, l.inquiry_enabled, l.sold, l.is_free, l.custom_tag, l.custom_tag_color,
+        u.username AS owner_username,
+        u.profile_picture_url AS owner_profile_picture_url,
+        u.supporter_badge AS owner_supporter_badge,
+        u.supporter_since AS owner_supporter_since,
+        u.supporter_tier AS owner_supporter_tier,
+        u.supporter_months_credited AS owner_supporter_months_credited
+      FROM listings l
+      JOIN users u ON l.user_id = u.id
+      WHERE l.id = ?
+    `).get(id);
+
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+
+    res.json(listing);
+  } catch (e) {
+    console.error('GET /api/listings/:id failed:', e);
+    return res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
 
 app.get('/api/listings/:id/images', async (req, res) => {
 

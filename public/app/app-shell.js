@@ -524,6 +524,13 @@
       const [editing, setEditing] = useState(null);
       const [showMassList, setShowMassList] = useState(false);
 
+      // Helper to clear listing hash from URL
+      const clearListingHash = () => {
+        if (typeof window !== 'undefined' && window.location.hash.startsWith('#listing/')) {
+          window.history.pushState({}, '', window.location.pathname);
+        }
+      };
+
       // Saved listings state - use object instead of Set for better React re-render detection
       const [savedListingIds, setSavedListingIds] = useState({});
 
@@ -880,6 +887,7 @@
         await toggleSold?.(listing, makeSold);
         if (makeSold) {
           setSelectedListing(null);
+          clearListingHash();
         }
       }, [toggleSold]);
 
@@ -984,6 +992,61 @@
         const timer = setTimeout(checkPendingNotification, 1000);
         return () => clearTimeout(timer);
       }, [setActiveConvoId, onTabChange]);
+
+      // Handle shareable listing links via URL hash (#listing/123)
+      useEffect(() => {
+        const openListingFromHash = async () => {
+          const hash = window.location.hash;
+          console.log('[ShareableLink] Checking hash:', hash);
+          const match = hash.match(/^#listing\/(\d+)$/);
+          if (!match) {
+            console.log('[ShareableLink] No match for listing pattern');
+            return;
+          }
+          const listingId = Number(match[1]);
+          if (!listingId) return;
+          console.log('[ShareableLink] Fetching listing:', listingId);
+          try {
+            const listing = await api.getListing(listingId, { silent: true });
+            console.log('[ShareableLink] Got listing:', listing);
+            if (listing) {
+              console.log('[ShareableLink] Opening modal...');
+              openListingModal(listing);
+            }
+          } catch (e) {
+            console.error('[ShareableLink] Failed to fetch listing:', e);
+            // Listing not found or fetch failed - clear hash
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        };
+        // Check hash on mount with a small delay to ensure app is ready
+        const timer = setTimeout(openListingFromHash, 300);
+        // Handle back/forward navigation
+        const handlePopState = (event) => {
+          if (event.state?.listingId) {
+            openListingFromHash();
+          } else if (!window.location.hash.startsWith('#listing/')) {
+            setSelectedListing(null);
+          }
+        };
+        // Handle hash changes (e.g., pasting a new URL while on the page)
+        const handleHashChange = () => {
+          openListingFromHash();
+        };
+        window.addEventListener('popstate', handlePopState);
+        window.addEventListener('hashchange', handleHashChange);
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('popstate', handlePopState);
+          window.removeEventListener('hashchange', handleHashChange);
+        };
+      }, [openListingModal]);
+
+      // Close listing and clear URL hash
+      const closeListingModal = useCallback(() => {
+        setSelectedListing(null);
+        clearListingHash();
+      }, []);
 
       // Check if user needs to accept legal documents
       useEffect(() => {
@@ -1385,6 +1448,7 @@
       function handleViewSeller(userId, username) {
         setViewingSeller({ id: userId, username });
         setSelectedListing(null);
+        clearListingHash();
         if (isMobile) {
           const container = document.querySelector('main.container');
           if (container) container.scrollTop = 0;
@@ -1409,6 +1473,7 @@
         reloadMineOnly();
         // Close any open listing modal so it re-opens with correct auth state
         setSelectedListing(null);
+        clearListingHash();
         // Log in to RevenueCat with user ID for subscription tracking
         if (iapService && typeof iapService.login === 'function' && newUser?.id) {
           iapService.login(String(newUser.id)).catch(() => {});
@@ -1425,6 +1490,7 @@
         setUser(null);
         // Close any open listing modal to prevent stale UI state
         setSelectedListing(null);
+        clearListingHash();
         // Refresh all listings so UI re-evaluates with logged-out state
         refreshListings();
         reloadMineOnly();
@@ -2083,7 +2149,7 @@
                         H(ListingModal, {
                           open: !!selectedListing,
                           item: selectedListing,
-                          onClose: () => setSelectedListing(null),
+                          onClose: closeListingModal,
                           cardProps: {
                             user,
                             canEdit: !!mineById[selectedListing?.id],
@@ -2091,12 +2157,14 @@
                               if (user?.account_status === 'locked') { showLockedBanner(); return; }
                               const rich = mineById[it.id] || it;
                               setSelectedListing(null);
+                              clearListingHash();
                               openListingEditor({ draft: rich, originTab: 'browse', reopenListingId: rich?.id });
                             },
                             onDelete: async (it) => {
                               if (confirm('Remove this listing? (Your past messages will remain)')) {
                                 await api.deleteListing(it.id);
                                 setSelectedListing(null);
+                                clearListingHash();
                                 await refreshListings();
                               }
                             },
