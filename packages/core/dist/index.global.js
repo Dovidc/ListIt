@@ -554,6 +554,16 @@
       return request(url, { method: 'GET' }, meta);  
     };  
     
+    const adminListReports = (params = {}, meta) => {  
+      const searchParams = new URLSearchParams();  
+      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));  
+      if (Number.isFinite(Number(params.offset))) searchParams.set('offset', String(params.offset));  
+      if (params.status) searchParams.set('status', String(params.status));  
+      const query = searchParams.toString();  
+      const url = '/api/admin/reports/list' + (query ? `?${query}` : '');  
+      return request(url, { method: 'GET' }, meta);  
+    };  
+    
     const adminClearUserReports = (id, payload = {}, meta) => {  
       if (!Number.isFinite(Number(id))) return Promise.reject(new ApiError('invalid_user'));  
       return request(`/api/admin/users/${id}/reports/clear`, {  
@@ -561,6 +571,24 @@
         headers: { 'Content-Type': 'application/json' },  
         body: JSON.stringify(payload || {})  
       }, meta);  
+    };  
+    
+    const adminClearReport = (reportId, payload = {}, meta) => {  
+      if (!Number.isFinite(Number(reportId))) return Promise.reject(new ApiError('invalid_report'));  
+      return request(`/api/admin/reports/${reportId}/clear`, {  
+        method: 'POST',  
+        headers: { 'Content-Type': 'application/json' },  
+        body: JSON.stringify(payload || {})  
+      }, meta);  
+    };  
+    
+    const adminListBlocks = (params = {}, meta) => {  
+      const searchParams = new URLSearchParams();  
+      if (Number.isFinite(Number(params.limit))) searchParams.set('limit', String(params.limit));  
+      if (Number.isFinite(Number(params.offset))) searchParams.set('offset', String(params.offset));  
+      const query = searchParams.toString();  
+      const url = '/api/admin/blocks' + (query ? `?${query}` : '');  
+      return request(url, { method: 'GET' }, meta);  
     };  
     
     const adminGetPaymentsStatus = (meta) => request('/api/admin/payments', { method: 'GET' }, meta);  
@@ -696,7 +724,10 @@
       adminGetUserReports,  
       adminUpdateUserStatus,  
       adminTopReports,  
+      adminListReports,  
+      adminListBlocks,  
       adminClearUserReports,  
+      adminClearReport,  
       adminGetPaymentsStatus,  
       adminGetKarmaTop,  
       adminGetKarmaChanges,  

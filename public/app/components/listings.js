@@ -2656,15 +2656,13 @@
 
       if (!open) return null;
 
-      const sellerName = listing?.owner_username ? listing.owner_username : 'this seller';
-
       const modal = H('div', {
         className: 'modal-overlay',
         onClick: (e) => { if (e.target.classList.contains('modal-overlay')) onClose?.(); }
       },
         H('div', { className: 'modal-content', style: { maxWidth: '520px' } },
           H('div', { className: 'modal-header' },
-            H('h2', { style: { margin: 0, fontSize: '20px', fontWeight: 600 } }, `Report ${sellerName}`),
+            H('h2', { style: { margin: 0, fontSize: '20px', fontWeight: 600 } }, 'Report listing / seller'),
             H('button', { className: 'modal-close', onClick: onClose, disabled: submitting && !submitted }, '×')
           ),
           H('div', { className: 'modal-body' },
@@ -2675,7 +2673,7 @@
               ) :
               H('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', gap: '16px' } },
                 H('div', null,
-                  H('div', { style: { fontWeight: 600, marginBottom: '12px' } }, 'Why are you reporting this seller?'),
+                  H('div', { style: { fontWeight: 600, marginBottom: '12px' } }, 'Why are you reporting this listing?'),
                   H('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
                     ...REPORT_REASON_OPTIONS.map(opt => H('label', {
                       key: opt.value,
@@ -3854,7 +3852,7 @@
           key: 'report',
           className: 'listing-action-icon listing-action-report',
           onClick: () => setShowReport(true),
-          title: 'Report seller',
+          title: 'Report listing',
           style: {
             background: 'transparent',
             border: 'none',
@@ -5185,7 +5183,7 @@
 
         if (!isBlocked) {
           // Confirm before blocking
-          if (!confirm(`Are you sure you want to block ${sellerUsername || 'this user'}? They won't be able to message you.`)) {
+          if (!confirm(`Blocking ${sellerUsername || 'this user'} will prevent you from messaging and viewing their listings.`)) {
             return;
           }
         }

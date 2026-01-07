@@ -444,7 +444,8 @@
       profileAbout,
       onChangeProfileAbout,
       onSaveProfileAbout,
-      profileAboutStatusMessage
+      profileAboutStatusMessage,
+      onOpenBlockedUsers
     }) {
       const [saving, setSaving] = useState(false);
       const [saveStatus, setSaveStatus] = useState('');
@@ -574,6 +575,60 @@
                 }, `${(profileAbout || '').length}/80 characters`)
               )
             ),
+            // Blocked Users button
+            H('button', {
+              type: 'button',
+              onClick: () => {
+                onClose?.();
+                onOpenBlockedUsers?.();
+              },
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '12px 16px',
+                background: 'rgba(254, 242, 242, 0.5)',
+                border: '1px solid rgba(254, 202, 202, 0.5)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                textAlign: 'left',
+                width: '100%'
+              }
+            },
+              H('div', {
+                style: {
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: 'rgba(254, 226, 226, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }
+              },
+                H('svg', {
+                  width: 18,
+                  height: 18,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: '#dc2626',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  H('circle', { cx: 12, cy: 12, r: 10 }),
+                  H('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
+                )
+              ),
+              H('div', { style: { flex: 1 } },
+                H('div', { style: { fontWeight: 600, fontSize: 14 } }, 'Blocked Users'),
+                H('div', { style: { fontSize: 12, opacity: 0.7 } }, 'Manage users you\'ve blocked')
+              ),
+              H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', style: { opacity: 0.5 } },
+                H('polyline', { points: '9 18 15 12 9 6' })
+              )
+            ),
             H('div', {
               style: {
                 marginTop: 8,
@@ -604,6 +659,130 @@
               className: 'muted',
               style: { fontSize: 12, margin: 0 }
             }, 'When you press the preset icon in a conversation, the info you save here will be sent as a normal message.')
+          )
+        ),
+        document.body
+      );
+    });
+
+    // Blocked Users List Modal
+    const BlockedUsersListModal = React.memo(function BlockedUsersListModal({
+      open,
+      onClose,
+      blockedUsers,
+      loading,
+      onUnblock
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString();
+      };
+
+      return createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick
+        },
+          H('div', {
+            className: 'modal-inner blocked-users-modal',
+            style: {
+              maxWidth: '500px',
+              width: 'min(500px, 94vw)',
+              maxHeight: '80vh',
+              padding: '20px',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 16,
+              overflow: 'hidden'
+            }
+          },
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }
+            },
+              H('h3', {
+                style: {
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700
+                }
+              }, 'Blocked Users'),
+              H('button', {
+                type: 'button',
+                onClick: onClose,
+                style: {
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  opacity: 0.6
+                }
+              },
+                H('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                )
+              )
+            ),
+            H('div', {
+              style: {
+                overflowY: 'auto',
+                maxHeight: 'calc(80vh - 100px)',
+                display: 'grid',
+                gap: 8
+              }
+            },
+              loading
+                ? H('div', { style: { textAlign: 'center', padding: 20, opacity: 0.6 } }, 'Loading...')
+                : (!blockedUsers || blockedUsers.length === 0)
+                  ? H('div', { style: { textAlign: 'center', padding: 20, opacity: 0.6 } }, 'No blocked users.')
+                  : blockedUsers.map(user => H('div', {
+                      key: user.id,
+                      style: {
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        padding: '12px',
+                        background: 'rgba(0,0,0,0.05)',
+                        borderRadius: '10px',
+                        border: '1px solid rgba(0,0,0,0.1)'
+                      }
+                    },
+                      H('div', { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: '80px' } },
+                        H('span', { style: { fontWeight: 600, fontSize: '14px', color: 'inherit' } }, user.username || `User #${user.id}`),
+                        H('span', { style: { fontSize: '11px', opacity: 0.6, color: 'inherit' } }, formatDate(user.blocked_at))
+                      ),
+                      H('button', {
+                        type: 'button',
+                        onClick: () => onUnblock?.(user.id),
+                        className: 'btn',
+                        style: {
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          flexShrink: 0,
+                          whiteSpace: 'nowrap'
+                        }
+                      }, 'Unblock')
+                    ))
+            )
           )
         ),
         document.body
@@ -1991,6 +2170,9 @@
       const [quietHoursStart, setQuietHoursStart] = useState(user?.quiet_hours_start || '20:30');
       const [quietHoursEnd, setQuietHoursEnd] = useState(user?.quiet_hours_end || '09:30');
       const [notificationSettingsSaving, setNotificationSettingsSaving] = useState(false);
+      const [blockedUsersModalOpen, setBlockedUsersModalOpen] = useState(false);
+      const [blockedUsersList, setBlockedUsersList] = useState([]);
+      const [blockedUsersLoading, setBlockedUsersLoading] = useState(false);
       const isPremiumUser = useMemo(() => {
         return premiumFreeForAll || !!user?.supporter_tier || user?.supporter_badge || user?.subscription_status === 'active';
       }, [premiumFreeForAll, user?.supporter_tier, user?.supporter_badge, user?.subscription_status]);
@@ -2057,6 +2239,37 @@
         setPaypalModalOpen(false);
         setPaypalStatusMessage('');
         setLocationStatusMessage('');
+      }, []);
+
+      const handleOpenBlockedUsers = useCallback(async () => {
+        setBlockedUsersModalOpen(true);
+        setBlockedUsersLoading(true);
+        try {
+          const result = await api.getBlockedUsers({ silent: true });
+          setBlockedUsersList(result?.blocked_users || []);
+        } catch (err) {
+          console.error('Failed to load blocked users:', err);
+          setBlockedUsersList([]);
+        } finally {
+          setBlockedUsersLoading(false);
+        }
+      }, []);
+
+      const handleCloseBlockedUsers = useCallback(() => {
+        setBlockedUsersModalOpen(false);
+      }, []);
+
+      const handleUnblockUser = useCallback(async (userId) => {
+        if (!window.confirm('Unblock this user? You will be able to see their listings and message them again.')) {
+          return;
+        }
+        try {
+          await api.unblockUser(userId);
+          setBlockedUsersList(prev => prev.filter(u => u.id !== userId));
+        } catch (err) {
+          console.error('Failed to unblock user:', err);
+          alert('Failed to unblock user. Please try again.');
+        }
       }, []);
 
       const [profileTab, setProfileTab] = useState('active');
@@ -2879,7 +3092,16 @@
           profileAbout,
           onChangeProfileAbout: handleChangeProfileAbout,
           onSaveProfileAbout: saveProfileAbout,
-          profileAboutStatusMessage
+          profileAboutStatusMessage,
+          onOpenBlockedUsers: handleOpenBlockedUsers
+        }),
+
+        H(BlockedUsersListModal, {
+          open: blockedUsersModalOpen,
+          onClose: handleCloseBlockedUsers,
+          blockedUsers: blockedUsersList,
+          loading: blockedUsersLoading,
+          onUnblock: handleUnblockUser
         }),
 
         H(ProfileCustomizationModal, {

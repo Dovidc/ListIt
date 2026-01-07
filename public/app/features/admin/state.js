@@ -112,6 +112,22 @@
       const [karmaLoading, setKarmaLoading] = useState(false);
       const [karmaError, setKarmaError] = useState('');
 
+      // Blocks tab state
+      const [blocksList, setBlocksList] = useState([]);
+      const [blocksLoading, setBlocksLoading] = useState(false);
+      const [blocksError, setBlocksError] = useState('');
+      const [blocksHasMore, setBlocksHasMore] = useState(false);
+      const [blocksOffset, setBlocksOffset] = useState(0);
+
+      // Reports list tab state (individual reports with listings)
+      const [reportsList, setReportsList] = useState([]);
+      const [reportsListLoading, setReportsListLoading] = useState(false);
+      const [reportsListError, setReportsListError] = useState('');
+      const [reportsListHasMore, setReportsListHasMore] = useState(false);
+      const [reportsListOffset, setReportsListOffset] = useState(0);
+      const [reportsListStatus, setReportsListStatus] = useState('open'); // 'open', 'cleared', 'all'
+      const [clearingReportId, setClearingReportId] = useState(null);
+
       const searchTimer = useRef(null);
 
       useEffect(() => () => {
@@ -317,6 +333,105 @@
           }
         }
       }, [tab, karmaView, karmaChangeDays, loadKarmaTop, loadKarmaChanges]);
+
+      // Blocks loading functions
+      const loadBlocks = useCallback(async (reset = false) => {
+        setBlocksLoading(true);
+        setBlocksError('');
+        const currentOffset = reset ? 0 : blocksOffset;
+        if (reset) {
+          setBlocksOffset(0);
+          setBlocksList([]);
+        }
+        try {
+          const result = await api.adminListBlocks({ limit: 50, offset: currentOffset }, { silent: true });
+          const items = Array.isArray(result?.items) ? result.items : [];
+          if (reset) {
+            setBlocksList(items);
+          } else {
+            setBlocksList(prev => [...prev, ...items]);
+          }
+          setBlocksHasMore(Boolean(result?.has_more));
+          if (!reset && items.length > 0) {
+            setBlocksOffset(currentOffset + items.length);
+          }
+        } catch (err) {
+          setBlocksError(err?.message || 'Failed to load blocks');
+          if (reset) setBlocksList([]);
+        } finally {
+          setBlocksLoading(false);
+        }
+      }, [api, blocksOffset]);
+
+      const loadMoreBlocks = useCallback(() => {
+        if (blocksLoading || !blocksHasMore) return;
+        loadBlocks(false);
+      }, [blocksLoading, blocksHasMore, loadBlocks]);
+
+      useEffect(() => {
+        if (tab === 'blocks') {
+          loadBlocks(true);
+        }
+      }, [tab]);
+
+      // Reports list loading functions
+      const loadReportsList = useCallback(async (reset = false) => {
+        setReportsListLoading(true);
+        setReportsListError('');
+        const currentOffset = reset ? 0 : reportsListOffset;
+        if (reset) {
+          setReportsListOffset(0);
+          setReportsList([]);
+        }
+        try {
+          const result = await api.adminListReports({ limit: 50, offset: currentOffset, status: reportsListStatus }, { silent: true });
+          const items = Array.isArray(result?.items) ? result.items : [];
+          if (reset) {
+            setReportsList(items);
+          } else {
+            setReportsList(prev => [...prev, ...items]);
+          }
+          setReportsListHasMore(Boolean(result?.has_more));
+          if (!reset && items.length > 0) {
+            setReportsListOffset(currentOffset + items.length);
+          }
+        } catch (err) {
+          setReportsListError(err?.message || 'Failed to load reports');
+          if (reset) setReportsList([]);
+        } finally {
+          setReportsListLoading(false);
+        }
+      }, [api, reportsListOffset, reportsListStatus]);
+
+      const loadMoreReportsList = useCallback(() => {
+        if (reportsListLoading || !reportsListHasMore) return;
+        loadReportsList(false);
+      }, [reportsListLoading, reportsListHasMore, loadReportsList]);
+
+      const handleClearReport = useCallback(async (reportId) => {
+        const numericId = Number(reportId);
+        if (!Number.isFinite(numericId)) return;
+        if (clearingReportId === numericId) return;
+        if (!window.confirm('Clear this report?')) return;
+        try {
+          setClearingReportId(numericId);
+          await api.adminClearReport(numericId);
+          // Update the report in the list to show as cleared
+          setReportsList(list => list.map(r =>
+            r.report_id === numericId ? { ...r, report_status: 'cleared' } : r
+          ));
+        } catch (err) {
+          alert(err?.message || 'Failed to clear report');
+        } finally {
+          setClearingReportId(null);
+        }
+      }, [api, clearingReportId]);
+
+      useEffect(() => {
+        if (tab === 'reports') {
+          loadReportsList(true);
+        }
+      }, [tab, reportsListStatus]);
 
       const handleStatusChange = useCallback(async (status) => {
         if (!selectedUser) return;
@@ -686,7 +801,25 @@
         karmaLoading,
         karmaError,
         loadKarmaTop,
-        loadKarmaChanges
+        loadKarmaChanges,
+        // Blocks tab
+        blocksList,
+        blocksLoading,
+        blocksError,
+        blocksHasMore,
+        loadBlocks,
+        loadMoreBlocks,
+        // Reports list tab
+        reportsList,
+        reportsListLoading,
+        reportsListError,
+        reportsListHasMore,
+        reportsListStatus,
+        setReportsListStatus,
+        loadReportsList,
+        loadMoreReportsList,
+        clearingReportId,
+        handleClearReport
       };
     }
 

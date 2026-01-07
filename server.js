@@ -2948,7 +2948,22 @@ async function auth(req, res, next) {
   }
 }
 
-
+// Optional auth - sets req.user if authenticated, but doesn't reject if not
+async function optionalAuth(req, res, next) {
+  const session = authFromReq(req);
+  if (!session) {
+    return next(); // Not authenticated, but that's OK
+  }
+  try {
+    const row = await getUserWithStatus(session.id);
+    if (row && row.account_status !== 'banned') {
+      req.user = row;
+    }
+  } catch (e) {
+    // Ignore errors for optional auth
+  }
+  next();
+}
 
 function requireAdmin(req, res, next) {
 
@@ -5307,7 +5322,7 @@ app.delete('/api/listings/:id/save', auth, async (req, res) => {
 
 /* ------------------------------------------------------------------ */
 
-app.get('/api/listings', async (req, res) => {
+app.get('/api/listings', optionalAuth, async (req, res) => {
 
   try {
 
@@ -5632,6 +5647,13 @@ app.get('/api/listings', async (req, res) => {
       const where = ['l.sold = 0'];
 
       const params = {};
+
+      // Filter out listings from users the current user has blocked
+      const currentUserId = req.user?.id;
+      if (currentUserId) {
+        params.currentUserId = currentUserId;
+        where.push('l.user_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = @currentUserId)');
+      }
 
       // For 'nearest' sort, only show listings that have coordinates
       if (isNearestSort && hasUserCoords) {
@@ -7317,7 +7339,29 @@ app.get('/api/users/:id/block-status', auth, async (req, res) => {
   }
 });
 
+// List users blocked by the current user
+app.get('/api/me/blocked-users', auth, async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
 
+    const blockedUsers = await db.prepare(`
+      SELECT
+        ub.blocked_id AS id,
+        u.username,
+        u.profile_picture_url AS profile_picture,
+        ub.created_at AS blocked_at
+      FROM user_blocks ub
+      JOIN users u ON u.id = ub.blocked_id
+      WHERE ub.blocker_id = ?
+      ORDER BY ub.created_at DESC
+    `).all(currentUserId);
+
+    return res.json({ blocked_users: blockedUsers || [] });
+  } catch (e) {
+    console.error('GET /api/me/blocked-users failed:', e);
+    return res.status(500).json({ error: 'fetch_blocked_users_failed' });
+  }
+});
 
 app.put(
   '/api/listings/:id',
@@ -11270,6 +11314,40 @@ app.post('/api/admin/users/:id/reports/clear', auth, requireAdmin, async (req, r
   }
 });
 
+// Clear a single report by ID
+app.post('/api/admin/reports/:id/clear', auth, requireAdmin, async (req, res) => {
+  try {
+    const reportId = Number(req.params.id);
+    if (!Number.isFinite(reportId)) {
+      return res.status(400).json({ error: 'invalid_report' });
+    }
+
+    const existing = await db.prepare('SELECT id FROM seller_reports WHERE id = ?').get(reportId);
+    if (!existing) {
+      return res.status(404).json({ error: 'report_not_found' });
+    }
+
+    const noteRaw = (req.body?.note ?? '').toString().trim();
+    const note = noteRaw.length ? noteRaw.slice(0, 500) : '';
+    const now = nowIso();
+    const adminId = Number.isFinite(Number(req.user?.id)) ? Number(req.user.id) : null;
+
+    await db.prepare(`
+      UPDATE seller_reports
+         SET status = 'cleared',
+             resolved_at = @now,
+             resolved_by = @adminId,
+             resolved_note = CASE WHEN @note != '' THEN @note ELSE resolved_note END
+       WHERE id = @reportId
+    `).run({ now, adminId, note, reportId });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Admin clear single report failed:', e);
+    return res.status(500).json({ error: 'admin_clear_failed' });
+  }
+});
+
 app.post('/api/admin/users/:id/status', auth, requireAdmin, async (req, res) => {
 
   try {
@@ -11444,7 +11522,139 @@ app.get('/api/admin/reports/top', auth, requireAdmin, async (req, res) => {
   }
 });
 
+// Get individual reports with listing data (for revamped Reports tab)
+app.get('/api/admin/reports/list', auth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const status = req.query.status || 'open'; // 'open', 'cleared', 'all'
 
+    let statusFilter = '';
+    if (status === 'open') {
+      statusFilter = "AND r.status = 'open'";
+    } else if (status === 'cleared') {
+      statusFilter = "AND r.status = 'cleared'";
+    }
+
+    // Get reports with reporter, reported user, and listing info
+    const rows = await db.prepare(`
+      SELECT
+        r.id AS report_id,
+        r.reporter_user_id,
+        r.reported_user_id,
+        r.listing_id,
+        r.reasons,
+        r.details,
+        r.status AS report_status,
+        r.created_at AS report_created_at,
+        r.resolved_at,
+        r.resolved_note,
+        reporter.username AS reporter_username,
+        reporter.email AS reporter_email,
+        reported.username AS reported_username,
+        reported.email AS reported_email,
+        COALESCE(reported.account_status, 'active') AS reported_account_status,
+        l.id AS listing_id,
+        l.title AS listing_title,
+        l.description AS listing_description,
+        l.price AS listing_price,
+        l.location AS listing_location,
+        l.image_data AS listing_image,
+        l.created_at AS listing_created_at,
+        l.sold AS listing_sold
+      FROM seller_reports r
+      JOIN users reporter ON reporter.id = r.reporter_user_id
+      JOIN users reported ON reported.id = r.reported_user_id
+      LEFT JOIN listings l ON l.id = r.listing_id
+      WHERE 1=1 ${statusFilter}
+      ORDER BY r.created_at DESC
+      LIMIT @limit OFFSET @offset
+    `).all({ limit: limit + 1, offset });
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+
+    // Get listing images for each report that has a listing
+    const listingIds = items.filter(r => r.listing_id).map(r => r.listing_id);
+    let listingImagesMap = {};
+    if (listingIds.length > 0) {
+      const placeholders = listingIds.map(() => '?').join(',');
+      const imageRows = await db.prepare(`
+        SELECT listing_id, COALESCE(url, image_data) AS image_url, position
+        FROM listing_images
+        WHERE listing_id IN (${placeholders})
+        ORDER BY listing_id, position ASC
+      `).all(...listingIds);
+
+      for (const img of imageRows) {
+        if (!listingImagesMap[img.listing_id]) {
+          listingImagesMap[img.listing_id] = [];
+        }
+        if (img.image_url) {
+          listingImagesMap[img.listing_id].push(img.image_url);
+        }
+      }
+    }
+
+    const payload = items.map(row => {
+      let reasons = [];
+      try {
+        reasons = typeof row.reasons === 'string' ? JSON.parse(row.reasons) : (row.reasons || []);
+      } catch { reasons = []; }
+
+      // Build images array - include main image plus additional images
+      const images = [];
+      if (row.listing_image) {
+        images.push(canonicalAssetUrl(row.listing_image));
+      }
+      if (listingImagesMap[row.listing_id]) {
+        for (const imgUrl of listingImagesMap[row.listing_id]) {
+          const canonical = canonicalAssetUrl(imgUrl);
+          if (!images.includes(canonical)) {
+            images.push(canonical);
+          }
+        }
+      }
+
+      return {
+        report_id: row.report_id,
+        report_status: row.report_status,
+        report_created_at: row.report_created_at,
+        resolved_at: row.resolved_at,
+        resolved_note: row.resolved_note,
+        reasons,
+        details: row.details,
+        reporter: {
+          id: row.reporter_user_id,
+          username: row.reporter_username,
+          email: row.reporter_email
+        },
+        reported: {
+          id: row.reported_user_id,
+          username: row.reported_username,
+          email: row.reported_email,
+          account_status: row.reported_account_status
+        },
+        listing: row.listing_id ? {
+          id: row.listing_id,
+          title: row.listing_title,
+          description: row.listing_description,
+          price: row.listing_price,
+          location: row.listing_location,
+          image: row.listing_image ? canonicalAssetUrl(row.listing_image) : null,
+          images,
+          created_at: row.listing_created_at,
+          sold: Boolean(row.listing_sold)
+        } : null
+      };
+    });
+
+    return res.json({ items: payload, has_more: hasMore, offset, limit });
+  } catch (e) {
+    console.error('Admin reports list failed:', e);
+    return res.status(500).json({ error: 'admin_reports_failed' });
+  }
+});
 
 
 app.delete('/api/admin/listings', auth, requireAdmin, async (_req, res) => {
@@ -11587,6 +11797,56 @@ app.get('/api/admin/karma/changes', auth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Admin karma changes fetch failed:', err);
     return res.status(500).json({ error: 'admin_karma_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// ADMIN: User Blocks
+// ─────────────────────────────────────────────────────────────
+
+app.get('/api/admin/blocks', auth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const rows = await db.prepare(`
+      SELECT
+        ub.id,
+        ub.blocker_id,
+        ub.blocked_id,
+        ub.created_at,
+        blocker.username AS blocker_username,
+        blocker.email AS blocker_email,
+        blocked.username AS blocked_username,
+        blocked.email AS blocked_email
+      FROM user_blocks ub
+      JOIN users blocker ON blocker.id = ub.blocker_id
+      JOIN users blocked ON blocked.id = ub.blocked_id
+      ORDER BY ub.created_at DESC
+      LIMIT @limit OFFSET @offset
+    `).all({ limit: limit + 1, offset });
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+
+    return res.json({
+      items: items.map(row => ({
+        id: row.id,
+        blocker_id: row.blocker_id,
+        blocker_username: row.blocker_username,
+        blocker_email: row.blocker_email,
+        blocked_id: row.blocked_id,
+        blocked_username: row.blocked_username,
+        blocked_email: row.blocked_email,
+        created_at: row.created_at
+      })),
+      has_more: hasMore,
+      offset,
+      limit
+    });
+  } catch (err) {
+    console.error('Admin blocks list failed:', err);
+    return res.status(500).json({ error: 'admin_blocks_failed' });
   }
 });
 

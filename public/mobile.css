@@ -393,6 +393,18 @@ select {
   object-fit: contain;
 }
 
+.modal-inner .blocked-user-avatar img,
+.modal .blocked-user-avatar img,
+.blocked-user-avatar img {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  object-fit: cover !important;
+}
+
 .thumbs {
   -webkit-overflow-scrolling: touch;
 }

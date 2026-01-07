@@ -124,7 +124,25 @@
         karmaLoading,
         karmaError,
         loadKarmaTop,
-        loadKarmaChanges
+        loadKarmaChanges,
+        // Blocks tab
+        blocksList,
+        blocksLoading,
+        blocksError,
+        blocksHasMore,
+        loadBlocks,
+        loadMoreBlocks,
+        // Reports list tab
+        reportsList,
+        reportsListLoading,
+        reportsListError,
+        reportsListHasMore,
+        reportsListStatus,
+        setReportsListStatus,
+        loadReportsList,
+        loadMoreReportsList,
+        clearingReportId,
+        handleClearReport
       } = useAdminDashboardState({ onAdsUpdated, onMessageUser });
 
       // Local state for fullbleed image upload
@@ -265,7 +283,7 @@
         }
       }
 
-      const reportsList = userReports.length
+      const userReportsList = userReports.length
         ? H('div', { style: { display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto', marginTop: 12 } },
             userReports.map(r => H('div', {
               key: r.id,
@@ -315,6 +333,7 @@
           H('button', { className: `btn ${tab === 'users' ? 'primary' : ''}`, onClick: () => setTab('users') }, 'Users'),
           H('button', { className: `btn ${tab === 'reports' ? 'primary' : ''}`, onClick: () => setTab('reports') }, 'Reports'),
           H('button', { className: `btn ${tab === 'flagged' ? 'primary' : ''}`, onClick: () => setTab('flagged') }, 'Flagged'),
+          H('button', { className: `btn ${tab === 'blocks' ? 'primary' : ''}`, onClick: () => setTab('blocks') }, 'Blocks'),
           H('button', { className: `btn ${tab === 'ads' ? 'primary' : ''}`, onClick: () => setTab('ads') }, 'Ads'),
           // KARMA DISABLED
           // H('button', { className: `btn ${tab === 'karma' ? 'primary' : ''}`, onClick: () => setTab('karma') }, 'Karma'),
@@ -364,41 +383,119 @@
 
           H('section', { className: 'card', style: { padding: 16 } },
             userLoading ? H('div', { className: 'muted' }, 'Loading user...') : userSummary,
-            (reportsLoading && !userReports.length) ? H('div', { className: 'muted', style: { marginTop: 12 } }, 'Loading reports...') : reportsList
+            (reportsLoading && !userReports.length) ? H('div', { className: 'muted', style: { marginTop: 12 } }, 'Loading reports...') : userReportsList
           )
         ),
 
         tab === 'reports' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
-          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
-            H('h3', { style: { margin: 0, fontSize: 18 } }, 'Most reported accounts'),
-            H('div', { className: 'row', style: { gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
-              H('label', { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 } },
-                'Window:',
-                H('select', {
-                  value: topDays,
-                  onChange: (e) => setTopDays(Number(e.target.value)),
-                  style: { padding: 6 }
-                },
-                  H('option', { value: 7 }, '7 days'),
-                  H('option', { value: 30 }, '30 days'),
-                  H('option', { value: 90 }, '90 days')
-                )
+          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+            H('h3', { style: { margin: 0, fontSize: 18 } }, 'Reports'),
+            H('div', { className: 'row', style: { gap: 8, alignItems: 'center' } },
+              H('select', {
+                value: reportsListStatus,
+                onChange: (e) => setReportsListStatus(e.target.value),
+                style: { padding: 6 }
+              },
+                H('option', { value: 'open' }, 'Open'),
+                H('option', { value: 'cleared' }, 'Cleared'),
+                H('option', { value: 'all' }, 'All')
               ),
-              H('label', { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 } },
-                'Min reports:',
-                H('input', {
-                  type: 'number',
-                  min: 1,
-                  value: String(topMin),
-                  onChange: (e) => setTopMin(Math.max(1, Number(e.target.value) || 1)),
-                  style: { width: 72, padding: 6 }
-                })
-              ),
-              H('button', { className: 'btn', onClick: () => loadTopReports(topDays, topMin) }, 'Refresh')
+              H('button', { className: 'btn', onClick: () => loadReportsList(true), disabled: reportsListLoading }, reportsListLoading ? 'Refreshing…' : 'Refresh')
             )
           ),
-          topLoading && !topReports.length ? H('div', { className: 'muted' }, 'Loading...') : null,
-          topList
+          reportsListError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, reportsListError),
+          reportsListLoading && !reportsList.length ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading reports…') : null,
+          reportsList.length
+            ? H('div', { style: { display: 'grid', gap: 12 } },
+                reportsList.map(report => H('div', {
+                  key: report.report_id,
+                  className: 'card',
+                  style: { padding: 16, border: '1px solid #e5e7eb', display: 'grid', gap: 12 }
+                },
+                  // Header: reporter reported seller
+                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                    H('button', {
+                      type: 'button',
+                      onClick: () => { handleViewUserFromTop(report.reporter?.id); },
+                      style: { fontWeight: 600, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }
+                    }, report.reporter?.username || `User #${report.reporter?.id}`),
+                    H('span', { style: { color: '#6b7280' } }, 'reported'),
+                    H('button', {
+                      type: 'button',
+                      onClick: () => { handleViewUserFromTop(report.reported?.id); },
+                      style: { fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }
+                    }, report.reported?.username || `User #${report.reported?.id}`),
+                    report.reported?.account_status && report.reported.account_status !== 'active' &&
+                      H('span', {
+                        style: {
+                          fontSize: 11,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: report.reported.account_status === 'banned' ? '#fee2e2' : '#fef3c7',
+                          color: report.reported.account_status === 'banned' ? '#b91c1c' : '#92400e'
+                        }
+                      }, report.reported.account_status)
+                  ),
+                  // Report metadata
+                  H('div', { style: { display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' } },
+                    H('span', null, `Reported: ${formatDateTime(report.report_created_at)}`),
+                    report.report_status === 'open' ?
+                      H('span', { style: { color: '#dc2626', fontWeight: 600 } }, 'Open') :
+                      H('span', { style: { color: '#16a34a' } }, 'Cleared')
+                  ),
+                  // Reasons
+                  report.reasons?.length > 0 && H('div', { style: { fontSize: 13 } },
+                    H('strong', null, 'Reasons: '),
+                    report.reasons.map(r => {
+                      const labels = { fraud: 'Fraud/scam', spam: 'Spam', inappropriate: 'Inappropriate', harassment: 'Harassment', other: 'Other' };
+                      return labels[r] || r;
+                    }).join(', ')
+                  ),
+                  // Details
+                  report.details && H('div', { style: { fontSize: 13, color: '#374151', background: '#f9fafb', padding: 8, borderRadius: 6 } }, report.details),
+                  // Listing info with images
+                  report.listing && H('div', { style: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#fafafa' } },
+                    H('div', { style: { fontWeight: 600, marginBottom: 8 } }, 'Reported listing'),
+                    H('div', { style: { display: 'grid', gap: 8 } },
+                      H('div', { style: { fontSize: 14, fontWeight: 500 } }, report.listing.title || '(No title)'),
+                      report.listing.description && H('div', { style: { fontSize: 13, color: '#6b7280' } }, report.listing.description.length > 200 ? report.listing.description.slice(0, 200) + '…' : report.listing.description),
+                      H('div', { style: { fontSize: 13, color: '#374151' } },
+                        report.listing.price != null && `$${Number(report.listing.price).toFixed(2)}`,
+                        report.listing.location && ` • ${report.listing.location}`,
+                        report.listing.sold && H('span', { style: { color: '#dc2626', marginLeft: 8 } }, 'SOLD')
+                      ),
+                      // Images
+                      report.listing.images?.length > 0 && H('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 } },
+                        report.listing.images.map((imgUrl, idx) => H('img', {
+                          key: idx,
+                          src: imgUrl,
+                          alt: `Image ${idx + 1}`,
+                          style: { width: 80, height: 80, objectFit: 'cover', borderRadius: 6, border: '1px solid #e5e7eb', cursor: 'pointer' },
+                          onClick: () => window.open(imgUrl, '_blank')
+                        }))
+                      )
+                    )
+                  ),
+                  !report.listing && H('div', { style: { fontSize: 13, color: '#6b7280', fontStyle: 'italic' } }, 'No listing associated with this report'),
+                  // Actions row
+                  report.report_status === 'open' && H('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+                    H('button', {
+                      className: 'btn',
+                      onClick: () => handleClearReport(report.report_id),
+                      disabled: clearingReportId === report.report_id
+                    }, clearingReportId === report.report_id ? 'Clearing…' : 'Clear Report')
+                  )
+                )),
+                reportsListHasMore && H('button', {
+                  className: 'btn',
+                  onClick: loadMoreReportsList,
+                  disabled: reportsListLoading,
+                  style: { marginTop: 8 }
+                }, reportsListLoading ? 'Loading…' : 'Load more')
+              )
+            : (!reportsListLoading && !reportsListError
+                ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'No reports found.')
+                : null)
         ),
 
         tab === 'flagged' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
@@ -507,6 +604,52 @@
           item: flaggedDetailModal?.item || null,
           onClose: closeFlaggedDetail
         }),
+
+        tab === 'blocks' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 12 } },
+          H('div', { className: 'row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 } },
+            H('h3', { style: { margin: 0, fontSize: 18 } }, 'User blocks'),
+            H('button', { className: 'btn', onClick: () => loadBlocks(true), disabled: blocksLoading }, blocksLoading ? 'Refreshing…' : 'Refresh')
+          ),
+          blocksError && H('div', { style: { color: '#b91c1c', fontSize: 13 } }, blocksError),
+          blocksLoading && !blocksList.length ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'Loading blocks…') : null,
+          blocksList.length
+            ? H('div', { style: { display: 'grid', gap: 8 } },
+                blocksList.map(block => H('div', {
+                  key: block.id,
+                  className: 'card',
+                  style: { padding: 12, border: '1px solid #e5e7eb', display: 'grid', gap: 8 }
+                },
+                  H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                    H('button', {
+                      type: 'button',
+                      className: 'link-button',
+                      onClick: () => { handleViewUserFromTop(block.blocker_id); },
+                      style: { fontWeight: 600, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }
+                    }, block.blocker_username || `User #${block.blocker_id}`),
+                    H('span', { style: { color: '#6b7280' } }, 'blocked'),
+                    H('button', {
+                      type: 'button',
+                      className: 'link-button',
+                      onClick: () => { handleViewUserFromTop(block.blocked_id); },
+                      style: { fontWeight: 600, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }
+                    }, block.blocked_username || `User #${block.blocked_id}`)
+                  ),
+                  H('div', { className: 'muted', style: { fontSize: 12 } },
+                    `${block.blocker_email || 'No email'} → ${block.blocked_email || 'No email'}`
+                  ),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, `Blocked: ${formatDateTime(block.created_at)}`)
+                )),
+                blocksHasMore && H('button', {
+                  className: 'btn',
+                  onClick: loadMoreBlocks,
+                  disabled: blocksLoading,
+                  style: { marginTop: 8 }
+                }, blocksLoading ? 'Loading…' : 'Load more')
+              )
+            : (!blocksLoading && !blocksError
+                ? H('div', { className: 'muted', style: { fontSize: 13 } }, 'No user blocks yet.')
+                : null)
+        ),
 
         tab === 'ads' && H('section', { className: 'card', style: { padding: 16, display: 'grid', gap: 16 } },
 

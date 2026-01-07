@@ -2158,6 +2158,48 @@ img {
   font-size: 14px;
 }
 
+/* Blocked user avatar in modals */
+.blocked-user-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+}
+
+.blocked-user-avatar img {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  object-fit: cover !important;
+}
+
+/* Blocked users modal - theme aware */
+.modal-inner.blocked-users-modal {
+  background: #fff;
+  color: #1f2937;
+}
+
+[data-theme="dark"] .modal-inner.blocked-users-modal {
+  background: var(--bg-secondary, #24283b);
+  color: var(--text-primary, #c0caf5);
+}
+
+.blocked-users-modal h3 {
+  color: inherit;
+}
+
+[data-theme="dark"] .blocked-users-modal .muted,
+[data-theme="dark"] .blocked-users-modal span {
+  color: var(--text-muted, #a9b1d6);
+}
+
 /* Custom Dropdown */
 .custom-dropdown {
   position: relative;

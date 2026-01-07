@@ -145,7 +145,7 @@
       }, icon);
     }
 
-    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, onMarkAllRead, className }) {
+    function ConversationsSidebar({ conversations, activeId, onSelectConversation, onDeleteConversation, onMarkAllRead, onOpenSettings, className }) {
       const [searchQuery, setSearchQuery] = useState('');
       const hasUnread = conversations.some(c => c._unread);
 
@@ -164,7 +164,25 @@
           className: 'messages-sidebar__header',
           style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
         },
-          'Conversations'
+          'Conversations',
+          H('button', {
+            type: 'button',
+            onClick: onOpenSettings,
+            title: 'Message settings',
+            style: {
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#6b7280',
+              borderRadius: 6
+            }
+          },
+            H(SettingsIcon, { size: 20, stroke: '#6b7280' })
+          )
         ),
         H('div', { className: 'messages-sidebar__controls' },
           H('div', { style: { position: 'relative', flex: 1, minWidth: 0 } },
@@ -1123,6 +1141,289 @@
       );
     });
 
+    // Settings icon (cog/gear)
+    function SettingsIcon({ size = 20, stroke = '#6b7280', style, ...rest } = {}) {
+      return H('svg', Object.assign({
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke,
+        strokeWidth: 1.8,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        focusable: 'false',
+        'aria-hidden': 'true',
+        style
+      }, rest),
+        H('circle', { cx: 12, cy: 12, r: 3 }),
+        H('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })
+      );
+    }
+
+    // Message Settings Modal with blocked users option
+    const MessageSettingsModal = memo(function MessageSettingsModal({
+      open,
+      onClose,
+      onOpenBlockedUsers
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '360px',
+              width: 'min(360px, 92vw)',
+              padding: '20px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 12
+            }
+          },
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }
+            },
+              H('h3', {
+                style: {
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700
+                }
+              }, 'Message Settings'),
+              H('button', {
+                type: 'button',
+                onClick: onClose,
+                style: {
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  color: '#6b7280'
+                }
+              },
+                H('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                )
+              )
+            ),
+            H('div', { style: { display: 'grid', gap: 8 } },
+              H('button', {
+                type: 'button',
+                onClick: () => {
+                  onClose?.();
+                  onOpenBlockedUsers?.();
+                },
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 16px',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  width: '100%'
+                }
+              },
+                H('div', {
+                  style: {
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    background: '#fef2f2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }
+                },
+                  H('svg', {
+                    width: 20,
+                    height: 20,
+                    viewBox: '0 0 24 24',
+                    fill: 'none',
+                    stroke: '#dc2626',
+                    strokeWidth: 2,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round'
+                  },
+                    H('circle', { cx: 12, cy: 12, r: 10 }),
+                    H('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
+                  )
+                ),
+                H('div', { style: { flex: 1 } },
+                  H('div', { style: { fontWeight: 600, fontSize: 15 } }, 'Blocked Users'),
+                  H('div', { style: { fontSize: 13, color: '#6b7280' } }, 'Manage users you\'ve blocked')
+                ),
+                H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#9ca3af', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('polyline', { points: '9 18 15 12 9 6' })
+                )
+              )
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
+    // Blocked Users List Modal
+    const BlockedUsersListModal = memo(function BlockedUsersListModal({
+      open,
+      onClose,
+      blockedUsers,
+      loading,
+      onUnblock
+    }) {
+      const hasDom = typeof document !== 'undefined' && document.body;
+      if (!open || !hasDom) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString();
+      };
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
+        },
+          H('div', {
+            className: 'modal-inner',
+            style: {
+              maxWidth: '400px',
+              width: 'min(400px, 92vw)',
+              maxHeight: '80vh',
+              padding: '20px',
+              background: '#fff',
+              color: '#111',
+              borderRadius: 14,
+              display: 'grid',
+              gap: 16,
+              overflow: 'hidden'
+            }
+          },
+            H('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }
+            },
+              H('h3', {
+                style: {
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700
+                }
+              }, 'Blocked Users'),
+              H('button', {
+                type: 'button',
+                onClick: onClose,
+                style: {
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  color: '#6b7280'
+                }
+              },
+                H('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                )
+              )
+            ),
+            H('div', {
+              style: {
+                overflowY: 'auto',
+                maxHeight: 'calc(80vh - 100px)',
+                display: 'grid',
+                gap: 8
+              }
+            },
+              loading
+                ? H('div', { style: { textAlign: 'center', padding: 20, color: '#6b7280' } }, 'Loading...')
+                : (!blockedUsers || blockedUsers.length === 0)
+                  ? H('div', { style: { textAlign: 'center', padding: 20, color: '#6b7280' } }, 'You haven\'t blocked anyone yet.')
+                  : blockedUsers.map(user => H('div', {
+                      key: user.id,
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px',
+                        background: '#f9fafb',
+                        borderRadius: 10,
+                        border: '1px solid #e5e7eb'
+                      }
+                    },
+                      H('div', {
+                        className: 'profile-avatar profile-avatar-small',
+                        style: { flexShrink: 0 }
+                      },
+                        user.profile_picture
+                          ? H('img', { src: user.profile_picture, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' } })
+                          : (user.username ? user.username.charAt(0).toUpperCase() : '?')
+                      ),
+                      H('div', { style: { flex: 1, minWidth: 0 } },
+                        H('div', { style: { fontWeight: 600, fontSize: 14 } }, user.username || `User #${user.id}`),
+                        H('div', { style: { fontSize: 12, color: '#6b7280' } }, `Blocked ${formatDate(user.blocked_at)}`)
+                      ),
+                      H('button', {
+                        type: 'button',
+                        onClick: () => onUnblock?.(user.id),
+                        style: {
+                          padding: '6px 12px',
+                          background: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: '#374151'
+                        }
+                      }, 'Unblock')
+                    ))
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     function useMessagesPanelState({ user, initialActiveId, onSeenChange, onConversationsUpdate }) {
       const [convos, setConvos] = useState([]);
       const [activeId, setActiveId] = useState(initialActiveId || null);
@@ -1796,6 +2097,10 @@
       const [confirmLocationOpen, setConfirmLocationOpen] = useState(false);
       const [confirmPaypalOpen, setConfirmPaypalOpen] = useState(false);
       const [showConversationOnMobile, setShowConversationOnMobile] = useState(false);
+      const [showSettingsModal, setShowSettingsModal] = useState(false);
+      const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
+      const [blockedUsersList, setBlockedUsersList] = useState([]);
+      const [blockedUsersLoading, setBlockedUsersLoading] = useState(false);
       const mobileInputRef = useRef(null);
 
       useEffect(() => {
@@ -1803,6 +2108,45 @@
           setShowConversationOnMobile(true);
         }
       }, [activeId, isMobile]);
+
+      const handleOpenSettings = useCallback(() => {
+        setShowSettingsModal(true);
+      }, []);
+
+      const handleCloseSettings = useCallback(() => {
+        setShowSettingsModal(false);
+      }, []);
+
+      const handleOpenBlockedUsers = useCallback(async () => {
+        setShowBlockedUsersModal(true);
+        setBlockedUsersLoading(true);
+        try {
+          const result = await api.getBlockedUsers({ silent: true });
+          setBlockedUsersList(result?.blocked_users || []);
+        } catch (err) {
+          console.error('Failed to load blocked users:', err);
+          setBlockedUsersList([]);
+        } finally {
+          setBlockedUsersLoading(false);
+        }
+      }, []);
+
+      const handleCloseBlockedUsers = useCallback(() => {
+        setShowBlockedUsersModal(false);
+      }, []);
+
+      const handleUnblockUser = useCallback(async (userId) => {
+        if (!window.confirm('Unblock this user? You will be able to see their listings and message them again.')) {
+          return;
+        }
+        try {
+          await api.unblockUser(userId);
+          setBlockedUsersList(prev => prev.filter(u => u.id !== userId));
+        } catch (err) {
+          console.error('Failed to unblock user:', err);
+          alert('Failed to unblock user. Please try again.');
+        }
+      }, []);
 
       const handleRequestLocation = useCallback(() => {
         if (!canSendLocation) {
@@ -2080,6 +2424,7 @@
             onSelectConversation: handleSelectConversation,
             onDeleteConversation: deleteConvo,
             onMarkAllRead: markAllAsRead,
+            onOpenSettings: handleOpenSettings,
             className: (isMobile && showConversationOnMobile) ? 'hide-on-mobile' : ''
           })
         ),
@@ -2156,7 +2501,21 @@
         // Moderation modal
         moderationModal,
         // Blocked user modal
-        blockedModal
+        blockedModal,
+        // Settings modal
+        H(MessageSettingsModal, {
+          open: showSettingsModal,
+          onClose: handleCloseSettings,
+          onOpenBlockedUsers: handleOpenBlockedUsers
+        }),
+        // Blocked users list modal
+        H(BlockedUsersListModal, {
+          open: showBlockedUsersModal,
+          onClose: handleCloseBlockedUsers,
+          blockedUsers: blockedUsersList,
+          loading: blockedUsersLoading,
+          onUnblock: handleUnblockUser
+        })
       );
     }
 
