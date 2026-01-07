@@ -1247,6 +1247,22 @@ if (helmet) {
 
 if (compression) app.use(compression());
 
+// Apple App Site Association for Universal Links
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  res.set('Content-Type', 'application/json');
+  res.json({
+    applinks: {
+      apps: [],
+      details: [
+        {
+          appID: 'H9JP539MT9.com.listit.app',
+          paths: ['*']
+        }
+      ]
+    }
+  });
+});
+
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
