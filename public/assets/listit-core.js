@@ -510,6 +510,11 @@
       method: 'GET'  
     }, meta);  
     
+    // Get list of users blocked by the current user  
+    const getBlockedUsers = (meta) => request('/api/me/blocked-users', {  
+      method: 'GET'  
+    }, meta);  
+    
     const adminSearchUsers = (params = {}, meta) => {  
       const searchParams = new URLSearchParams();  
       const q = params.q ?? params.query ?? '';  
@@ -719,6 +724,7 @@
       blockUser,  
       unblockUser,  
       getBlockStatus,  
+      getBlockedUsers,  
       adminSearchUsers,  
       adminGetUser,  
       adminGetUserReports,  
