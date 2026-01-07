@@ -3796,7 +3796,9 @@
           key: 'share',
           className: 'listing-action-icon listing-action-share',
           onClick: async () => {
-            const shareUrl = `${window.location.origin}${window.location.pathname}#listing/${item.id}`;
+            // Use production URL for Capacitor native, otherwise use current origin
+            const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
+            const shareUrl = `${baseUrl}/#listing/${item.id}`;
             const shareData = {
               title: item.title || 'Check out this listing',
               url: shareUrl
@@ -3913,7 +3915,9 @@
           key: 'share',
           className: 'listing-action-icon listing-action-share',
           onClick: async () => {
-            const shareUrl = `${window.location.origin}${window.location.pathname}#listing/${item.id}`;
+            // Use production URL for Capacitor native, otherwise use current origin
+            const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
+            const shareUrl = `${baseUrl}/#listing/${item.id}`;
             const shareData = {
               title: item.title || 'Check out this listing',
               url: shareUrl
