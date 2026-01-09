@@ -3585,7 +3585,8 @@ app.put('/api/me/location-preset', auth, writeLimiter, async (req, res) => {
 });
 
 // Current legal document version (combined TOS + Privacy)
-const CURRENT_LEGAL_VERSION = '1.0';
+// v1.1 - Added zero tolerance policy for objectionable content and abusive users (App Store requirement)
+const CURRENT_LEGAL_VERSION = '1.1';
 
 app.get('/api/legal/status', auth, async (req, res) => {
   try {
@@ -4000,20 +4001,33 @@ Email: support@trovelr.com`;
 function getPrivacyPolicyContent() {
   return `TERMS OF USE & PRIVACY POLICY
 
-Effective Date: December 28, 2025
+Effective Date: January 9, 2026
 
 By using Trovelr, you agree to these terms.
+
+ZERO TOLERANCE POLICY
+
+Trovelr has ZERO TOLERANCE for objectionable content or abusive users. This includes, but is not limited to:
+• Hate speech, discrimination, or content promoting violence
+• Harassment, bullying, threats, or intimidation of any kind
+• Sexually explicit, pornographic, or obscene material
+• Content that exploits or endangers minors
+• Illegal content or content promoting illegal activities
+• Spam, scams, fraud, or deceptive practices
+
+Users who violate this policy will have their content immediately removed and may face permanent account termination without warning. We actively monitor and moderate all user-generated content.
 
 USER CONDUCT
 
 You agree not to:
-• Post inappropriate, offensive, or illegal content
+• Post inappropriate, offensive, objectionable, or illegal content
 • Post advertisements or promotions in place of legitimate listings
 • Harass, spam, or scam other users
 • Create fake listings or misrepresent items
 • Circumvent our content moderation systems
+• Engage in abusive behavior toward other users
 
-Violations may result in account suspension or permanent ban.
+Violations will result in immediate content removal and may result in account suspension or permanent ban.
 
 INFORMATION WE COLLECT
 
@@ -7827,6 +7841,8 @@ app.get('/api/listings/:id/images', async (req, res) => {
 
     `).all(id);
 
+    // Prevent browser/CDN caching so edits show immediately
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(rows.map(r => canonicalAssetUrl(r.image)));
 
   } catch (e) {
@@ -8997,28 +9013,6 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
       const created = await db.prepare('SELECT * FROM conversations WHERE id = ?').get(info.lastInsertRowid);
 
-      // Auto-attach the listing image as the buyer's first message when starting a conversation about a listing
-      if (listing_id && created) {
-        try {
-          const listingImg = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1').get(Number(listing_id));
-          const imgUrl = listingImg?.url || listingImg?.image_data;
-          if (imgUrl) {
-            // Insert a system-generated first message with the listing image
-            const msgInfo = await db.prepare(
-              'INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)'
-            ).run(created.id, req.user.id, '', nowIso());
-            const msgId = msgInfo.lastInsertRowid;
-            // Attach the listing image to this message
-            await db.prepare(
-              'INSERT INTO message_images (message_id, position, image_data, url) VALUES (?, ?, ?, ?)'
-            ).run(msgId, 0, null, canonicalAssetUrl(imgUrl));
-          }
-        } catch (imgErr) {
-          console.warn('[Conversation] Failed to attach listing image to first message:', imgErr?.message || imgErr);
-          // Non-blocking - continue even if image attachment fails
-        }
-      }
-
       const restored = await restoreConversationForUser(created, req.user.id);
 
       return res.json(restored);
@@ -9455,11 +9449,38 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
 
 
 
+    // Check if this is the first message in a conversation about a listing
+    // If so, auto-attach the listing image to this message
+    let listingImageAttached = false;
+    if (convo.listing_id) {
+      const existingMsgs = await db.prepare('SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?').get(id);
+      const msgCount = Number(existingMsgs?.count) || 0;
+      // If this is the first message (count is 1 because we just inserted it)
+      if (msgCount === 1) {
+        try {
+          const listingImg = await db.prepare('SELECT url, image_data FROM listing_images WHERE listing_id = ? ORDER BY position LIMIT 1').get(Number(convo.listing_id));
+          const imgUrl = listingImg?.url || listingImg?.image_data;
+          if (imgUrl) {
+            // Add listing image as the first image (position 0), shift user images
+            await db.prepare(
+              'INSERT INTO message_images (message_id, position, image_data, url) VALUES (?, ?, ?, ?)'
+            ).run(msgId, 0, null, canonicalAssetUrl(imgUrl));
+            listingImageAttached = true;
+          }
+        } catch (imgErr) {
+          console.warn('[DM] Failed to attach listing image to first message:', imgErr?.message || imgErr);
+        }
+      }
+    }
+
     if (processedImages.length) {
       const stmt = db.prepare(`
         INSERT INTO message_images (message_id, position, image_data, url, thumb_url)
         VALUES (?, ?, ?, ?, ?)
       `);
+
+      // Start position at 1 if listing image was attached, otherwise 0
+      const startPosition = listingImageAttached ? 1 : 0;
 
       for (let i = 0; i < processedImages.length; i++) {
         const { url, key } = processedImages[i];
@@ -9475,7 +9496,7 @@ app.post('/api/conversations/:id/messages', auth, writeLimiter, validateBody(val
           }
         }
 
-        await stmt.run(msgId, i, null, url, thumbUrl);
+        await stmt.run(msgId, startPosition + i, null, url, thumbUrl);
       }
     }
 

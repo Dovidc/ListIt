@@ -16,6 +16,11 @@
     }
 
     function isMobileDevice() {
+      // Check screen width first - matches CSS media query breakpoint
+      if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
+        return true;
+      }
+
       const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
 
       if (/(iphone|ipod|ipad|android|windows phone|iemobile|mobile)/.test(ua)) {

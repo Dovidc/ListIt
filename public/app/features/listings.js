@@ -899,6 +899,14 @@
         }
       }, [myListings, pagination]);
 
+      // Remove all listings from a specific user (used when blocking)
+      const removeUserListings = useCallback((userId) => {
+        if (!userId) return;
+        pagination.setListings(prev =>
+          Array.isArray(prev) ? prev.filter(it => it.user_id !== userId) : prev
+        );
+      }, [pagination]);
+
       return {
         // Search
         query,
@@ -924,6 +932,7 @@
         addListing,
         toggleSold,
         ensureCover: coverCache.ensureCover,
+        removeUserListings,
 
         // Refs
         sentinelRef,

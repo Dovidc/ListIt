@@ -452,7 +452,8 @@
         uploadFileDraft,
         uploadFilesForListing,
         useFilePreviews,
-        AI_IMAGE_LIMIT
+        AI_IMAGE_LIMIT,
+        listingImageCache
       },
       formatting: {
         price

@@ -1393,6 +1393,8 @@
 
             const updated = await api.updateListing(draft.id, payload);
             if (files.length) await uploadFilesForListing(draft.id, files);
+            // Clear the image cache for this listing so fresh images are fetched
+            listingImageCache.delete(draft.id);
             // Pass updated listing but mark as update (not new) so toast doesn't show
             onSaved?.(updated, { isUpdate: true });
             return;
@@ -3579,7 +3581,8 @@
       showDistance = false,
       viewContext = 'grid',
       isSaved = false,
-      onToggleSave
+      onToggleSave,
+      onUserBlocked
     }) {
 
       // Use full-size image for detail view, not thumbnail
@@ -4336,7 +4339,9 @@
             onViewSeller?.(item.user_id, item.owner_username);
           },
           onMessage: () => onMessage?.(item),
-          onSupporterClick
+          onSupporterClick,
+          currentUser: user,
+          onUserBlocked
         }),
 
         H(ListingGalleryModal, {
@@ -4392,7 +4397,10 @@
     };
 
     // --- Profile Preview Modal (Discord-like) ---
-    function ProfilePreviewModal({ sellerInfo, activeListingCount, soldListingCount, onClose, onVisitProfile, onMessage, onSupporterClick }) {
+    function ProfilePreviewModal({ sellerInfo, activeListingCount, soldListingCount, onClose, onVisitProfile, onMessage, onSupporterClick, currentUser, onUserBlocked }) {
+      const [isBlocked, setIsBlocked] = useState(false);
+      const [blockLoading, setBlockLoading] = useState(false);
+
       // Add modal-open class to body when modal opens (hides mobile tab bar)
       useEffect(() => {
         if (sellerInfo) {
@@ -4401,7 +4409,48 @@
         }
       }, [sellerInfo]);
 
+      // Check block status when modal opens
+      useEffect(() => {
+        if (!sellerInfo?.id || !currentUser?.id || !api) return;
+        if (sellerInfo.id === currentUser.id) return; // Can't block yourself
+
+        (async () => {
+          try {
+            const status = await api.getBlockStatus(sellerInfo.id, { silent: true });
+            setIsBlocked(status?.i_blocked_them || false);
+          } catch (err) {
+            console.warn('Failed to check block status:', err);
+          }
+        })();
+      }, [sellerInfo?.id, currentUser?.id]);
+
+      const handleBlockToggle = async () => {
+        if (!sellerInfo?.id || !currentUser?.id || blockLoading) return;
+        if (!api || typeof api.blockUser !== 'function') return;
+
+        setBlockLoading(true);
+        try {
+          if (isBlocked) {
+            await api.unblockUser(sellerInfo.id);
+            setIsBlocked(false);
+          } else {
+            await api.blockUser(sellerInfo.id);
+            setIsBlocked(true);
+            // Remove blocked user's listings from feed and close modal
+            onUserBlocked?.(sellerInfo.id);
+            onClose?.();
+          }
+        } catch (err) {
+          console.error('Failed to toggle block:', err);
+          alert('Failed to update block status. Please try again.');
+        } finally {
+          setBlockLoading(false);
+        }
+      };
+
       if (!sellerInfo) return null;
+
+      const canBlock = currentUser && currentUser.id !== sellerInfo.id;
 
       const sellerJoinedText = sellerInfo.created_at ? formatElapsedSince(sellerInfo.created_at) : null;
       const sellerSupporter = sellerInfo.supporter_badge
@@ -4871,8 +4920,7 @@
                 H('div', {
                   style: {
                     display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 12
+                    gap: 10
                   }
                 },
                   H('button', {
@@ -4882,8 +4930,8 @@
                       onClose?.();
                     },
                     style: {
-                      flex: '1 1 150px',
-                      padding: '12px 16px',
+                      flex: 1,
+                      padding: '12px 14px',
                       borderRadius: 14,
                       border: 'none',
                       background: '#3b82f6',
@@ -4898,8 +4946,8 @@
                     type: 'button',
                     onClick: () => onVisitProfile?.(),
                     style: {
-                      flex: '1 1 150px',
-                      padding: '12px 16px',
+                      flex: 1,
+                      padding: '12px 14px',
                       borderRadius: 14,
                       border: '1px solid rgba(148, 163, 184, 0.4)',
                       background: 'rgba(15, 23, 42, 0.5)',
@@ -4908,7 +4956,25 @@
                       fontWeight: 700,
                       cursor: 'pointer'
                     }
-                  }, 'View profile')
+                  }, 'Profile'),
+                  // Block button - only show if user can block
+                  canBlock && H('button', {
+                    type: 'button',
+                    onClick: handleBlockToggle,
+                    disabled: blockLoading,
+                    style: {
+                      flex: 1,
+                      padding: '12px 14px',
+                      borderRadius: 14,
+                      border: isBlocked ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+                      background: isBlocked ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                      color: isBlocked ? '#4ade80' : '#f87171',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: blockLoading ? 'wait' : 'pointer',
+                      opacity: blockLoading ? 0.6 : 1
+                    }
+                  }, blockLoading ? '...' : (isBlocked ? 'Unblock' : 'Block'))
                 )
               )
             )

@@ -461,6 +461,8 @@
     
     const getListingImages = (id, meta) => request(`/api/listings/${id}/images`, { method: 'GET' }, meta);  
     
+    const getListing = (id, meta) => request(`/api/listing/${id}`, { method: 'GET' }, meta);  
+    
     const getCoversBatch = (ids = [], meta) => {  
       const normalized = Array.from(new Set((ids || []).map((value) => Number(value)).filter((value) => Number.isFinite(value)))).slice(0, 200);  
       if (!normalized.length) return Promise.resolve([]);  
@@ -716,6 +718,7 @@
       sendMessage,  
       deleteConversation,  
       getListingImages,  
+      getListing,  
       getCoversBatch,  
       aiAnalyze,  
       reverseGeocode,  

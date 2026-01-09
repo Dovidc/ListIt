@@ -516,7 +516,8 @@
         cityOptions,
         items,
         mine,
-        ensureCover
+        ensureCover,
+        removeUserListings
       } = listings;
 
       // UI state - managed locally in app-shell, not in the listings hook
@@ -2181,7 +2182,12 @@
                             onToggleSold: mineById[selectedListing?.id] ? toggleSoldSimple : undefined,
                             onSupporterClick: handleSupporterBadgeClick,
                             isSaved: !!savedListingIds[selectedListing?.id],
-                            onToggleSave: toggleSaveListing
+                            onToggleSave: toggleSaveListing,
+                            onUserBlocked: (userId) => {
+                              removeUserListings(userId);
+                              setSelectedListing(null);
+                              clearListingHash();
+                            }
                           }
                         })
                       ),

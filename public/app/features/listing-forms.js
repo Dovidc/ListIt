@@ -44,6 +44,7 @@
       uploadFilesForListing,
       useFilePreviews,
       AI_IMAGE_LIMIT,
+      listingImageCache,
       // Optional: background upload service for native apps
       backgroundUploadService
     } = uploads;
@@ -1310,6 +1311,8 @@
             }
             const updated = await api.updateListing(draft.id, payload);
             if (files.length) await uploadFilesForListing(draft.id, files);
+            // Clear the image cache for this listing so fresh images are fetched
+            if (listingImageCache?.delete) listingImageCache.delete(draft.id);
             // Pass updated listing but mark as update (not new) so toast doesn't show
             onSaved?.(updated, { isUpdate: true });
             return;
