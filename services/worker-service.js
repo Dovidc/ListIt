@@ -12,6 +12,7 @@
 const { TOPICS } = require('../lib/message-bus');
 const db = require('../db-wrapper');
 const { createWorkerQueue } = require('../lib/worker-queue');
+const { getRedisClient } = require('../lib/redis-client');
 const {
   SUPPORTER_BADGE_CODE,
   SUPPORTER_BADGE_CODE_PREMIUM
@@ -34,14 +35,16 @@ class WorkerService {
   constructor(config, messageBus) {
     this.config = config;
     this.messageBus = messageBus;
+    this.environment = config?.NODE_ENV || process.env.NODE_ENV || 'development';
 
     // Job queue for resilience (Redis-backed when available)
-    this.jobQueue = createWorkerQueue({
+    this.queueOptions = {
       prefix: process.env.WORKER_QUEUE_PREFIX || 'listit:jobs',
       timeoutMs: config.WORKER_JOB_TIMEOUT_MS,
       retryDelayMs: config.WORKER_RETRY_DELAY_MS,
       concurrency: config.WORKER_CONCURRENCY || config.WORKER_MAX_CONCURRENCY
-    });
+    };
+    this.jobQueue = null;
     this.activeJobs = new Set();
     this.completedJobs = new Map();
 
@@ -77,6 +80,55 @@ class WorkerService {
     this.refreshQueueDepth = this.refreshQueueDepth.bind(this);
   }
 
+  async validateRedisReadiness() {
+    const env = (process.env.NODE_ENV || 'development');
+    const isNonDev = env !== 'development';
+    if (!isNonDev) return;
+
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      throw new Error('REDIS_URL must be set outside development for durable worker queues.');
+    }
+
+    const client = getRedisClient();
+    if (!client) {
+      throw new Error('Redis client unavailable; install ioredis and configure REDIS_URL.');
+    }
+
+    try {
+      const response = await client.ping();
+      if (response !== 'PONG') {
+        throw new Error(`Unexpected Redis ping response: ${response}`);
+      }
+    } catch (err) {
+      throw new Error(`Redis ping failed: ${err?.message || err}`);
+    }
+  }
+
+  initializeJobQueue() {
+    const redisUrl = process.env.REDIS_URL || null;
+    try {
+      this.jobQueue = createWorkerQueue(this.queueOptions);
+    } catch (err) {
+      const message = err?.message || err;
+      console.error(`[Worker] Failed to initialize worker queue (redisUrl=${redisUrl || 'unset'}, prefix=${this.queueOptions.prefix}): ${message}`);
+      throw err;
+    }
+  }
+
+  async ensureJobQueueInitialized() {
+    if (this.jobQueue) return;
+
+    const isTestMode = this.config?.IS_TEST || this.environment === 'test';
+    const isDevelopment = this.environment === 'development';
+
+    if (!isDevelopment && !isTestMode) {
+      throw new Error('Worker queue not initialized; start the service before enqueueing jobs.');
+    }
+
+    this.initializeJobQueue();
+  }
+
   /**
    * Calculate months since a given date (for supporter badge crediting)
    * Returns 0 if date is null/invalid
@@ -99,6 +151,13 @@ class WorkerService {
    */
   async start() {
     console.log('[Worker] Service starting...');
+
+    const redisUrl = process.env.REDIS_URL || null;
+    console.log(`[Worker] Queue configuration: prefix=${this.queueOptions.prefix}, redisUrl=${redisUrl || 'none (in-memory)'}`);
+
+    await this.validateRedisReadiness();
+
+    this.initializeJobQueue();
 
     // Subscribe to relevant topics
     this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
@@ -149,7 +208,9 @@ class WorkerService {
    * Stop the worker service
    */
   async stop() {
-    await this.jobQueue.shutdown();
+    if (this.jobQueue) {
+      await this.jobQueue.shutdown();
+    }
 
     console.log('[Worker] Service stopped');
   }
@@ -158,6 +219,7 @@ class WorkerService {
    * Enqueue a job for processing
    */
   async enqueueJob(job) {
+    await this.ensureJobQueueInitialized();
     const jobId = this.buildJobId(job);
 
     const wrappedJob = {
@@ -1320,6 +1382,13 @@ class WorkerService {
         averageDurationMs: avgDuration
       }
     };
+
+    if (!this.jobQueue) {
+      return {
+        queueLength: null,
+        ...summary
+      };
+    }
 
     return this.jobQueue.size().then((queued) => ({
       queueLength: queued,

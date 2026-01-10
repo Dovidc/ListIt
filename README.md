@@ -12,6 +12,10 @@ Environment variables explicitly set in your shell always take precedence over t
 
 The API requires a PostgreSQL database. Set `DATABASE_URL` in your `.env.local` or `.env` file to point at the connection string you want to use locally (for example, `postgres://user:pass@localhost:5432/listit`). SQLite is no longer supported. TLS is enforced by default; if you are connecting to a local instance without TLS, set `DATABASE_SSL=false` for development only. If your production database uses a self-signed certificate, set `DATABASE_SSL_MODE=self-signed` (or `DATABASE_SSL_REJECT_UNAUTHORIZED=false`) to permit the connection while still using TLS. Pool sizing can be tuned with `DB_POOL_MIN`, `DB_POOL_MAX`, `DB_IDLE_TIMEOUT_MS`, and `DB_CONNECTION_TIMEOUT_MS`.
 
+## Redis and worker queue durability
+
+ListIt’s background jobs rely on Redis for durability outside local development. Set `REDIS_URL` (and optionally `WORKER_QUEUE_PREFIX`) in your environment; production and staging deployments must provide a reachable Redis instance so queued work survives process restarts. In development the worker falls back to an in-memory queue for convenience, but this provides no persistence or cross-process delivery guarantees.
+
 ## Capacitor + iOS wrapper
 
 The repository is preconfigured to bundle the static assets under `public/` into a Capacitor shell for native distribution.
