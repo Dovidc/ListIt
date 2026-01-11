@@ -1159,6 +1159,12 @@
 
       const hasDom = typeof document !== 'undefined' && document.body;
 
+      // Quick response options
+      const quickResponses = [
+        'Is this available?',
+        "What's the condition?"
+      ];
+
       // Focus input when modal opens
       useEffect(() => {
         if (open && inputRef.current) {
@@ -1196,6 +1202,11 @@
         }
       };
 
+      const handleQuickResponse = (text) => {
+        setMessage(text);
+        inputRef.current?.focus();
+      };
+
       const handleKeyDown = (evt) => {
         if (evt.key === 'Enter' && !evt.shiftKey) {
           evt.preventDefault();
@@ -1205,6 +1216,18 @@
 
       const listingTitle = listing.title || 'Item';
       const listingPrice = listing.price != null ? `$${Number(listing.price).toFixed(0)}` : '';
+      const sellerUsername = listing.owner_username || listing.username || '';
+
+      // Paper plane icon for send button
+      const SendIcon = () => H('svg', {
+        width: 16,
+        height: 16,
+        viewBox: '0 0 24 24',
+        fill: 'currentColor',
+        style: { marginRight: 6 }
+      },
+        H('path', { d: 'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z' })
+      );
 
       return ReactDOM.createPortal(
         H('div', {
@@ -1215,29 +1238,11 @@
           H('div', { className: 'modal-inner quick-message-modal' },
             // Header with listing info
             H('div', { className: 'quick-message-modal__header' },
-              // Listing details (no image - keep modal minimal)
               H('div', { className: 'quick-message-modal__listing-info' },
                 H('div', { className: 'quick-message-modal__title' }, listingTitle),
-                listingPrice && H('div', { className: 'quick-message-modal__price' }, listingPrice)
-              ),
-              // Close button
-              H('button', {
-                type: 'button',
-                onClick: onClose,
-                className: 'quick-message-modal__close'
-              },
-                H('svg', {
-                  width: 20,
-                  height: 20,
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: 2,
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round'
-                },
-                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
-                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                listingPrice && H('div', { className: 'quick-message-modal__price' }, listingPrice),
+                sellerUsername && H('div', { className: 'quick-message-modal__seller' },
+                  'Message @', sellerUsername
                 )
               )
             ),
@@ -1253,12 +1258,28 @@
                 rows: 3,
                 className: 'quick-message-modal__input'
               }),
+              // Send button
               H('button', {
                 type: 'button',
                 onClick: handleSend,
                 disabled: !message.trim() || sending,
                 className: 'quick-message-modal__send' + ((!message.trim() || sending) ? ' disabled' : '')
-              }, sending ? 'Sending...' : 'Send Message')
+              },
+                H(SendIcon),
+                sending ? 'Sending...' : 'Send Message'
+              ),
+              // Quick response chips
+              H('div', { className: 'quick-message-modal__chips' },
+                quickResponses.map((text, i) =>
+                  H('button', {
+                    key: i,
+                    type: 'button',
+                    className: 'quick-message-modal__chip',
+                    onClick: () => handleQuickResponse(text),
+                    disabled: sending
+                  }, text)
+                )
+              )
             )
           )
         ),
