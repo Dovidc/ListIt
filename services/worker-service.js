@@ -67,6 +67,9 @@ class WorkerService {
     this.pushService = pushServiceModule;
     this.iosPushService = iosPushServiceModule;
 
+    // Message bus subscriptions (for cleanup on stop)
+    this.subscriptions = [];
+
     // Bind methods
     this.start = this.start.bind(this);
     this.stop = this.stop.bind(this);
@@ -100,38 +103,54 @@ class WorkerService {
   async start() {
     console.log('[Worker] Service starting...');
 
-    // Subscribe to relevant topics
-    this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
-      await this.handleStripeWebhook(event);
-    });
+    // Subscribe to relevant topics (store unsubscribe functions for cleanup)
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.STRIPE_WEBHOOK, async (event) => {
+        await this.handleStripeWebhook(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.APPLE_WEBHOOK, async (event) => {
-      await this.handleAppleWebhook(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.APPLE_WEBHOOK, async (event) => {
+        await this.handleAppleWebhook(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.USER_REGISTERED, async (event) => {
-      await this.handleUserRegistered(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.USER_REGISTERED, async (event) => {
+        await this.handleUserRegistered(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.USER_VERIFIED, async (event) => {
-      await this.handleUserVerified(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.USER_VERIFIED, async (event) => {
+        await this.handleUserVerified(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.PUSH_SEND, async (event) => {
-      await this.handlePushNotification(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.PUSH_SEND, async (event) => {
+        await this.handlePushNotification(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.MESSAGE_SENT, async (event) => {
-      await this.handleMessageSent(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.MESSAGE_SENT, async (event) => {
+        await this.handleMessageSent(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.USER_PASSWORD_RESET, async (event) => {
-      await this.handlePasswordResetRequested(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.USER_PASSWORD_RESET, async (event) => {
+        await this.handlePasswordResetRequested(event);
+      })
+    );
 
-    this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
-      await this.handleNearbyListing(event);
-    });
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
+        await this.handleNearbyListing(event);
+      })
+    );
 
     // Start job processor
     this.jobQueue.process(this._handleQueueJob, { concurrency: this.maxConcurrency });
@@ -149,6 +168,26 @@ class WorkerService {
    * Stop the worker service
    */
   async stop() {
+    // Unsubscribe from message bus topics
+    if (Array.isArray(this.subscriptions)) {
+      this.subscriptions.forEach((unsubscribe) => {
+        if (typeof unsubscribe === 'function') {
+          try {
+            unsubscribe();
+          } catch (err) {
+            console.warn('[Worker] Error unsubscribing:', err?.message || err);
+          }
+        }
+      });
+      this.subscriptions = [];
+    }
+
+    // Remove event listeners to prevent memory leak on restart
+    if (typeof this.jobQueue.removeListener === 'function') {
+      this.jobQueue.removeListener('completed', this._trackCompletion);
+      this.jobQueue.removeListener('failed', this._trackFailure);
+    }
+
     await this.jobQueue.shutdown();
 
     console.log('[Worker] Service stopped');
