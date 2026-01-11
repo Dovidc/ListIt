@@ -1145,6 +1145,134 @@
       );
     });
 
+    // Quick Message Modal - for sending first message about a listing
+    const QuickMessageModal = memo(function QuickMessageModal({
+      open,
+      onClose,
+      listing,
+      conversationId,
+      onSent
+    }) {
+      const [message, setMessage] = useState('');
+      const [sending, setSending] = useState(false);
+      const inputRef = useRef(null);
+
+      const hasDom = typeof document !== 'undefined' && document.body;
+
+      // Focus input when modal opens
+      useEffect(() => {
+        if (open && inputRef.current) {
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }
+        if (!open) {
+          setMessage('');
+          setSending(false);
+        }
+      }, [open]);
+
+      if (!open || !hasDom || !listing || !conversationId) {
+        return null;
+      }
+
+      const handleOverlayClick = (evt) => {
+        if (evt.target && evt.target.classList && evt.target.classList.contains('modal')) {
+          onClose?.();
+        }
+      };
+
+      const handleSend = async () => {
+        const text = message.trim();
+        if (!text || sending) return;
+
+        setSending(true);
+        try {
+          await api.sendMessage(conversationId, text, []);
+          onSent?.();
+          onClose?.();
+        } catch (err) {
+          console.error('Failed to send message:', err);
+          alert(err?.message || 'Failed to send message');
+          setSending(false);
+        }
+      };
+
+      const handleKeyDown = (evt) => {
+        if (evt.key === 'Enter' && !evt.shiftKey) {
+          evt.preventDefault();
+          handleSend();
+        }
+      };
+
+      const listingImage = listing.cover_url || listing.images?.[0]?.url || listing.images?.[0];
+      const listingTitle = listing.title || 'Item';
+      const listingPrice = listing.price != null ? `$${Number(listing.price).toFixed(0)}` : '';
+
+      return ReactDOM.createPortal(
+        H('div', {
+          className: 'modal open',
+          onClick: handleOverlayClick,
+          style: { zIndex: 1100 }
+        },
+          H('div', { className: 'modal-inner quick-message-modal' },
+            // Header with listing info
+            H('div', { className: 'quick-message-modal__header' },
+              // Listing image
+              listingImage && H('img', {
+                src: listingImage,
+                alt: listingTitle,
+                className: 'quick-message-modal__image'
+              }),
+              // Listing details
+              H('div', { className: 'quick-message-modal__listing-info' },
+                H('div', { className: 'quick-message-modal__title' }, listingTitle),
+                listingPrice && H('div', { className: 'quick-message-modal__price' }, listingPrice)
+              ),
+              // Close button
+              H('button', {
+                type: 'button',
+                onClick: onClose,
+                className: 'quick-message-modal__close'
+              },
+                H('svg', {
+                  width: 20,
+                  height: 20,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round'
+                },
+                  H('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+                  H('line', { x1: 6, y1: 6, x2: 18, y2: 18 })
+                )
+              )
+            ),
+            // Message input area
+            H('div', { className: 'quick-message-modal__body' },
+              H('textarea', {
+                ref: inputRef,
+                value: message,
+                onChange: (e) => setMessage(e.target.value),
+                onKeyDown: handleKeyDown,
+                placeholder: 'Write a message...',
+                disabled: sending,
+                rows: 3,
+                className: 'quick-message-modal__input'
+              }),
+              H('button', {
+                type: 'button',
+                onClick: handleSend,
+                disabled: !message.trim() || sending,
+                className: 'quick-message-modal__send' + ((!message.trim() || sending) ? ' disabled' : '')
+              }, sending ? 'Sending...' : 'Send Message')
+            )
+          )
+        ),
+        document.body
+      );
+    });
+
     // Settings icon (cog/gear)
     function SettingsIcon({ size = 20, stroke = '#6b7280', style, ...rest } = {}) {
       return H('svg', Object.assign({
@@ -1950,26 +2078,41 @@
       onAuthClick
     }) {
       const [showBlockedModal, setShowBlockedModal] = useState(false);
+      const [quickMessageState, setQuickMessageState] = useState({
+        open: false,
+        listing: null,
+        conversationId: null
+      });
 
       const startMessage = useCallback(async (item) => {
         if (!item) return;
         if (!user) { onAuthClick?.('login'); return; }
         if (user.id === item?.user_id) { alert('This is your listing.'); return; }
 
-        if (typeof onSellerCleared === 'function') {
-          onSellerCleared();
-        }
-
         try {
           const convo = await api.ensureConversation({
             with_user_id: item.user_id,
             listing_id: item.id
           });
-          if (typeof onConversationOpened === 'function') {
-            onConversationOpened(convo?.id ?? null);
-          }
-          if (typeof onTabChange === 'function') {
-            onTabChange('messages');
+
+          if (convo?.isNew) {
+            // New conversation - show quick message modal
+            setQuickMessageState({
+              open: true,
+              listing: item,
+              conversationId: convo?.id
+            });
+          } else {
+            // Existing conversation - navigate to messages tab
+            if (typeof onSellerCleared === 'function') {
+              onSellerCleared();
+            }
+            if (typeof onConversationOpened === 'function') {
+              onConversationOpened(convo?.id ?? null);
+            }
+            if (typeof onTabChange === 'function') {
+              onTabChange('messages');
+            }
           }
         } catch (err) {
           const msg = err?.message || String(err);
@@ -1980,6 +2123,10 @@
           }
         }
       }, [user, onSellerCleared, onConversationOpened, onTabChange, onAuthClick, setShowBlockedModal]);
+
+      const closeQuickMessage = useCallback(() => {
+        setQuickMessageState({ open: false, listing: null, conversationId: null });
+      }, []);
 
       const startDirectMessage = useCallback(async (userId) => {
         if (!user) { onAuthClick?.('login'); return; }
@@ -2043,11 +2190,25 @@
         onClose: () => setShowBlockedModal(false)
       });
 
+      const quickMessageModal = H(QuickMessageModal, {
+        open: quickMessageState.open,
+        onClose: closeQuickMessage,
+        listing: quickMessageState.listing,
+        conversationId: quickMessageState.conversationId,
+        onSent: () => {
+          // Optionally recompute unread after sending
+          if (typeof recomputeUnread === 'function') {
+            setTimeout(() => recomputeUnread(), 500);
+          }
+        }
+      });
+
       return {
         startMessage,
         startDirectMessage,
         handleSeen,
-        blockedUserModal
+        blockedUserModal,
+        quickMessageModal
       };
     }
 

@@ -9050,7 +9050,7 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
       const restored = await restoreConversationForUser(created, req.user.id);
 
-      return res.json(restored);
+      return res.json({ ...restored, isNew: true });
 
     } catch {
 
@@ -9060,7 +9060,13 @@ app.post('/api/conversations', auth, writeLimiter, async (req, res) => {
 
       const restored = await restoreConversationForUser(row, req.user.id);
 
-      return res.json(restored);
+      // Check if conversation has any messages - if not, treat as new (show modal)
+      const messageCount = row?.id
+        ? await db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?').get(row.id)
+        : { cnt: 0 };
+      const hasMessages = (messageCount?.cnt || 0) > 0;
+
+      return res.json({ ...restored, isNew: !hasMessages });
 
     }
 

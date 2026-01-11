@@ -2200,6 +2200,151 @@ img {
   color: var(--text-muted, #a9b1d6);
 }
 
+/* Quick Message Modal */
+.modal-inner.quick-message-modal {
+  max-width: 320px;
+  width: min(320px, 90vw);
+  padding: 0;
+  background: #fff;
+  color: #111;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-message-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.quick-message-modal__image {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.quick-message-modal__listing-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.quick-message-modal__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-message-modal__price {
+  font-size: 14px;
+  font-weight: 500;
+  color: #059669;
+  margin-top: 2px;
+}
+
+.quick-message-modal__close {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.quick-message-modal__body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quick-message-modal__input {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: #fff;
+  color: #111;
+}
+
+.quick-message-modal__input:focus {
+  border-color: #2563eb;
+}
+
+.quick-message-modal__send {
+  width: 100%;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.quick-message-modal__send:hover:not(.disabled) {
+  background: #1d4ed8;
+}
+
+.quick-message-modal__send.disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Quick Message Modal - Dark Mode */
+[data-theme="dark"] .modal-inner.quick-message-modal {
+  background: var(--bg-secondary, #24283b);
+  color: var(--text-primary, #c0caf5);
+}
+
+[data-theme="dark"] .quick-message-modal__header {
+  background: var(--bg-primary, #1a1b26);
+  border-bottom-color: var(--border-color, #3b4261);
+}
+
+[data-theme="dark"] .quick-message-modal__title {
+  color: var(--text-primary, #c0caf5);
+}
+
+[data-theme="dark"] .quick-message-modal__price {
+  color: #34d399;
+}
+
+[data-theme="dark"] .quick-message-modal__close {
+  color: var(--text-muted, #a9b1d6);
+}
+
+[data-theme="dark"] .quick-message-modal__input {
+  background: var(--bg-primary, #1a1b26);
+  border-color: var(--border-color, #3b4261);
+  color: var(--text-primary, #c0caf5);
+}
+
+[data-theme="dark"] .quick-message-modal__input::placeholder {
+  color: var(--text-muted, #a9b1d6);
+}
+
+[data-theme="dark"] .quick-message-modal__input:focus {
+  border-color: #3b82f6;
+}
+
 /* Custom Dropdown */
 .custom-dropdown {
   position: relative;
