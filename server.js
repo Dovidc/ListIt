@@ -8852,12 +8852,47 @@ async function runAIAnalysis({ images, hint }) {
     }
   }
 
-  const resp = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    temperature: 0.2,
-    messages: [{ role: 'user', content }],
-    response_format: { type: 'json_object' }
-  });
+  // Retry logic for transient errors (timeouts, rate limits, network issues)
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+  let resp = null;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      resp = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [{ role: 'user', content }],
+        response_format: { type: 'json_object' }
+      });
+      break; // Success, exit retry loop
+    } catch (err) {
+      lastError = err;
+      const errMsg = err?.message || '';
+      const errStatus = err?.status || err?.response?.status;
+
+      // Check if error is retryable
+      const isTimeout = errMsg.toLowerCase().includes('timeout');
+      const isRateLimit = errStatus === 429;
+      const isServerError = errStatus >= 500 && errStatus < 600;
+      const isNetworkError = errMsg.includes('ECONNRESET') || errMsg.includes('ETIMEDOUT') || errMsg.includes('network');
+
+      const isRetryable = isTimeout || isRateLimit || isServerError || isNetworkError;
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        console.warn(`[AI] Attempt ${attempt} failed (retryable): ${errMsg}. Retrying in ${RETRY_DELAY_MS}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      } else {
+        // Non-retryable error or max retries reached
+        throw err;
+      }
+    }
+  }
+
+  if (!resp) {
+    throw lastError || new Error('AI analysis failed after retries');
+  }
 
   const txt = resp.choices?.[0]?.message?.content || '{}';
   let parsed = {};
