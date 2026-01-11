@@ -2222,14 +2222,6 @@ img {
   background: #f9fafb;
 }
 
-.quick-message-modal__image {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
 .quick-message-modal__listing-info {
   flex: 1;
   min-width: 0;

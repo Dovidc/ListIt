@@ -1203,7 +1203,6 @@
         }
       };
 
-      const listingImage = listing.cover_url || listing.images?.[0]?.url || listing.images?.[0];
       const listingTitle = listing.title || 'Item';
       const listingPrice = listing.price != null ? `$${Number(listing.price).toFixed(0)}` : '';
 
@@ -1216,13 +1215,7 @@
           H('div', { className: 'modal-inner quick-message-modal' },
             // Header with listing info
             H('div', { className: 'quick-message-modal__header' },
-              // Listing image
-              listingImage && H('img', {
-                src: listingImage,
-                alt: listingTitle,
-                className: 'quick-message-modal__image'
-              }),
-              // Listing details
+              // Listing details (no image - keep modal minimal)
               H('div', { className: 'quick-message-modal__listing-info' },
                 H('div', { className: 'quick-message-modal__title' }, listingTitle),
                 listingPrice && H('div', { className: 'quick-message-modal__price' }, listingPrice)

@@ -1850,7 +1850,9 @@
                       user,
                       onMessage: startMessage,
                       onAdminDelete: handleAdminDelete,
-                      onSupporterClick: handleSupporterBadgeClick
+                      onSupporterClick: handleSupporterBadgeClick,
+                      onToggleSave: toggleSaveListing,
+                      savedListingIds
                     })
                     : H(React.Fragment, null,
                       tab === 'browse' && H(React.Fragment, null,

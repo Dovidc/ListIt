@@ -4984,7 +4984,7 @@
       );
     }
 
-    function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete, onSupporterClick }) {
+    function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete, onSupporterClick, onToggleSave, savedListingIds = {} }) {
       const [listings, setListings] = useState([]);
       const [loading, setLoading] = useState(true);
       const [selectedListing, setSelectedListing] = useState(null);
@@ -5291,7 +5291,8 @@
               user,
               canEdit: false,
               onMessage: (listing) => {
-                setSelectedListing(null);
+                // Don't close listing modal - quick message modal will appear over it
+                // for new conversations, or startMessage will navigate for existing ones
                 onMessage?.(listing);
               },
               onAdminDelete: (id) => {
@@ -5301,7 +5302,9 @@
               showDistance: false,
               onViewSeller: null,
               onSupporterClick,
-              viewContext: 'modal'
+              viewContext: 'modal',
+              isSaved: !!savedListingIds[selectedListing?.id],
+              onToggleSave
             })
           )
         )
