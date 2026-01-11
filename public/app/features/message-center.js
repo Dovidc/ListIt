@@ -63,6 +63,13 @@
         tabRef.current = tab;
       }, [tab]);
 
+      // Clear active conversation when navigating away from messages tab
+      useEffect(() => {
+        if (tab !== 'messages') {
+          setActiveConvoId(null);
+        }
+      }, [tab]);
+
       useEffect(() => {
         activeConvoIdRef.current = activeConvoId;
       }, [activeConvoId]);
