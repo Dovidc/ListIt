@@ -27,6 +27,7 @@
     "@capacitor/camera": "^6.1.3",
     "@capacitor/core": "^6.1.2",
     "@capacitor/geolocation": "^6.1.1",
+    "@capacitor/keyboard": "^6.0.4",
     "@capacitor/push-notifications": "^6.0.4",
     "@capacitor/status-bar": "^6.0.3",
     "@sendgrid/mail": "^8.1.2",

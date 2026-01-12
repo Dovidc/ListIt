@@ -2578,6 +2578,16 @@
             } catch (e) {
               console.log('StatusBar error:', e);
             }
+
+            // Hide keyboard accessory bar (the bar with arrows above the keyboard)
+            try {
+              const { Keyboard } = window.Capacitor.Plugins;
+              if (Keyboard && typeof Keyboard.setAccessoryBarVisible === 'function') {
+                Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
+              }
+            } catch (e) {
+              console.log('Keyboard plugin error:', e);
+            }
           }
         } catch (e) {}
       }, []);

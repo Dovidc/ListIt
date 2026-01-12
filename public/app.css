@@ -2319,12 +2319,16 @@ img {
 
 .quick-message-modal__chips {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 4px;
 }
 
 .quick-message-modal__chip {
+  flex: 0 0 auto;
+  display: inline-block;
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 500;
@@ -2334,6 +2338,7 @@ img {
   border-radius: 20px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
 
 .quick-message-modal__chip:hover:not(:disabled) {
