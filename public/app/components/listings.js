@@ -5103,7 +5103,7 @@
       // Report modal (rendered outside the portal)
       showReportModal && H(ReportSellerModal, {
         open: true,
-        listing: { owner_id: sellerInfo.id, owner_username: sellerInfo.username },
+        listing: { user_id: sellerInfo.id, owner_username: sellerInfo.username },
         onClose: () => setShowReportModal(false),
         onReported: () => {
           setShowReportModal(false);
