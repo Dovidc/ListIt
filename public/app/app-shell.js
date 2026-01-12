@@ -2582,8 +2582,14 @@
             // Hide keyboard accessory bar (the bar with arrows above the keyboard)
             try {
               const { Keyboard } = window.Capacitor.Plugins;
+              console.log('[Keyboard] Plugin available:', !!Keyboard);
+              console.log('[Keyboard] Methods:', Keyboard ? Object.keys(Keyboard) : 'none');
               if (Keyboard && typeof Keyboard.setAccessoryBarVisible === 'function') {
-                Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
+                Keyboard.setAccessoryBarVisible({ isVisible: false })
+                  .then(() => console.log('[Keyboard] Accessory bar hidden successfully'))
+                  .catch((err) => console.log('[Keyboard] setAccessoryBarVisible error:', err));
+              } else {
+                console.log('[Keyboard] setAccessoryBarVisible not available');
               }
             } catch (e) {
               console.log('Keyboard plugin error:', e);
