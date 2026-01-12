@@ -578,41 +578,19 @@
             // Blocked Users button
             H('button', {
               type: 'button',
+              className: 'blocked-users-btn',
               onClick: () => {
                 onClose?.();
                 onOpenBlockedUsers?.();
-              },
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '12px 16px',
-                background: 'rgba(254, 242, 242, 0.5)',
-                border: '1px solid rgba(254, 202, 202, 0.5)',
-                borderRadius: 10,
-                cursor: 'pointer',
-                textAlign: 'left',
-                width: '100%'
               }
             },
-              H('div', {
-                style: {
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  background: 'rgba(254, 226, 226, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }
-              },
+              H('div', { className: 'blocked-users-btn__icon' },
                 H('svg', {
                   width: 18,
                   height: 18,
                   viewBox: '0 0 24 24',
                   fill: 'none',
-                  stroke: '#dc2626',
+                  stroke: 'currentColor',
                   strokeWidth: 2,
                   strokeLinecap: 'round',
                   strokeLinejoin: 'round'
@@ -621,11 +599,11 @@
                   H('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
                 )
               ),
-              H('div', { style: { flex: 1 } },
-                H('div', { style: { fontWeight: 600, fontSize: 14 } }, 'Blocked Users'),
-                H('div', { style: { fontSize: 12, opacity: 0.7 } }, 'Manage users you\'ve blocked')
+              H('div', { className: 'blocked-users-btn__text' },
+                H('div', { className: 'blocked-users-btn__title' }, 'Blocked Users'),
+                H('div', { className: 'blocked-users-btn__subtitle' }, 'Manage users you\'ve blocked')
               ),
-              H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', style: { opacity: 0.5 } },
+              H('svg', { className: 'blocked-users-btn__arrow', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
                 H('polyline', { points: '9 18 15 12 9 6' })
               )
             ),
