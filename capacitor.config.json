@@ -4,7 +4,8 @@
   "webDir": "public",
   "plugins": {
     "Keyboard": {
-      "hideAccessoryBar": true
+      "hideAccessoryBar": true,
+      "resize": "native"
     }
   },
   "ios": {

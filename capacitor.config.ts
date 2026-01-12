@@ -20,6 +20,8 @@ const config: CapacitorConfig = {
     Keyboard: {
       // Hide the accessory bar (Previous/Next/Done buttons) above the keyboard
       hideAccessoryBar: true,
+      // Resize mode - 'native' lets iOS handle it natively
+      resize: 'native',
     },
   },
   ios: {
