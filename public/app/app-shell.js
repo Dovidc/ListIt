@@ -2581,6 +2581,7 @@
 
             // Hide keyboard accessory bar (the bar with arrows above the keyboard)
             try {
+              console.log('[Capacitor] Available plugins:', Object.keys(window.Capacitor?.Plugins || {}));
               const { Keyboard } = window.Capacitor.Plugins;
               console.log('[Keyboard] Plugin available:', !!Keyboard);
               console.log('[Keyboard] Methods:', Keyboard ? Object.keys(Keyboard) : 'none');
