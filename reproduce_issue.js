@@ -124,7 +124,7 @@ async function main() {
         // Buyer sends message
         const msgRes = await request('POST', '/api/conversations', buyerToken, {
             listing_id: listingId,
-            body: 'Is this available?'
+            body: 'This available?'
         });
         console.log('Message response:', msgRes.status, msgRes.data);
 

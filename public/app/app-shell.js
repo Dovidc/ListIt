@@ -649,6 +649,7 @@
           saveSearchToHistory(searchTerm);
         }
         setSearchDropdownOpen(false);
+        searchInputRef.current?.blur(); // Dismiss keyboard
         submitSearch(customQuery);
       }, [query, submitSearch, saveSearchToHistory]);
 
@@ -656,6 +657,7 @@
       const handleSearchSuggestionClick = useCallback((term) => {
         setQuery(term);
         setSearchDropdownOpen(false);
+        searchInputRef.current?.blur(); // Dismiss keyboard
         saveSearchToHistory(term);
         submitSearch(term);
       }, [setQuery, submitSearch, saveSearchToHistory]);
@@ -676,17 +678,28 @@
           setSearchDropdownOpen(false);
         };
 
+        // Close dropdown and blur input when user starts scrolling
+        const handleScroll = () => {
+          setSearchDropdownOpen(false);
+          searchInputRef.current?.blur();
+        };
+
         // Use a small delay to avoid the click that opened the dropdown from immediately closing it
         const timeoutId = setTimeout(() => {
           // Use capture phase to intercept before the event reaches other handlers
           document.addEventListener('click', handleClickOutside, true);
           document.addEventListener('touchend', handleClickOutside, true);
+          // Listen for scroll to dismiss keyboard
+          window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+          document.addEventListener('touchmove', handleScroll, { passive: true });
         }, 10);
 
         return () => {
           clearTimeout(timeoutId);
           document.removeEventListener('click', handleClickOutside, true);
           document.removeEventListener('touchend', handleClickOutside, true);
+          window.removeEventListener('scroll', handleScroll, { capture: true });
+          document.removeEventListener('touchmove', handleScroll);
         };
       }, [searchDropdownOpen]);
 
@@ -1102,6 +1115,12 @@
           // 1. Pagination cursors can become invalid server-side
           // 2. iOS may reclaim WebView memory in ways we can't detect
           // 3. The cost of an extra refresh is low vs the cost of a crash
+
+          // Dismiss keyboard before showing resume overlay
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
+
           const overlayStartTime = Date.now();
           setIsResuming(true);
           try {
@@ -2579,22 +2598,17 @@
               console.log('StatusBar error:', e);
             }
 
-            // Hide keyboard accessory bar (the bar with arrows above the keyboard)
+            // Configure keyboard
             try {
-              console.log('[Capacitor] Available plugins:', Object.keys(window.Capacitor?.Plugins || {}));
               const { Keyboard } = window.Capacitor.Plugins;
-              console.log('[Keyboard] Plugin available:', !!Keyboard);
-              console.log('[Keyboard] Methods:', Keyboard ? Object.keys(Keyboard) : 'none');
-              if (Keyboard && typeof Keyboard.setAccessoryBarVisible === 'function') {
-                Keyboard.setAccessoryBarVisible({ isVisible: false })
-                  .then(() => console.log('[Keyboard] Accessory bar hidden successfully'))
-                  .catch((err) => console.log('[Keyboard] setAccessoryBarVisible error:', err));
-              } else {
-                console.log('[Keyboard] setAccessoryBarVisible not available');
+              if (Keyboard) {
+                // Hide accessory bar (the bar with arrows above the keyboard)
+                Keyboard.setAccessoryBarVisible?.({ isVisible: false }).catch(() => {});
+                // Use 'DEFAULT' to let iOS match system appearance, avoiding flash
+                // 'DARK' = dark keyboard, 'LIGHT' = light keyboard, 'DEFAULT' = follow system
+                Keyboard.setStyle?.({ style: 'DEFAULT' }).catch(() => {});
               }
-            } catch (e) {
-              console.log('Keyboard plugin error:', e);
-            }
+            } catch (e) {}
           }
         } catch (e) {}
       }, []);
