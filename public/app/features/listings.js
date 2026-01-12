@@ -17,6 +17,7 @@
     const createLRUCache = helpers?.createLRUCache;
     const getUserCoordsOnce = helpers?.getUserCoordsOnce;
     const fetchCoordsAndReverse = helpers?.fetchCoordsAndReverse;
+    const getCachedDisplay = helpers?.getCachedDisplay;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 48;
 
     // Validate required helpers
@@ -755,11 +756,15 @@
       const [query, setQuery] = useState('');
       const [committedQuery, setCommittedQuery] = useState('');
       const [searchVersion, setSearchVersion] = useState(0);
-      const [locationQuery, setLocationQuery] = useState('');
+      // Initialize location from permanent cache (city only, not "city, state")
+      const [locationQuery, setLocationQuery] = useState(() => {
+        const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
+        return cached ? cached.split(',')[0]?.trim() || '' : '';
+      });
       const [sort, setSort] = useState('new');
       const locationInitialized = useRef(false);
 
-      // Auto-detect user's location on initial load
+      // Auto-detect user's location on initial load (refresh cache in background)
       useEffect(() => {
         if (locationInitialized.current) return;
         if (typeof fetchCoordsAndReverse !== 'function') return;
@@ -775,6 +780,7 @@
           })
           .catch(() => {
             // Silently fail - user can manually enter location
+            // If we had cached location, it's already set from useState initializer
           });
       }, []);
 
