@@ -2211,9 +2211,13 @@ img {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   border: 1px solid #e2e8f0;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
   position: relative;
+  /* Position modal higher to prevent jump when keyboard appears */
+  margin-bottom: 30vh;
 }
 
 /* Subtle gradient glow at top */
@@ -2230,7 +2234,7 @@ img {
 
 .quick-message-modal__header {
   position: relative;
-  padding: 20px 20px 16px 16px;
+  padding: 20px 20px 16px 21px;
 }
 
 .quick-message-modal__title {

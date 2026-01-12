@@ -4400,6 +4400,9 @@
     function ProfilePreviewModal({ sellerInfo, activeListingCount, soldListingCount, onClose, onVisitProfile, onMessage, onSupporterClick, currentUser, onUserBlocked }) {
       const [isBlocked, setIsBlocked] = useState(false);
       const [blockLoading, setBlockLoading] = useState(false);
+      const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+      const [showReportModal, setShowReportModal] = useState(false);
+      const overflowMenuRef = useRef(null);
 
       // Add modal-open class to body when modal opens (hides mobile tab bar)
       useEffect(() => {
@@ -4408,6 +4411,18 @@
           return () => document.body.classList.remove('modal-open');
         }
       }, [sellerInfo]);
+
+      // Close overflow menu when clicking outside
+      useEffect(() => {
+        if (!showOverflowMenu) return;
+        const handleClickOutside = (e) => {
+          if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target)) {
+            setShowOverflowMenu(false);
+          }
+        };
+        document.addEventListener('click', handleClickOutside, true);
+        return () => document.removeEventListener('click', handleClickOutside, true);
+      }, [showOverflowMenu]);
 
       // Check block status when modal opens
       useEffect(() => {
@@ -4537,7 +4552,7 @@
         fontWeight: 600
       };
 
-      return ReactDOM.createPortal(
+      return [ReactDOM.createPortal(
         H('div', {
           className: 'modal open',
           onClick: handleOverlayClick,
@@ -4669,9 +4684,130 @@
                 style: {
                   padding: `${avatarOverlap + 36}px 24px 26px`,
                   display: 'grid',
-                  gap: 18
+                  gap: 18,
+                  position: 'relative'
                 }
               },
+                // Overflow menu (three dots) - only show if user can interact
+                canBlock && H('div', {
+                  ref: overflowMenuRef,
+                  style: {
+                    position: 'absolute',
+                    top: avatarOverlap + 12,
+                    right: 16,
+                    zIndex: 10
+                  }
+                },
+                  H('button', {
+                    type: 'button',
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      setShowOverflowMenu(!showOverflowMenu);
+                    },
+                    style: {
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                      background: 'rgba(15, 23, 42, 0.5)',
+                      color: '#94a3b8',
+                      fontSize: 18,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0
+                    }
+                  },
+                    H('svg', {
+                      width: 18,
+                      height: 18,
+                      viewBox: '0 0 24 24',
+                      fill: 'currentColor'
+                    },
+                      H('circle', { cx: 5, cy: 12, r: 2 }),
+                      H('circle', { cx: 12, cy: 12, r: 2 }),
+                      H('circle', { cx: 19, cy: 12, r: 2 })
+                    )
+                  ),
+                  // Dropdown menu
+                  showOverflowMenu && H('div', {
+                    style: {
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: 4,
+                      background: '#1e293b',
+                      borderRadius: 12,
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.4)',
+                      overflow: 'hidden',
+                      minWidth: 140,
+                      zIndex: 100
+                    }
+                  },
+                    H('button', {
+                      type: 'button',
+                      onClick: () => {
+                        setShowOverflowMenu(false);
+                        setShowReportModal(true);
+                      },
+                      style: {
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#f8fafc',
+                        fontSize: 14,
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10
+                      },
+                      onMouseEnter: (e) => e.target.style.background = 'rgba(148, 163, 184, 0.1)',
+                      onMouseLeave: (e) => e.target.style.background = 'transparent'
+                    },
+                      H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                        H('path', { d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z' }),
+                        H('line', { x1: 4, y1: 22, x2: 4, y2: 15 })
+                      ),
+                      'Report'
+                    ),
+                    H('button', {
+                      type: 'button',
+                      onClick: () => {
+                        setShowOverflowMenu(false);
+                        handleBlockToggle();
+                      },
+                      disabled: blockLoading,
+                      style: {
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: isBlocked ? '#4ade80' : '#f87171',
+                        fontSize: 14,
+                        fontWeight: 500,
+                        cursor: blockLoading ? 'wait' : 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        opacity: blockLoading ? 0.6 : 1
+                      },
+                      onMouseEnter: (e) => e.target.style.background = 'rgba(148, 163, 184, 0.1)',
+                      onMouseLeave: (e) => e.target.style.background = 'transparent'
+                    },
+                      H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                        H('circle', { cx: 12, cy: 12, r: 10 }),
+                        H('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
+                      ),
+                      blockLoading ? '...' : (isBlocked ? 'Unblock' : 'Block')
+                    )
+                  )
+                ),
                 H('div', {
                   style: {
                     display: 'grid',
@@ -4956,32 +5092,24 @@
                       fontWeight: 700,
                       cursor: 'pointer'
                     }
-                  }, 'Profile'),
-                  // Block button - only show if user can block
-                  canBlock && H('button', {
-                    type: 'button',
-                    onClick: handleBlockToggle,
-                    disabled: blockLoading,
-                    style: {
-                      flex: 1,
-                      padding: '12px 14px',
-                      borderRadius: 14,
-                      border: isBlocked ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
-                      background: isBlocked ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                      color: isBlocked ? '#4ade80' : '#f87171',
-                      fontSize: 15,
-                      fontWeight: 700,
-                      cursor: blockLoading ? 'wait' : 'pointer',
-                      opacity: blockLoading ? 0.6 : 1
-                    }
-                  }, blockLoading ? '...' : (isBlocked ? 'Unblock' : 'Block'))
+                  }, 'Profile')
                 )
               )
             )
           )
         ),
         document.body
-      );
+      ),
+      // Report modal (rendered outside the portal)
+      showReportModal && H(ReportSellerModal, {
+        open: true,
+        listing: { owner_id: sellerInfo.id, owner_username: sellerInfo.username },
+        onClose: () => setShowReportModal(false),
+        onReported: () => {
+          setShowReportModal(false);
+        }
+      })
+      ];
     }
 
     function SellerProfile({ sellerId, sellerUsername, onBack, user, onMessage, onAdminDelete, onSupporterClick, onToggleSave, savedListingIds = {} }) {
