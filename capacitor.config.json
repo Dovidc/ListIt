@@ -2,6 +2,11 @@
   "appId": "com.trovelr.app",
   "appName": "Trovelr",
   "webDir": "public",
+  "plugins": {
+    "Keyboard": {
+      "hideAccessoryBar": true
+    }
+  },
   "ios": {
     "backgroundColor": "#ffffff",
     "contentInset": "never"

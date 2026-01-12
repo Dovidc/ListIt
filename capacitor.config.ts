@@ -17,6 +17,10 @@ const config: CapacitorConfig = {
       // Patch document.cookie to use native cookies
       enabled: true,
     },
+    Keyboard: {
+      // Hide the accessory bar (Previous/Next/Done buttons) above the keyboard
+      hideAccessoryBar: true,
+    },
   },
   ios: {
     contentInset: 'never',
