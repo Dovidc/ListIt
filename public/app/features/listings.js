@@ -16,7 +16,6 @@
     const selectPrimaryListingImage = helpers?.selectPrimaryListingImage;
     const createLRUCache = helpers?.createLRUCache;
     const getUserCoordsOnce = helpers?.getUserCoordsOnce;
-    const fetchCoordsAndReverse = helpers?.fetchCoordsAndReverse;
     const getCachedDisplay = helpers?.getCachedDisplay;
     const pageSize = Number.isFinite(helpers?.pageSize) ? helpers.pageSize : 48;
 
@@ -757,31 +756,25 @@
       const [committedQuery, setCommittedQuery] = useState('');
       const [searchVersion, setSearchVersion] = useState(0);
       // Initialize location from permanent cache (city only, not "city, state")
+      // This is instant - just reads from localStorage, no GPS call
       const [locationQuery, setLocationQuery] = useState(() => {
         const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
         return cached ? cached.split(',')[0]?.trim() || '' : '';
       });
       const [sort, setSort] = useState('new');
-      const locationInitialized = useRef(false);
 
-      // Auto-detect user's location on initial load (refresh cache in background)
+      // Listen for location updates (when app-shell fetches location in background)
+      // This updates the field if location was fetched after initial render
       useEffect(() => {
-        if (locationInitialized.current) return;
-        if (typeof fetchCoordsAndReverse !== 'function') return;
-        locationInitialized.current = true;
-
-        fetchCoordsAndReverse()
-          .then(result => {
-            // Use just the city for the prepopulated search, not city + state
-            const city = result?.display?.split(',')[0]?.trim();
-            if (city) {
-              setLocationQuery(city);
-            }
-          })
-          .catch(() => {
-            // Silently fail - user can manually enter location
-            // If we had cached location, it's already set from useState initializer
-          });
+        const handleLocationCached = () => {
+          const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
+          if (cached) {
+            const city = cached.split(',')[0]?.trim() || '';
+            setLocationQuery(prev => prev || city); // Only set if currently empty
+          }
+        };
+        window.addEventListener('listit:location-cached', handleLocationCached);
+        return () => window.removeEventListener('listit:location-cached', handleLocationCached);
       }, []);
 
       // Debounced location (still live for city autocomplete)

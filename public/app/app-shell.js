@@ -532,6 +532,13 @@
         }
       };
 
+      // Helper to clear seller hash from URL
+      const clearSellerHash = () => {
+        if (typeof window !== 'undefined' && window.location.hash.startsWith('#seller/')) {
+          window.history.pushState({}, '', window.location.pathname);
+        }
+      };
+
       // Saved listings state - use object instead of Set for better React re-render detection
       const [savedListingIds, setSavedListingIds] = useState({});
 
@@ -1007,7 +1014,7 @@
         return () => clearTimeout(timer);
       }, [setActiveConvoId, onTabChange]);
 
-      // Handle shareable listing links via URL hash (#listing/123)
+      // Handle shareable links via URL hash (#listing/123, #seller/123)
       useEffect(() => {
         const openListingFromHash = async () => {
           const hash = window.location.hash;
@@ -1033,24 +1040,71 @@
             window.history.replaceState({}, '', window.location.pathname);
           }
         };
+
+        const openSellerFromHash = async () => {
+          const hash = window.location.hash;
+          console.log('[ShareableLink] Checking seller hash:', hash);
+          const match = hash.match(/^#seller\/(.+)$/);
+          if (!match) {
+            console.log('[ShareableLink] No match for seller pattern');
+            return;
+          }
+          const sellerParam = decodeURIComponent(match[1]);
+          if (!sellerParam) return;
+          console.log('[ShareableLink] Fetching seller:', sellerParam);
+          try {
+            // API now supports both ID (numeric) and username (string)
+            const seller = await api.getUser(sellerParam, { silent: true });
+            console.log('[ShareableLink] Got seller:', seller);
+            if (seller) {
+              console.log('[ShareableLink] Opening seller profile...');
+              setViewingSeller({ id: seller.id, username: seller.username });
+              setSelectedListing(null);
+            }
+          } catch (e) {
+            console.error('[ShareableLink] Failed to fetch seller:', e);
+            // Seller not found or fetch failed - clear hash
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        };
+
+        const handleHashOnLoad = () => {
+          const hash = window.location.hash;
+          if (hash.startsWith('#listing/')) {
+            openListingFromHash();
+          } else if (hash.startsWith('#seller/')) {
+            openSellerFromHash();
+          }
+        };
+
         // Check hash on mount with a small delay to ensure app is ready
-        const timer = setTimeout(openListingFromHash, 300);
+        const timer = setTimeout(handleHashOnLoad, 300);
         // Handle back/forward navigation
         const handlePopState = (event) => {
-          if (event.state?.listingId) {
+          const hash = window.location.hash;
+          if (event.state?.listingId || hash.startsWith('#listing/')) {
             openListingFromHash();
-          } else if (!window.location.hash.startsWith('#listing/')) {
+          } else if (event.state?.sellerUsername || hash.startsWith('#seller/')) {
+            openSellerFromHash();
+          } else {
+            // No hash or unrecognized - close modals
             setSelectedListing(null);
+            setViewingSeller(null);
           }
         };
         // Handle hash changes (e.g., pasting a new URL while on the page)
         const handleHashChange = () => {
           const hash = window.location.hash;
           if (hash.startsWith('#listing/')) {
+            setViewingSeller(null);
             openListingFromHash();
-          } else {
-            // Hash cleared or changed to non-listing - close modal
+          } else if (hash.startsWith('#seller/')) {
             setSelectedListing(null);
+            openSellerFromHash();
+          } else {
+            // Hash cleared or changed to unrecognized - close modals
+            setSelectedListing(null);
+            setViewingSeller(null);
           }
         };
         window.addEventListener('popstate', handlePopState);
@@ -1060,7 +1114,7 @@
           window.removeEventListener('popstate', handlePopState);
           window.removeEventListener('hashchange', handleHashChange);
         };
-      }, [openListingModal]);
+      }, [openListingModal, setViewingSeller]);
 
       // Close listing and clear URL hash
       const closeListingModal = useCallback(() => {
@@ -1475,6 +1529,13 @@
         setViewingSeller({ id: userId, username });
         setSelectedListing(null);
         clearListingHash();
+        // Set URL hash for shareable seller profile link (use username for readable URLs)
+        if (typeof window !== 'undefined' && username) {
+          const expectedHash = `#seller/${encodeURIComponent(username)}`;
+          if (window.location.hash !== expectedHash) {
+            window.history.pushState({ sellerUsername: username }, '', expectedHash);
+          }
+        }
         if (isMobile) {
           const container = document.querySelector('main.container');
           if (container) container.scrollTop = 0;
@@ -1485,6 +1546,7 @@
 
       function handleBackFromSeller() {
         setViewingSeller(null);
+        clearSellerHash();
       }
 
 
@@ -2078,7 +2140,12 @@
                                   }
                                   const r = await api.reverseGeocode(lat, lon);
                                   const city = r?.city || (r?.display || '').split(',')[0];
-                                  if (city) setLocationQuery(city);
+                                  const fullDisplay = r?.city && r?.state ? `${r.city}, ${r.state}` : (r?.display || city);
+                                  if (city) {
+                                    setLocationQuery(city);
+                                    // Update localStorage cache so next app start uses new location
+                                    try { localStorage.setItem('listit_location_display', fullDisplay); } catch {}
+                                  }
                                 } catch { alert('Could not determine your location'); }
                               }
                             }),

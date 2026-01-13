@@ -4693,8 +4693,8 @@
                   ref: overflowMenuRef,
                   style: {
                     position: 'absolute',
-                    top: avatarOverlap + 12,
-                    right: 16,
+                    top: 12,
+                    right: 12,
                     zIndex: 10
                   }
                 },
@@ -4708,8 +4708,8 @@
                       width: 32,
                       height: 32,
                       borderRadius: 8,
-                      border: '1px solid rgba(148, 163, 184, 0.3)',
-                      background: 'rgba(15, 23, 42, 0.5)',
+                      border: 'none',
+                      background: 'transparent',
                       color: '#94a3b8',
                       fontSize: 18,
                       cursor: 'pointer',
@@ -4725,9 +4725,9 @@
                       viewBox: '0 0 24 24',
                       fill: 'currentColor'
                     },
-                      H('circle', { cx: 5, cy: 12, r: 2 }),
+                      H('circle', { cx: 12, cy: 5, r: 2 }),
                       H('circle', { cx: 12, cy: 12, r: 2 }),
-                      H('circle', { cx: 19, cy: 12, r: 2 })
+                      H('circle', { cx: 12, cy: 19, r: 2 })
                     )
                   ),
                   // Dropdown menu
@@ -4746,6 +4746,59 @@
                       zIndex: 100
                     }
                   },
+                    // Share button
+                    username && H('button', {
+                      type: 'button',
+                      onClick: async () => {
+                        setShowOverflowMenu(false);
+                        const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
+                        const shareUrl = `${baseUrl}/#seller/${encodeURIComponent(username)}`;
+                        const shareData = {
+                          title: `${username}'s profile on Trovelr`,
+                          url: shareUrl
+                        };
+                        try {
+                          if (navigator.share) {
+                            await navigator.share(shareData);
+                          } else {
+                            await navigator.clipboard.writeText(shareUrl);
+                            alert('Profile link copied to clipboard!');
+                          }
+                        } catch (err) {
+                          if (err.name !== 'AbortError') {
+                            try {
+                              await navigator.clipboard.writeText(shareUrl);
+                              alert('Profile link copied to clipboard!');
+                            } catch {
+                              alert('Could not share profile');
+                            }
+                          }
+                        }
+                      },
+                      style: {
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#f8fafc',
+                        fontSize: 14,
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10
+                      },
+                      onMouseEnter: (e) => e.target.style.background = 'rgba(148, 163, 184, 0.1)',
+                      onMouseLeave: (e) => e.target.style.background = 'transparent'
+                    },
+                      H('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                        H('path', { d: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8' }),
+                        H('polyline', { points: '16 6 12 2 8 6' }),
+                        H('line', { x1: 12, y1: 2, x2: 12, y2: 15 })
+                      ),
+                      'Share'
+                    ),
                     H('button', {
                       type: 'button',
                       onClick: () => {
@@ -5701,8 +5754,41 @@
             }),
             sellerJoinedText && H('div', { className: 'muted', style: { fontSize: 13 } }, `Trovelr since ${sellerJoinedText}`)
           ),
-          // Right side: Block button and Back button
+          // Right side: Share button, Block button
           H('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            // Share button
+            sellerDisplayName && H('button', {
+              className: 'btn',
+              onClick: async () => {
+                const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
+                const shareUrl = `${baseUrl}/#seller/${encodeURIComponent(sellerDisplayName)}`;
+                const shareData = {
+                  title: `${sellerDisplayName}'s profile on Trovelr`,
+                  url: shareUrl
+                };
+                try {
+                  if (navigator.share) {
+                    await navigator.share(shareData);
+                  } else {
+                    await navigator.clipboard.writeText(shareUrl);
+                    alert('Profile link copied to clipboard!');
+                  }
+                } catch (err) {
+                  if (err.name !== 'AbortError') {
+                    try {
+                      await navigator.clipboard.writeText(shareUrl);
+                      alert('Profile link copied to clipboard!');
+                    } catch {
+                      alert('Could not share profile');
+                    }
+                  }
+                }
+              },
+              style: {
+                padding: '6px 12px',
+                fontSize: 13
+              }
+            }, 'Share'),
             // Block/Unblock button (only shown when logged in and viewing another user)
             user && user.id && Number(sellerId) !== Number(user.id) && H('button', {
               className: 'btn',

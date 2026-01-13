@@ -7122,16 +7122,11 @@ app.get('/api/users/:userId', async (req, res) => {
 
   try {
 
-    const userId = Number(req.params.userId);
+    const param = req.params.userId;
+    const userId = Number(param);
+    const isNumeric = Number.isFinite(userId);
 
-    if (!Number.isFinite(userId)) {
-
-      return res.status(400).json({ error: 'Invalid user ID' });
-
-    }
-
-
-
+    // Support lookup by ID (numeric) or username (string)
     const user = await db.prepare(`
       SELECT id,
              username,
@@ -7150,8 +7145,8 @@ app.get('/api/users/:userId', async (req, res) => {
              profile_about,
              karma
         FROM users
-       WHERE id = ?
-    `).get(userId);
+       WHERE ${isNumeric ? 'id = ?' : 'LOWER(username) = LOWER(?)'}
+    `).get(isNumeric ? userId : param);
 
     if (!user) {
 

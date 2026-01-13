@@ -26,6 +26,8 @@
     try {
       if (display) {
         localStorage.setItem(DISPLAY_CACHE_KEY, display);
+        // Notify listeners that location was cached (for components that mounted before cache was ready)
+        window.dispatchEvent(new CustomEvent('listit:location-cached', { detail: { display } }));
       }
     } catch {
       // ignore storage errors
