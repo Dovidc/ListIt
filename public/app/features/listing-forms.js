@@ -133,6 +133,9 @@
     async function compressImage(file, maxWidth = 1200, quality = 0.8) {
       return new Promise((resolve, reject) => {
         const img = new Image();
+        // Create object URL upfront so we can revoke it in all paths
+        const url = URL.createObjectURL(file);
+
         img.onload = () => {
           try {
             // Calculate dimensions
@@ -153,6 +156,7 @@
             // Convert to blob
             canvas.toBlob(
               (blob) => {
+                URL.revokeObjectURL(url); // Clean up object URL
                 if (blob) {
                   resolve({ blob, width, height });
                 } else {
@@ -163,13 +167,15 @@
               quality
             );
           } catch (e) {
+            URL.revokeObjectURL(url); // Clean up on error
             reject(e);
           }
         };
-        img.onerror = () => reject(new Error('Image load failed'));
+        img.onerror = () => {
+          URL.revokeObjectURL(url); // Clean up on load error
+          reject(new Error('Image load failed'));
+        };
 
-        // Load image from file
-        const url = URL.createObjectURL(file);
         img.src = url;
       });
     }

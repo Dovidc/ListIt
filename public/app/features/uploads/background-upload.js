@@ -133,8 +133,8 @@
           backgroundUpload: true
         });
 
-        // Listen for events
-        Uploader.addListener('events', async (event) => {
+        // Listen for events - store handle so we can remove it when done
+        const listenerHandle = await Uploader.addListener('events', async (event) => {
           if (event.id !== uploadId) return;
 
           const upload = pendingUploads.get(uploadId);
@@ -165,6 +165,9 @@
               if (finalizeResult?.error) {
                 console.error('[BackgroundUpload] Finalize error:', finalizeResult.error);
                 onError?.(new Error(finalizeResult.error));
+                pendingUploads.delete(uploadId);
+                deleteTempFile(fileUri);
+                listenerHandle?.remove?.(); // Clean up listener
                 return;
               }
 
@@ -177,11 +180,17 @@
             } catch (err) {
               console.error('[BackgroundUpload] Finalize failed:', err);
               onError?.(err);
+              // Still need to clean up even if finalize fails
+              pendingUploads.delete(uploadId);
+              deleteTempFile(fileUri);
+              listenerHandle?.remove?.(); // Clean up listener
+              return;
             }
 
-            // Cleanup
+            // Cleanup on success
             pendingUploads.delete(uploadId);
             deleteTempFile(fileUri);
+            listenerHandle?.remove?.(); // Clean up listener
           }
 
           if (event.state === 'failed') {
@@ -190,6 +199,7 @@
             onError?.(new Error(event.error || 'Upload failed'));
             pendingUploads.delete(uploadId);
             deleteTempFile(fileUri);
+            listenerHandle?.remove?.(); // Clean up listener
           }
         });
 
