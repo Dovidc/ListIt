@@ -8,8 +8,11 @@ try {
 } catch (e) {
   console.warn('[S3] sharp not available, thumbnails disabled');
 }
-let S3Client, PutObjectCommand, GetObjectCommand;
-let getSignedUrl;
+
+// Load AWS SDK eagerly at startup (not lazily on first request)
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+
 let _s3 = null;
 
 // Magic byte signatures for validating image file headers
@@ -95,9 +98,6 @@ function need(name) {
 
 function getS3() {
   if (!_s3) {
-    // Load AWS SDKs only when needed
-    ({ S3Client, PutObjectCommand } = require('@aws-sdk/client-s3'));
-    ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
     const region = process.env.AWS_REGION || process.env.S3_REGION;
     if (!region) throw new Error('Missing env AWS_REGION (or S3_REGION)');
     // Disable automatic checksum - SDK v3 adds CRC32 by default which causes 403
@@ -109,6 +109,18 @@ function getS3() {
     });
   }
   return _s3;
+}
+
+/**
+ * Pre-warm S3 client at server startup to avoid cold-start latency on first upload
+ */
+function warmS3() {
+  try {
+    getS3();
+    console.log('[S3] Client pre-warmed');
+  } catch (err) {
+    console.warn('[S3] Warmup skipped:', err?.message || err);
+  }
 }
 
 function newKey(filename = 'upload.bin') {
@@ -339,4 +351,4 @@ async function generateThumbnailFromUrl(imageUrl, s3Key) {
   }
 }
 
-module.exports = { presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl, validateMagicBytes };
+module.exports = { presignUpload, presignDownload, uploadBuffer, generateThumbnailFromUrl, validateMagicBytes, warmS3 };

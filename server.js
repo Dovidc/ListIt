@@ -12257,6 +12257,13 @@ async function startServer() {
     await assertRequiredSchema();
     await maybeCreateAdmin();
 
+    // Pre-warm services to avoid cold-start latency on first request
+    const { warmS3 } = require('./s3');
+    warmS3();
+    if (getOpenAIClient()) {
+      console.log('[Server] OpenAI client pre-warmed');
+    }
+
     // Enable PostGIS spatial features if available
     await configureSpatialFeatures();
     if (GEO_FEATURES.postgisNearby) {

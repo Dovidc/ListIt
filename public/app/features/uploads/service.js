@@ -1,4 +1,12 @@
 (() => {
+  // Pre-warm canvas 2D context to avoid GPU initialization delay on first image compression
+  try {
+    const warmupCanvas = document.createElement('canvas');
+    warmupCanvas.width = 1;
+    warmupCanvas.height = 1;
+    warmupCanvas.getContext('2d');
+  } catch (e) { /* ignore */ }
+
   function createUploadsService({ api, utils } = {}) {
     if (!api) {
       throw new Error('Uploads service requires an API client.');
