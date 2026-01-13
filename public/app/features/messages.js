@@ -153,12 +153,26 @@
       const [searchQuery, setSearchQuery] = useState('');
       const hasUnread = conversations.some(c => c._unread);
       const searchInputRef = useRef(null);
+      const listRef = useRef(null);
 
-      // Blur search input on scroll to hide keyboard on mobile
-      const handleListScroll = useCallback(() => {
-        if (searchInputRef.current && document.activeElement === searchInputRef.current) {
-          searchInputRef.current.blur();
-        }
+      // Blur search input on scroll/touch to hide keyboard on mobile
+      useEffect(() => {
+        const list = listRef.current;
+        if (!list) return;
+
+        const handleScroll = () => {
+          if (searchInputRef.current && document.activeElement === searchInputRef.current) {
+            searchInputRef.current.blur();
+          }
+        };
+
+        list.addEventListener('scroll', handleScroll, { passive: true });
+        list.addEventListener('touchmove', handleScroll, { passive: true });
+
+        return () => {
+          list.removeEventListener('scroll', handleScroll);
+          list.removeEventListener('touchmove', handleScroll);
+        };
       }, []);
 
       // Filter conversations by username or listing title
@@ -238,7 +252,7 @@
             title: 'Mark all conversations as read'
           }, 'Mark read')
         ),
-        H('div', { className: 'messages-sidebar__list', onScroll: handleListScroll },
+        H('div', { ref: listRef, className: 'messages-sidebar__list' },
           ...(filteredConversations.length
             ? filteredConversations.map((conversation) => H('div', {
                 key: conversation.id,
