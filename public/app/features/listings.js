@@ -766,15 +766,20 @@
       // Listen for location updates (when app-shell fetches location in background)
       // This updates the field if location was fetched after initial render
       useEffect(() => {
-        const handleLocationCached = () => {
+        const updateFromCache = () => {
           const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
           if (cached) {
             const city = cached.split(',')[0]?.trim() || '';
             setLocationQuery(prev => prev || city); // Only set if currently empty
           }
         };
-        window.addEventListener('listit:location-cached', handleLocationCached);
-        return () => window.removeEventListener('listit:location-cached', handleLocationCached);
+
+        // Check cache immediately on mount (in case it was populated before this effect ran)
+        updateFromCache();
+
+        // Also listen for future updates
+        window.addEventListener('listit:location-cached', updateFromCache);
+        return () => window.removeEventListener('listit:location-cached', updateFromCache);
       }, []);
 
       // Debounced location (still live for city autocomplete)

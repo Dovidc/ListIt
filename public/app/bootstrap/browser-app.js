@@ -238,6 +238,7 @@
         createLRUCache,
         getUserCoordsOnce,
         fetchCoordsAndReverse,
+        getCachedDisplay,
         pageSize: PAGE_SIZE
       },
       uploads: {
