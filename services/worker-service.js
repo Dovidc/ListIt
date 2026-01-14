@@ -146,11 +146,12 @@ class WorkerService {
       })
     );
 
-    this.subscriptions.push(
-      this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
-        await this.handleNearbyListing(event);
-      })
-    );
+    // TODO: Re-enable when nearby push notifications are needed
+    // this.subscriptions.push(
+    //   this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
+    //     await this.handleNearbyListing(event);
+    //   })
+    // );
 
     // Start job processor
     this.jobQueue.process(this._handleQueueJob, { concurrency: this.maxConcurrency });
