@@ -648,6 +648,8 @@ function resolveSupporterReturnUrl(req, template) {
 function isAllowedFrontendOrigin(origin) {
   const normalized = normalizeOrigin(origin);
   if (!normalized) return false;
+  // Allow Chrome extensions (they have origin like chrome-extension://abc123...)
+  if (origin && origin.startsWith('chrome-extension://')) return true;
   return FRONTEND_ORIGIN_SET.has(normalized);
 }
 
