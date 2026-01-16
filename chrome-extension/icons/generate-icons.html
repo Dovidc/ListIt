@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Trovelr Icons</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }
+    canvas { border: 1px solid #333; margin: 10px; }
+    button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    .icons { display: flex; gap: 20px; flex-wrap: wrap; }
+    .icon-group { text-align: center; }
+    a { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>Trovelr Icon Generator</h1>
+  <p>Click each "Download" link to save the icons, then place them in the icons folder.</p>
+
+  <div class="icons">
+    <div class="icon-group">
+      <canvas id="icon16" width="16" height="16"></canvas>
+      <br><a id="download16" download="icon16.png">Download 16x16</a>
+    </div>
+    <div class="icon-group">
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <br><a id="download48" download="icon48.png">Download 48x48</a>
+    </div>
+    <div class="icon-group">
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <br><a id="download128" download="icon128.png">Download 128x128</a>
+    </div>
+  </div>
+
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      const radius = size * 0.25;
+
+      // Background
+      ctx.fillStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, radius);
+      ctx.fill();
+
+      // Checkmark
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = size * 0.1;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.beginPath();
+      ctx.moveTo(size * 0.25, size * 0.5);
+      ctx.lineTo(size * 0.42, size * 0.67);
+      ctx.lineTo(size * 0.75, size * 0.33);
+      ctx.stroke();
+
+      return canvas.toDataURL('image/png');
+    }
+
+    // Generate icons
+    ['16', '48', '128'].forEach(size => {
+      const canvas = document.getElementById('icon' + size);
+      const dataUrl = drawIcon(canvas, parseInt(size));
+      document.getElementById('download' + size).href = dataUrl;
+    });
+  </script>
+</body>
+</html>

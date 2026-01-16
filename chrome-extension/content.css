@@ -1,0 +1,16 @@
+/* Trovelr Chrome Extension - Content Script Styles */
+/* Minimal styles injected into Facebook page */
+
+/* Visual indicator when Trovelr fills a field */
+.trovelr-filled {
+  animation: trovelr-highlight 0.5s ease-out;
+}
+
+@keyframes trovelr-highlight {
+  0% {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.5);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
