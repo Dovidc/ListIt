@@ -1296,6 +1296,15 @@
             try {
               const url = new URL(event.url);
               const pathname = url.pathname;
+              const hash = url.hash || '';
+
+              // First check if URL has a hash (e.g., /#listing/123 or /#seller/username)
+              if (hash.length > 1) {
+                const hashContent = hash.slice(1); // Remove the #
+                console.log('[UniversalLink] Using hash from URL:', hashContent);
+                window.location.hash = hashContent;
+                return;
+              }
 
               // Match /listing/123 or /listing/123/anything
               const listingMatch = pathname.match(/^\/listing\/(\d+)/);
@@ -1312,13 +1321,6 @@
                 const username = decodeURIComponent(sellerMatch[1]);
                 console.log('[UniversalLink] Navigating to seller:', username);
                 window.location.hash = `seller/${encodeURIComponent(username)}`;
-                return;
-              }
-
-              // If URL has a hash, use it directly
-              if (url.hash && url.hash.length > 1) {
-                console.log('[UniversalLink] Using hash from URL:', url.hash);
-                window.location.hash = url.hash.slice(1);
                 return;
               }
 

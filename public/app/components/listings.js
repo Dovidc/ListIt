@@ -3801,7 +3801,7 @@
           onClick: async () => {
             // Use production URL for Capacitor native, otherwise use current origin
             const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
-            const shareUrl = `${baseUrl}/#listing/${item.id}`;
+            const shareUrl = `${baseUrl}/listing/${item.id}`;
             const shareData = {
               title: item.title || 'Check out this listing',
               url: shareUrl
@@ -3920,7 +3920,7 @@
           onClick: async () => {
             // Use production URL for Capacitor native, otherwise use current origin
             const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
-            const shareUrl = `${baseUrl}/#listing/${item.id}`;
+            const shareUrl = `${baseUrl}/listing/${item.id}`;
             const shareData = {
               title: item.title || 'Check out this listing',
               url: shareUrl
@@ -4752,7 +4752,7 @@
                       onClick: async () => {
                         setShowOverflowMenu(false);
                         const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
-                        const shareUrl = `${baseUrl}/#seller/${encodeURIComponent(username)}`;
+                        const shareUrl = `${baseUrl}/seller/${encodeURIComponent(username)}`;
                         const shareData = {
                           title: `${username}'s profile on Trovelr`,
                           url: shareUrl
@@ -5761,7 +5761,7 @@
               className: 'btn',
               onClick: async () => {
                 const baseUrl = (isCapacitorNative && isCapacitorNative()) ? 'https://trovelr.com' : window.location.origin;
-                const shareUrl = `${baseUrl}/#seller/${encodeURIComponent(sellerDisplayName)}`;
+                const shareUrl = `${baseUrl}/seller/${encodeURIComponent(sellerDisplayName)}`;
                 const shareData = {
                   title: `${sellerDisplayName}'s profile on Trovelr`,
                   url: shareUrl
