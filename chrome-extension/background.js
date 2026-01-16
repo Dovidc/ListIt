@@ -70,6 +70,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (message.type === 'DOWNLOAD_IMAGE') {
+    // Download image from background script (has full permissions)
+    (async () => {
+      try {
+        const response = await fetch(message.url);
+        const blob = await response.blob();
+        const reader = new FileReader();
+
+        reader.onloadend = async () => {
+          const dataUrl = reader.result;
+          await chrome.downloads.download({
+            url: dataUrl,
+            filename: message.filename,
+            saveAs: false
+          });
+          sendResponse({ success: true });
+        };
+
+        reader.onerror = () => {
+          sendResponse({ success: false, error: 'Failed to read blob' });
+        };
+
+        reader.readAsDataURL(blob);
+      } catch (err) {
+        console.error('Download failed:', err);
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'OPEN_DOWNLOADS_FOLDER') {
+    chrome.downloads.showDefaultFolder();
+    sendResponse({ success: true });
+    return true;
+  }
 });
 
 // When extension is installed or updated

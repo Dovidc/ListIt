@@ -365,8 +365,8 @@ async function renderDraggableImages(imageUrls) {
         await new Promise(r => setTimeout(r, 100));
       }
 
-      // Open downloads folder
-      chrome.downloads.showDefaultFolder();
+      // Open downloads folder via background script
+      chrome.runtime.sendMessage({ type: 'OPEN_DOWNLOADS_FOLDER' });
 
       openFolderBtn.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -419,25 +419,17 @@ async function renderDraggableImages(imageUrls) {
   imagesContainer.appendChild(helperText);
 }
 
-// Download image as blob - works for cross-origin images
+// Download image via background script (has full permissions)
 async function downloadImageAsBlob(url, filename) {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-
-    // Use Chrome downloads API with blob URL
-    await chrome.downloads.download({
-      url: blobUrl,
-      filename: filename,
-      saveAs: false
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      type: 'DOWNLOAD_IMAGE',
+      url: url,
+      filename: filename
+    }, (response) => {
+      resolve(response?.success || false);
     });
-
-    // Clean up after a delay
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-  } catch (err) {
-    console.error('Failed to download image:', err);
-  }
+  });
 }
 
 // Generate a description from listing data if none exists
