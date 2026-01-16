@@ -1255,7 +1255,7 @@ app.get('/.well-known/apple-app-site-association', (req, res) => {
       apps: [],
       details: [
         {
-          appID: 'H9JP539MT9.com.listit.app',
+          appID: 'H9JP539MT9.com.trovelr.app',
           paths: ['*']
         }
       ]
