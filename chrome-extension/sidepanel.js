@@ -342,7 +342,7 @@ async function renderDraggableImages(imageUrls) {
     return;
   }
 
-  // Add "Open Downloads Folder" button
+  // Add "Save All Images" button
   const openFolderBtn = document.createElement('button');
   openFolderBtn.className = 'btn-download-all';
   openFolderBtn.innerHTML = `
@@ -351,7 +351,7 @@ async function renderDraggableImages(imageUrls) {
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
-    Save Images & Open Folder
+    Save All Images
   `;
   openFolderBtn.addEventListener('click', async () => {
     openFolderBtn.disabled = true;
@@ -361,15 +361,8 @@ async function renderDraggableImages(imageUrls) {
       for (let i = 0; i < imageUrls.length; i++) {
         const url = imageUrls[i];
         const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${i + 1}.jpg`;
-
-        // Use Chrome downloads API
-        await chrome.downloads.download({
-          url: url,
-          filename: filename,
-          saveAs: false
-        });
-
-        await new Promise(r => setTimeout(r, 200));
+        await downloadImageAsBlob(url, filename);
+        await new Promise(r => setTimeout(r, 100));
       }
 
       // Open downloads folder
@@ -379,14 +372,16 @@ async function renderDraggableImages(imageUrls) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
-        Done! Drag from folder to Facebook
+        Done! Drag from Downloads to Facebook
       `;
     } catch (err) {
       console.error('Download failed:', err);
-      openFolderBtn.textContent = 'Download failed - click images instead';
+      openFolderBtn.textContent = 'Download failed';
     }
 
-    openFolderBtn.disabled = false;
+    setTimeout(() => {
+      openFolderBtn.disabled = false;
+    }, 1000);
   });
   imagesContainer.appendChild(openFolderBtn);
 
@@ -403,17 +398,9 @@ async function renderDraggableImages(imageUrls) {
     // Click individual image to download
     img.addEventListener('click', async () => {
       const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${index + 1}.jpg`;
-      try {
-        await chrome.downloads.download({
-          url: url,
-          filename: filename,
-          saveAs: false
-        });
-        chrome.downloads.showDefaultFolder();
-      } catch (err) {
-        // Fallback to blob download
-        downloadImage(url, filename);
-      }
+      img.style.opacity = '0.5';
+      await downloadImageAsBlob(url, filename);
+      img.style.opacity = '1';
     });
 
     const downloadHint = document.createElement('span');
@@ -428,28 +415,28 @@ async function renderDraggableImages(imageUrls) {
   // Helper text
   const helperText = document.createElement('p');
   helperText.className = 'images-helper';
-  helperText.textContent = 'Click button above, then drag images from the folder to Facebook';
+  helperText.textContent = 'Save images, then drag from Downloads folder to Facebook';
   imagesContainer.appendChild(helperText);
 }
 
-// Download image helper
-async function downloadImage(url, filename) {
+// Download image as blob - works for cross-origin images
+async function downloadImageAsBlob(url, filename) {
   try {
     const response = await fetch(url);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
 
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
+    // Use Chrome downloads API with blob URL
+    await chrome.downloads.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: false
+    });
+
+    // Clean up after a delay
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   } catch (err) {
     console.error('Failed to download image:', err);
-    // Fallback: open in new tab
-    window.open(url, '_blank');
   }
 }
 
