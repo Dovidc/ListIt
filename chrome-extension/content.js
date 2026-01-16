@@ -26,16 +26,22 @@
 
     // Fill each field with delays to allow React to process
     await fillTitle(listing.title);
-    await delay(100);
+    await delay(200);
 
     await fillPrice(listing.price);
-    await delay(100);
+    await delay(200);
 
+    // Try to select category
+    await fillCategory(listing.category || listing.tags);
+    await delay(200);
+
+    // Try to select condition (default to "Used - Good")
+    await fillCondition(listing.condition);
+    await delay(200);
+
+    // Fill description last (it's a textarea that might need extra handling)
     await fillDescription(listing.description);
     await delay(100);
-
-    // Location is usually auto-detected by Facebook, but we can try
-    // await fillLocation(listing.location);
 
     console.log('Trovelr: Form filled successfully');
   }
@@ -67,7 +73,6 @@
 
   // Find the title input field
   function findTitleInput() {
-    // Try various selectors Facebook might use
     const selectors = [
       'input[aria-label="Title"]',
       'label[aria-label="Title"] input',
@@ -87,7 +92,6 @@
       if (label && label.textContent.includes('Title')) {
         return input;
       }
-      // Check parent for label text
       const parent = input.parentElement?.parentElement;
       if (parent && parent.textContent.includes('Title') && !parent.textContent.includes('Price')) {
         return input;
@@ -111,7 +115,6 @@
       if (el) return el;
     }
 
-    // Fallback: find input near "Price" text
     const inputs = document.querySelectorAll('input[type="text"]');
     for (const input of inputs) {
       const parent = input.parentElement?.parentElement;
@@ -123,14 +126,16 @@
     return null;
   }
 
-  // Find the description textarea
+  // Find the description input
   function findDescriptionInput() {
+    // Facebook uses a span with specific attributes for description
     const selectors = [
-      'textarea[aria-label="Description"]',
+      'span[data-lexical-text="true"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'textarea[aria-label*="escription"]',
       'label[aria-label="Description"] textarea',
       'textarea[placeholder*="Description"]',
-      'textarea[placeholder*="description"]',
-      'textarea[name="description"]'
+      'textarea[placeholder*="description"]'
     ];
 
     for (const selector of selectors) {
@@ -138,25 +143,220 @@
       if (el) return el;
     }
 
-    // Fallback: find any textarea
-    const textareas = document.querySelectorAll('textarea');
-    for (const textarea of textareas) {
-      const parent = textarea.closest('div[role="textbox"]')?.parentElement;
-      if (parent && parent.textContent.toLowerCase().includes('description')) {
-        return textarea;
+    // Look for Description label and find nearby editable
+    const labels = document.querySelectorAll('span, label');
+    for (const label of labels) {
+      if (label.textContent === 'Description') {
+        // Find the editable area near this label
+        const container = label.closest('div')?.parentElement?.parentElement;
+        if (container) {
+          const editable = container.querySelector('[contenteditable="true"]');
+          if (editable) return editable;
+        }
       }
     }
 
-    // Try contenteditable divs (Facebook sometimes uses these)
+    // Fallback: find any contenteditable div
     const editables = document.querySelectorAll('div[contenteditable="true"]');
-    for (const editable of editables) {
-      const label = editable.closest('label');
-      if (label && label.textContent.toLowerCase().includes('description')) {
-        return editable;
+    if (editables.length > 0) {
+      return editables[editables.length - 1]; // Usually the last one is description
+    }
+
+    return document.querySelector('textarea');
+  }
+
+  // Find and click a dropdown, then select an option
+  async function clickDropdownAndSelect(labelText, optionText) {
+    // Find the dropdown by label
+    const allElements = document.querySelectorAll('div[role="button"], div[role="combobox"], label');
+
+    for (const el of allElements) {
+      const text = el.textContent || '';
+      if (text.includes(labelText) || el.getAttribute('aria-label')?.includes(labelText)) {
+        // Found the dropdown area, look for clickable element
+        const clickable = el.querySelector('[role="button"]') || el;
+
+        // Click to open dropdown
+        clickable.click();
+        await delay(300);
+
+        // Find and click the option
+        const options = document.querySelectorAll('[role="option"], [role="menuitem"], div[role="button"]');
+        for (const option of options) {
+          if (option.textContent?.includes(optionText)) {
+            option.click();
+            await delay(200);
+            console.log(`Trovelr: Selected "${optionText}" for ${labelText}`);
+            return true;
+          }
+        }
+
+        // If no exact match, try partial match
+        for (const option of options) {
+          const optText = option.textContent?.toLowerCase() || '';
+          if (optText.includes(optionText.toLowerCase())) {
+            option.click();
+            await delay(200);
+            console.log(`Trovelr: Selected "${option.textContent}" for ${labelText}`);
+            return true;
+          }
+        }
+
+        // Close dropdown if no match found (click elsewhere)
+        document.body.click();
+        await delay(100);
+        break;
+      }
+    }
+    return false;
+  }
+
+  // Fill category dropdown
+  async function fillCategory(category) {
+    if (!category) {
+      // Default to "Miscellaneous" or similar
+      category = 'Miscellaneous';
+    }
+
+    // Map common categories
+    const categoryMap = {
+      'electronics': 'Electronics',
+      'furniture': 'Furniture',
+      'clothing': 'Clothing',
+      'home': 'Home',
+      'garden': 'Garden',
+      'toys': 'Toys',
+      'sports': 'Sporting Goods',
+      'auto': 'Auto Parts',
+      'books': 'Books',
+      'music': 'Musical Instruments',
+      'tools': 'Tools',
+      'baby': 'Baby & Kids',
+      'jewelry': 'Jewelry',
+      'art': 'Art',
+      'collectibles': 'Collectibles',
+      'antiques': 'Antiques',
+      'appliances': 'Appliances',
+      'health': 'Health & Beauty',
+      'office': 'Office Supplies',
+      'pets': 'Pet Supplies'
+    };
+
+    // Try to match category
+    let fbCategory = 'Miscellaneous';
+    const lowerCat = (category || '').toLowerCase();
+
+    for (const [key, value] of Object.entries(categoryMap)) {
+      if (lowerCat.includes(key)) {
+        fbCategory = value;
+        break;
       }
     }
 
-    return textareas[0] || null;
+    // Click on Category dropdown
+    const categorySection = findClickableByText('Category');
+    if (categorySection) {
+      categorySection.click();
+      await delay(400);
+
+      // Look for the category in the dropdown
+      const found = await selectDropdownOption(fbCategory);
+      if (!found) {
+        // Try "Miscellaneous" as fallback
+        await selectDropdownOption('Miscellaneous');
+      }
+    } else {
+      console.warn('Trovelr: Category dropdown not found');
+    }
+  }
+
+  // Fill condition dropdown
+  async function fillCondition(condition) {
+    // Default to "Used - Good"
+    let fbCondition = 'Used - Good';
+
+    if (condition) {
+      const lowerCond = condition.toLowerCase();
+      if (lowerCond.includes('new')) {
+        fbCondition = 'New';
+      } else if (lowerCond.includes('like new')) {
+        fbCondition = 'Used - Like New';
+      } else if (lowerCond.includes('fair')) {
+        fbCondition = 'Used - Fair';
+      } else if (lowerCond.includes('good')) {
+        fbCondition = 'Used - Good';
+      }
+    }
+
+    // Click on Condition dropdown
+    const conditionSection = findClickableByText('Condition');
+    if (conditionSection) {
+      conditionSection.click();
+      await delay(400);
+
+      await selectDropdownOption(fbCondition);
+    } else {
+      console.warn('Trovelr: Condition dropdown not found');
+    }
+  }
+
+  // Find a clickable element by its label text
+  function findClickableByText(labelText) {
+    // Look for label or span containing the text
+    const elements = document.querySelectorAll('label, span, div');
+
+    for (const el of elements) {
+      if (el.childNodes.length <= 3 && el.textContent?.trim() === labelText) {
+        // Found the label, now find the clickable dropdown near it
+        let parent = el.parentElement;
+        for (let i = 0; i < 5 && parent; i++) {
+          const clickable = parent.querySelector('[role="combobox"], [role="button"], [aria-haspopup="listbox"]');
+          if (clickable) return clickable;
+
+          // Check if parent itself is clickable
+          if (parent.getAttribute('role') === 'button' || parent.getAttribute('role') === 'combobox') {
+            return parent;
+          }
+          parent = parent.parentElement;
+        }
+
+        // Try clicking the container itself
+        const container = el.closest('div[class]');
+        if (container) return container;
+      }
+    }
+
+    return null;
+  }
+
+  // Select an option from an open dropdown
+  async function selectDropdownOption(optionText) {
+    await delay(200);
+
+    // Find all potential options
+    const optionSelectors = [
+      '[role="option"]',
+      '[role="menuitem"]',
+      '[role="menuitemradio"]',
+      'div[tabindex="-1"]',
+      'div[tabindex="0"]'
+    ];
+
+    for (const selector of optionSelectors) {
+      const options = document.querySelectorAll(selector);
+      for (const option of options) {
+        const text = option.textContent?.trim() || '';
+        if (text === optionText || text.includes(optionText)) {
+          option.click();
+          await delay(200);
+          return true;
+        }
+      }
+    }
+
+    // Try clicking away to close the dropdown
+    document.body.click();
+    return false;
   }
 
   // Fill title field
@@ -197,14 +397,39 @@
       return;
     }
 
+    // Handle different input types
     if (input.tagName === 'TEXTAREA') {
       await setInputValue(input, description);
-    } else if (input.contentEditable === 'true') {
-      // Handle contenteditable div
+    } else if (input.contentEditable === 'true' || input.getAttribute('contenteditable') === 'true') {
+      // Handle contenteditable div (Facebook's rich text editor)
       input.focus();
-      input.textContent = description;
+      await delay(100);
+
+      // Clear existing content
+      input.innerHTML = '';
+
+      // Try using execCommand for contenteditable
+      document.execCommand('insertText', false, description);
+
+      // If that didn't work, set directly
+      if (!input.textContent) {
+        input.textContent = description;
+      }
+
+      // Dispatch events
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      console.log('Trovelr: Description filled (contenteditable)');
+    } else if (input.hasAttribute('data-lexical-text')) {
+      // Lexical editor - find parent and use it
+      const editor = input.closest('[contenteditable="true"]');
+      if (editor) {
+        editor.focus();
+        await delay(100);
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, description);
+      }
     } else {
       await setInputValue(input, description);
     }
@@ -214,7 +439,6 @@
 
   // Set input value in a way that React recognizes
   async function setInputValue(input, value) {
-    // Focus the input
     input.focus();
     await delay(50);
 
@@ -247,7 +471,6 @@
     input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
     input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-    // Blur and refocus to trigger validation
     input.blur();
     await delay(50);
   }
@@ -257,6 +480,5 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // Let background script know content script is ready
   console.log('Trovelr content script loaded on Facebook Marketplace');
 })();

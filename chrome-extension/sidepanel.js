@@ -333,7 +333,7 @@ async function loadListingImages(listing) {
 }
 
 // Render draggable images
-function renderDraggableImages(imageUrls) {
+async function renderDraggableImages(imageUrls) {
   const imagesContainer = document.getElementById('imagesContainer');
   imagesContainer.innerHTML = '';
 
@@ -342,6 +342,55 @@ function renderDraggableImages(imageUrls) {
     return;
   }
 
+  // Add "Open Downloads Folder" button
+  const openFolderBtn = document.createElement('button');
+  openFolderBtn.className = 'btn-download-all';
+  openFolderBtn.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+    Save Images & Open Folder
+  `;
+  openFolderBtn.addEventListener('click', async () => {
+    openFolderBtn.disabled = true;
+    openFolderBtn.textContent = 'Saving...';
+
+    try {
+      for (let i = 0; i < imageUrls.length; i++) {
+        const url = imageUrls[i];
+        const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${i + 1}.jpg`;
+
+        // Use Chrome downloads API
+        await chrome.downloads.download({
+          url: url,
+          filename: filename,
+          saveAs: false
+        });
+
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // Open downloads folder
+      chrome.downloads.showDefaultFolder();
+
+      openFolderBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Done! Drag from folder to Facebook
+      `;
+    } catch (err) {
+      console.error('Download failed:', err);
+      openFolderBtn.textContent = 'Download failed - click images instead';
+    }
+
+    openFolderBtn.disabled = false;
+  });
+  imagesContainer.appendChild(openFolderBtn);
+
+  // Show image previews
   imageUrls.forEach((url, index) => {
     const imgWrapper = document.createElement('div');
     imgWrapper.className = 'draggable-image-wrapper';
@@ -350,41 +399,36 @@ function renderDraggableImages(imageUrls) {
     img.src = url;
     img.alt = `Image ${index + 1}`;
     img.className = 'draggable-image';
-    img.draggable = true;
 
-    // Make image draggable for Facebook's drop zone
-    img.addEventListener('dragstart', (e) => {
-      // Set data for drag
-      e.dataTransfer.setData('text/uri-list', url);
-      e.dataTransfer.setData('text/plain', url);
-      e.dataTransfer.effectAllowed = 'copy';
-
-      // Visual feedback
-      img.classList.add('dragging');
-    });
-
-    img.addEventListener('dragend', () => {
-      img.classList.remove('dragging');
-    });
-
-    // Click to download (fallback)
-    img.addEventListener('click', () => {
-      downloadImage(url, `trovelr-image-${index + 1}.jpg`);
+    // Click individual image to download
+    img.addEventListener('click', async () => {
+      const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${index + 1}.jpg`;
+      try {
+        await chrome.downloads.download({
+          url: url,
+          filename: filename,
+          saveAs: false
+        });
+        chrome.downloads.showDefaultFolder();
+      } catch (err) {
+        // Fallback to blob download
+        downloadImage(url, filename);
+      }
     });
 
     const downloadHint = document.createElement('span');
     downloadHint.className = 'download-hint';
-    downloadHint.textContent = 'Click to download';
+    downloadHint.textContent = 'Click to save';
 
     imgWrapper.appendChild(img);
     imgWrapper.appendChild(downloadHint);
     imagesContainer.appendChild(imgWrapper);
   });
 
-  // Add helper text
+  // Helper text
   const helperText = document.createElement('p');
   helperText.className = 'images-helper';
-  helperText.textContent = 'Drag images to Facebook, or click to download';
+  helperText.textContent = 'Click button above, then drag images from the folder to Facebook';
   imagesContainer.appendChild(helperText);
 }
 
@@ -409,17 +453,57 @@ async function downloadImage(url, filename) {
   }
 }
 
+// Generate a description from listing data if none exists
+function generateDescription(listing) {
+  // If listing already has a description, use it
+  if (listing.description && listing.description.trim()) {
+    return listing.description;
+  }
+
+  // Build description from available data
+  const parts = [];
+
+  // Add title as first line
+  if (listing.title) {
+    parts.push(listing.title);
+  }
+
+  // Add category/tags if available
+  if (listing.tags) {
+    parts.push(`Category: ${listing.tags}`);
+  } else if (listing.category) {
+    parts.push(`Category: ${listing.category}`);
+  }
+
+  // Add location if available
+  if (listing.location) {
+    parts.push(`Location: ${listing.location}`);
+  }
+
+  // Add a generic line
+  if (parts.length > 0) {
+    parts.push('');
+    parts.push('Listed with Trovelr');
+  }
+
+  return parts.join('\n');
+}
+
 // Fill Facebook form via content script
 function fillFacebookForm(listing) {
   statusMessage.style.display = 'none';
+
+  const description = generateDescription(listing);
 
   chrome.runtime.sendMessage({
     type: 'FILL_FORM',
     listing: {
       title: listing.title || '',
       price: listing.price || 0,
-      description: listing.description || '',
-      location: listing.location || ''
+      description: description,
+      location: listing.location || '',
+      condition: 'Used - Fair',
+      category: listing.tags || listing.category || ''
     }
   }, (response) => {
     if (response && response.success) {
