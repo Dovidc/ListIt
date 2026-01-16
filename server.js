@@ -12247,6 +12247,28 @@ app._checkDependencies = getDependencyHealth;
 app._runMigrations = runMigrations;
 app._initializeSchema = runMigrations;
 
+/* ------------------------------------------------------------------ */
+/* Deep Link Routes (Universal Links / App Links)                      */
+/* ------------------------------------------------------------------ */
+// These routes serve the SPA for deep links like /listing/123 and /seller/username
+// The app's JavaScript will handle the routing via URL hash
+
+app.get('/listing/:id', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.get('/seller/:username', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.get('/profile/:username', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.get('/user/:username', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
 /**
  * Start the server
  */

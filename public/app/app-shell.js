@@ -1014,8 +1014,21 @@
         return () => clearTimeout(timer);
       }, [setActiveConvoId, onTabChange]);
 
-      // Handle shareable links via URL hash (#listing/123, #seller/123)
+      // Handle shareable links via URL hash (#listing/123, #seller/123) or path (/listing/123, /seller/username)
       useEffect(() => {
+        // Convert path-based deep links to hash-based (for browser access without app)
+        const pathname = window.location.pathname;
+        if (!window.location.hash) {
+          const listingPathMatch = pathname.match(/^\/listing\/(\d+)/);
+          if (listingPathMatch) {
+            window.location.hash = `listing/${listingPathMatch[1]}`;
+          }
+          const sellerPathMatch = pathname.match(/^\/(?:seller|profile|user)\/([^/]+)/);
+          if (sellerPathMatch) {
+            window.location.hash = `seller/${sellerPathMatch[1]}`;
+          }
+        }
+
         const openListingFromHash = async () => {
           const hash = window.location.hash;
           console.log('[ShareableLink] Checking hash:', hash);
@@ -1259,6 +1272,7 @@
 
         // Also try Capacitor App plugin if available (for native mobile)
         let capacitorUnlisten = null;
+        let capacitorUrlUnlisten = null;
         if (window.Capacitor?.Plugins?.App) {
           const App = window.Capacitor.Plugins.App;
           App.addListener?.('appStateChange', async (state) => {
@@ -1275,12 +1289,53 @@
           }).then(handle => { capacitorUnlisten = handle; }).catch((err) => {
             console.warn('Failed to register Capacitor app state listener:', err);
           });
+
+          // Handle Universal Links (iOS) and App Links (Android)
+          App.addListener?.('appUrlOpen', (event) => {
+            console.log('[UniversalLink] App opened with URL:', event.url);
+            try {
+              const url = new URL(event.url);
+              const pathname = url.pathname;
+
+              // Match /listing/123 or /listing/123/anything
+              const listingMatch = pathname.match(/^\/listing\/(\d+)/);
+              if (listingMatch) {
+                const listingId = listingMatch[1];
+                console.log('[UniversalLink] Navigating to listing:', listingId);
+                window.location.hash = `listing/${listingId}`;
+                return;
+              }
+
+              // Match /seller/username or /profile/username or /user/username
+              const sellerMatch = pathname.match(/^\/(?:seller|profile|user)\/([^/]+)/);
+              if (sellerMatch) {
+                const username = decodeURIComponent(sellerMatch[1]);
+                console.log('[UniversalLink] Navigating to seller:', username);
+                window.location.hash = `seller/${encodeURIComponent(username)}`;
+                return;
+              }
+
+              // If URL has a hash, use it directly
+              if (url.hash && url.hash.length > 1) {
+                console.log('[UniversalLink] Using hash from URL:', url.hash);
+                window.location.hash = url.hash.slice(1);
+                return;
+              }
+
+              console.log('[UniversalLink] No matching route for:', pathname);
+            } catch (err) {
+              console.error('[UniversalLink] Failed to parse URL:', err);
+            }
+          }).then(handle => { capacitorUrlUnlisten = handle; }).catch((err) => {
+            console.warn('Failed to register Capacitor URL listener:', err);
+          });
         }
 
         return () => {
           document.removeEventListener('visibilitychange', handleVisibilityChange);
           if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
           capacitorUnlisten?.remove?.();
+          capacitorUrlUnlisten?.remove?.();
         };
       }, [refreshListings, reloadMineOnly]);
 
