@@ -2574,7 +2574,9 @@
               backgroundQueueEnabled,
               enqueueListingJob,
               initialFiles: initialMassListFiles,
-              onModerationError: () => setShowModerationModal(true)
+              onModerationError: () => setShowModerationModal(true),
+              clarifyEnabled,
+              ClarifyModal
             }),
 
             showDesktopNewListingModal && H(DesktopNewListingModal, {

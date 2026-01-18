@@ -2090,13 +2090,20 @@
     }
 
     // --- MassList Modal (fixed) ---
-    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, onAuthClick, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError }) {
+    function MassListModal({ onClose, onDone, reloadMine, addListing, user, autoPostNearbyEnabled, autoInquiryEnabled, onLockedAction, onAuthClick, backgroundQueueEnabled, enqueueListingJob, initialFiles = [], onModerationError, clarifyEnabled, ClarifyModal }) {
       const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
       const [showModerationModal, setShowModerationModal] = useState(false);
       const [showLocationWarningModal, setShowLocationWarningModal] = useState(false);
       const filePreviews = useFilePreviews(files);
+
+      // Clarify mode state
+      const [clarifyIndex, setClarifyIndex] = useState(-1); // Current file index being clarified
+      const [clarifyData, setClarifyData] = useState({ file: null, title: '', description: '', price: 0 });
+      const [clarifyBusy, setClarifyBusy] = useState(false);
+      const [clarifyError, setClarifyError] = useState('');
+      const [clarifyLocationData, setClarifyLocationData] = useState(null); // Cached location for all items
 
       const cameraRef = useRef();
       const galleryRef = useRef();
@@ -2151,6 +2158,221 @@
         if (removed) clearDraftCacheForFile(removed);
         setFiles(next);
       }
+
+      // Clarify mode: start processing files one at a time
+      const startClarifyMode = async () => {
+        if (!files.length) return;
+        setBusy(true);
+        setProgress({ done: 0, total: files.length, failed: 0 });
+
+        // Get location once for all items
+        const needsCoords = autoPostNearbyEnabled;
+        let locationResult = { display: null, lat: null, lon: null, error: null };
+        if (typeof getLocationForListing === 'function') {
+          locationResult = await getLocationForListing({ needsCoords, silent: true });
+        } else {
+          try {
+            const c = await fetchCoordsAndReverseInternal();
+            locationResult = { display: c.display, lat: c.lat, lon: c.lon };
+          } catch (err) {
+            const cached = typeof getCachedDisplay === 'function' ? getCachedDisplay() : null;
+            locationResult = { display: cached, lat: null, lon: null, error: err };
+          }
+        }
+        setClarifyLocationData(locationResult);
+
+        // Start with the first file
+        await prepareClarifyForIndex(0, locationResult);
+      };
+
+      // Prepare clarify data for a specific file index
+      const prepareClarifyForIndex = async (index, locationData) => {
+        if (index >= files.length) {
+          // All done
+          setBusy(false);
+          setClarifyIndex(-1);
+          onDone?.();
+          onClose?.();
+          return;
+        }
+
+        const file = files[index];
+        setClarifyError('');
+
+        try {
+          // Upload the file first to get public URL for AI
+          const upload = await uploadFileDraft(file);
+          if (!upload?.publicUrl) {
+            throw new Error('Upload failed');
+          }
+
+          // Run AI analysis
+          let aiTitle = '';
+          let aiDescription = '';
+          let aiPrice = 0;
+
+          if (typeof api.aiAnalyze === 'function') {
+            try {
+              const aiResult = await api.aiAnalyze({ images: [upload.publicUrl], hint: '' }, { silent: true });
+              if (aiResult) {
+                aiTitle = aiResult.title || '';
+                aiDescription = aiResult.description || '';
+                aiPrice = typeof aiResult.suggested_price === 'number' ? aiResult.suggested_price : 0;
+              }
+            } catch (aiErr) {
+              console.warn('[MassList Clarify] AI analysis failed:', aiErr.message);
+            }
+          }
+
+          // Set the data first, then show the modal
+          setClarifyData({
+            file,
+            uploadToken: upload.uploadToken,
+            title: aiTitle,
+            description: aiDescription,
+            price: aiPrice,
+            locationData: locationData || clarifyLocationData
+          });
+
+          // Now show the modal (after AI analysis is complete)
+          setClarifyIndex(index);
+        } catch (err) {
+          console.error('[MassList Clarify] Prepare failed:', err);
+          setClarifyError(err?.message || 'Failed to prepare listing');
+          // Skip this file and move to next on error
+          setProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
+          await prepareClarifyForIndex(index + 1, locationData);
+        }
+      };
+
+      // Handle clarify modal confirmation
+      const handleClarifyConfirm = async ({ files: clarifyFiles, title, description, price }) => {
+        setClarifyBusy(true);
+        setClarifyError('');
+
+        try {
+          const locationData = clarifyData.locationData || clarifyLocationData;
+          const normalizedLocation = locationData?.display || 'Unknown location';
+          const sharedNearby = {
+            ok: !!(locationData?.lat && locationData?.lon),
+            lat: locationData?.lat,
+            lon: locationData?.lon
+          };
+
+          // Upload any additional images the user added
+          const uploadTokens = [clarifyData.uploadToken]; // Start with original
+
+          if (Array.isArray(clarifyFiles) && clarifyFiles.length > 1) {
+            // User added more images - upload them (skip first one, it's already uploaded)
+            for (let i = 1; i < clarifyFiles.length && uploadTokens.length < 12; i++) {
+              try {
+                const upload = await uploadFileDraft(clarifyFiles[i]);
+                if (upload?.uploadToken) {
+                  uploadTokens.push(upload.uploadToken);
+                }
+              } catch (e) {
+                console.warn('[MassList Clarify] Failed to upload additional image:', e);
+              }
+            }
+          }
+
+          // Create the listing with user-provided data
+          if (typeof api.createAutoListingFast === 'function') {
+            const payload = {
+              uploadTokens: uploadTokens,
+              location: normalizedLocation,
+              enable_nearby: autoPostNearbyEnabled && sharedNearby.ok,
+              inquiry_enabled: autoInquiryEnabled,
+              title: title,
+              description: description,
+              price: price
+            };
+            if (autoPostNearbyEnabled && sharedNearby.ok) {
+              payload.lat = sharedNearby.lat;
+              payload.lon = sharedNearby.lon;
+            }
+
+            const result = await api.createAutoListingFast(payload, { silent: true });
+
+            // Poll for completion
+            if (result?.job_id && typeof api.getAutoListingStatus === 'function' && typeof addListing === 'function') {
+              const pollJob = async () => {
+                const maxAttempts = 30;
+                const intervalMs = 2000;
+                for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                  try {
+                    const status = await api.getAutoListingStatus(result.job_id, { silent: true });
+                    if (status?.status === 'completed' && status.listing) {
+                      addListing(status.listing);
+                      return;
+                    }
+                    if (status?.status === 'failed') return;
+                  } catch (e) { /* ignore */ }
+                  await new Promise(r => setTimeout(r, intervalMs));
+                }
+              };
+              pollJob().catch(() => {});
+            }
+          } else {
+            // Fallback to regular createListing
+            const payload = {
+              title: title.slice(0, 80),
+              description: description.slice(0, 400),
+              location: normalizedLocation,
+              price: price,
+              tags: '',
+              enable_nearby: (autoPostNearbyEnabled && sharedNearby.ok) ? 1 : 0,
+              upload_tokens: uploadTokens
+            };
+            if (autoInquiryEnabled) payload.inquiry_enabled = 1;
+            if (autoPostNearbyEnabled && sharedNearby.ok) {
+              payload.lat = sharedNearby.lat;
+              payload.lon = sharedNearby.lon;
+            }
+
+            const created = await api.createListing(payload, { silent: true });
+            if (created?.id && typeof addListing === 'function') {
+              addListing(created);
+            }
+          }
+
+          // Update progress
+          setProgress(prev => ({ ...prev, done: prev.done + 1 }));
+
+          // Save the next index before resetting state
+          const nextIndex = clarifyIndex + 1;
+
+          // Hide current modal before moving to next file
+          setClarifyIndex(-1);
+          setClarifyBusy(false);
+
+          // Move to next file
+          await prepareClarifyForIndex(nextIndex, clarifyLocationData);
+        } catch (err) {
+          console.error('[MassList Clarify] Create failed:', err);
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            onModerationError?.();
+            // Skip this file and move to next
+            const nextIndex = clarifyIndex + 1;
+            setProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
+            setClarifyIndex(-1);
+            setClarifyBusy(false);
+            await prepareClarifyForIndex(nextIndex, clarifyLocationData);
+          } else {
+            setClarifyError(msg || 'Failed to create listing');
+            setClarifyBusy(false);
+          }
+        }
+      };
+
+      // Handle skipping a file in clarify mode
+      const handleClarifySkip = async () => {
+        const nextIndex = clarifyIndex + 1;
+        setProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
+        setClarifyIndex(-1);
+        await prepareClarifyForIndex(nextIndex, clarifyLocationData);
+      };
 
       const executeMassList = async ({ filesSnapshot, trackProgress }) => {
         const total = filesSnapshot.length;
@@ -2316,6 +2538,12 @@
         if (!user) { onAuthClick?.('login'); return; }
         if (user.account_status === 'locked') { onLockedAction?.(); return; }
         if (!files.length) { alert('Pick at least one image.'); return; }
+
+        // If clarify mode is enabled and ClarifyModal is available, use clarify flow
+        if (clarifyEnabled && ClarifyModal) {
+          await startClarifyMode();
+          return;
+        }
 
         const filesSnapshot = files.slice();
 
@@ -2490,7 +2718,13 @@
           },
             H('div', null,
               H('div', { className: 'spinner' }),
-              H('div', { style: { fontWeight: 800, marginTop: 6 } }, 'MassList in progress...'),
+              H('div', { style: { fontWeight: 800, marginTop: 6 } },
+                clarifyEnabled && clarifyIndex < 0
+                  ? 'Analyzing image...'
+                  : clarifyEnabled
+                    ? `Reviewing item ${progress.done + 1} of ${progress.total}`
+                    : 'MassList in progress...'
+              ),
               H('div', { className: 'muted', style: { marginTop: 4 } }, `${progress.done}/${progress.total} completed`),
               progress.failed > 0 && H('div', { className: 'muted', style: { marginTop: 2, color: '#b91c1c' } }, `${progress.failed} failed`)
             )
@@ -2526,8 +2760,38 @@
         onClose: () => setShowLocationWarningModal(false)
       });
 
+      // Clarify modal for individual item review
+      const clarifyModal = clarifyIndex >= 0 && ClarifyModal && H(ClarifyModal, {
+        isOpen: true,
+        onClose: handleClarifySkip,
+        onConfirm: handleClarifyConfirm,
+        initialFiles: clarifyData.file ? [clarifyData.file] : [],
+        initialTitle: clarifyData.title,
+        initialDescription: clarifyData.description,
+        initialPrice: clarifyData.price,
+        busy: clarifyBusy,
+        error: clarifyError
+      });
+
+      // Progress indicator for clarify mode
+      const clarifyProgress = clarifyEnabled && busy && clarifyIndex >= 0 && H('div', {
+        style: {
+          position: 'fixed',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.8)',
+          color: '#fff',
+          padding: '12px 24px',
+          borderRadius: 12,
+          zIndex: 140,
+          fontSize: 14,
+          fontWeight: 600
+        }
+      }, `Item ${clarifyIndex + 1} of ${files.length}`);
+
       return ReactDOM.createPortal(
-        H(React.Fragment, null, modal, moderationModal, locationWarningModal),
+        H(React.Fragment, null, modal, moderationModal, locationWarningModal, clarifyModal, clarifyProgress),
         document.body
       );
     }

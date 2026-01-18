@@ -1481,6 +1481,7 @@
 
           const parsedPrice = Number(priceVal);
           const safePrice = (Number.isFinite(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+          const trimmedLocation = String(location || '').trim();
 
           const basePayload = {
             title: String(title || '').trim(),
