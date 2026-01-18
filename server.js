@@ -11988,6 +11988,93 @@ const readinessHandler = async (_req, res) => {
   }
 };
 
+// Facebook Marketplace category matching endpoint for Chrome extension
+// These are the top-level selectable categories from FB Marketplace
+const FB_MARKETPLACE_CATEGORIES = [
+  'Vehicles',
+  'Property Rentals',
+  'Apparel',
+  'Classifieds',
+  'Electronics',
+  'Entertainment',
+  'Family',
+  'Free Stuff',
+  'Garden & Outdoor',
+  'Hobbies',
+  'Home Goods',
+  'Home Improvement Supplies',
+  'Home Sales',
+  'Musical Instruments',
+  'Office Supplies',
+  'Pet Supplies',
+  'Sporting Goods',
+  'Toys & Games'
+];
+
+app.post('/api/facebook/category-match', auth, async (req, res) => {
+  try {
+    const { title, description, suggestedCategories } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'title_required' });
+    }
+
+    // If Facebook provided suggested categories, pick from those
+    // Otherwise fall back to the default category list
+    const categoriesToChooseFrom = (Array.isArray(suggestedCategories) && suggestedCategories.length > 0)
+      ? suggestedCategories
+      : FB_MARKETPLACE_CATEGORIES;
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      // Fallback if OpenAI not available - return first suggested or default
+      const fallback = categoriesToChooseFrom[0] || 'Classifieds';
+      return res.json({ category: fallback, confidence: 'low', method: 'fallback' });
+    }
+
+    const prompt = `You are a category classifier for Facebook Marketplace listings.
+
+Given this listing:
+Title: "${title}"
+${description ? `Description: "${description}"` : ''}
+
+Choose the SINGLE best matching category from this list:
+${categoriesToChooseFrom.join('\n')}
+
+Respond with ONLY the exact category name from the list, nothing else.`;
+
+    const completion = await withTimeout(
+      async ({ signal }) => {
+        return openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 50,
+          temperature: 0
+        }, { signal });
+      },
+      OPENAI_TIMEOUT_MS,
+      'fb_category_match'
+    );
+
+    const aiSuggestion = completion.choices[0]?.message?.content?.trim();
+
+    // Validate the response is a valid category from the list
+    const matchedCategory = categoriesToChooseFrom.find(
+      cat => cat.toLowerCase() === aiSuggestion?.toLowerCase()
+    );
+
+    res.json({
+      category: matchedCategory || categoriesToChooseFrom[0] || 'Classifieds',
+      confidence: matchedCategory ? 'high' : 'low',
+      method: 'openai'
+    });
+  } catch (err) {
+    console.error('[FB Category Match] Error:', err?.message || err);
+    const { suggestedCategories } = req.body;
+    const fallback = (Array.isArray(suggestedCategories) && suggestedCategories[0]) || 'Classifieds';
+    res.json({ category: fallback, confidence: 'low', method: 'error' });
+  }
+});
+
 app.get('/api/health', livenessHandler);
 app.get('/api/health/live', livenessHandler);
 app.get('/api/health/deps', readinessHandler);

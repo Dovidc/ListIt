@@ -20,12 +20,32 @@ const emptyState = document.getElementById('emptyState');
 const selectedPanel = document.getElementById('selectedPanel');
 const backBtn = document.getElementById('backBtn');
 const statusMessage = document.getElementById('statusMessage');
+const categoryStatus = document.getElementById('categoryStatus');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
   setupEventListeners();
+  listenForAutoCategory();
 });
+
+// Listen for auto category selection from content script
+function listenForAutoCategory() {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'CATEGORY_AUTO_SELECTED') {
+      // Update the category status display
+      if (message.success) {
+        categoryStatus.className = 'category-status success';
+        categoryStatus.textContent = `Category: ${message.selectedCategory}`;
+        categoryStatus.style.display = 'block';
+      } else {
+        categoryStatus.className = 'category-status error';
+        categoryStatus.textContent = message.error || 'Could not auto-select category';
+        categoryStatus.style.display = 'block';
+      }
+    }
+  });
+}
 
 // Check if user is authenticated
 async function checkAuth() {
@@ -296,44 +316,61 @@ async function loadListingImages(listing) {
   imagesContainer.innerHTML = '<div class="loading-images">Loading images...</div>';
 
   try {
-    // Fetch full listing details with images
-    const response = await fetch(`${apiUrl}/api/listings/${listing.id}`, {
+    // Fetch images using the dedicated images endpoint
+    const response = await fetch(`${apiUrl}/api/listings/${listing.id}/images`, {
       headers: {
         'Authorization': `Bearer ${authToken}`
       }
     });
 
     if (!response.ok) {
-      throw new Error('Failed to load listing details');
+      throw new Error('Failed to load listing images');
     }
 
-    const fullListing = await response.json();
+    const data = await response.json();
+    console.log('Loaded images:', data);
 
-    // Get images array
+    // The endpoint returns { images: ['url1', 'url2', ...] }
     let images = [];
-    if (fullListing.images && Array.isArray(fullListing.images)) {
-      images = fullListing.images.map(img => img.url || img.image_data).filter(Boolean);
-    } else if (fullListing.image_data) {
-      images = [fullListing.image_data];
+    if (Array.isArray(data.images)) {
+      images = data.images.filter(Boolean);
+    } else if (Array.isArray(data)) {
+      images = data.filter(Boolean);
     }
 
-    // Update selected listing with full data
-    selectedListing = { ...listing, ...fullListing, imageUrls: images };
+    // Update selected listing with images
+    selectedListing = { ...listing, imageUrls: images };
 
-    // Render draggable images
-    renderDraggableImages(images);
+    // Render and auto-download images
+    renderDraggableImages(images, listing.title);
 
   } catch (err) {
     console.error('Failed to load images:', err);
     // Fall back to cover image
     const images = listing.image_data ? [listing.image_data] : [];
     selectedListing.imageUrls = images;
-    renderDraggableImages(images);
+    renderDraggableImages(images, listing.title);
   }
 }
 
-// Render draggable images
-async function renderDraggableImages(imageUrls) {
+// Generate a safe filename from the listing title
+function generateFilename(title, index, totalImages) {
+  // Clean the title for use as filename
+  let safeName = (title || 'listing')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric with hyphens
+    .replace(/^-+|-+$/g, '')       // Remove leading/trailing hyphens
+    .substring(0, 40);             // Limit length
+
+  // Add image number if multiple images
+  if (totalImages > 1) {
+    return `${safeName}-${index + 1}.jpg`;
+  }
+  return `${safeName}.jpg`;
+}
+
+// Render draggable images and auto-download them
+async function renderDraggableImages(imageUrls, listingTitle) {
   const imagesContainer = document.getElementById('imagesContainer');
   imagesContainer.innerHTML = '';
 
@@ -342,48 +379,11 @@ async function renderDraggableImages(imageUrls) {
     return;
   }
 
-  // Add "Save All Images" button
-  const openFolderBtn = document.createElement('button');
-  openFolderBtn.className = 'btn-download-all';
-  openFolderBtn.innerHTML = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-    Save All Images
-  `;
-  openFolderBtn.addEventListener('click', async () => {
-    openFolderBtn.disabled = true;
-    openFolderBtn.textContent = 'Saving...';
-
-    try {
-      for (let i = 0; i < imageUrls.length; i++) {
-        const url = imageUrls[i];
-        const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${i + 1}.jpg`;
-        await downloadImageAsBlob(url, filename);
-        await new Promise(r => setTimeout(r, 100));
-      }
-
-      // Open downloads folder via background script
-      chrome.runtime.sendMessage({ type: 'OPEN_DOWNLOADS_FOLDER' });
-
-      openFolderBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        Done! Drag from Downloads to Facebook
-      `;
-    } catch (err) {
-      console.error('Download failed:', err);
-      openFolderBtn.textContent = 'Download failed';
-    }
-
-    setTimeout(() => {
-      openFolderBtn.disabled = false;
-    }, 1000);
-  });
-  imagesContainer.appendChild(openFolderBtn);
+  // Status message
+  const statusDiv = document.createElement('div');
+  statusDiv.className = 'download-status';
+  statusDiv.textContent = `Downloading ${imageUrls.length} image(s)...`;
+  imagesContainer.appendChild(statusDiv);
 
   // Show image previews
   imageUrls.forEach((url, index) => {
@@ -394,42 +394,71 @@ async function renderDraggableImages(imageUrls) {
     img.src = url;
     img.alt = `Image ${index + 1}`;
     img.className = 'draggable-image';
-
-    // Click individual image to download
-    img.addEventListener('click', async () => {
-      const filename = `trovelr-${(selectedListing?.title || 'image').slice(0,20).replace(/[^a-z0-9]/gi, '_')}-${index + 1}.jpg`;
-      img.style.opacity = '0.5';
-      await downloadImageAsBlob(url, filename);
-      img.style.opacity = '1';
-    });
-
-    const downloadHint = document.createElement('span');
-    downloadHint.className = 'download-hint';
-    downloadHint.textContent = 'Click to save';
+    img.style.opacity = '0.5'; // Dimmed until downloaded
 
     imgWrapper.appendChild(img);
-    imgWrapper.appendChild(downloadHint);
     imagesContainer.appendChild(imgWrapper);
   });
 
-  // Helper text
-  const helperText = document.createElement('p');
-  helperText.className = 'images-helper';
-  helperText.textContent = 'Save images, then drag from Downloads folder to Facebook';
-  imagesContainer.appendChild(helperText);
-}
+  // Auto-download all images with descriptive filenames
+  let downloadedCount = 0;
+  for (let i = 0; i < imageUrls.length; i++) {
+    const url = imageUrls[i];
+    const filename = generateFilename(listingTitle, i, imageUrls.length);
 
-// Download image via background script (has full permissions)
-async function downloadImageAsBlob(url, filename) {
-  return new Promise((resolve) => {
     chrome.runtime.sendMessage({
       type: 'DOWNLOAD_IMAGE',
       url: url,
       filename: filename
-    }, (response) => {
-      resolve(response?.success || false);
+    }, () => {
+      downloadedCount++;
+      // Update image opacity to show it's downloaded
+      const imgs = imagesContainer.querySelectorAll('.draggable-image');
+      if (imgs[i]) {
+        imgs[i].style.opacity = '1';
+      }
+      // Update status
+      if (downloadedCount === imageUrls.length) {
+        statusDiv.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          ${imageUrls.length} image(s) downloaded! Drag from Downloads to Facebook.
+        `;
+        statusDiv.style.color = '#4ade80';
+      } else {
+        statusDiv.textContent = `Downloaded ${downloadedCount}/${imageUrls.length} images...`;
+      }
     });
-  });
+    // Small delay between downloads
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// Download image using anchor tag (simple approach)
+async function downloadImageAsBlob(url, filename) {
+  try {
+    // Fetch the image as blob
+    const response = await fetch(url);
+    const blob = await response.blob();
+
+    // Create object URL and trigger download
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Clean up
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    return true;
+  } catch (err) {
+    console.error('Download failed:', err);
+    return false;
+  }
 }
 
 // Generate a description from listing data if none exists
@@ -474,6 +503,8 @@ function fillFacebookForm(listing) {
 
   const description = generateDescription(listing);
 
+  // Send listing data to content script
+  // Category selection is now done by content script after reading FB's suggested categories
   chrome.runtime.sendMessage({
     type: 'FILL_FORM',
     listing: {
@@ -481,12 +512,17 @@ function fillFacebookForm(listing) {
       price: listing.price || 0,
       description: description,
       location: listing.location || '',
-      condition: 'Used - Fair',
-      category: listing.tags || listing.category || ''
+      condition: 'Used - Fair'
+      // Category is handled by content script based on FB's image-based suggestions
     }
   }, (response) => {
     if (response && response.success) {
       statusMessage.style.display = 'flex';
+      // Category will be auto-selected when user adds an image
+      // Show a hint that category will be auto-selected
+      categoryStatus.className = 'category-status loading';
+      categoryStatus.textContent = 'Category will be auto-selected when you add an image...';
+      categoryStatus.style.display = 'block';
     }
   });
 }
@@ -505,6 +541,7 @@ function hideSelectedPanel() {
   listingsContainer.style.display = 'grid';
   selectedListing = null;
   statusMessage.style.display = 'none';
+  categoryStatus.style.display = 'none';
 }
 
 // Show/hide loading state

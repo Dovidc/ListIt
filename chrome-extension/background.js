@@ -3,24 +3,18 @@
 
 const FACEBOOK_CREATE_URL = 'https://www.facebook.com/marketplace/create/item';
 
-// Enable side panel to open on action click
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-
-// When user clicks the extension icon
+// When user clicks the extension icon - open side panel AND navigate
 chrome.action.onClicked.addListener(async (tab) => {
-  // Open Facebook Marketplace create page in current tab or new tab
-  let targetTabId = tab.id;
-
-  if (!tab.url.includes('facebook.com/marketplace/create')) {
-    // Navigate to FB Marketplace create page
-    await chrome.tabs.update(tab.id, { url: FACEBOOK_CREATE_URL });
-  }
-
-  // Open the side panel
+  // Open side panel first (requires user gesture, which we have from the click)
   try {
-    await chrome.sidePanel.open({ tabId: targetTabId });
+    await chrome.sidePanel.open({ tabId: tab.id });
   } catch (err) {
     console.error('Failed to open side panel:', err);
+  }
+
+  // Then navigate to FB Marketplace if not already there
+  if (!tab.url || !tab.url.includes('facebook.com/marketplace/create')) {
+    await chrome.tabs.update(tab.id, { url: FACEBOOK_CREATE_URL });
   }
 });
 
@@ -71,40 +65,85 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'DOWNLOAD_IMAGE') {
-    // Download image from background script (has full permissions)
-    (async () => {
-      try {
-        const response = await fetch(message.url);
-        const blob = await response.blob();
-        const reader = new FileReader();
-
-        reader.onloadend = async () => {
-          const dataUrl = reader.result;
-          await chrome.downloads.download({
-            url: dataUrl,
-            filename: message.filename,
-            saveAs: false
-          });
-          sendResponse({ success: true });
-        };
-
-        reader.onerror = () => {
-          sendResponse({ success: false, error: 'Failed to read blob' });
-        };
-
-        reader.readAsDataURL(blob);
-      } catch (err) {
-        console.error('Download failed:', err);
-        sendResponse({ success: false, error: err.message });
+  if (message.type === 'SELECT_CATEGORY') {
+    // Forward category selection request to content script
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'SELECT_FACEBOOK_CATEGORY',
+          title: message.title
+        }, (response) => {
+          sendResponse(response);
+        });
       }
-    })();
+    });
+    return true;
+  }
+
+  if (message.type === 'DOWNLOAD_IMAGE') {
+    // Download image directly using Chrome downloads API
+    const downloadOptions = {
+      url: message.url
+    };
+
+    // Use custom filename if provided
+    if (message.filename) {
+      downloadOptions.filename = message.filename;
+    }
+
+    chrome.downloads.download(downloadOptions, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error('Download error:', chrome.runtime.lastError.message);
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        console.log('Download started:', downloadId);
+        sendResponse({ success: true, downloadId });
+      }
+    });
     return true;
   }
 
   if (message.type === 'OPEN_DOWNLOADS_FOLDER') {
     chrome.downloads.showDefaultFolder();
     sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === 'CATEGORY_MATCH') {
+    // Proxy API call to avoid CORS issues from content script
+    chrome.storage.local.get(['trovelrToken', 'trovelrApiUrl'], async (result) => {
+      const apiUrl = result.trovelrApiUrl || 'https://trovelr.com';
+      const token = result.trovelrToken;
+
+      if (!token) {
+        sendResponse({ success: false, error: 'No auth token' });
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiUrl}/api/facebook/category-match`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            title: message.title,
+            suggestedCategories: message.suggestedCategories
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          sendResponse({ success: true, category: data.category });
+        } else {
+          sendResponse({ success: false, error: 'API request failed' });
+        }
+      } catch (err) {
+        console.error('Category match error:', err);
+        sendResponse({ success: false, error: err.message });
+      }
+    });
     return true;
   }
 });

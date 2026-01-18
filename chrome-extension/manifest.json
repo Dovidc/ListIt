@@ -14,7 +14,10 @@
     "https://www.facebook.com/*",
     "https://trovelr.com/*",
     "https://*.trovelr.com/*",
-    "http://localhost:*/*"
+    "https://*.cloudfront.net/*",
+    "https://*.amazonaws.com/*",
+    "http://localhost:*/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
