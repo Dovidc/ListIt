@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#2563eb"/>
+
+  <!-- Shopping bag body -->
+  <path d="M40 50 L40 95 Q40 100 45 100 L83 100 Q88 100 88 95 L88 50 Z" fill="white"/>
+
+  <!-- Bag handles -->
+  <path d="M50 50 L50 40 Q50 32 58 32 L70 32 Q78 32 78 40 L78 50"
+        fill="none" stroke="white" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Location pin with T -->
+  <g transform="translate(64, 72)">
+    <!-- Pin shape -->
+    <path d="M0 -22 Q-14 -22 -14 -8 Q-14 4 0 18 Q14 4 14 -8 Q14 -22 0 -22 Z"
+          fill="#2563eb" stroke="white" stroke-width="2"/>
+    <!-- Letter T -->
+    <text x="0" y="-2" font-family="Arial, sans-serif" font-size="18" font-weight="bold"
+          fill="white" text-anchor="middle" dominant-baseline="middle">T</text>
+  </g>
+</svg>

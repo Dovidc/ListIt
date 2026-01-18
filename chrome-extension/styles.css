@@ -65,84 +65,177 @@ body {
 }
 
 /* Login View */
-.login-container {
-  padding: 32px 20px;
-  max-width: 320px;
-  margin: 0 auto;
-  width: 100%;
+.login-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow-y: auto;
 }
 
-.login-container h2 {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 8px;
+.login-hero {
+  text-align: center;
+  padding: 24px 0 32px;
+}
+
+.hero-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-title {
+  font-size: 22px;
+  font-weight: 700;
   color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
 }
 
-.subtitle {
+.hero-subtitle {
+  font-size: 14px;
   color: #888;
-  margin-bottom: 24px;
-  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-container {
+  background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .form-group label {
-  display: block;
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
   font-size: 13px;
-  color: #aaa;
+  font-weight: 500;
+  color: #999;
+}
+
+.form-group label svg {
+  opacity: 0.7;
 }
 
 .form-group input {
   width: 100%;
-  padding: 12px;
+  padding: 14px 16px;
   border: 1px solid #333;
-  border-radius: 8px;
-  background: #1a1a1a;
+  border-radius: 10px;
+  background: #0f0f0f;
   color: #fff;
   font-size: 14px;
-  transition: border-color 0.15s ease;
+  transition: all 0.2s ease;
+}
+
+.form-group input:hover {
+  border-color: #444;
 }
 
 .form-group input:focus {
   outline: none;
   border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .form-group input::placeholder {
-  color: #666;
+  color: #555;
 }
 
 .error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: #ef4444;
   font-size: 13px;
   margin-bottom: 16px;
-  min-height: 18px;
+  min-height: 20px;
+  padding: 0 4px;
+}
+
+.error-message:not(:empty) {
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .btn-primary {
   width: 100%;
-  padding: 12px;
-  background: #2563eb;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .btn-primary:hover {
-  background: #1d4ed8;
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
 }
 
 .btn-primary:disabled {
   background: #333;
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-primary svg {
+  transition: transform 0.2s ease;
+}
+
+.btn-primary:hover svg {
+  transform: translateX(3px);
+}
+
+/* Login Footer */
+.login-footer {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.features-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #888;
+}
+
+.feature-item svg {
+  flex-shrink: 0;
 }
 
 .btn-secondary {
@@ -336,6 +429,7 @@ body {
 .selected-header {
   padding: 12px 16px;
   border-bottom: 1px solid #2a2a2a;
+  background: #161616;
 }
 
 .btn-back {
@@ -359,64 +453,142 @@ body {
 }
 
 .selected-content {
-  padding: 20px 16px;
+  padding: 16px;
   flex: 1;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Listing Info Card */
+.listing-info-card {
+  background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #2a2a2a;
 }
 
 #selectedTitle {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  line-height: 1.3;
 }
 
 .selected-price {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 700;
   color: #22c55e;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .selected-description {
-  color: #aaa;
+  color: #888;
   font-size: 13px;
   line-height: 1.5;
-  margin-bottom: 20px;
-  max-height: 80px;
+  max-height: 60px;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
 }
 
 /* Images Section */
 .images-section {
-  margin-bottom: 20px;
+  background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #2a2a2a;
 }
 
-.images-label {
-  font-size: 13px;
-  color: #888;
-  margin-bottom: 12px;
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 500;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.section-header svg {
+  color: #888;
+}
+
+/* Download Status */
+.download-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.download-status.loading {
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: #60a5fa;
+}
+
+.download-status.success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.download-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(96, 165, 250, 0.3);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .images-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .draggable-image-wrapper {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  border: 2px dashed #333;
-  transition: border-color 0.15s ease;
+  border: 2px solid #333;
+  transition: all 0.2s ease;
+  background: #0f0f0f;
 }
 
 .draggable-image-wrapper:hover {
   border-color: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.draggable-image-wrapper.downloaded {
+  border-color: #22c55e;
+}
+
+.draggable-image-wrapper.downloaded::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 .draggable-image {
@@ -424,11 +596,11 @@ body {
   height: 100%;
   object-fit: cover;
   cursor: grab;
-  transition: transform 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .draggable-image:hover {
-  transform: scale(1.02);
+  transform: scale(1.05);
 }
 
 .draggable-image.dragging {
@@ -436,71 +608,18 @@ body {
   cursor: grabbing;
 }
 
-.download-hint {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  font-size: 10px;
-  padding: 4px;
-  text-align: center;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.draggable-image-wrapper:hover .download-hint {
-  opacity: 1;
-}
-
-.images-helper {
-  grid-column: 1 / -1;
-  text-align: center;
-  font-size: 11px;
-  color: #666;
-  margin-top: 8px;
-}
-
-.btn-download-all {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  margin-bottom: 8px;
-  transition: background 0.15s ease;
-}
-
-.btn-download-all:hover {
-  background: #1d4ed8;
-}
-
-.btn-download-all:disabled {
-  background: #333;
-  cursor: wait;
-}
-
-.loading-images {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: #888;
-  padding: 20px;
-}
-
 .no-images {
-  grid-column: 1 / -1;
   text-align: center;
   color: #666;
-  padding: 20px;
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+/* Status Section */
+.status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* Status Message */

@@ -110,7 +110,8 @@
       "Bash(cmd /c \"cd /d c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\android && call gradlew.bat assembleRelease 2>&1\")",
       "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\android\\\\app\\\\src\\\\main\\\\java\\\\com\\\\trovelr\\\\app\\\\MainActivity.java\")",
       "Bash(xxd:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\chrome-extension\\\\icon16.png\")"
     ],
     "deny": [],
     "ask": []

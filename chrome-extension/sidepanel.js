@@ -372,18 +372,22 @@ function generateFilename(title, index, totalImages) {
 // Render draggable images and auto-download them
 async function renderDraggableImages(imageUrls, listingTitle) {
   const imagesContainer = document.getElementById('imagesContainer');
+  const downloadStatus = document.getElementById('downloadStatus');
   imagesContainer.innerHTML = '';
 
   if (!imageUrls || imageUrls.length === 0) {
     imagesContainer.innerHTML = '<p class="no-images">No images available</p>';
+    downloadStatus.style.display = 'none';
     return;
   }
 
-  // Status message
-  const statusDiv = document.createElement('div');
-  statusDiv.className = 'download-status';
-  statusDiv.textContent = `Downloading ${imageUrls.length} image(s)...`;
-  imagesContainer.appendChild(statusDiv);
+  // Show download status
+  downloadStatus.style.display = 'flex';
+  downloadStatus.className = 'download-status loading';
+  downloadStatus.innerHTML = `
+    <div class="download-spinner"></div>
+    <span>Downloading ${imageUrls.length} image(s)...</span>
+  `;
 
   // Show image previews
   imageUrls.forEach((url, index) => {
@@ -416,18 +420,19 @@ async function renderDraggableImages(imageUrls, listingTitle) {
       const imgs = imagesContainer.querySelectorAll('.draggable-image');
       if (imgs[i]) {
         imgs[i].style.opacity = '1';
+        imgs[i].parentElement.classList.add('downloaded');
       }
       // Update status
       if (downloadedCount === imageUrls.length) {
-        statusDiv.innerHTML = `
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2">
+        downloadStatus.className = 'download-status success';
+        downloadStatus.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          ${imageUrls.length} image(s) downloaded! Drag from Downloads to Facebook.
+          <span>${imageUrls.length} image(s) ready! Drag from Downloads folder to Facebook.</span>
         `;
-        statusDiv.style.color = '#4ade80';
       } else {
-        statusDiv.textContent = `Downloaded ${downloadedCount}/${imageUrls.length} images...`;
+        downloadStatus.querySelector('span').textContent = `Downloading ${downloadedCount}/${imageUrls.length} images...`;
       }
     });
     // Small delay between downloads
