@@ -129,6 +129,7 @@ const { getRedisClient } = require('./lib/redis-client');
 const { createRateLimitStore } = require('./lib/redis-rate-limit-store');
 const { assertMigrationsCurrent } = require('./lib/migration-guard');
 const { beginHttpRequest, recordHttpRequest, getMetricsSnapshot } = require('./lib/metrics');
+const ebayService = require('./lib/ebay-service');
 const {
   isPushAvailable,
   publicPushMeta,
@@ -12301,6 +12302,1127 @@ app.get('/delete-account', (_req, res) => {
 </body>
 </html>`);
 });
+
+/* ------------------------------------------------------------------ */
+/* eBay Integration Routes                                              */
+/* ------------------------------------------------------------------ */
+
+// Get eBay connection status for the current user
+app.get('/api/ebay/connection', auth, async (req, res) => {
+  try {
+    const conn = await db.prepare(
+      `SELECT id, ebay_username, connected_at, status, cross_post_enabled
+       FROM ebay_connections
+       WHERE user_id = ?`
+    ).get(req.user.id);
+
+    if (!conn) {
+      return res.json({ connected: false });
+    }
+
+    // Get active listings count separately
+    const countRow = await db.prepare(
+      `SELECT COUNT(*) as cnt FROM ebay_listings el
+       JOIN ebay_connections ec ON el.ebay_connection_id = ec.id
+       WHERE ec.user_id = ? AND el.status = 'active'`
+    ).get(req.user.id);
+
+    res.json({
+      connected: true,
+      ebayUsername: conn.ebay_username,
+      connectedAt: conn.connected_at,
+      status: conn.status,
+      crossPostEnabled: conn.cross_post_enabled === 1,
+      activeListings: parseInt(countRow?.cnt) || 0
+    });
+  } catch (err) {
+    console.error('[eBay] Error getting connection status:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Initiate eBay OAuth flow
+app.get('/api/ebay/auth/connect', auth, async (req, res) => {
+  try {
+    // Check if user already has a connection
+    const existing = await db.prepare(
+      'SELECT id FROM ebay_connections WHERE user_id = ?'
+    ).get(req.user.id);
+
+    if (existing) {
+      return res.status(400).json({
+        error: 'already_connected',
+        message: 'eBay account is already connected. Disconnect first to connect a different account.'
+      });
+    }
+
+    const redirectUri = process.env.EBAY_REDIRECT_URI ||
+      `${req.protocol}://${req.get('host')}/api/ebay/auth/callback`;
+
+    const { url, state } = ebayService.getAuthorizationUrl(req.user.id, redirectUri);
+
+    // Store state temporarily for validation (could use Redis in production)
+    req.session = req.session || {};
+    req.session.ebayOAuthState = state;
+
+    res.json({ redirectUrl: url });
+  } catch (err) {
+    console.error('[eBay] Error initiating OAuth:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// eBay OAuth callback handler
+app.get('/api/ebay/auth/callback', async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    // Handle OAuth errors from eBay
+    if (error) {
+      console.error('[eBay OAuth] Error from eBay:', error, error_description);
+      return res.redirect('/#/settings?ebay=error&message=' + encodeURIComponent(error_description || error));
+    }
+
+    if (!code || !state) {
+      return res.redirect('/#/settings?ebay=error&message=missing_params');
+    }
+
+    // Decrypt state to get user ID
+    let userId;
+    try {
+      const decrypted = ebayService.decryptToken(state);
+      const payload = JSON.parse(decrypted);
+      userId = payload.userId;
+
+      if (Date.now() > payload.expiresAt) {
+        return res.redirect('/#/settings?ebay=error&message=state_expired');
+      }
+    } catch (e) {
+      console.error('[eBay OAuth] Invalid state:', e.message);
+      return res.redirect('/#/settings?ebay=error&message=invalid_state');
+    }
+
+    // Exchange code for tokens
+    const redirectUri = process.env.EBAY_REDIRECT_URI ||
+      `${req.protocol}://${req.get('host')}/api/ebay/auth/callback`;
+
+    const tokens = await ebayService.exchangeCodeForTokens(code, redirectUri);
+
+    // Get eBay user info
+    const userInfo = await ebayService.getEbayUserInfo(tokens.accessToken);
+
+    // Check if this eBay account is already connected to another Trovelr user
+    const existingEbay = await db.prepare(
+      'SELECT user_id FROM ebay_connections WHERE ebay_user_id = ?'
+    ).get(userInfo.userId);
+
+    if (existingEbay && existingEbay.user_id !== userId) {
+      return res.redirect('/#/settings?ebay=error&message=ebay_account_in_use');
+    }
+
+    // Store the connection
+    const now = new Date().toISOString();
+    const tokenExpiresAt = new Date(Date.now() + tokens.expiresIn * 1000).toISOString();
+
+    await db.prepare(
+      `INSERT INTO ebay_connections (
+        user_id, ebay_user_id, ebay_username,
+        access_token, refresh_token, token_expires_at,
+        scopes, connected_at, status, cross_post_enabled,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET
+        ebay_user_id = EXCLUDED.ebay_user_id,
+        ebay_username = EXCLUDED.ebay_username,
+        access_token = EXCLUDED.access_token,
+        refresh_token = EXCLUDED.refresh_token,
+        token_expires_at = EXCLUDED.token_expires_at,
+        scopes = EXCLUDED.scopes,
+        connected_at = EXCLUDED.connected_at,
+        status = 'active',
+        error_message = NULL,
+        updated_at = EXCLUDED.updated_at`
+    ).run(
+      userId,
+      userInfo.userId,
+      userInfo.username || userInfo.userId,
+      ebayService.encryptToken(tokens.accessToken),
+      ebayService.encryptToken(tokens.refreshToken),
+      tokenExpiresAt,
+      ebayService.EBAY_SCOPES.join(','),
+      now,
+      'active',
+      0,
+      now,
+      now
+    );
+
+    // Publish event
+    await messageBus.publish(TOPICS.EBAY_CONNECTED, {
+      userId,
+      ebayUserId: userInfo.userId,
+      ebayUsername: userInfo.username
+    });
+
+    res.redirect('/#/settings?ebay=connected');
+  } catch (err) {
+    console.error('[eBay OAuth] Callback error:', err);
+    res.redirect('/#/settings?ebay=error&message=connection_failed');
+  }
+});
+
+// Update eBay cross-posting settings (toggle)
+app.put('/api/ebay/connection/settings', auth, writeLimiter, async (req, res) => {
+  try {
+    const { crossPostEnabled } = req.body;
+
+    if (typeof crossPostEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'invalid_request' });
+    }
+
+    const result = await db.prepare(
+      `UPDATE ebay_connections
+       SET cross_post_enabled = ?, updated_at = ?
+       WHERE user_id = ?`
+    ).run(crossPostEnabled ? 1 : 0, new Date().toISOString(), req.user.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'not_connected' });
+    }
+
+    res.json({ success: true, crossPostEnabled });
+  } catch (err) {
+    console.error('[eBay] Error updating settings:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Disconnect eBay account
+app.delete('/api/ebay/connection', auth, async (req, res) => {
+  try {
+    const { endActiveListings } = req.body || {};
+
+    // Get connection and active listings
+    const connection = await db.prepare(
+      'SELECT id FROM ebay_connections WHERE user_id = ?'
+    ).get(req.user.id);
+
+    if (!connection) {
+      return res.status(404).json({ error: 'not_connected' });
+    }
+
+    const connectionId = connection.id;
+    let activeListingsEnded = 0;
+
+    // Optionally end active eBay listings
+    if (endActiveListings) {
+      const activeListings = await db.prepare(
+        `SELECT el.id, el.ebay_offer_id
+         FROM ebay_listings el
+         WHERE el.ebay_connection_id = ? AND el.status = 'active'`
+      ).all(connectionId);
+
+      // End each listing on eBay
+      for (const listing of activeListings) {
+        if (listing.ebay_offer_id) {
+          try {
+            const conn = await getDecryptedEbayConnection(req.user.id);
+            await ebayService.withdrawOffer(conn.accessToken, listing.ebay_offer_id);
+            await db.prepare(
+              `UPDATE ebay_listings SET status = 'ended', ended_at = ?, updated_at = ?
+               WHERE id = ?`
+            ).run(new Date().toISOString(), new Date().toISOString(), listing.id);
+            activeListingsEnded++;
+          } catch (e) {
+            console.error('[eBay] Failed to end listing:', listing.id, e.message);
+          }
+        }
+      }
+    }
+
+    // Delete the connection (cascade will clean up ebay_listings)
+    await db.prepare('DELETE FROM ebay_connections WHERE id = ?').run(connectionId);
+
+    // Publish event
+    await messageBus.publish(TOPICS.EBAY_DISCONNECTED, {
+      userId: req.user.id,
+      activeListingsEnded
+    });
+
+    res.json({ success: true, activeListingsEnded });
+  } catch (err) {
+    console.error('[eBay] Error disconnecting:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Get eBay listing status for a Trovelr listing
+app.get('/api/listings/:id/ebay', auth, async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id, 10);
+    if (isNaN(listingId)) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    // Verify ownership
+    const listing = await db.prepare(
+      'SELECT user_id FROM listings WHERE id = ?'
+    ).get(listingId);
+
+    if (!listing) {
+      return res.status(404).json({ error: 'listing_not_found' });
+    }
+
+    if (listing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'not_owner' });
+    }
+
+    const el = await db.prepare(
+      `SELECT ebay_listing_id, ebay_url, status, ebay_price, ebay_title,
+              published_at, last_synced_at, last_error
+       FROM ebay_listings
+       WHERE listing_id = ?`
+    ).get(listingId);
+
+    if (!el) {
+      return res.json({ crossPosted: false });
+    }
+
+    res.json({
+      crossPosted: true,
+      ebayListingId: el.ebay_listing_id,
+      ebayUrl: el.ebay_url,
+      status: el.status,
+      ebayPrice: el.ebay_price,
+      ebayTitle: el.ebay_title,
+      publishedAt: el.published_at,
+      lastSyncedAt: el.last_synced_at,
+      lastError: el.status === 'error' ? el.last_error : undefined
+    });
+  } catch (err) {
+    console.error('[eBay] Error getting listing status:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Cross-post a listing to eBay
+app.post('/api/listings/:id/ebay', auth, writeLimiter, async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id, 10);
+    if (isNaN(listingId)) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    const { categoryId, condition, fulfillmentPolicyId: selectedFulfillmentPolicyId, weight, dimensions } = req.body;
+
+    // Verify ownership and get listing data
+    const listingData = await db.prepare(
+      'SELECT * FROM listings WHERE id = ?'
+    ).get(listingId);
+
+    if (!listingData) {
+      return res.status(404).json({ error: 'listing_not_found' });
+    }
+
+    if (listingData.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'not_owner' });
+    }
+
+    if (listingData.sold) {
+      return res.status(400).json({ error: 'listing_already_sold' });
+    }
+
+    // Get images separately
+    const imageRows = await db.prepare(
+      'SELECT url FROM listing_images WHERE listing_id = ? ORDER BY position'
+    ).all(listingId);
+    const images = imageRows.map(r => r.url).filter(Boolean);
+
+    // Check if already cross-posted
+    const existingEbay = await db.prepare(
+      'SELECT id, status FROM ebay_listings WHERE listing_id = ?'
+    ).get(listingId);
+
+    if (existingEbay && existingEbay.status !== 'error') {
+      return res.status(400).json({
+        error: 'already_cross_posted',
+        message: 'This listing is already on eBay'
+      });
+    }
+
+    // Get eBay connection
+    const conn = await getDecryptedEbayConnection(req.user.id);
+    if (!conn) {
+      return res.status(400).json({ error: 'ebay_not_connected' });
+    }
+
+    // Validate listing has images
+    if (images.length === 0) {
+      return res.status(400).json({
+        error: 'images_required',
+        message: 'eBay listings require at least one image'
+      });
+    }
+
+    // Get category if not provided
+    let finalCategoryId = categoryId;
+    if (!finalCategoryId) {
+      const suggestions = await ebayService.getCategorySuggestions(
+        conn.accessToken,
+        listingData.title
+      );
+      if (suggestions.length > 0) {
+        finalCategoryId = suggestions[0].categoryId;
+      } else {
+        return res.status(400).json({
+          error: 'category_required',
+          message: 'Could not auto-detect category. Please specify an eBay category.'
+        });
+      }
+    }
+
+    // Get seller policies
+    const [fulfillment, payment, returns] = await Promise.all([
+      ebayService.getFulfillmentPolicies(conn.accessToken),
+      ebayService.getPaymentPolicies(conn.accessToken),
+      ebayService.getReturnPolicies(conn.accessToken)
+    ]);
+
+    if (!fulfillment.fulfillmentPolicies?.length ||
+        !payment.paymentPolicies?.length ||
+        !returns.returnPolicies?.length) {
+      return res.status(400).json({
+        error: 'policies_required',
+        message: 'Please set up shipping, payment, and return policies in your eBay seller account first.'
+      });
+    }
+
+    // Use user-selected fulfillment policy or fall back to first one
+    let fulfillmentPolicyId = selectedFulfillmentPolicyId;
+    if (!fulfillmentPolicyId) {
+      fulfillmentPolicyId = fulfillment.fulfillmentPolicies[0].fulfillmentPolicyId;
+    } else {
+      // Validate the selected policy exists
+      const policyExists = fulfillment.fulfillmentPolicies.some(p => p.fulfillmentPolicyId === fulfillmentPolicyId);
+      if (!policyExists) {
+        return res.status(400).json({
+          error: 'invalid_fulfillment_policy',
+          message: 'The selected shipping policy is not valid for your account.'
+        });
+      }
+    }
+    const paymentPolicyId = payment.paymentPolicies[0].paymentPolicyId;
+    const returnPolicyId = returns.returnPolicies[0].returnPolicyId;
+
+    const sku = `trovelr_${listingId}`;
+    const now = new Date().toISOString();
+
+    // Create or update ebay_listings record
+    let ebayListingId;
+    if (existingEbay) {
+      ebayListingId = existingEbay.id;
+      await db.prepare(
+        `UPDATE ebay_listings SET status = 'publishing', updated_at = ?, last_error = NULL
+         WHERE id = ?`
+      ).run(now, ebayListingId);
+    } else {
+      const insertResult = await db.prepare(
+        `INSERT INTO ebay_listings (
+          listing_id, ebay_connection_id, ebay_sku, status, created_at, updated_at
+        ) VALUES (?, ?, ?, 'publishing', ?, ?)`
+      ).run(listingId, conn.connectionId, sku, now, now);
+      ebayListingId = insertResult.lastInsertRowid;
+    }
+
+    try {
+      // Build package info for shipping calculations (if provided)
+      const packageInfo = {};
+      if (weight && typeof weight === 'object' && weight.value > 0) {
+        packageInfo.weight = {
+          value: Number(weight.value),
+          unit: weight.unit || 'POUND'
+        };
+      }
+      if (dimensions && typeof dimensions === 'object') {
+        const { length, width, height, unit } = dimensions;
+        if (length > 0 && width > 0 && height > 0) {
+          packageInfo.dimensions = {
+            length: Number(length),
+            width: Number(width),
+            height: Number(height),
+            unit: unit || 'INCH'
+          };
+        }
+      }
+
+      // Step 1: Create inventory item
+      const inventoryItem = ebayService.buildInventoryItem(
+        { ...listingData, condition: condition || listingData.condition || 'good' },
+        images.map(url => ({ url })),
+        Object.keys(packageInfo).length > 0 ? packageInfo : undefined
+      );
+      await ebayService.createOrReplaceInventoryItem(conn.accessToken, sku, inventoryItem);
+
+      // Step 2: Create offer
+      const offer = ebayService.buildOffer(
+        sku,
+        finalCategoryId,
+        listingData.price,
+        fulfillmentPolicyId,
+        paymentPolicyId,
+        returnPolicyId
+      );
+      const offerResult = await ebayService.createOffer(conn.accessToken, offer);
+
+      await db.prepare(
+        `UPDATE ebay_listings SET ebay_offer_id = ?, ebay_category_id = ?, updated_at = ?
+         WHERE id = ?`
+      ).run(offerResult.offerId, finalCategoryId, now, ebayListingId);
+
+      // Step 3: Publish offer
+      const publishResult = await ebayService.publishOffer(conn.accessToken, offerResult.offerId);
+
+      // Update with success
+      const ebayUrl = `https://www.ebay.com/itm/${publishResult.listingId}`;
+      await db.prepare(
+        `UPDATE ebay_listings SET
+          ebay_listing_id = ?,
+          ebay_url = ?,
+          ebay_title = ?,
+          ebay_price = ?,
+          status = 'active',
+          published_at = ?,
+          last_synced_at = ?,
+          updated_at = ?
+         WHERE id = ?`
+      ).run(
+        publishResult.listingId,
+        ebayUrl,
+        ebayService.truncateTitle(listingData.title),
+        listingData.price,
+        now,
+        now,
+        now,
+        ebayListingId
+      );
+
+      // Log success
+      await db.prepare(
+        `INSERT INTO ebay_sync_logs (
+          ebay_listing_id, user_id, operation, direction, success, started_at, completed_at, created_at
+        ) VALUES (?, ?, 'publish_offer', 'outbound', 1, ?, ?, ?)`
+      ).run(ebayListingId, req.user.id, now, now, now);
+
+      // Publish event
+      await messageBus.publish(TOPICS.EBAY_LISTING_PUBLISHED, {
+        userId: req.user.id,
+        listingId,
+        ebayListingId: publishResult.listingId,
+        ebayUrl
+      });
+
+      res.status(201).json({
+        success: true,
+        ebayListingId: publishResult.listingId,
+        ebayUrl,
+        status: 'active'
+      });
+    } catch (err) {
+      // Update with error
+      await db.prepare(
+        `UPDATE ebay_listings SET
+          status = 'error',
+          last_error = ?,
+          error_count = error_count + 1,
+          last_error_at = ?,
+          updated_at = ?
+         WHERE id = ?`
+      ).run(err.message, now, now, ebayListingId);
+
+      // Log error
+      await db.prepare(
+        `INSERT INTO ebay_sync_logs (
+          ebay_listing_id, user_id, operation, direction, success, error_message, started_at, completed_at, created_at
+        ) VALUES (?, ?, 'publish_offer', 'outbound', 0, ?, ?, ?, ?)`
+      ).run(ebayListingId, req.user.id, err.message, now, now, now);
+
+      throw err;
+    }
+  } catch (err) {
+    console.error('[eBay] Error cross-posting:', err);
+    res.status(500).json({
+      error: 'cross_post_failed',
+      message: err.message || 'Failed to publish to eBay'
+    });
+  }
+});
+
+// Sync listing changes to eBay
+app.put('/api/listings/:id/ebay/sync', auth, writeLimiter, async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id, 10);
+    if (isNaN(listingId)) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    // Verify ownership and get data
+    const data = await db.prepare(
+      `SELECT l.*, el.id as ebay_id, el.ebay_sku, el.ebay_offer_id, el.status as ebay_status
+       FROM listings l
+       JOIN ebay_listings el ON el.listing_id = l.id
+       WHERE l.id = ?`
+    ).get(listingId);
+
+    if (!data) {
+      return res.status(404).json({ error: 'listing_not_found' });
+    }
+
+    if (data.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'not_owner' });
+    }
+
+    if (data.ebay_status !== 'active') {
+      return res.status(400).json({ error: 'ebay_listing_not_active' });
+    }
+
+    // Get connection
+    const conn = await getDecryptedEbayConnection(req.user.id);
+    if (!conn) {
+      return res.status(400).json({ error: 'ebay_not_connected' });
+    }
+
+    // Get images
+    const imageRows = await db.prepare(
+      'SELECT url FROM listing_images WHERE listing_id = ? ORDER BY position'
+    ).all(listingId);
+
+    // Update inventory item
+    const inventoryItem = ebayService.buildInventoryItem(
+      data,
+      imageRows
+    );
+    await ebayService.createOrReplaceInventoryItem(conn.accessToken, data.ebay_sku, inventoryItem);
+
+    // Update offer price if changed
+    await ebayService.updateOffer(conn.accessToken, data.ebay_offer_id, {
+      pricingSummary: {
+        price: {
+          value: data.price.toString(),
+          currency: 'USD'
+        }
+      }
+    });
+
+    const now = new Date().toISOString();
+    await db.prepare(
+      `UPDATE ebay_listings SET
+        ebay_title = ?,
+        ebay_price = ?,
+        last_synced_at = ?,
+        sync_version = sync_version + 1,
+        updated_at = ?
+       WHERE id = ?`
+    ).run(ebayService.truncateTitle(data.title), data.price, now, now, data.ebay_id);
+
+    res.json({ success: true, fieldsUpdated: ['title', 'description', 'price', 'images'] });
+  } catch (err) {
+    console.error('[eBay] Error syncing:', err);
+    res.status(500).json({ error: 'sync_failed', message: err.message });
+  }
+});
+
+// End eBay listing (without marking as sold)
+app.delete('/api/listings/:id/ebay', auth, async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id, 10);
+    if (isNaN(listingId)) {
+      return res.status(400).json({ error: 'invalid_listing_id' });
+    }
+
+    // Verify ownership
+    const data = await db.prepare(
+      `SELECT l.user_id, el.id as ebay_id, el.ebay_offer_id, el.status as ebay_status
+       FROM listings l
+       JOIN ebay_listings el ON el.listing_id = l.id
+       WHERE l.id = ?`
+    ).get(listingId);
+
+    if (!data) {
+      return res.status(404).json({ error: 'listing_not_found' });
+    }
+
+    if (data.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'not_owner' });
+    }
+
+    if (data.ebay_status !== 'active') {
+      return res.status(400).json({ error: 'ebay_listing_not_active' });
+    }
+
+    // Get connection
+    const conn = await getDecryptedEbayConnection(req.user.id);
+    if (!conn) {
+      return res.status(400).json({ error: 'ebay_not_connected' });
+    }
+
+    // Withdraw the offer on eBay
+    await ebayService.withdrawOffer(conn.accessToken, data.ebay_offer_id);
+
+    const now = new Date().toISOString();
+    await db.prepare(
+      `UPDATE ebay_listings SET status = 'ended', ended_at = ?, updated_at = ?
+       WHERE id = ?`
+    ).run(now, now, data.ebay_id);
+
+    // Publish event
+    await messageBus.publish(TOPICS.EBAY_LISTING_ENDED, {
+      userId: req.user.id,
+      listingId,
+      reason: 'user_ended'
+    });
+
+    res.json({ success: true, ebayListingEnded: true });
+  } catch (err) {
+    console.error('[eBay] Error ending listing:', err);
+    res.status(500).json({ error: 'end_failed', message: err.message });
+  }
+});
+
+// Get eBay category suggestions
+app.get('/api/ebay/categories/suggest', auth, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'query_required' });
+    }
+
+    const conn = await getDecryptedEbayConnection(req.user.id);
+    if (!conn) {
+      return res.status(400).json({ error: 'ebay_not_connected' });
+    }
+
+    // Check cache first
+    const cached = await db.prepare(
+      `SELECT ebay_category_id, ebay_category_name, ebay_category_path, confidence_score
+       FROM ebay_category_mappings
+       WHERE keywords = ? AND (expires_at IS NULL OR expires_at > ?)
+       ORDER BY confidence_score DESC NULLS LAST
+       LIMIT 5`
+    ).all(q.toLowerCase(), new Date().toISOString());
+
+    if (cached.length > 0) {
+      return res.json({
+        suggestions: cached.map(r => ({
+          categoryId: r.ebay_category_id,
+          categoryName: r.ebay_category_name,
+          categoryPath: r.ebay_category_path,
+          confidence: r.confidence_score
+        }))
+      });
+    }
+
+    // Fetch from eBay
+    const suggestions = await ebayService.getCategorySuggestions(conn.accessToken, q);
+
+    // Cache results
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    for (const suggestion of suggestions.slice(0, 5)) {
+      await db.prepare(
+        `INSERT INTO ebay_category_mappings (
+          keywords, ebay_category_id, ebay_category_name, ebay_category_path,
+          confidence_score, fetched_at, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (keywords, ebay_category_id) DO UPDATE SET
+          use_count = ebay_category_mappings.use_count + 1,
+          updated_at = EXCLUDED.updated_at`
+      ).run(q.toLowerCase(), suggestion.categoryId, suggestion.categoryName,
+           suggestion.categoryPath, 0.9, now, expiresAt, now, now);
+    }
+
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('[eBay] Error getting category suggestions:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Get seller's eBay fulfillment (shipping) policies
+app.get('/api/ebay/fulfillment-policies', auth, async (req, res) => {
+  try {
+    const conn = await getDecryptedEbayConnection(req.user.id);
+    if (!conn) {
+      return res.status(400).json({ error: 'ebay_not_connected' });
+    }
+
+    const fulfillment = await ebayService.getFulfillmentPolicies(conn.accessToken);
+
+    if (!fulfillment.fulfillmentPolicies?.length) {
+      return res.json({ policies: [] });
+    }
+
+    // Transform to a simpler format for the frontend
+    const policies = fulfillment.fulfillmentPolicies.map(policy => {
+      // Determine the primary shipping cost type
+      const shippingOptions = policy.shippingOptions || [];
+      const domesticOption = shippingOptions.find(opt => opt.optionType === 'DOMESTIC');
+      const costType = domesticOption?.costType || 'FLAT_RATE';
+
+      // Build a description of shipping services
+      let servicesDescription = '';
+      if (domesticOption?.shippingServices?.length) {
+        const services = domesticOption.shippingServices
+          .slice(0, 3)
+          .map(s => s.shippingServiceCode?.replace(/_/g, ' '))
+          .filter(Boolean);
+        servicesDescription = services.join(', ');
+      }
+
+      return {
+        id: policy.fulfillmentPolicyId,
+        name: policy.name,
+        description: policy.description || servicesDescription,
+        costType: costType, // CALCULATED, FLAT_RATE, or NOT_SPECIFIED
+        localPickup: policy.localPickup || false,
+        freightShipping: policy.freightShipping || false,
+        handlingTime: policy.handlingTime?.value,
+        shippingOptions: shippingOptions.map(opt => ({
+          type: opt.optionType, // DOMESTIC or INTERNATIONAL
+          costType: opt.costType,
+          services: (opt.shippingServices || []).map(s => ({
+            carrier: s.shippingCarrierCode,
+            service: s.shippingServiceCode,
+            cost: s.shippingCost?.value,
+            additionalCost: s.additionalShippingCost?.value,
+            freeShipping: s.freeShipping || false
+          }))
+        }))
+      };
+    });
+
+    res.json({ policies });
+  } catch (err) {
+    console.error('[eBay] Error getting fulfillment policies:', err);
+    res.status(500).json({ error: 'server_error', message: err.message });
+  }
+});
+
+// AI-powered shipping estimate based on listing details
+app.post('/api/ebay/shipping-estimate', auth, async (req, res) => {
+  try {
+    const { title, description } = req.body;
+
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ error: 'title_required' });
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      // Return reasonable defaults if OpenAI not available
+      return res.json({
+        weight: { value: 1, unit: 'POUND' },
+        dimensions: { length: 12, width: 9, height: 4, unit: 'INCH' },
+        confidence: 'low',
+        reasoning: 'Default estimate (AI unavailable)',
+        method: 'fallback'
+      });
+    }
+
+    const prompt = `You are a shipping expert. Estimate the PACKAGED shipping weight and box dimensions for this item.
+
+Item Title: "${title}"
+${description ? `Description: "${description.slice(0, 500)}"` : ''}
+
+Consider:
+- Include packaging materials (box, bubble wrap, packing peanuts)
+- Be slightly conservative (overestimate) to avoid shipping cost surprises
+- Use common box sizes when possible
+- For very light items, minimum 4oz
+- For very small items, minimum 6x4x2 inches
+
+Respond with ONLY valid JSON, no markdown:
+{
+  "weight_lbs": <number>,
+  "length_inches": <number>,
+  "width_inches": <number>,
+  "height_inches": <number>,
+  "confidence": "high" | "medium" | "low",
+  "reasoning": "<brief 5-10 word explanation>"
+}`;
+
+    const completion = await withTimeout(
+      async ({ signal }) => {
+        return openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 150,
+          temperature: 0.2
+        }, { signal });
+      },
+      OPENAI_TIMEOUT_MS,
+      'ebay_shipping_estimate'
+    );
+
+    const content = completion.choices[0]?.message?.content?.trim();
+
+    // Parse the JSON response
+    let estimate;
+    try {
+      // Remove any markdown code blocks if present
+      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
+      estimate = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error('[eBay Shipping Estimate] Failed to parse AI response:', content);
+      return res.json({
+        weight: { value: 1, unit: 'POUND' },
+        dimensions: { length: 12, width: 9, height: 4, unit: 'INCH' },
+        confidence: 'low',
+        reasoning: 'Could not parse AI response',
+        method: 'fallback'
+      });
+    }
+
+    // Validate and sanitize the response
+    const weight = Math.max(0.25, Math.min(150, Number(estimate.weight_lbs) || 1));
+    const length = Math.max(6, Math.min(108, Number(estimate.length_inches) || 12));
+    const width = Math.max(4, Math.min(108, Number(estimate.width_inches) || 9));
+    const height = Math.max(2, Math.min(108, Number(estimate.height_inches) || 4));
+
+    res.json({
+      weight: { value: Math.round(weight * 100) / 100, unit: 'POUND' },
+      dimensions: {
+        length: Math.round(length),
+        width: Math.round(width),
+        height: Math.round(height),
+        unit: 'INCH'
+      },
+      confidence: ['high', 'medium', 'low'].includes(estimate.confidence) ? estimate.confidence : 'medium',
+      reasoning: estimate.reasoning || 'AI estimate',
+      method: 'openai'
+    });
+  } catch (err) {
+    console.error('[eBay Shipping Estimate] Error:', err?.message || err);
+    res.json({
+      weight: { value: 1, unit: 'POUND' },
+      dimensions: { length: 12, width: 9, height: 4, unit: 'INCH' },
+      confidence: 'low',
+      reasoning: 'Estimation failed',
+      method: 'error'
+    });
+  }
+});
+
+// eBay Webhook verification (GET) - responds to eBay's challenge for endpoint ownership
+app.get('/api/ebay/webhooks', (req, res) => {
+  const challengeCode = req.query.challenge_code;
+
+  if (!challengeCode) {
+    return res.status(400).json({ error: 'missing_challenge_code' });
+  }
+
+  const verificationToken = process.env.EBAY_WEBHOOK_VERIFICATION_TOKEN;
+  if (!verificationToken) {
+    console.error('[eBay Webhook] EBAY_WEBHOOK_VERIFICATION_TOKEN not configured');
+    return res.status(500).json({ error: 'verification_not_configured' });
+  }
+
+  const endpoint = `${PUBLIC_APP_BASE_URL}/api/ebay/webhooks`;
+
+  // eBay expects: SHA256(challengeCode + verificationToken + endpoint)
+  const hash = crypto
+    .createHash('sha256')
+    .update(challengeCode + verificationToken + endpoint)
+    .digest('hex');
+
+  console.log('[eBay Webhook] Challenge verified for endpoint:', endpoint);
+  res.json({ challengeResponse: hash });
+});
+
+// eBay Webhook endpoint (POST) - receives actual webhook notifications
+app.post('/api/ebay/webhooks', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const signature = req.headers['x-ebay-signature'];
+    const payload = req.body.toString();
+
+    // Verify webhook signature
+    const isValid = await ebayService.verifyWebhookSignature(payload, signature);
+    if (!isValid) {
+      console.error('[eBay Webhook] Invalid signature');
+      return res.status(401).json({ error: 'invalid_signature' });
+    }
+
+    const data = JSON.parse(payload);
+    const { metadata, notification } = data;
+
+    console.log('[eBay Webhook] Received:', metadata?.topic, notification?.notificationId);
+
+    // Publish to message bus for async processing
+    await messageBus.publish(TOPICS.EBAY_WEBHOOK, data);
+
+    // Quick acknowledgment (must respond within 3 seconds)
+    res.status(200).json({ received: true });
+
+    // Process asynchronously
+    processEbayWebhook(data).catch(err => {
+      console.error('[eBay Webhook] Processing error:', err);
+    });
+  } catch (err) {
+    console.error('[eBay Webhook] Error:', err);
+    res.status(500).json({ error: 'webhook_error' });
+  }
+});
+
+// Helper function to get decrypted eBay connection
+async function getDecryptedEbayConnection(userId) {
+  const conn = await db.prepare(
+    `SELECT id, access_token, refresh_token, token_expires_at, status
+     FROM ebay_connections
+     WHERE user_id = ? AND status = 'active'`
+  ).get(userId);
+
+  if (!conn) {
+    return null;
+  }
+
+  // Check if token needs refresh
+  const expiresAt = new Date(conn.token_expires_at);
+  const now = new Date();
+  const needsRefresh = expiresAt.getTime() - now.getTime() < 5 * 60 * 1000; // 5 minutes buffer
+
+  let accessToken;
+  if (needsRefresh) {
+    try {
+      const refreshToken = ebayService.decryptToken(conn.refresh_token);
+      const newTokens = await ebayService.refreshAccessToken(refreshToken);
+
+      // Update stored token
+      const newExpiresAt = new Date(Date.now() + newTokens.expiresIn * 1000).toISOString();
+      await db.prepare(
+        `UPDATE ebay_connections SET
+          access_token = ?,
+          token_expires_at = ?,
+          last_refreshed_at = ?,
+          updated_at = ?
+         WHERE id = ?`
+      ).run(
+        ebayService.encryptToken(newTokens.accessToken),
+        newExpiresAt,
+        new Date().toISOString(),
+        new Date().toISOString(),
+        conn.id
+      );
+
+      accessToken = newTokens.accessToken;
+
+      await messageBus.publish(TOPICS.EBAY_TOKEN_REFRESHED, { userId });
+    } catch (err) {
+      console.error('[eBay] Token refresh failed:', err);
+      await db.prepare(
+        `UPDATE ebay_connections SET status = 'expired', error_message = ?, updated_at = ?
+         WHERE id = ?`
+      ).run(err.message, new Date().toISOString(), conn.id);
+      await messageBus.publish(TOPICS.EBAY_TOKEN_EXPIRED, { userId });
+      return null;
+    }
+  } else {
+    accessToken = ebayService.decryptToken(conn.access_token);
+  }
+
+  return {
+    connectionId: conn.id,
+    accessToken
+  };
+}
+
+// Async webhook processing
+async function processEbayWebhook(data) {
+  const { metadata, notification } = data;
+  const topic = metadata?.topic;
+
+  switch (topic) {
+    case 'MARKETPLACE_ITEM_SOLD':
+    case 'ITEM_SOLD': {
+      const itemId = notification?.data?.itemId;
+      if (!itemId) break;
+
+      const el = await db.prepare(
+        `SELECT el.id, el.listing_id, ec.user_id
+         FROM ebay_listings el
+         JOIN ebay_connections ec ON el.ebay_connection_id = ec.id
+         WHERE el.ebay_listing_id = ?`
+      ).get(itemId);
+
+      if (!el) {
+        console.warn('[eBay Webhook] Unknown item sold:', itemId);
+        break;
+      }
+
+      // Check if already marked as sold (idempotency)
+      const currentStatus = await db.prepare(
+        'SELECT status FROM ebay_listings WHERE id = ?'
+      ).get(el.id);
+
+      if (currentStatus?.status === 'sold') {
+        console.log('[eBay Webhook] Already marked as sold:', el.id);
+        break;
+      }
+
+      const now = new Date().toISOString();
+      const salePrice = notification?.data?.price?.value;
+
+      // Update eBay listing
+      await db.prepare(
+        `UPDATE ebay_listings SET
+          status = 'sold',
+          sold_at = ?,
+          sale_price = ?,
+          buyer_username = ?,
+          updated_at = ?
+         WHERE id = ?`
+      ).run(now, salePrice, notification?.data?.buyerUsername, now, el.id);
+
+      // Update Trovelr listing
+      await db.prepare(
+        `UPDATE listings SET sold = 1, sold_on = 'ebay', sold_at = ?
+         WHERE id = ?`
+      ).run(now, el.listing_id);
+
+      // Log webhook
+      await db.prepare(
+        `INSERT INTO ebay_sync_logs (
+          ebay_listing_id, user_id, operation, direction, request_payload, success, started_at, completed_at, created_at
+        ) VALUES (?, ?, 'item_sold_webhook', 'inbound', ?, 1, ?, ?, ?)`
+      ).run(el.id, el.user_id, JSON.stringify(data), now, now, now);
+
+      // Publish event
+      await messageBus.publish(TOPICS.EBAY_LISTING_SOLD, {
+        userId: el.user_id,
+        listingId: el.listing_id,
+        ebayListingId: itemId,
+        salePrice
+      });
+
+      console.log('[eBay Webhook] Marked as sold:', el.listing_id);
+      break;
+    }
+
+    case 'MARKETPLACE_ACCOUNT_DELETION': {
+      const ebayUserId = notification?.data?.userId;
+      if (!ebayUserId) break;
+
+      await db.prepare(
+        `UPDATE ebay_connections SET status = 'revoked', updated_at = ?
+         WHERE ebay_user_id = ?`
+      ).run(new Date().toISOString(), ebayUserId);
+
+      console.log('[eBay Webhook] Account deletion processed:', ebayUserId);
+      break;
+    }
+
+    default:
+      console.log('[eBay Webhook] Unhandled topic:', topic);
+  }
+}
 
 app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);

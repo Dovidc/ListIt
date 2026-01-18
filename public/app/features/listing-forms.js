@@ -986,6 +986,122 @@
       const mountedRef = useRef(true);
       const [showModerationModal, setShowModerationModal] = useState(false);
 
+      // eBay cross-posting state
+      const [ebayConnection, setEbayConnection] = useState(null);
+      const [showDestinationModal, setShowDestinationModal] = useState(false);
+      const [postToEbay, setPostToEbay] = useState(false);
+      const [ebayPublishing, setEbayPublishing] = useState(false);
+      const [ebayResult, setEbayResult] = useState(null);
+      const pendingSubmitRef = useRef(null);
+
+      // eBay shipping modal state
+      const [showEbayShippingModal, setShowEbayShippingModal] = useState(false);
+      const [ebayShippingEstimate, setEbayShippingEstimate] = useState(null);
+      const [ebayFulfillmentPolicies, setEbayFulfillmentPolicies] = useState([]);
+      const [loadingShippingData, setLoadingShippingData] = useState(false);
+      const [ebayShippingForm, setEbayShippingForm] = useState({
+        weight: '',
+        length: '',
+        width: '',
+        height: '',
+        fulfillmentPolicyId: ''
+      });
+      const ebayShippingDataRef = useRef(null); // Store shipping data for use after listing is created
+
+      // Fetch eBay connection status on mount (only for new listings)
+      useEffect(() => {
+        if (!draft?.id) {
+          fetchEbayConnection();
+        }
+      }, [draft?.id]);
+
+      async function fetchEbayConnection() {
+        try {
+          const res = await fetch('/api/ebay/connection', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            setEbayConnection(data);
+          }
+        } catch (err) {
+          console.error('Failed to fetch eBay connection:', err);
+        }
+      }
+
+      // Fetch shipping data (AI estimate + fulfillment policies) for eBay modal
+      async function fetchEbayShippingData() {
+        setLoadingShippingData(true);
+        setEbayShippingEstimate(null);
+        setEbayFulfillmentPolicies([]);
+
+        try {
+          // Fetch AI estimate and policies in parallel
+          const [estimateRes, policiesRes] = await Promise.all([
+            fetch('/api/ebay/shipping-estimate', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title, description })
+            }),
+            fetch('/api/ebay/fulfillment-policies', { credentials: 'include' })
+          ]);
+
+          // Process estimate
+          if (estimateRes.ok) {
+            const estimate = await estimateRes.json();
+            setEbayShippingEstimate(estimate);
+            // Pre-fill form with AI suggestions
+            setEbayShippingForm(prev => ({
+              ...prev,
+              weight: estimate.weight?.value?.toString() || '',
+              length: estimate.dimensions?.length?.toString() || '',
+              width: estimate.dimensions?.width?.toString() || '',
+              height: estimate.dimensions?.height?.toString() || ''
+            }));
+          }
+
+          // Process policies
+          if (policiesRes.ok) {
+            const { policies } = await policiesRes.json();
+            setEbayFulfillmentPolicies(policies || []);
+            // Pre-select first policy if available
+            if (policies?.length > 0) {
+              setEbayShippingForm(prev => ({
+                ...prev,
+                fulfillmentPolicyId: policies[0].id
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch eBay shipping data:', err);
+        } finally {
+          setLoadingShippingData(false);
+        }
+      }
+
+      // Open eBay shipping modal and fetch data
+      function openEbayShippingModal() {
+        setShowDestinationModal(false);
+        setShowEbayShippingModal(true);
+        fetchEbayShippingData();
+      }
+
+      // Handle shipping modal form submission
+      function submitEbayShipping() {
+        // Store shipping data in ref for use after listing is created
+        ebayShippingDataRef.current = {
+          weight: ebayShippingForm.weight,
+          length: ebayShippingForm.length,
+          width: ebayShippingForm.width,
+          height: ebayShippingForm.height,
+          fulfillmentPolicyId: ebayShippingForm.fulfillmentPolicyId
+        };
+        setShowEbayShippingModal(false);
+        proceedWithSubmit(true);
+      }
+
+      // Check if we should show destination modal (eBay connected + cross-post enabled + new listing)
+      const shouldShowDestinationChoice = !draft?.id && ebayConnection?.connected && ebayConnection?.crossPostEnabled;
+
       // Detect dark mode
       const isDarkMode = typeof document !== 'undefined' &&
         (document.documentElement.getAttribute('data-theme') === 'dark' ||
@@ -1261,6 +1377,62 @@
         });
       }, [autoListEnabled, autoPostNearbyEnabled, inquiryEnabled, backgroundQueueEnabled, draft, enqueueListingJob, files, onCancel, onSaved, location]);
 
+      // Cross-post to eBay after listing is created
+      async function crossPostToEbay(listingId, shippingData = null) {
+        setEbayPublishing(true);
+        try {
+          // Build request body with shipping info if provided
+          const body = {};
+          if (shippingData) {
+            if (shippingData.fulfillmentPolicyId) {
+              body.fulfillmentPolicyId = shippingData.fulfillmentPolicyId;
+            }
+            if (shippingData.weight > 0) {
+              body.weight = {
+                value: parseFloat(shippingData.weight),
+                unit: 'POUND'
+              };
+            }
+            if (shippingData.length > 0 && shippingData.width > 0 && shippingData.height > 0) {
+              body.dimensions = {
+                length: parseFloat(shippingData.length),
+                width: parseFloat(shippingData.width),
+                height: parseFloat(shippingData.height),
+                unit: 'INCH'
+              };
+            }
+          }
+
+          const res = await fetch(`/api/listings/${listingId}/ebay`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setEbayResult({ success: true, ebayUrl: data.ebayUrl });
+          } else {
+            setEbayResult({ success: false, error: data.message || data.error || 'Cross-post failed' });
+          }
+        } catch (err) {
+          setEbayResult({ success: false, error: err.message || 'Cross-post failed' });
+        } finally {
+          setEbayPublishing(false);
+        }
+      }
+
+      // Handle destination choice and proceed with submit
+      function proceedWithSubmit(shouldPostToEbay) {
+        setPostToEbay(shouldPostToEbay);
+        setShowDestinationModal(false);
+        // Execute the pending submit
+        if (pendingSubmitRef.current) {
+          pendingSubmitRef.current(shouldPostToEbay);
+          pendingSubmitRef.current = null;
+        }
+      }
+
       async function submit(e) {
         e.preventDefault();
         const totalImages = existingUrls.length + files.length;
@@ -1275,6 +1447,20 @@
           return;
         }
 
+        // For new listings with eBay cross-posting enabled, show destination modal
+        if (shouldShowDestinationChoice && !showDestinationModal) {
+          // Store the submit logic to be executed after modal choice
+          pendingSubmitRef.current = (shouldPostToEbay) => {
+            executeSubmit(shouldPostToEbay);
+          };
+          setShowDestinationModal(true);
+          return;
+        }
+
+        executeSubmit(postToEbay);
+      }
+
+      async function executeSubmit(shouldPostToEbay) {
         setSaving(true);
         try {
 
@@ -1357,6 +1543,10 @@
                 try { await reloadMineRef?.current?.(); } catch { }
                 try { await reloadAllRef?.current?.({ preserveExisting: true }); } catch { }
                 onSaved?.(created);
+                // Cross-post to eBay if requested (in background)
+                if (shouldPostToEbay && created?.id) {
+                  crossPostToEbay(created.id, ebayShippingDataRef.current);
+                }
               } catch (err) {
                 console.error('Create/save failed:', err);
                 const msg = err?.message || String(err);
@@ -1373,6 +1563,10 @@
 
           const createdListing = await runCreate();
           onSaved?.(createdListing);
+          // Cross-post to eBay if requested
+          if (shouldPostToEbay && createdListing?.id) {
+            crossPostToEbay(createdListing.id, ebayShippingDataRef.current);
+          }
         } catch (err) {
           console.error('Create/save failed:', err);
           const msg = err?.message || String(err);
@@ -1409,6 +1603,579 @@
           onChange: pickFiles,
           style: { display: 'none' }
         }),
+
+        // ==================== DESTINATION CHOICE MODAL ====================
+        showDestinationModal && H('div', {
+          className: 'modal open',
+          onClick: (e) => {
+            if (e.target.classList.contains('modal')) {
+              setShowDestinationModal(false);
+            }
+          },
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }
+        },
+          H('div', {
+            style: {
+              background: isDarkMode ? '#1e293b' : 'white',
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 400,
+              width: '90%',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)'
+            }
+          },
+            H('h3', {
+              style: {
+                margin: '0 0 16px',
+                fontSize: 18,
+                fontWeight: 700,
+                color: isDarkMode ? '#f1f5f9' : '#0f172a'
+              }
+            }, 'Where would you like to post?'),
+            H('p', {
+              style: {
+                margin: '0 0 20px',
+                fontSize: 14,
+                color: isDarkMode ? '#94a3b8' : '#64748b'
+              }
+            }, 'Choose where to publish your listing:'),
+
+            // Trovelr only button
+            H('button', {
+              type: 'button',
+              onClick: () => proceedWithSubmit(false),
+              style: {
+                width: '100%',
+                padding: '14px 16px',
+                marginBottom: 12,
+                border: '2px solid',
+                borderColor: isDarkMode ? '#3b82f6' : '#3b82f6',
+                borderRadius: 12,
+                background: isDarkMode ? '#1e3a5f' : '#eff6ff',
+                cursor: 'pointer',
+                textAlign: 'left'
+              }
+            },
+              H('div', { style: { fontWeight: 700, color: isDarkMode ? '#f1f5f9' : '#0f172a', marginBottom: 4 } }, 'Trovelr Only'),
+              H('div', { style: { fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' } }, 'Post to Trovelr marketplace')
+            ),
+
+            // Trovelr + eBay button - opens shipping modal
+            H('button', {
+              type: 'button',
+              onClick: openEbayShippingModal,
+              style: {
+                width: '100%',
+                padding: '14px 16px',
+                marginBottom: 16,
+                border: '2px solid',
+                borderColor: '#0064d2',
+                borderRadius: 12,
+                background: isDarkMode ? '#0f2942' : '#f0f8ff',
+                cursor: 'pointer',
+                textAlign: 'left'
+              }
+            },
+              H('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+                H('span', { style: { fontWeight: 700, color: isDarkMode ? '#f1f5f9' : '#0f172a' } }, 'Trovelr + eBay'),
+                H('span', {
+                  style: {
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: '#0064d2',
+                    color: 'white',
+                    fontWeight: 600
+                  }
+                }, 'CROSS-POST')
+              ),
+              H('div', { style: { fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' } }, 'Post to both Trovelr and eBay')
+            ),
+
+            // Cancel button
+            H('button', {
+              type: 'button',
+              onClick: () => setShowDestinationModal(false),
+              style: {
+                width: '100%',
+                padding: '10px 16px',
+                border: 'none',
+                borderRadius: 8,
+                background: 'transparent',
+                color: isDarkMode ? '#94a3b8' : '#64748b',
+                cursor: 'pointer',
+                fontSize: 14
+              }
+            }, 'Cancel')
+          )
+        ),
+
+        // ==================== EBAY SHIPPING MODAL ====================
+        showEbayShippingModal && H('div', {
+          className: 'modal open',
+          onClick: (e) => {
+            if (e.target.classList.contains('modal')) {
+              setShowEbayShippingModal(false);
+            }
+          },
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            overflow: 'auto',
+            padding: '20px 0'
+          }
+        },
+          H('div', {
+            style: {
+              background: isDarkMode ? '#1e293b' : 'white',
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 440,
+              width: '90%',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              maxHeight: '90vh',
+              overflow: 'auto'
+            }
+          },
+            // Header
+            H('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 } },
+              H('div', {
+                style: {
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: '#0064d2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontWeight: 700
+                }
+              }, 'eBay'),
+              H('div', null,
+                H('h3', {
+                  style: {
+                    margin: 0,
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: isDarkMode ? '#f1f5f9' : '#0f172a'
+                  }
+                }, 'Shipping Details'),
+                H('p', {
+                  style: {
+                    margin: 0,
+                    fontSize: 13,
+                    color: isDarkMode ? '#94a3b8' : '#64748b'
+                  }
+                }, 'Required for eBay listing')
+              )
+            ),
+
+            // Loading state
+            loadingShippingData && H('div', {
+              style: {
+                textAlign: 'center',
+                padding: '30px 0',
+                color: isDarkMode ? '#94a3b8' : '#64748b'
+              }
+            },
+              H('div', { style: { marginBottom: 8 } }, 'Loading shipping options...'),
+              H('div', {
+                style: {
+                  width: 24,
+                  height: 24,
+                  border: '3px solid',
+                  borderColor: isDarkMode ? '#475569' : '#e2e8f0',
+                  borderTopColor: '#0064d2',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                  margin: '0 auto'
+                }
+              })
+            ),
+
+            // Form content (shown after loading)
+            !loadingShippingData && H('div', null,
+              // AI estimate badge
+              ebayShippingEstimate && ebayShippingEstimate.method === 'openai' && H('div', {
+                style: {
+                  background: isDarkMode ? '#1e3a5f' : '#eff6ff',
+                  border: '1px solid',
+                  borderColor: isDarkMode ? '#3b82f6' : '#bfdbfe',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginBottom: 16,
+                  fontSize: 13
+                }
+              },
+                H('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } },
+                  H('span', { style: { fontSize: 14 } }, '✨'),
+                  H('span', { style: { fontWeight: 600, color: isDarkMode ? '#60a5fa' : '#2563eb' } }, 'AI Suggested'),
+                  H('span', {
+                    style: {
+                      fontSize: 11,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: isDarkMode ? '#334155' : '#e2e8f0',
+                      color: isDarkMode ? '#94a3b8' : '#64748b',
+                      marginLeft: 4
+                    }
+                  }, ebayShippingEstimate.confidence)
+                ),
+                H('div', { style: { color: isDarkMode ? '#cbd5e1' : '#475569' } },
+                  ebayShippingEstimate.reasoning || 'Estimated based on item description'
+                )
+              ),
+
+              // Weight input
+              H('div', { style: { marginBottom: 16 } },
+                H('label', {
+                  style: {
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: isDarkMode ? '#e2e8f0' : '#374151',
+                    marginBottom: 6
+                  }
+                }, 'Package Weight (lbs) *'),
+                H('input', {
+                  type: 'number',
+                  step: '0.1',
+                  min: '0',
+                  value: ebayShippingForm.weight,
+                  onChange: (e) => setEbayShippingForm(prev => ({ ...prev, weight: e.target.value })),
+                  placeholder: '0.0',
+                  style: {
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid',
+                    borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                    borderRadius: 8,
+                    background: isDarkMode ? '#0f172a' : 'white',
+                    color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                    fontSize: 15,
+                    boxSizing: 'border-box'
+                  }
+                })
+              ),
+
+              // Dimensions row
+              H('div', { style: { marginBottom: 16 } },
+                H('label', {
+                  style: {
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: isDarkMode ? '#e2e8f0' : '#374151',
+                    marginBottom: 6
+                  }
+                }, 'Package Dimensions (inches)'),
+                H('div', { style: { display: 'flex', gap: 8 } },
+                  H('input', {
+                    type: 'number',
+                    min: '0',
+                    value: ebayShippingForm.length,
+                    onChange: (e) => setEbayShippingForm(prev => ({ ...prev, length: e.target.value })),
+                    placeholder: 'Length',
+                    style: {
+                      flex: 1,
+                      padding: '10px 12px',
+                      border: '1px solid',
+                      borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                      borderRadius: 8,
+                      background: isDarkMode ? '#0f172a' : 'white',
+                      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                      fontSize: 15
+                    }
+                  }),
+                  H('input', {
+                    type: 'number',
+                    min: '0',
+                    value: ebayShippingForm.width,
+                    onChange: (e) => setEbayShippingForm(prev => ({ ...prev, width: e.target.value })),
+                    placeholder: 'Width',
+                    style: {
+                      flex: 1,
+                      padding: '10px 12px',
+                      border: '1px solid',
+                      borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                      borderRadius: 8,
+                      background: isDarkMode ? '#0f172a' : 'white',
+                      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                      fontSize: 15
+                    }
+                  }),
+                  H('input', {
+                    type: 'number',
+                    min: '0',
+                    value: ebayShippingForm.height,
+                    onChange: (e) => setEbayShippingForm(prev => ({ ...prev, height: e.target.value })),
+                    placeholder: 'Height',
+                    style: {
+                      flex: 1,
+                      padding: '10px 12px',
+                      border: '1px solid',
+                      borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                      borderRadius: 8,
+                      background: isDarkMode ? '#0f172a' : 'white',
+                      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                      fontSize: 15
+                    }
+                  })
+                )
+              ),
+
+              // Fulfillment policy dropdown
+              H('div', { style: { marginBottom: 20 } },
+                H('label', {
+                  style: {
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: isDarkMode ? '#e2e8f0' : '#374151',
+                    marginBottom: 6
+                  }
+                }, 'Shipping Policy *'),
+                ebayFulfillmentPolicies.length === 0 ?
+                  H('div', {
+                    style: {
+                      padding: '12px',
+                      background: isDarkMode ? '#1e293b' : '#fef3c7',
+                      border: '1px solid',
+                      borderColor: isDarkMode ? '#475569' : '#fcd34d',
+                      borderRadius: 8,
+                      fontSize: 13,
+                      color: isDarkMode ? '#fbbf24' : '#92400e'
+                    }
+                  }, 'No shipping policies found. Please set up shipping policies in your eBay seller account.')
+                :
+                  H('select', {
+                    value: ebayShippingForm.fulfillmentPolicyId,
+                    onChange: (e) => setEbayShippingForm(prev => ({ ...prev, fulfillmentPolicyId: e.target.value })),
+                    style: {
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1px solid',
+                      borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                      borderRadius: 8,
+                      background: isDarkMode ? '#0f172a' : 'white',
+                      color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                      fontSize: 15,
+                      cursor: 'pointer'
+                    }
+                  },
+                    ebayFulfillmentPolicies.map(policy =>
+                      H('option', { key: policy.id, value: policy.id },
+                        policy.name + (policy.costType === 'CALCULATED' ? ' (Calculated)' : policy.costType === 'FLAT_RATE' ? ' (Flat Rate)' : '')
+                      )
+                    )
+                  )
+              ),
+
+              // Selected policy details
+              ebayShippingForm.fulfillmentPolicyId && ebayFulfillmentPolicies.find(p => p.id === ebayShippingForm.fulfillmentPolicyId) &&
+                H('div', {
+                  style: {
+                    background: isDarkMode ? '#0f172a' : '#f8fafc',
+                    border: '1px solid',
+                    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    marginBottom: 20,
+                    fontSize: 13
+                  }
+                },
+                  (() => {
+                    const policy = ebayFulfillmentPolicies.find(p => p.id === ebayShippingForm.fulfillmentPolicyId);
+                    return H('div', null,
+                      H('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } },
+                        H('span', {
+                          style: {
+                            fontSize: 10,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: policy.costType === 'CALCULATED' ? '#8b5cf6' : '#22c55e',
+                            color: 'white',
+                            fontWeight: 600
+                          }
+                        }, policy.costType === 'CALCULATED' ? 'CALCULATED' : 'FLAT RATE'),
+                        policy.localPickup && H('span', {
+                          style: {
+                            fontSize: 10,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: isDarkMode ? '#475569' : '#e2e8f0',
+                            color: isDarkMode ? '#cbd5e1' : '#64748b',
+                            fontWeight: 600
+                          }
+                        }, 'LOCAL PICKUP')
+                      ),
+                      policy.description && H('div', {
+                        style: { color: isDarkMode ? '#94a3b8' : '#64748b', marginTop: 4 }
+                      }, policy.description),
+                      policy.costType === 'CALCULATED' && H('div', {
+                        style: { color: isDarkMode ? '#fbbf24' : '#d97706', marginTop: 6, fontSize: 12 }
+                      }, '⚠️ Weight is required for calculated shipping')
+                    );
+                  })()
+                ),
+
+              // Buttons
+              H('div', { style: { display: 'flex', gap: 10 } },
+                H('button', {
+                  type: 'button',
+                  onClick: () => setShowEbayShippingModal(false),
+                  style: {
+                    flex: 1,
+                    padding: '12px 16px',
+                    border: '1px solid',
+                    borderColor: isDarkMode ? '#475569' : '#d1d5db',
+                    borderRadius: 10,
+                    background: 'transparent',
+                    color: isDarkMode ? '#94a3b8' : '#64748b',
+                    cursor: 'pointer',
+                    fontSize: 15,
+                    fontWeight: 600
+                  }
+                }, 'Cancel'),
+                H('button', {
+                  type: 'button',
+                  onClick: submitEbayShipping,
+                  disabled: !ebayShippingForm.fulfillmentPolicyId || (
+                    ebayFulfillmentPolicies.find(p => p.id === ebayShippingForm.fulfillmentPolicyId)?.costType === 'CALCULATED' &&
+                    (!ebayShippingForm.weight || parseFloat(ebayShippingForm.weight) <= 0)
+                  ),
+                  style: {
+                    flex: 1,
+                    padding: '12px 16px',
+                    border: 'none',
+                    borderRadius: 10,
+                    background: '#0064d2',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    opacity: (!ebayShippingForm.fulfillmentPolicyId || (
+                      ebayFulfillmentPolicies.find(p => p.id === ebayShippingForm.fulfillmentPolicyId)?.costType === 'CALCULATED' &&
+                      (!ebayShippingForm.weight || parseFloat(ebayShippingForm.weight) <= 0)
+                    )) ? 0.5 : 1
+                  }
+                }, 'Post to eBay')
+              )
+            )
+          )
+        ),
+
+        // ==================== EBAY RESULT NOTIFICATION ====================
+        ebayResult && H('div', {
+          style: {
+            position: 'fixed',
+            bottom: 100,
+            left: 16,
+            right: 16,
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: ebayResult.success ? '#22c55e' : '#ef4444',
+            color: 'white',
+            zIndex: 9998,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }
+        },
+          H('div', null,
+            H('div', { style: { fontWeight: 600, marginBottom: 2 } },
+              ebayResult.success ? 'Posted to eBay!' : 'eBay posting failed'
+            ),
+            H('div', { style: { fontSize: 13, opacity: 0.9 } },
+              ebayResult.success
+                ? 'Your listing is now live on eBay'
+                : ebayResult.error
+            )
+          ),
+          ebayResult.success && ebayResult.ebayUrl && H('a', {
+            href: ebayResult.ebayUrl,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            style: {
+              padding: '6px 12px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: 6,
+              color: 'white',
+              textDecoration: 'none',
+              fontSize: 13,
+              fontWeight: 600
+            }
+          }, 'View'),
+          H('button', {
+            type: 'button',
+            onClick: () => setEbayResult(null),
+            style: {
+              marginLeft: 8,
+              padding: 4,
+              background: 'transparent',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: 18,
+              lineHeight: 1
+            }
+          }, '\u00D7')
+        ),
+
+        // ==================== EBAY PUBLISHING INDICATOR ====================
+        ebayPublishing && H('div', {
+          style: {
+            position: 'fixed',
+            bottom: 100,
+            left: 16,
+            right: 16,
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: '#0064d2',
+            color: 'white',
+            zIndex: 9998,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }
+        },
+          H('div', {
+            style: {
+              width: 20,
+              height: 20,
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderTopColor: 'white',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }
+          }),
+          H('div', null,
+            H('div', { style: { fontWeight: 600 } }, 'Posting to eBay...'),
+            H('div', { style: { fontSize: 13, opacity: 0.9 } }, 'This may take a moment')
+          )
+        ),
 
         // ==================== PHOTOS SECTION ====================
         H('section', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },

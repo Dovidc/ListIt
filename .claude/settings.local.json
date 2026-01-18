@@ -111,7 +111,8 @@
       "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\android\\\\app\\\\src\\\\main\\\\java\\\\com\\\\trovelr\\\\app\\\\MainActivity.java\")",
       "Bash(xxd:*)",
       "Bash(git log:*)",
-      "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\chrome-extension\\\\icon16.png\")"
+      "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\chrome-extension\\\\icon16.png\")",
+      "WebFetch(domain:developer.ebay.com)"
     ],
     "deny": [],
     "ask": []

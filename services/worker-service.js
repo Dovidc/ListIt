@@ -146,6 +146,19 @@ class WorkerService {
       })
     );
 
+    // eBay integration handlers
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.EBAY_LISTING_SOLD, async (event) => {
+        await this.handleEbayListingSold(event);
+      })
+    );
+
+    this.subscriptions.push(
+      this.messageBus.subscribe(TOPICS.EBAY_TOKEN_EXPIRED, async (event) => {
+        await this.handleEbayTokenExpired(event);
+      })
+    );
+
     // TODO: Re-enable when nearby push notifications are needed
     // this.subscriptions.push(
     //   this.messageBus.subscribe(TOPICS.NEARBY_LISTING_AVAILABLE, async (event) => {
@@ -435,6 +448,73 @@ class WorkerService {
       },
       priority: 8,
       idempotencyKey: `email:reset:${event.email}:${event.token}`
+    });
+  }
+
+  /**
+   * Handle eBay listing sold events - notify user via push and email
+   */
+  async handleEbayListingSold(event) {
+    if (!event || !event.userId || !event.listingId) return;
+
+    console.log('[Worker] eBay listing sold:', event.listingId, 'for user:', event.userId);
+
+    // Send push notification about the sale
+    await this.enqueueJob({
+      type: 'send_push',
+      payload: {
+        userId: event.userId,
+        notification: {
+          type: 'ebay_item_sold',
+          title: 'Item Sold on eBay!',
+          body: `Your listing sold for $${event.salePrice || 'N/A'}`,
+          listing_id: event.listingId,
+          ebay_listing_id: event.ebayListingId
+        }
+      },
+      priority: 7,
+      idempotencyKey: `ebay:sold:${event.ebayListingId}`
+    });
+
+    // Also send email notification if email service is available
+    if (this.mailService) {
+      await this.enqueueJob({
+        type: 'send_email',
+        payload: {
+          userId: event.userId,
+          template: 'ebay_item_sold',
+          listingId: event.listingId,
+          salePrice: event.salePrice,
+          ebayListingId: event.ebayListingId
+        },
+        priority: 6,
+        idempotencyKey: `email:ebay_sold:${event.ebayListingId}`
+      });
+    }
+  }
+
+  /**
+   * Handle eBay token expired events - notify user to reconnect
+   */
+  async handleEbayTokenExpired(event) {
+    if (!event || !event.userId) return;
+
+    console.log('[Worker] eBay token expired for user:', event.userId);
+
+    // Send push notification to reconnect eBay
+    await this.enqueueJob({
+      type: 'send_push',
+      payload: {
+        userId: event.userId,
+        notification: {
+          type: 'ebay_token_expired',
+          title: 'eBay Connection Expired',
+          body: 'Please reconnect your eBay account to continue cross-posting.',
+          action_url: '/#/settings'
+        }
+      },
+      priority: 5,
+      idempotencyKey: `ebay:expired:${event.userId}:${Date.now()}`
     });
   }
 

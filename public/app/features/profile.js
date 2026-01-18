@@ -1665,6 +1665,113 @@
       const [clearingLocations, setClearingLocations] = useState(false);
       const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
 
+      // eBay connection state
+      const [ebayConnection, setEbayConnection] = useState(null);
+      const [ebayLoading, setEbayLoading] = useState(false);
+      const [ebayError, setEbayError] = useState(null);
+
+      // Fetch eBay connection status on mount
+      useEffect(() => {
+        if (open && user) {
+          fetchEbayConnection();
+        }
+      }, [open, user]);
+
+      // Check URL params for eBay OAuth callback result
+      useEffect(() => {
+        if (open) {
+          const urlParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+          const ebayStatus = urlParams.get('ebay');
+          if (ebayStatus === 'connected') {
+            fetchEbayConnection();
+            // Clean up URL
+            const cleanUrl = window.location.href.split('?')[0];
+            window.history.replaceState({}, '', cleanUrl);
+          } else if (ebayStatus === 'error') {
+            setEbayError(urlParams.get('message') || 'Connection failed');
+            const cleanUrl = window.location.href.split('?')[0];
+            window.history.replaceState({}, '', cleanUrl);
+          }
+        }
+      }, [open]);
+
+      async function fetchEbayConnection() {
+        try {
+          const res = await fetch('/api/ebay/connection', {
+            credentials: 'include'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setEbayConnection(data);
+            setEbayError(null);
+          }
+        } catch (err) {
+          console.error('Failed to fetch eBay connection:', err);
+        }
+      }
+
+      async function handleConnectEbay() {
+        setEbayLoading(true);
+        setEbayError(null);
+        try {
+          const res = await fetch('/api/ebay/auth/connect', {
+            credentials: 'include'
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.message || data.error || 'Failed to initiate connection');
+          }
+          const { redirectUrl } = await res.json();
+          window.location.href = redirectUrl;
+        } catch (err) {
+          setEbayError(err.message);
+          setEbayLoading(false);
+        }
+      }
+
+      async function handleDisconnectEbay() {
+        if (!confirm('Are you sure you want to disconnect your eBay account? Active eBay listings will remain on eBay but will no longer be linked to Trovelr.')) {
+          return;
+        }
+        setEbayLoading(true);
+        setEbayError(null);
+        try {
+          const res = await fetch('/api/ebay/connection', {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endActiveListings: false })
+          });
+          if (!res.ok) {
+            throw new Error('Failed to disconnect');
+          }
+          setEbayConnection({ connected: false });
+        } catch (err) {
+          setEbayError(err.message);
+        } finally {
+          setEbayLoading(false);
+        }
+      }
+
+      async function handleToggleCrossPost(enabled) {
+        setEbayLoading(true);
+        try {
+          const res = await fetch('/api/ebay/connection/settings', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ crossPostEnabled: enabled })
+          });
+          if (res.ok) {
+            setEbayConnection(prev => ({ ...prev, crossPostEnabled: enabled }));
+          }
+        } catch (err) {
+          console.error('Failed to update eBay settings:', err);
+        } finally {
+          setEbayLoading(false);
+        }
+      }
+
       useEffect(() => {
         if (!open) {
           setDangerZoneOpen(false);
@@ -1841,6 +1948,113 @@
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'Tokyo Night theme')
                 )
               ),
+
+              // eBay Integration Section
+              H('div', {
+                style: {
+                  marginTop: 24,
+                  paddingTop: 24,
+                  borderTop: '1px solid #e5e7eb'
+                }
+              },
+                H('div', { style: { fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 } },
+                  H('span', { style: { fontSize: 18 } }, 'eBay'),
+                  ebayConnection?.connected && H('span', {
+                    style: {
+                      fontSize: 11,
+                      padding: '2px 8px',
+                      borderRadius: 12,
+                      background: ebayConnection.status === 'active' ? '#22c55e' : '#f59e0b',
+                      color: 'white'
+                    }
+                  }, ebayConnection.status === 'active' ? 'Connected' : 'Expired')
+                ),
+
+                // Error message
+                ebayError && H('div', {
+                  style: {
+                    padding: '8px 12px',
+                    marginBottom: 12,
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 8,
+                    color: '#dc2626',
+                    fontSize: 13
+                  }
+                }, ebayError),
+
+                // Not connected state
+                !ebayConnection?.connected && H('div', null,
+                  H('div', { className: 'muted', style: { fontSize: 13, marginBottom: 12 } },
+                    'Connect your eBay seller account to cross-post listings to eBay Marketplace with one click.'
+                  ),
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleConnectEbay,
+                    disabled: ebayLoading,
+                    style: {
+                      width: '100%',
+                      background: '#0064d2',
+                      color: 'white',
+                      border: 'none',
+                      padding: '10px 16px',
+                      borderRadius: 8,
+                      cursor: ebayLoading ? 'not-allowed' : 'pointer',
+                      opacity: ebayLoading ? 0.7 : 1,
+                      fontWeight: 600
+                    }
+                  }, ebayLoading ? 'Connecting...' : 'Connect eBay Account')
+                ),
+
+                // Connected state
+                ebayConnection?.connected && H('div', null,
+                  H('div', { style: { marginBottom: 12 } },
+                    H('div', { style: { fontSize: 13 } },
+                      H('span', { className: 'muted' }, 'eBay username: '),
+                      H('span', { style: { fontWeight: 600 } }, ebayConnection.ebayUsername)
+                    ),
+                    ebayConnection.activeListings > 0 && H('div', { style: { fontSize: 13, marginTop: 4 } },
+                      H('span', { className: 'muted' }, 'Active listings: '),
+                      H('span', { style: { fontWeight: 600 } }, ebayConnection.activeListings)
+                    )
+                  ),
+
+                  // Cross-post toggle
+                  H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%', marginBottom: 12 } },
+                    H('input', {
+                      type: 'checkbox',
+                      className: 'toggle-input',
+                      checked: ebayConnection.crossPostEnabled,
+                      disabled: ebayLoading,
+                      onChange: (e) => handleToggleCrossPost(e.target.checked)
+                    }),
+                    H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                    H('div', { className: 'toggle-copy' },
+                      H('div', { style: { fontWeight: 700 } }, 'Enable eBay Cross-Posting'),
+                      H('div', { className: 'muted', style: { fontSize: 12 } }, 'Show destination choice when creating listings')
+                    )
+                  ),
+
+                  // Disconnect button
+                  H('button', {
+                    className: 'btn',
+                    onClick: handleDisconnectEbay,
+                    disabled: ebayLoading,
+                    style: {
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#dc2626',
+                      border: '1px solid #dc2626',
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      cursor: ebayLoading ? 'not-allowed' : 'pointer',
+                      opacity: ebayLoading ? 0.7 : 1,
+                      fontSize: 13
+                    }
+                  }, 'Disconnect eBay')
+                )
+              ),
+
               // Show Apple subscription management info for Apple subscribers
               user?.apple_original_transaction_id && !user?.stripe_subscription_id && H('div', {
                 style: {
