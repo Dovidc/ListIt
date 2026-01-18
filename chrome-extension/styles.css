@@ -295,7 +295,7 @@ body {
 
 .btn-clear {
   position: absolute;
-  right: 28px;
+  right: 60px;
   background: none;
   border: none;
   padding: 4px;
@@ -308,6 +308,25 @@ body {
 
 .btn-clear:hover {
   color: #fff;
+}
+
+.btn-logout {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-logout:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* Listings Grid */

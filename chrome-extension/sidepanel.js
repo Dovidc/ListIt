@@ -153,13 +153,11 @@ function handleLogout() {
 function showLoginView() {
   loginView.style.display = 'flex';
   mainView.style.display = 'none';
-  logoutBtn.style.display = 'none';
 }
 
 function showMainView() {
   loginView.style.display = 'none';
   mainView.style.display = 'flex';
-  logoutBtn.style.display = 'flex';
 }
 
 // Load user's listings
