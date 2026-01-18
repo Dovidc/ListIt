@@ -624,13 +624,13 @@ const FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0 ? FRONTEND_ORIGINS[0] : null
 const HAS_FRONTEND_ORIGIN = FRONTEND_ORIGINS.length > 0;
 const FRONTEND_ORIGIN_SET = new Set(FRONTEND_ORIGINS);
 
-const PUBLIC_APP_BASE_URL = process.env.PUBLIC_APP_BASE_URL || '';
+const WEB_BASE_URL = process.env.WEB_BASE_URL || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const STRIPE_PREMIUM_PRICE_ID = process.env.STRIPE_PREMIUM_PRICE_ID || '';
 
 function resolveAppBaseUrl(req) {
   if (HAS_FRONTEND_ORIGIN) return FRONTEND_ORIGIN;
-  if (PUBLIC_APP_BASE_URL) return PUBLIC_APP_BASE_URL;
+  if (WEB_BASE_URL) return WEB_BASE_URL;
   const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
   const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
   if (host) return `${proto}://${host}`;
@@ -13226,7 +13226,7 @@ app.get('/api/ebay/webhooks', (req, res) => {
     return res.status(500).json({ error: 'verification_not_configured' });
   }
 
-  const endpoint = `${PUBLIC_APP_BASE_URL}/api/ebay/webhooks`;
+  const endpoint = `${WEB_BASE_URL}/api/ebay/webhooks`;
 
   // eBay expects: SHA256(challengeCode + verificationToken + endpoint)
   const hash = crypto
