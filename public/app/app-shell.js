@@ -68,6 +68,7 @@
     assertFunction(H, 'helpers.H');
 
     const { price, fmtDistance } = utilities || {};
+    const { uploadFileDraft } = uploads || {};
 
     const auth = features?.auth || {};
     const listingsFeature = features?.listings || {};
@@ -100,7 +101,7 @@
     const { MessagesPanel, useMessageActions } = messagesFeature;
     const { AdminDashboard, useAdminListingActions } = adminFeature;
     const { ProfilePanel } = profileFeature;
-    const { ListingFormModal, DesktopNewListingModal, runAutoList } = listingFormsFeature;
+    const { ListingFormModal, DesktopNewListingModal, ClarifyModal, runAutoList } = listingFormsFeature;
     const { useAppPreferences } = preferencesFeature;
     const { usePushNotifications } = pushFeature;
     const { useAds } = adsFeature;
@@ -208,7 +209,9 @@
         autoPostNearbyEnabled,
         setAutoPostNearbyEnabled,
         autoInquiryEnabled,
-        setAutoInquiryEnabled
+        setAutoInquiryEnabled,
+        clarifyEnabled,
+        setClarifyEnabled
       } = useAppPreferences();
       const [supporterInfoState, setSupporterInfoState] = useState({ open: false, username: '', since: null, tier: null, isSelf: false });
       const [supporterUpsellState, setSupporterUpsellState] = useState({
@@ -235,6 +238,12 @@
 
       // Location warning modal state
       const [showLocationWarning, setShowLocationWarning] = useState(false);
+
+      // Clarify modal state
+      const [showClarifyModal, setShowClarifyModal] = useState(false);
+      const [clarifyData, setClarifyData] = useState({ files: [], title: '', description: '', price: 0 });
+      const [clarifyBusy, setClarifyBusy] = useState(false);
+      const [clarifyError, setClarifyError] = useState('');
 
       // Initialize location cache on app startup and show warning if user denies permission
       useEffect(() => {
@@ -1679,6 +1688,78 @@
         return valid;
       }
 
+      // Handler for clarify modal confirmation
+      async function handleClarifyConfirm({ files, title, description, price }) {
+        setClarifyBusy(true);
+        setClarifyError('');
+
+        try {
+          // Show uploading toast
+          if (typeof showUploadingToast === 'function') {
+            try { showUploadingToast(); } catch (e) { /* ignore */ }
+          }
+
+          // Create the listing with the user-edited data
+          const result = await runAutoList({
+            files,
+            location: '',
+            autoPostNearbyEnabled: (isMobile && autoPostNearbyEnabled),
+            autoInquiryEnabled,
+            backgroundQueueEnabled,
+            enqueueListingJob,
+            reloadMine: reloadMineOnly,
+            reloadAll: refreshListings,
+            // Override AI data with user-edited values
+            overrideTitle: title,
+            overrideDescription: description,
+            overridePrice: price,
+            onJobQueued: () => {
+              if (typeof hideUploadingToast === 'function') {
+                try { hideUploadingToast(); } catch (e) { /* ignore */ }
+              }
+            },
+            onCreated: (createdListing) => {
+              try {
+                if (createdListing?.id) {
+                  addListing(createdListing);
+                  showRecentListingToast(createdListing);
+                }
+              } catch (e) {
+                console.warn('[Clarify] onCreated error:', e);
+              }
+            },
+            onError: (err) => {
+              if (typeof hideUploadingToast === 'function') {
+                try { hideUploadingToast(); } catch (e) { /* ignore */ }
+              }
+              console.error('[Clarify] Job error:', err);
+              const msg = err?.message || String(err);
+              if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+                setShowModerationModal(true);
+              }
+            }
+          });
+
+          console.log('[Clarify] Result:', result);
+          setShowClarifyModal(false);
+          setClarifyData({ files: [], title: '', description: '', price: 0 });
+        } catch (err) {
+          console.error('[Clarify] Failed:', err);
+          if (typeof hideUploadingToast === 'function') {
+            try { hideUploadingToast(); } catch (e) { /* ignore */ }
+          }
+          const msg = err?.message || String(err);
+          if (msg.includes('moderation_flagged') || msg.includes('flagged') || msg.includes('Invalid file')) {
+            setShowModerationModal(true);
+            setShowClarifyModal(false);
+          } else {
+            setClarifyError(msg || 'Failed to create listing');
+          }
+        } finally {
+          setClarifyBusy(false);
+        }
+      }
+
       async function handleMobileFilesSelected(fileList) {
         if (!fileList || fileList.length === 0) {
           return;
@@ -1692,6 +1773,81 @@
           setShowMassList(true);
           return;
         }
+
+        // If clarify is enabled, upload images, run AI analysis, and show clarify modal
+        if (clarifyEnabled && autoListEnabled) {
+          try {
+            // Show loading toast
+            if (typeof showUploadingToast === 'function') {
+              try { showUploadingToast(); } catch (e) { /* ignore */ }
+            }
+
+            // Upload images first to get public URLs (required by AI analyze API)
+            const AI_IMAGE_LIMIT = 3;
+            const uploadedUrls = [];
+
+            if (typeof uploadFileDraft === 'function') {
+              for (let i = 0; i < Math.min(files.length, AI_IMAGE_LIMIT); i++) {
+                try {
+                  const result = await uploadFileDraft(files[i]);
+                  if (result?.publicUrl) {
+                    uploadedUrls.push(result.publicUrl);
+                  }
+                } catch (e) {
+                  console.warn('[Clarify] Failed to upload image for AI:', e);
+                }
+              }
+            }
+
+            // Run AI analysis with uploaded URLs
+            let aiTitle = '';
+            let aiDescription = '';
+            let aiPrice = 0;
+
+            if (uploadedUrls.length > 0 && typeof api.aiAnalyze === 'function') {
+              console.log('[Clarify] Running AI analysis on', uploadedUrls.length, 'uploaded images...');
+              try {
+                const aiResult = await api.aiAnalyze({
+                  images: uploadedUrls,
+                  hint: ''
+                });
+
+                if (aiResult) {
+                  aiTitle = aiResult.title || '';
+                  aiDescription = aiResult.description || '';
+                  aiPrice = typeof aiResult.suggested_price === 'number' ? aiResult.suggested_price : 0;
+                }
+                console.log('[Clarify] AI result:', { title: aiTitle, price: aiPrice });
+              } catch (aiErr) {
+                console.warn('[Clarify] AI analysis failed:', aiErr.message);
+              }
+            }
+
+            // Hide loading toast
+            if (typeof hideUploadingToast === 'function') {
+              try { hideUploadingToast(); } catch (e) { /* ignore */ }
+            }
+
+            // Show clarify modal with AI-generated data
+            setClarifyData({
+              files: files.slice(),
+              title: aiTitle,
+              description: aiDescription,
+              price: aiPrice
+            });
+            setClarifyError('');
+            setShowClarifyModal(true);
+          } catch (err) {
+            console.error('[Clarify] Setup failed:', err);
+            if (typeof hideUploadingToast === 'function') {
+              try { hideUploadingToast(); } catch (e) { /* ignore */ }
+            }
+            // Fallback to normal flow
+            openListingEditor({ draft: null, files, originTab: tab });
+          }
+          return;
+        }
+
         if (autoListEnabled) {
           // Show "Keep app open" toast immediately - stays visible until server confirms
           if (typeof showUploadingToast === 'function') {
@@ -2384,6 +2540,8 @@
                         setAutoPostNearbyEnabled,
                         autoInquiryEnabled,
                         setAutoInquiryEnabled,
+                        clarifyEnabled,
+                        setClarifyEnabled,
                         onViewSeller: handleViewSeller,
                         onToggleSold: toggleSoldSimple,
                         onSupporterClick: handleSupporterBadgeClick,
@@ -2555,6 +2713,23 @@
             // Location warning modal
             showLocationWarning && LocationWarningModal && H(LocationWarningModal, {
               onClose: () => setShowLocationWarning(false)
+            }),
+
+            // Clarify modal
+            ClarifyModal && H(ClarifyModal, {
+              isOpen: showClarifyModal,
+              onClose: () => {
+                setShowClarifyModal(false);
+                setClarifyData({ files: [], title: '', description: '', price: 0 });
+                setClarifyError('');
+              },
+              onConfirm: handleClarifyConfirm,
+              initialFiles: clarifyData.files,
+              initialTitle: clarifyData.title,
+              initialDescription: clarifyData.description,
+              initialPrice: clarifyData.price,
+              busy: clarifyBusy,
+              error: clarifyError
             }),
 
             // Edit listing toast with rotating cog

@@ -6721,7 +6721,11 @@ app.post(
         inquiry_enabled,
         lat,
         lon,
-        hint
+        hint,
+        // Override values from clarify modal (skip AI when provided)
+        title: overrideTitle,
+        description: overrideDescription,
+        price: overridePrice
       } = req.body || {};
 
       // Validate location
@@ -6770,7 +6774,18 @@ app.post(
         safeLat = Number.isFinite(Number(lat)) ? Number(lat) : null;
         safeLon = Number.isFinite(Number(lon)) ? Number(lon) : null;
       }
-      const safeHint = typeof hint === 'string' ? hint.slice(0, 200) : '';
+      // Encode override values in hint field as JSON if provided
+      let safeHint = typeof hint === 'string' ? hint.slice(0, 200) : '';
+      const hasOverrides = overrideTitle !== undefined || overrideDescription !== undefined || overridePrice !== undefined;
+      if (hasOverrides) {
+        const overrideData = {
+          __clarify_override__: true,
+          title: typeof overrideTitle === 'string' ? overrideTitle.slice(0, 80) : null,
+          description: typeof overrideDescription === 'string' ? overrideDescription.slice(0, 400) : null,
+          price: Number.isFinite(Number(overridePrice)) ? Number(overridePrice) : null
+        };
+        safeHint = JSON.stringify(overrideData);
+      }
 
       const info = await db.prepare(`
         INSERT INTO auto_listing_jobs (
@@ -13236,6 +13251,58 @@ app.get('/api/ebay/webhooks', (req, res) => {
 
   console.log('[eBay Webhook] Challenge verified for endpoint:', endpoint);
   res.json({ challengeResponse: hash });
+});
+
+// eBay User Token verification (GET) - for OAuth token revocation notifications
+app.get('/api/ebay/usertokens', (req, res) => {
+  const challengeCode = req.query.challenge_code;
+
+  if (!challengeCode) {
+    return res.status(400).json({ error: 'missing_challenge_code' });
+  }
+
+  const verificationToken = process.env.EBAY_WEBHOOK_VERIFICATION_TOKEN;
+  if (!verificationToken) {
+    console.error('[eBay UserTokens] EBAY_WEBHOOK_VERIFICATION_TOKEN not configured');
+    return res.status(500).json({ error: 'verification_not_configured' });
+  }
+
+  const endpoint = `${WEB_BASE_URL}/api/ebay/usertokens`;
+
+  // eBay expects: SHA256(challengeCode + verificationToken + endpoint)
+  const hash = crypto
+    .createHash('sha256')
+    .update(challengeCode + verificationToken + endpoint)
+    .digest('hex');
+
+  console.log('[eBay UserTokens] Challenge verified for endpoint:', endpoint);
+  res.json({ challengeResponse: hash });
+});
+
+// eBay User Token endpoint (POST) - receives token revocation notifications
+app.post('/api/ebay/usertokens', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const payload = req.body.toString();
+    const data = JSON.parse(payload);
+
+    console.log('[eBay UserTokens] Received notification:', data?.metadata?.topic);
+
+    // Handle token revocation
+    const ebayUserId = data?.notification?.data?.userId || data?.notification?.data?.username;
+    if (ebayUserId) {
+      await db.prepare(
+        `UPDATE ebay_connections SET status = 'revoked', updated_at = ?
+         WHERE ebay_user_id = ?`
+      ).run(new Date().toISOString(), ebayUserId);
+
+      console.log('[eBay UserTokens] Token revoked for user:', ebayUserId);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('[eBay UserTokens] Error:', err);
+    res.status(500).json({ error: 'processing_error' });
+  }
 });
 
 // eBay Webhook endpoint (POST) - receives actual webhook notifications

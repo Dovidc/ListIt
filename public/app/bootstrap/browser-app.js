@@ -430,6 +430,7 @@
       ListingFormModal,
       CompactListingForm,
       DesktopNewListingModal,
+      ClarifyModal,
       runAutoList
     } = listingFormsFeatureFactory({
       React: runtimeReact,
@@ -556,7 +557,7 @@
         messages: { MessagesPanel, useMessageActions },
         admin: { AdminDashboard, useAdminListingActions },
         profile: { ProfilePanel },
-        listingForms: { ListingFormModal, DesktopNewListingModal, runAutoList },
+        listingForms: { ListingFormModal, DesktopNewListingModal, ClarifyModal, runAutoList },
         preferences: { useAppPreferences },
         push: { usePushNotifications },
         ads: { useAds },
@@ -582,7 +583,8 @@
       },
       uploads: {
         prepareListingForModal,
-        warmListingImages
+        warmListingImages,
+        uploadFileDraft
       },
       utilities: { price, fmtDistance }
     });

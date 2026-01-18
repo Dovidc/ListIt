@@ -435,7 +435,11 @@
       reloadAll,
       onCreated,
       onError,
-      onJobQueued
+      onJobQueued,
+      // Override values from clarify modal - skip AI when provided
+      overrideTitle,
+      overrideDescription,
+      overridePrice
     } = {}) {
       try {
         // Check if native background upload is available
@@ -595,6 +599,17 @@
           inquiry_enabled: typeof autoInquiryEnabled === 'boolean' ? autoInquiryEnabled : true,
           uploadTokens
         };
+
+        // Add override values from clarify modal (skip AI when provided)
+        if (overrideTitle !== undefined && overrideTitle !== null) {
+          payload.title = overrideTitle;
+        }
+        if (overrideDescription !== undefined && overrideDescription !== null) {
+          payload.description = overrideDescription;
+        }
+        if (overridePrice !== undefined && overridePrice !== null) {
+          payload.price = overridePrice;
+        }
 
         if (enableNearbyAuto && latAuto != null && lonAuto != null) {
           payload.lat = latAuto;
@@ -3200,11 +3215,439 @@
       );
     }
 
+    /**
+     * ClarifyModal - Shows after AI analysis to let users review and edit listing details
+     * before final creation. Includes image management and price adjustment pills.
+     */
+    function ClarifyModal({
+      isOpen,
+      onClose,
+      onConfirm,
+      initialFiles = [],
+      initialTitle = '',
+      initialDescription = '',
+      initialPrice = 0,
+      busy = false,
+      error = ''
+    }) {
+      const fileRef = useRef(null);
+      const [files, setFiles] = useState(() => Array.isArray(initialFiles) ? initialFiles.slice() : []);
+      const [title, setTitle] = useState(initialTitle);
+      const [description, setDescription] = useState(initialDescription);
+      const [priceVal, setPriceVal] = useState(initialPrice);
+      const filePreviews = useFilePreviews(files);
+
+      // Detect dark mode
+      const isDarkMode = typeof document !== 'undefined' &&
+        (document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('theme') === 'dark');
+
+      // Reset state when modal opens with new data
+      useEffect(() => {
+        if (isOpen) {
+          setFiles(Array.isArray(initialFiles) ? initialFiles.slice() : []);
+          setTitle(initialTitle);
+          setDescription(initialDescription);
+          setPriceVal(initialPrice);
+        }
+      }, [isOpen, initialFiles, initialTitle, initialDescription, initialPrice]);
+
+      const handleOverlayClick = (e) => {
+        if (e.target === e.currentTarget && !busy) {
+          onClose?.();
+        }
+      };
+
+      const handleFileSelect = (e) => {
+        const selectedFiles = e.target.files;
+        if (!selectedFiles || selectedFiles.length === 0) return;
+        const newFiles = Array.from(selectedFiles);
+        setFiles(prev => [...prev, ...newFiles].slice(0, 12)); // Max 12 images
+        if (fileRef.current) fileRef.current.value = '';
+      };
+
+      const removeFile = (index) => {
+        setFiles(prev => prev.filter((_, i) => i !== index));
+      };
+
+      const handleConfirm = () => {
+        onConfirm?.({
+          files,
+          title: title.trim(),
+          description: description.trim(),
+          price: Number(priceVal) || 0
+        });
+      };
+
+      // Calculate price pill values that scale with the price
+      const currentPrice = Number(priceVal) || 0;
+
+      // Determine step size based on price magnitude
+      const getStepSize = (price) => {
+        if (price <= 0) return { small: 5, large: 10 };
+        if (price <= 50) return { small: 5, large: 10 };
+        if (price <= 100) return { small: 10, large: 20 };
+        if (price <= 250) return { small: 15, large: 25 };
+        if (price <= 500) return { small: 25, large: 50 };
+        if (price <= 1000) return { small: 50, large: 100 };
+        if (price <= 2500) return { small: 100, large: 250 };
+        if (price <= 5000) return { small: 250, large: 500 };
+        if (price <= 10000) return { small: 500, large: 1000 };
+        // For very high prices, use ~5% and ~10% rounded to nice numbers
+        const magnitude = Math.pow(10, Math.floor(Math.log10(price)) - 1);
+        return { small: magnitude, large: magnitude * 2 };
+      };
+
+      const { small, large } = getStepSize(currentPrice);
+      const pricePills = [
+        { delta: -large },
+        { delta: -small },
+        { delta: +small },
+        { delta: +large }
+      ];
+
+      const applyPriceDelta = (delta) => {
+        const newPrice = Math.max(0, currentPrice + delta);
+        setPriceVal(newPrice);
+      };
+
+      if (!isOpen) return null;
+
+      const allImages = filePreviews.map(({ url }, i) => ({ type: 'new', url, index: i }));
+
+      return H('div', {
+        className: 'modal-backdrop',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(17, 24, 39, 0.7)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          zIndex: 130,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          padding: 'max(12px, env(safe-area-inset-top, 12px)) 12px max(12px, env(safe-area-inset-bottom, 12px)) 12px'
+        },
+        onClick: handleOverlayClick
+      },
+        H('div', {
+          style: {
+            background: isDarkMode ? 'var(--bg-primary, #1e293b)' : '#fff',
+            borderRadius: 16,
+            padding: 24,
+            width: 'min(520px, 92vw)',
+            maxHeight: 'none',
+            flexShrink: 0,
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+            position: 'relative',
+            marginTop: 'auto',
+            marginBottom: 'auto'
+          }
+        },
+          // Close button
+          !busy && H('button', {
+            type: 'button',
+            onClick: onClose,
+            'aria-label': 'Close',
+            style: {
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              width: 28,
+              height: 28,
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#dc2626',
+              fontSize: 22,
+              fontWeight: 'bold',
+              lineHeight: 1,
+              zIndex: 10
+            }
+          }, '\u00D7'),
+
+          // Header
+          H('div', { style: { fontWeight: 700, fontSize: 18, marginBottom: 16 } }, 'Review Listing'),
+
+          // Error message
+          error && H('div', {
+            style: {
+              padding: '8px 12px',
+              marginBottom: 12,
+              background: isDarkMode ? '#7f1d1d' : '#fef2f2',
+              border: '1px solid',
+              borderColor: isDarkMode ? '#991b1b' : '#fecaca',
+              borderRadius: 8,
+              color: isDarkMode ? '#fca5a5' : '#dc2626',
+              fontSize: 13
+            }
+          }, error),
+
+          // Images section
+          H('div', { style: { marginBottom: 16 } },
+            H('label', { style: { fontWeight: 600, fontSize: 14, marginBottom: 8, display: 'block' } }, 'Images'),
+
+            // Image grid
+            allImages.length > 0 && H('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                gap: 8,
+                marginBottom: 12
+              }
+            },
+              allImages.map(({ url, index }) =>
+                H('div', {
+                  key: `img-${index}`,
+                  style: {
+                    position: 'relative',
+                    aspectRatio: '1',
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: isDarkMode ? '#334155' : '#f1f5f9'
+                  }
+                },
+                  H('img', {
+                    src: url,
+                    alt: `Image ${index + 1}`,
+                    style: { width: '100%', height: '100%', objectFit: 'cover' }
+                  }),
+                  !busy && H('button', {
+                    type: 'button',
+                    onClick: () => removeFile(index),
+                    style: {
+                      position: 'absolute',
+                      top: 4,
+                      right: 4,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      background: 'rgba(220, 38, 38, 0.9)',
+                      color: '#fff',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      lineHeight: '18px',
+                      padding: 0
+                    }
+                  }, '\u00D7')
+                )
+              )
+            ),
+
+            // Add more images button
+            H('input', {
+              ref: fileRef,
+              type: 'file',
+              accept: 'image/*',
+              multiple: true,
+              onChange: handleFileSelect,
+              style: { display: 'none' }
+            }),
+            files.length < 12 && H('button', {
+              type: 'button',
+              onClick: () => fileRef.current?.click(),
+              disabled: busy,
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                width: '100%',
+                padding: '10px 16px',
+                background: isDarkMode ? '#334155' : '#f1f5f9',
+                border: '1px dashed',
+                borderColor: isDarkMode ? '#475569' : '#cbd5e1',
+                borderRadius: 8,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+                color: isDarkMode ? '#94a3b8' : '#64748b'
+              }
+            },
+              H('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                H('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+                H('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+              ),
+              'Add More Images'
+            )
+          ),
+
+          // Title input
+          H('div', { style: { marginBottom: 16 } },
+            H('label', { style: { fontWeight: 600, fontSize: 14, marginBottom: 6, display: 'block' } }, 'Title'),
+            H('input', {
+              type: 'text',
+              value: title,
+              onChange: (e) => setTitle(e.target.value),
+              maxLength: 80,
+              disabled: busy,
+              placeholder: 'Enter listing title',
+              style: {
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: 16,
+                border: '1px solid',
+                borderColor: isDarkMode ? '#475569' : '#e5e7eb',
+                borderRadius: 8,
+                background: isDarkMode ? '#1e293b' : '#fff',
+                color: isDarkMode ? '#f1f5f9' : '#111827',
+                boxSizing: 'border-box'
+              }
+            })
+          ),
+
+          // Description input
+          H('div', { style: { marginBottom: 16 } },
+            H('label', { style: { fontWeight: 600, fontSize: 14, marginBottom: 6, display: 'block' } }, 'Description'),
+            H('textarea', {
+              value: description,
+              onChange: (e) => setDescription(e.target.value),
+              maxLength: 400,
+              disabled: busy,
+              rows: 3,
+              placeholder: 'Enter listing description',
+              style: {
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: 16,
+                border: '1px solid',
+                borderColor: isDarkMode ? '#475569' : '#e5e7eb',
+                borderRadius: 8,
+                background: isDarkMode ? '#1e293b' : '#fff',
+                color: isDarkMode ? '#f1f5f9' : '#111827',
+                resize: 'vertical',
+                minHeight: 80,
+                boxSizing: 'border-box'
+              }
+            })
+          ),
+
+          // Price section
+          H('div', { style: { marginBottom: 20 } },
+            H('label', { style: { fontWeight: 600, fontSize: 14, marginBottom: 6, display: 'block' } }, 'Price'),
+
+            // Price input
+            H('div', { style: { position: 'relative', marginBottom: 12 } },
+              H('span', {
+                style: {
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: isDarkMode ? '#94a3b8' : '#64748b',
+                  fontSize: 16
+                }
+              }, '$'),
+              H('input', {
+                type: 'number',
+                value: priceVal || '',
+                onChange: (e) => setPriceVal(e.target.value === '' ? 0 : Number(e.target.value)),
+                min: 0,
+                disabled: busy,
+                placeholder: '0',
+                style: {
+                  width: '100%',
+                  padding: '10px 12px 10px 28px',
+                  fontSize: 16,
+                  border: '1px solid',
+                  borderColor: isDarkMode ? '#475569' : '#e5e7eb',
+                  borderRadius: 8,
+                  background: isDarkMode ? '#1e293b' : '#fff',
+                  color: isDarkMode ? '#f1f5f9' : '#111827',
+                  boxSizing: 'border-box'
+                }
+              })
+            ),
+
+            // Price pills
+            H('div', {
+              style: {
+                display: 'flex',
+                gap: 8,
+                justifyContent: 'center'
+              }
+            },
+              pricePills.map(({ delta }) =>
+                H('button', {
+                  key: `pill-${delta}`,
+                  type: 'button',
+                  onClick: () => applyPriceDelta(delta),
+                  disabled: busy || (currentPrice + delta < 0),
+                  style: {
+                    padding: '8px 16px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    border: '1px solid',
+                    borderColor: delta > 0
+                      ? (isDarkMode ? '#166534' : '#86efac')
+                      : (isDarkMode ? '#991b1b' : '#fca5a5'),
+                    borderRadius: 20,
+                    background: delta > 0
+                      ? (isDarkMode ? '#14532d' : '#dcfce7')
+                      : (isDarkMode ? '#7f1d1d' : '#fee2e2'),
+                    color: delta > 0
+                      ? (isDarkMode ? '#86efac' : '#166534')
+                      : (isDarkMode ? '#fca5a5' : '#991b1b'),
+                    cursor: busy || (currentPrice + delta < 0) ? 'not-allowed' : 'pointer',
+                    opacity: busy || (currentPrice + delta < 0) ? 0.5 : 1
+                  }
+                }, delta > 0 ? `+$${delta}` : `-$${Math.abs(delta)}`)
+              )
+            )
+          ),
+
+          // Action buttons
+          H('div', { style: { display: 'flex', gap: 12 } },
+            H('button', {
+              type: 'button',
+              onClick: onClose,
+              disabled: busy,
+              style: {
+                flex: 1,
+                padding: '12px 16px',
+                fontSize: 16,
+                fontWeight: 600,
+                border: '1px solid',
+                borderColor: isDarkMode ? '#475569' : '#e5e7eb',
+                borderRadius: 8,
+                background: 'transparent',
+                color: isDarkMode ? '#f1f5f9' : '#374151',
+                cursor: busy ? 'not-allowed' : 'pointer'
+              }
+            }, 'Cancel'),
+            H('button', {
+              type: 'button',
+              onClick: handleConfirm,
+              disabled: busy || files.length === 0,
+              style: {
+                flex: 1,
+                padding: '12px 16px',
+                fontSize: 16,
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: 8,
+                background: busy || files.length === 0 ? '#94a3b8' : 'var(--accent, #3b82f6)',
+                color: '#fff',
+                cursor: busy || files.length === 0 ? 'not-allowed' : 'pointer'
+              }
+            }, busy ? 'Creating...' : 'Create Listing')
+          )
+        )
+      );
+    }
+
     return {
       SmartImage,
       ListingFormModal,
       CompactListingForm,
       DesktopNewListingModal,
+      ClarifyModal,
       runAutoList,
       pollAutoListingJob
     };

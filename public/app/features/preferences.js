@@ -59,11 +59,13 @@
     }
     const useAutoPostNearbyToggle = createStoredToggle('listit_auto_post_nearby');
     const useInquiryTextToggle = createStoredToggle('listit_auto_inquiry', false);
+    const useClarifyToggle = createStoredToggle('listit_clarify_enabled', false);
 
     function useAppPreferences() {
       const autoList = useAlwaysOnAutoList();
       const autoNearby = useAutoPostNearbyToggle();
       const inquiryText = useInquiryTextToggle();
+      const clarify = useClarifyToggle();
 
       return {
         autoListEnabled: autoList.enabled,
@@ -71,7 +73,9 @@
         autoPostNearbyEnabled: autoNearby.enabled,
         setAutoPostNearbyEnabled: autoNearby.setEnabled,
         autoInquiryEnabled: inquiryText.enabled,
-        setAutoInquiryEnabled: inquiryText.setEnabled
+        setAutoInquiryEnabled: inquiryText.setEnabled,
+        clarifyEnabled: clarify.enabled,
+        setClarifyEnabled: clarify.setEnabled
       };
     }
 

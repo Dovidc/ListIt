@@ -1655,6 +1655,8 @@
       setAutoInquiryEnabled,
       autoPostNearbyEnabled,
       setAutoPostNearbyEnabled,
+      clarifyEnabled,
+      setClarifyEnabled,
       onRequestDeleteAccount,
       onRequestCancelSubscription,
       onClearListingLocations,
@@ -1946,6 +1948,24 @@
                 H('div', { className: 'toggle-copy' },
                   H('div', { style: { fontWeight: 700 } }, 'Dark Mode'),
                   H('div', { className: 'muted', style: { fontSize: 12 } }, 'Tokyo Night theme')
+                )
+              ),
+              // Clarify toggle - mobile only
+              isMobile && H('label', { className: 'toggle-card', style: { padding: '10px 14px', width: '100%' } },
+                H('input', {
+                  type: 'checkbox',
+                  className: 'toggle-input',
+                  checked: !!clarifyEnabled,
+                  onChange: (e) => {
+                    if (typeof setClarifyEnabled === 'function') {
+                      setClarifyEnabled(e.target.checked);
+                    }
+                  }
+                }),
+                H('span', { className: 'toggle-slider', 'aria-hidden': true }),
+                H('div', { className: 'toggle-copy' },
+                  H('div', { style: { fontWeight: 700 } }, 'Clarify'),
+                  H('div', { className: 'muted', style: { fontSize: 12 } }, 'Review and edit listing details before posting')
                 )
               ),
 
@@ -2325,6 +2345,8 @@
       setAutoPostNearbyEnabled,
       autoInquiryEnabled,
       setAutoInquiryEnabled,
+      clarifyEnabled,
+      setClarifyEnabled,
       onViewSeller,
       onToggleSold,
       onSupporterClick,
@@ -3323,6 +3345,8 @@
           setAutoInquiryEnabled,
           autoPostNearbyEnabled,
           setAutoPostNearbyEnabled,
+          clarifyEnabled,
+          setClarifyEnabled,
           onRequestDeleteAccount: handleRequestDeleteAccount,
           onRequestCancelSubscription: handleRequestCancelSubscription,
           onClearListingLocations: async () => {

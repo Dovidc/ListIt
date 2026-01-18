@@ -691,9 +691,31 @@ class WorkerService {
       let tags = [];
       let price = 0;
 
-      // AI analysis ALWAYS runs for title/tags/price
+      // Check if hint contains clarify override data (JSON with __clarify_override__ marker)
+      let clarifyOverride = null;
+      if (job.hint) {
+        try {
+          const parsed = JSON.parse(job.hint);
+          if (parsed && parsed.__clarify_override__) {
+            clarifyOverride = parsed;
+            console.log(`[Worker] Using clarify override for job ${jobId}:`, { title: clarifyOverride.title, price: clarifyOverride.price });
+          }
+        } catch {
+          // Not JSON - treat as regular hint
+        }
+      }
+
+      // If clarify override data exists, use it directly (skip AI)
+      if (clarifyOverride) {
+        title = clarifyOverride.title || '';
+        description = clarifyOverride.description || '';
+        price = clarifyOverride.price || 0;
+        // Generate tags from title if available
+        tags = listingService.fallbackTagsFromTitleDesc(title, description);
+      }
+      // AI analysis ALWAYS runs for title/tags/price (when no override)
       // job.ai_enabled only controls whether to use AI description
-      if (this.aiAnalyzer) {
+      else if (this.aiAnalyzer) {
         try {
           const imageUrls = drafts.map(d => canonicalAssetUrl(d.url)).filter(Boolean);
           const aiResult = await this.aiAnalyzer({
