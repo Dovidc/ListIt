@@ -5,6 +5,7 @@ let authToken = null;
 let apiUrl = 'https://trovelr.com';
 let allListings = [];
 let selectedListing = null;
+let savedScrollPosition = 0;
 
 // DOM Elements
 const loginView = document.getElementById('loginView');
@@ -21,6 +22,7 @@ const selectedPanel = document.getElementById('selectedPanel');
 const backBtn = document.getElementById('backBtn');
 const statusMessage = document.getElementById('statusMessage');
 const categoryStatus = document.getElementById('categoryStatus');
+const fillFormBtn = document.getElementById('fillFormBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -43,6 +45,12 @@ function listenForAutoCategory() {
         categoryStatus.textContent = message.error || 'Could not auto-select category';
         categoryStatus.style.display = 'block';
       }
+    }
+
+    if (message.type === 'PUBLISH_CLICKED') {
+      console.log('Sidepanel: Received PUBLISH_CLICKED message');
+      // User clicked publish, go back to listings view
+      handlePublishComplete();
     }
   });
 }
@@ -83,6 +91,13 @@ function setupEventListeners() {
 
   // Back button
   backBtn.addEventListener('click', hideSelectedPanel);
+
+  // Fill form button
+  fillFormBtn.addEventListener('click', () => {
+    if (selectedListing) {
+      fillFacebookForm(selectedListing);
+    }
+  });
 }
 
 // Handle login
@@ -293,18 +308,14 @@ function handleSearch(e) {
 async function selectListing(listing) {
   selectedListing = listing;
 
-  // Update selected panel UI
-  document.getElementById('selectedTitle').textContent = listing.title || 'Untitled';
-  document.getElementById('selectedPrice').textContent = formatPrice(listing.price);
-  document.getElementById('selectedDescription').textContent = listing.description || '';
+  // Save current scroll position
+  savedScrollPosition = document.documentElement.scrollTop || document.body.scrollTop || listingsContainer.scrollTop;
+  console.log('Saved scroll position:', savedScrollPosition);
 
-  // Load images
-  await loadListingImages(listing);
+  // Download images immediately (in background)
+  loadListingImages(listing);
 
-  // Show selected panel
-  showSelectedPanel();
-
-  // Fill the Facebook form
+  // Fill the Facebook form immediately
   fillFacebookForm(listing);
 }
 
@@ -466,9 +477,9 @@ async function downloadImageAsBlob(url, filename) {
 
 // Generate a description from listing data if none exists
 function generateDescription(listing) {
-  // If listing already has a description, use it
+  // If listing already has a description, use it and append branding
   if (listing.description && listing.description.trim()) {
-    return listing.description;
+    return listing.description + '\n\nListed with Trovelr';
   }
 
   // Build description from available data
@@ -484,11 +495,6 @@ function generateDescription(listing) {
     parts.push(`Category: ${listing.tags}`);
   } else if (listing.category) {
     parts.push(`Category: ${listing.category}`);
-  }
-
-  // Add location if available
-  if (listing.location) {
-    parts.push(`Location: ${listing.location}`);
   }
 
   // Add a generic line
@@ -545,6 +551,112 @@ function hideSelectedPanel() {
   selectedListing = null;
   statusMessage.style.display = 'none';
   categoryStatus.style.display = 'none';
+
+  // Restore scroll position after DOM updates
+  requestAnimationFrame(() => {
+    restoreScrollPosition();
+  });
+}
+
+// Handle when publish button is clicked on Facebook
+function handlePublishComplete() {
+  console.log('Sidepanel: handlePublishComplete called');
+
+  // Show "New Listing" button in the main listings view
+  showNewListingButton();
+}
+
+// Show "New Listing" button after publishing
+function showNewListingButton() {
+  let newListingBanner = document.getElementById('newListingBanner');
+
+  if (!newListingBanner) {
+    newListingBanner = document.createElement('div');
+    newListingBanner.id = 'newListingBanner';
+    newListingBanner.style.cssText = `
+      position: fixed;
+      top: 60px;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, #1e7e34 0%, #166534 100%);
+      padding: 16px;
+      padding-right: 40px;
+      text-align: center;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+
+    newListingBanner.innerHTML = `
+      <button id="closeBannerBtn" style="
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: transparent;
+        border: none;
+        color: white;
+        cursor: pointer;
+        font-size: 24px;
+        line-height: 1;
+        padding: 4px 8px;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      " onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">×</button>
+      <div style="color: white; font-weight: 600; margin-bottom: 12px; font-size: 16px;">
+        ✓ Published Successfully!
+      </div>
+      <button id="newListingBtn" style="
+        background: white;
+        color: #166534;
+        border: none;
+        padding: 12px 32px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        transition: background 0.2s;
+      " onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='white'">New Listing</button>
+    `;
+
+    document.body.appendChild(newListingBanner);
+
+    // Add event listeners
+    document.getElementById('newListingBtn').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_CREATE' });
+      newListingBanner.remove();
+    });
+
+    document.getElementById('closeBannerBtn').addEventListener('click', () => {
+      newListingBanner.remove();
+    });
+  }
+
+  newListingBanner.style.display = 'block';
+}
+
+// Restore scroll position
+function restoreScrollPosition() {
+  if (savedScrollPosition > 0) {
+    console.log('Restoring scroll position to:', savedScrollPosition);
+
+    // Try multiple times to ensure the DOM is ready
+    const attemptRestore = (attempts = 0) => {
+      // Restore to the same element that was scrolling (document.documentElement)
+      document.documentElement.scrollTop = savedScrollPosition;
+      document.body.scrollTop = savedScrollPosition;
+      listingsContainer.scrollTop = savedScrollPosition;
+
+      // Verify it worked
+      const currentScroll = document.documentElement.scrollTop || document.body.scrollTop || listingsContainer.scrollTop;
+      if (currentScroll !== savedScrollPosition && attempts < 5) {
+        setTimeout(() => attemptRestore(attempts + 1), 50);
+      } else {
+        console.log('Scroll restored to:', currentScroll);
+      }
+    };
+
+    attemptRestore();
+  }
 }
 
 // Show/hide loading state

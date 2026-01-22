@@ -140,7 +140,8 @@ main.container {
   overscroll-behavior-y: contain !important;
   background: #f8fafc !important;
   /* Padding for status bar/Dynamic Island - background extends behind it, content below it */
-  padding-top: env(safe-area-inset-top, 44px) !important;
+  /* Use CSS var fallback for Android (injected by native code) */
+  padding-top: env(safe-area-inset-top, var(--safe-area-inset-top, 44px)) !important;
   /* Remove scroll padding that might be pushing content down */
   scroll-padding-top: 0 !important;
 }
@@ -158,7 +159,7 @@ main.listing-editor-container {
 
 /* Listing form footer - extend background through iOS safe area */
 .listing-form-footer {
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px))) !important;
 }
 
 .brand-tagline {
@@ -525,6 +526,7 @@ textarea {
   align-items: center;
   gap: 8px;
   padding: 12px 12px 14px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)));
   background: #ffffff;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
@@ -1539,7 +1541,7 @@ body:has(.mobile-messages-thread-portal) .mobile-dashboard {
 /* Using ::before pseudo-element for truly fixed background on iOS */
 .mobile-messages-thread-portal {
   background: #f8fafc !important;
-  padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
+  padding-top: max(12px, env(safe-area-inset-top, var(--safe-area-inset-top, 12px))) !important;
   position: relative;
 }
 
@@ -1654,23 +1656,4 @@ body.is-android .mobile-home-title {
   display: none !important;
 }
 
-/* Android: Extend dashboard background to cover system nav bar */
-body.is-android .mobile-dashboard {
-  padding-bottom: 12px !important;
-}
-
-body.is-android .mobile-dashboard::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -50px;
-  height: 50px;
-  background: inherit;
-  background-color: #ffffff;
-}
-
-[data-theme="dark"] body.is-android .mobile-dashboard::after,
-body.is-android[data-theme="dark"] .mobile-dashboard::after {
-  background-color: var(--bg-secondary, #24283b);
-}
+/* Android: No additional overrides needed - safe area insets handle it */

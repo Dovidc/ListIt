@@ -146,6 +146,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (message.type === 'NAVIGATE_TO_CREATE') {
+    console.log('Background: Received NAVIGATE_TO_CREATE');
+    // Navigate the active tab to Facebook Marketplace create page
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        console.log('Background: Navigating tab to:', FACEBOOK_CREATE_URL);
+        chrome.tabs.update(tabs[0].id, { url: FACEBOOK_CREATE_URL });
+      } else {
+        console.log('Background: No active tab found');
+      }
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === 'PUBLISH_CLICKED') {
+    console.log('Background: Received PUBLISH_CLICKED, forwarding to sidepanel');
+    // Forward the message to the side panel
+    chrome.runtime.sendMessage({ type: 'PUBLISH_CLICKED' });
+    return true;
+  }
 });
 
 // When extension is installed or updated

@@ -1835,7 +1835,7 @@ img {
   align-items: flex-start;
   justify-content: center;
   padding: 20px;
-  padding-top: max(20px, env(safe-area-inset-top, 0px));
+  padding-top: max(20px, env(safe-area-inset-top, var(--safe-area-inset-top, 0px)));
   backdrop-filter: blur(4px);
   overflow-y: auto;
 }
@@ -1858,12 +1858,12 @@ img {
   .modal-overlay {
     align-items: flex-start;
     padding: 12px;
-    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-top: max(12px, env(safe-area-inset-top, var(--safe-area-inset-top, 0px)));
   }
 
   .modal-content {
     margin-top: 0;
-    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px));
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, var(--safe-area-inset-top, 0px)));
     overflow: hidden;
     display: flex;
     flex-direction: column;

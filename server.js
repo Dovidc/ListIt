@@ -651,6 +651,8 @@ function isAllowedFrontendOrigin(origin) {
   if (!normalized) return false;
   // Allow Chrome extensions (they have origin like chrome-extension://abc123...)
   if (origin && origin.startsWith('chrome-extension://')) return true;
+  // Allow Edge extensions (they have origin like extension://abc123...)
+  if (origin && origin.startsWith('extension://')) return true;
   return FRONTEND_ORIGIN_SET.has(normalized);
 }
 
@@ -1129,7 +1131,7 @@ app.use(versionMiddleware);
 
 /* ------------------------------------------------------------------ */
 
-if (HAS_FRONTEND_ORIGIN && cors) {
+if (cors) {
 
   const corsCfg = {
 
@@ -1138,6 +1140,13 @@ if (HAS_FRONTEND_ORIGIN && cors) {
         // Requests originating from curl or server-side scripts might not
         // include the Origin header. Permit them to pass through.
         return callback(null, true);
+      }
+
+      // In development (no FRONTEND_ORIGIN set), allow chrome/edge extensions
+      if (!HAS_FRONTEND_ORIGIN) {
+        if (origin.startsWith('chrome-extension://') || origin.startsWith('extension://')) {
+          return callback(null, true);
+        }
       }
 
       if (isAllowedFrontendOrigin(origin)) {

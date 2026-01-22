@@ -15,9 +15,7 @@
     "https://trovelr.com/*",
     "https://*.trovelr.com/*",
     "https://*.cloudfront.net/*",
-    "https://*.amazonaws.com/*",
-    "http://localhost:*/*",
-    "<all_urls>"
+    "https://*.amazonaws.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -27,7 +25,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.facebook.com/marketplace/create/*"],
+      "matches": [
+        "https://www.facebook.com/marketplace/create/item",
+        "https://www.facebook.com/marketplace/create/item/*",
+        "https://www.facebook.com/*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"

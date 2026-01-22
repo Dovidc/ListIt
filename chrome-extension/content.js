@@ -8,6 +8,7 @@
   let pendingCategorySelection = null; // Stores the title when waiting for image upload
   let categorySelectionDone = false;
   let imageObserver = null;
+  let publishObserver = null;
 
   // Listen for fill form messages
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -58,6 +59,9 @@
     // Fill description last (it's a textarea that might need extra handling)
     await fillDescription(listing.description);
     await delay(100);
+
+    // Start observing for publish button clicks
+    startPublishObserver();
 
     console.log('Trovelr: Form filled successfully');
   }
@@ -246,18 +250,15 @@
       imageObserver.disconnect();
     }
 
-    console.log('Trovelr: Starting image upload observer');
-
-    // Create a MutationObserver to watch for changes in the photo area
-    imageObserver = new MutationObserver((mutations) => {
+    const checkForCategoryPills = () => {
       // Don't trigger if we've already done category selection
       if (categorySelectionDone || !pendingCategorySelection) {
-        return;
+        return false;
       }
 
       // Check if category pills now exist
       const categoryLabel = findCategoryLabel();
-      if (!categoryLabel) return;
+      if (!categoryLabel) return false;
 
       const categoryRect = categoryLabel.getBoundingClientRect();
       const conditionLabel = findConditionLabel();
@@ -266,10 +267,10 @@
       const pills = findCategoryPills(categoryRect.bottom, conditionTop);
 
       if (pills.length > 0) {
-        console.log('Trovelr: Detected category pills after image upload, waiting 500ms then selecting...');
+        console.log('Trovelr: Detected', pills.length, 'category pills, waiting 1000ms then selecting...');
         categorySelectionDone = true; // Prevent multiple triggers
 
-        // Wait 500ms for pills to fully render, then select
+        // Wait 1000ms for pills to fully render, then select
         setTimeout(async () => {
           const result = await selectCategoryFromPills(pendingCategorySelection);
           console.log('Trovelr: Auto category selection result:', result);
@@ -279,8 +280,15 @@
             type: 'CATEGORY_AUTO_SELECTED',
             ...result
           });
-        }, 500);
+        }, 1000);
+        return true;
       }
+      return false;
+    };
+
+    // Create a MutationObserver to watch for changes in the photo area
+    imageObserver = new MutationObserver((mutations) => {
+      checkForCategoryPills();
     });
 
     // Observe the entire form area for changes
@@ -292,6 +300,21 @@
       attributeFilter: ['style', 'class']
     });
 
+    // Also poll every 2 seconds as a fallback (Facebook might load pills slowly)
+    let pollCount = 0;
+    const maxPolls = 30; // Poll for up to 60 seconds
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      console.log('Trovelr: Polling for category pills (attempt', pollCount, '/', maxPolls, ')');
+
+      if (checkForCategoryPills() || pollCount >= maxPolls) {
+        clearInterval(pollInterval);
+        if (pollCount >= maxPolls) {
+          console.log('Trovelr: Stopped polling - category pills did not appear after 60 seconds');
+        }
+      }
+    }, 2000);
+
     // Also set a timeout to stop observing after 5 minutes (in case user never adds image)
     setTimeout(() => {
       if (imageObserver) {
@@ -299,6 +322,7 @@
         imageObserver.disconnect();
         imageObserver = null;
       }
+      clearInterval(pollInterval);
     }, 5 * 60 * 1000);
   }
 
@@ -346,11 +370,27 @@
     const categories = pillData.map(p => p.text);
     const bestCategory = await pickBestCategory(title, categories);
 
+    // Helper function to reliably click a pill
+    const clickPill = async (pill) => {
+      console.log('Trovelr: Attempting to click pill element:', pill);
+      // Scroll pill into view first
+      pill.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await delay(200);
+
+      // Try multiple click methods to ensure it works
+      pill.click();
+      await delay(50);
+      pill.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      pill.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      pill.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await delay(300);
+      console.log('Trovelr: Click completed');
+    };
+
     if (!bestCategory) {
       // Fallback: just pick the first one
       console.log('Trovelr: AI matching failed, selecting first pill');
-      pillData[0].element.click();
-      await delay(300);
+      await clickPill(pillData[0].element);
       return { success: true, selectedCategory: pillData[0].text };
     }
 
@@ -358,8 +398,7 @@
     const matchingPill = pillData.find(p => p.text === bestCategory);
     if (matchingPill) {
       console.log('Trovelr: Clicking category pill:', bestCategory);
-      matchingPill.element.click();
-      await delay(300);
+      await clickPill(matchingPill.element);
       return { success: true, selectedCategory: bestCategory };
     }
 
@@ -370,15 +409,13 @@
     );
     if (partialMatch) {
       console.log('Trovelr: Clicking partial match:', partialMatch.text);
-      partialMatch.element.click();
-      await delay(300);
+      await clickPill(partialMatch.element);
       return { success: true, selectedCategory: partialMatch.text };
     }
 
     // Last resort: click first pill
     console.log('Trovelr: No match found, selecting first pill');
-    pillData[0].element.click();
-    await delay(300);
+    await clickPill(pillData[0].element);
     return { success: true, selectedCategory: pillData[0].text };
   }
 
@@ -878,6 +915,111 @@
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+  // Start observing for publish button clicks
+  function startPublishObserver() {
+    // Stop any existing observer
+    if (publishObserver) {
+      publishObserver.disconnect();
+    }
+
+    console.log('Trovelr: Starting publish button observer');
+
+    // Find all buttons and set up click listeners
+    const checkForPublishButton = () => {
+      // Facebook's publish button typically has text "Publish", "Next", or similar
+      const buttons = document.querySelectorAll('[role="button"], button');
+
+      buttons.forEach(button => {
+        const text = button.textContent?.trim().toLowerCase();
+
+        // Look for "Publish" button - check if we're on the final preview/publish step
+        // We can detect this by checking if the URL contains certain patterns or if specific elements exist
+        const isPublishButton = text === 'publish' || text === 'list';
+
+        if (isPublishButton) {
+          // Check if we already added a listener
+          if (!button.dataset.trovelrListenerAdded) {
+            button.dataset.trovelrListenerAdded = 'true';
+
+            button.addEventListener('click', () => {
+              // Check if this is really the final publish (not earlier in flow)
+              // Look for preview elements or check URL
+              const isPreviewPage = document.querySelector('[aria-label="Preview"]') ||
+                                    document.body.textContent.includes('Preview');
+
+              if (isPreviewPage || text === 'publish') {
+                // Wait a bit for the publish action to process, then notify
+                setTimeout(() => {
+                  chrome.runtime.sendMessage({ type: 'PUBLISH_CLICKED' });
+                }, 1500);
+              }
+            }, { capture: true });
+          }
+        }
+      });
+    };
+
+    // Check immediately
+    checkForPublishButton();
+
+    // Create a MutationObserver to watch for new buttons being added
+    publishObserver = new MutationObserver(() => {
+      checkForPublishButton();
+    });
+
+    // Observe the entire document for changes
+    publishObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Stop observing after 30 minutes
+    setTimeout(() => {
+      if (publishObserver) {
+        console.log('Trovelr: Stopping publish observer after timeout');
+        publishObserver.disconnect();
+        publishObserver = null;
+      }
+    }, 30 * 60 * 1000);
+  }
+
+  // Monitor for URL changes (Facebook uses client-side routing)
+  let lastUrl = location.href;
+  let wasOnCreatePage = location.href.includes('/marketplace/create');
+
+  new MutationObserver(() => {
+    const currentUrl = location.href;
+    if (currentUrl !== lastUrl) {
+      const isOnCreatePage = currentUrl.includes('/marketplace/create');
+
+      // Detect when we LEAVE the create page (likely published successfully)
+      if (wasOnCreatePage && !isOnCreatePage) {
+        // We just left the create page - likely published!
+        chrome.runtime.sendMessage({ type: 'PUBLISH_CLICKED' });
+      }
+
+      // If we're back on the create page, reset the observers
+      if (isOnCreatePage) {
+        // Reset state
+        categorySelectionDone = false;
+        pendingCategorySelection = null;
+
+        // Stop old observers
+        if (imageObserver) {
+          imageObserver.disconnect();
+          imageObserver = null;
+        }
+        if (publishObserver) {
+          publishObserver.disconnect();
+          publishObserver = null;
+        }
+      }
+
+      wasOnCreatePage = isOnCreatePage;
+      lastUrl = currentUrl;
+    }
+  }).observe(document, { subtree: true, childList: true });
 
   console.log('Trovelr content script loaded on Facebook Marketplace');
 })();

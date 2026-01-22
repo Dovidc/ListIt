@@ -939,7 +939,7 @@
               flex: 1,
               overflowY: 'auto',
               WebkitOverflowScrolling: 'touch',
-              paddingTop: 'env(safe-area-inset-top, 0px)',
+              paddingTop: 'env(safe-area-inset-top, var(--safe-area-inset-top, 0px))',
               paddingLeft: 16,
               paddingRight: 16
             }
@@ -3329,7 +3329,7 @@
           zIndex: 130,
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
-          padding: 'max(12px, env(safe-area-inset-top, 12px)) 12px max(12px, env(safe-area-inset-bottom, 12px)) 12px'
+          padding: 'max(12px, env(safe-area-inset-top, var(--safe-area-inset-top, 12px))) 12px max(12px, env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 12px))) 12px'
         },
         onClick: handleOverlayClick
       },

@@ -113,7 +113,11 @@
       "Bash(git log:*)",
       "Bash(del \"c:\\\\Users\\\\Dovid\\\\Downloads\\\\listit_multi_images\\\\chrome-extension\\\\icon16.png\")",
       "WebFetch(domain:developer.ebay.com)",
-      "Bash(claude --version)"
+      "Bash(claude --version)",
+      "Bash(zip:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(cmd /c:*)",
+      "Bash(adb:*)"
     ],
     "deny": [],
     "ask": []
