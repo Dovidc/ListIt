@@ -5387,8 +5387,6 @@ app.get('/api/listings', optionalAuth, async (req, res) => {
     const hasUserCoords = Number.isFinite(userLat) && Number.isFinite(userLon);
     const isNearestSort = sort === 'nearest';
 
-    console.log('[listings API] user coordinates provided:', hasUserCoords);
-
     // Distance calculation params (used for any sort when coords are available)
     const earthRadius = 6371000;
     const deg2rad = Math.PI / 180;
@@ -13323,7 +13321,6 @@ app.post('/api/ebay/webhooks', express.raw({ type: 'application/json' }), async 
     // Verify webhook signature
     const isValid = await ebayService.verifyWebhookSignature(payload, signature);
     if (!isValid) {
-      console.error('[eBay Webhook] Invalid signature');
       return res.status(401).json({ error: 'invalid_signature' });
     }
 
