@@ -629,7 +629,7 @@ main {
 }
 
 .nearby-filter select {
-  font-size: 14px;
+  font-size: 16px;
   padding: 6px 8px;
   min-height: 32px;
   border-radius: 12px;
@@ -1241,6 +1241,7 @@ main {
   align-items: center;
   justify-content: space-around;
   padding: 12px 12px 14px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)));
   z-index: 1000;
   min-height: 70px;
   -webkit-touch-callout: none;
@@ -1643,12 +1644,16 @@ html[data-theme="dark"] .listing-form-modal-overlay {
 
 /* ==========================================================================
    ANDROID-SPECIFIC FIXES
-   Android doesn't use env(safe-area-inset-*), so we detect via body class
+   Android WebView resolves env(safe-area-inset-*) to 0px instead of being
+   unsupported, so the CSS fallback never triggers. We must use the injected
+   CSS variables directly via body.is-android.
+   Fallbacks are 0px because the native inset listener will inject real values.
    ========================================================================== */
 
-/* Android: Add padding for status bar (set via JS when Android detected) */
+/* Android: Use injected CSS vars for status bar + bottom nav clearance */
 body.is-android main.container {
-  padding-top: 34px !important;
+  padding-top: var(--safe-area-inset-top, 0px) !important;
+  padding-bottom: calc(140px + var(--safe-area-inset-bottom, 0px)) !important;
 }
 
 /* Android: Hide Trovelr title text to save space */
@@ -1656,4 +1661,38 @@ body.is-android .mobile-home-title {
   display: none !important;
 }
 
-/* Android: No additional overrides needed - safe area insets handle it */
+/* Android: Bottom nav must use CSS var directly (env() resolves to 0px, not unsupported) */
+body.is-android .mobile-dashboard {
+  padding-bottom: calc(14px + var(--safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Android: Listing form footer */
+body.is-android .listing-form-footer {
+  padding-bottom: calc(8px + var(--safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Android: Messages thread portal - top safe area for header (Back to conversations / Home) */
+body.is-android .mobile-messages-thread-portal {
+  padding-top: var(--safe-area-inset-top, 0px) !important;
+}
+
+/* Android: Messages composer - bottom safe area above Android nav buttons */
+body.is-android .mobile-messages-thread-portal .message-composer-wrapper {
+  padding-bottom: calc(10px + var(--safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Android: DM thread overlay - top/bottom safe areas */
+body.is-android .messages-thread-shell.show-on-mobile {
+  padding-top: var(--safe-area-inset-top, 0px) !important;
+  padding-bottom: var(--safe-area-inset-bottom, 0px) !important;
+}
+
+/* Android: When keyboard is open, shrink the DM thread to fit above keyboard */
+body.is-android.keyboard-open .mobile-messages-thread-portal {
+  bottom: var(--keyboard-height, 0px) !important;
+}
+
+/* Android: When keyboard is open, composer doesn't need extra bottom safe area */
+body.is-android.keyboard-open .mobile-messages-thread-portal .message-composer-wrapper {
+  padding-bottom: 10px !important;
+}

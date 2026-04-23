@@ -1,7 +1,32 @@
 // Trovelr Chrome Extension - Background Service Worker
 // Handles extension icon click and side panel management
 
+const API_URL = 'https://trovelr.com';
 const FACEBOOK_CREATE_URL = 'https://www.facebook.com/marketplace/create/item';
+
+// Trusted domains for image downloads
+const TRUSTED_DOWNLOAD_DOMAINS = [
+  'trovelr.com',
+  '.trovelr.com',
+  '.cloudfront.net',
+  '.amazonaws.com'
+];
+
+function isAllowedDownloadUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    return TRUSTED_DOWNLOAD_DOMAINS.some(domain =>
+      domain.startsWith('.') ? parsed.hostname.endsWith(domain) : parsed.hostname === domain
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isInternalSender(sender) {
+  return sender.id === chrome.runtime.id;
+}
 
 // When user clicks the extension icon - open side panel AND navigate
 chrome.action.onClicked.addListener(async (tab) => {
@@ -12,20 +37,20 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.error('Failed to open side panel:', err);
   }
 
-  // Then navigate to FB Marketplace if not already there
-  if (!tab.url || !tab.url.includes('facebook.com/marketplace/create')) {
-    await chrome.tabs.update(tab.id, { url: FACEBOOK_CREATE_URL });
-  }
+  // Navigate to FB Marketplace create page
+  await chrome.tabs.update(tab.id, { url: FACEBOOK_CREATE_URL });
 });
 
 // Listen for messages from content script or side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Only accept messages from our own extension
+  if (!isInternalSender(sender)) return;
+
   if (message.type === 'GET_AUTH_TOKEN') {
     // Get stored auth token
-    chrome.storage.local.get(['trovelrToken', 'trovelrApiUrl'], (result) => {
+    chrome.storage.local.get(['trovelrToken'], (result) => {
       sendResponse({
-        token: result.trovelrToken || null,
-        apiUrl: result.trovelrApiUrl || 'https://trovelr.com'
+        token: result.trovelrToken || null
       });
     });
     return true; // Keep channel open for async response
@@ -34,8 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SAVE_AUTH_TOKEN') {
     // Save auth token
     chrome.storage.local.set({
-      trovelrToken: message.token,
-      trovelrApiUrl: message.apiUrl || 'https://trovelr.com'
+      trovelrToken: message.token
     }, () => {
       sendResponse({ success: true });
     });
@@ -44,7 +68,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'LOGOUT') {
     // Clear auth token
-    chrome.storage.local.remove(['trovelrToken', 'trovelrApiUrl'], () => {
+    chrome.storage.local.remove(['trovelrToken'], () => {
       sendResponse({ success: true });
     });
     return true;
@@ -81,12 +105,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'DOWNLOAD_IMAGE') {
-    // Download image directly using Chrome downloads API
+    // Validate download URL against trusted domains
+    if (!isAllowedDownloadUrl(message.url)) {
+      console.error('Download blocked - untrusted URL:', message.url);
+      sendResponse({ success: false, error: 'Download URL not allowed' });
+      return true;
+    }
+
     const downloadOptions = {
       url: message.url
     };
 
-    // Use custom filename if provided
+    // Use custom filename if provided (sanitized by generateFilename in sidepanel.js)
     if (message.filename) {
       downloadOptions.filename = message.filename;
     }
@@ -111,8 +141,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'CATEGORY_MATCH') {
     // Proxy API call to avoid CORS issues from content script
-    chrome.storage.local.get(['trovelrToken', 'trovelrApiUrl'], async (result) => {
-      const apiUrl = result.trovelrApiUrl || 'https://trovelr.com';
+    chrome.storage.local.get(['trovelrToken'], async (result) => {
       const token = result.trovelrToken;
 
       if (!token) {
@@ -121,7 +150,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       try {
-        const response = await fetch(`${apiUrl}/api/facebook/category-match`, {
+        const response = await fetch(`${API_URL}/api/facebook/category-match`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

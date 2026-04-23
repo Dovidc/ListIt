@@ -117,7 +117,10 @@
       "Bash(zip:*)",
       "Bash(powershell -Command:*)",
       "Bash(cmd /c:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(./gradlew:*)",
+      "Bash(keytool:*)",
+      "Read(//c/Users/Dovid/Downloads/**)"
     ],
     "deny": [],
     "ask": []

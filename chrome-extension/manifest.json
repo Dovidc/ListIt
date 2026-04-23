@@ -1,21 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Trovelr - Post to Facebook Marketplace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Quickly post your Trovelr listings to Facebook Marketplace",
   "permissions": [
     "storage",
     "activeTab",
     "sidePanel",
-    "tabs",
     "downloads"
   ],
   "host_permissions": [
-    "https://www.facebook.com/*",
+    "https://www.facebook.com/marketplace/*",
     "https://trovelr.com/*",
-    "https://*.trovelr.com/*",
-    "https://*.cloudfront.net/*",
-    "https://*.amazonaws.com/*"
+    "https://*.trovelr.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -27,8 +24,7 @@
     {
       "matches": [
         "https://www.facebook.com/marketplace/create/item",
-        "https://www.facebook.com/marketplace/create/item/*",
-        "https://www.facebook.com/*"
+        "https://www.facebook.com/marketplace/create/item/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

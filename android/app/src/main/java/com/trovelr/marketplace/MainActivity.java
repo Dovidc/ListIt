@@ -28,23 +28,39 @@ public class MainActivity extends BridgeActivity {
             controller.setAppearanceLightNavigationBars(true);
         }
 
-        // Apply window insets to webview - handle system bars properly
+        // Get device density to convert physical px to CSS px (dp)
+        float density = getResources().getDisplayMetrics().density;
+
+        // Listen for ALL inset changes (system bars + keyboard)
         View rootView = window.getDecorView().getRootView();
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
-            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+            boolean imeVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime());
 
-            // Inject CSS custom properties with actual inset values
+            // Convert from physical pixels to dp (CSS pixels)
+            int top = Math.round(systemBars.top / density);
+            int bottom = Math.round(systemBars.bottom / density);
+            int left = Math.round(systemBars.left / density);
+            int right = Math.round(systemBars.right / density);
+            int keyboardHeight = Math.round(ime.bottom / density);
+
+            // Build JS to inject CSS custom properties
             String js = String.format(
-                "javascript:(function(){" +
-                "document.documentElement.style.setProperty('--safe-area-inset-top','%dpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-bottom','%dpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-left','%dpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-right','%dpx');" +
+                "(function(){" +
+                "var s=document.documentElement.style;" +
+                "s.setProperty('--safe-area-inset-top','%dpx');" +
+                "s.setProperty('--safe-area-inset-bottom','%dpx');" +
+                "s.setProperty('--safe-area-inset-left','%dpx');" +
+                "s.setProperty('--safe-area-inset-right','%dpx');" +
+                "s.setProperty('--keyboard-height','%dpx');" +
+                "document.body.classList.%s('keyboard-open');" +
                 "})()",
-                insets.top, insets.bottom, insets.left, insets.right
+                top, bottom, left, right, keyboardHeight,
+                imeVisible ? "add" : "remove"
             );
 
-            // Execute after bridge is loaded
+            // Execute on WebView thread
             getBridge().getWebView().post(() -> {
                 getBridge().getWebView().evaluateJavascript(js, null);
             });

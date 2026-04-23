@@ -1,8 +1,8 @@
 // Trovelr Chrome Extension - Side Panel Logic
 // Handles login, listing search, selection, and form filling
 
+const API_URL = 'https://trovelr.com';
 let authToken = null;
-let apiUrl = 'https://trovelr.com';
 let allListings = [];
 let selectedListing = null;
 let savedScrollPosition = 0;
@@ -23,6 +23,7 @@ const backBtn = document.getElementById('backBtn');
 const statusMessage = document.getElementById('statusMessage');
 const categoryStatus = document.getElementById('categoryStatus');
 const fillFormBtn = document.getElementById('fillFormBtn');
+const refreshBtn = document.getElementById('refreshBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -61,8 +62,6 @@ async function checkAuth() {
     chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' }, (response) => {
       if (response && response.token) {
         authToken = response.token;
-        apiUrl = response.apiUrl || 'https://trovelr.com';
-        document.getElementById('apiUrl').value = apiUrl;
         showMainView();
         loadListings();
       } else {
@@ -92,6 +91,13 @@ function setupEventListeners() {
   // Back button
   backBtn.addEventListener('click', hideSelectedPanel);
 
+  // Refresh button
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.classList.add('spinning');
+    await loadListings();
+    refreshBtn.classList.remove('spinning');
+  });
+
   // Fill form button
   fillFormBtn.addEventListener('click', () => {
     if (selectedListing) {
@@ -106,10 +112,6 @@ async function handleLogin(e) {
 
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
-  apiUrl = document.getElementById('apiUrl').value.trim() || 'https://trovelr.com';
-
-  // Remove trailing slash
-  apiUrl = apiUrl.replace(/\/$/, '');
 
   loginError.textContent = '';
   const loginBtn = document.getElementById('loginBtn');
@@ -117,7 +119,7 @@ async function handleLogin(e) {
   loginBtn.textContent = 'Signing in...';
 
   try {
-    const response = await fetch(`${apiUrl}/api/login`, {
+    const response = await fetch(`${API_URL}/api/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -139,8 +141,7 @@ async function handleLogin(e) {
     authToken = data.token;
     chrome.runtime.sendMessage({
       type: 'SAVE_AUTH_TOKEN',
-      token: authToken,
-      apiUrl: apiUrl
+      token: authToken
     });
 
     showMainView();
@@ -183,9 +184,10 @@ async function loadListings() {
 
   try {
     // First get the current user's ID
-    const meResponse = await fetch(`${apiUrl}/api/me`, {
+    const meResponse = await fetch(`${API_URL}/api/me`, {
       headers: {
-        'Authorization': `Bearer ${authToken}`
+        'Authorization': `Bearer ${authToken}`,
+        'Cache-Control': 'no-cache'
       }
     });
 
@@ -205,10 +207,11 @@ async function loadListings() {
       throw new Error('Could not determine user ID');
     }
 
-    // Now fetch user's listings
-    const response = await fetch(`${apiUrl}/api/users/${userId}/listings`, {
+    // Now fetch user's listings (cache-bust to ensure fresh data)
+    const response = await fetch(`${API_URL}/api/users/${userId}/listings?t=${Date.now()}`, {
       headers: {
-        'Authorization': `Bearer ${authToken}`
+        'Authorization': `Bearer ${authToken}`,
+        'Cache-Control': 'no-cache'
       }
     });
 
@@ -226,12 +229,18 @@ async function loadListings() {
 
   } catch (err) {
     console.error('Failed to load listings:', err);
-    listingsContainer.innerHTML = `
-      <div class="error-state">
-        <p>Failed to load listings</p>
-        <button class="btn-secondary" onclick="loadListings()">Retry</button>
-      </div>
-    `;
+    listingsContainer.innerHTML = '';
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-state';
+    const errorP = document.createElement('p');
+    errorP.textContent = 'Failed to load listings';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'btn-secondary';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', loadListings);
+    errorDiv.appendChild(errorP);
+    errorDiv.appendChild(retryBtn);
+    listingsContainer.appendChild(errorDiv);
   } finally {
     showLoading(false);
   }
@@ -264,15 +273,32 @@ function createListingCard(listing) {
   const price = formatPrice(listing.price);
   const title = listing.title || 'Untitled';
 
-  card.innerHTML = `
-    <div class="listing-image" style="background-image: url('${escapeHtml(imageUrl)}')">
-      ${!imageUrl ? '<div class="no-image">No Image</div>' : ''}
-    </div>
-    <div class="listing-info">
-      <span class="listing-price">${price}</span>
-      <span class="listing-title">${escapeHtml(title)}</span>
-    </div>
-  `;
+  const imageDiv = document.createElement('div');
+  imageDiv.className = 'listing-image';
+  if (imageUrl) {
+    imageDiv.style.backgroundImage = `url('${CSS.escape(imageUrl)}')`;
+  } else {
+    const noImage = document.createElement('div');
+    noImage.className = 'no-image';
+    noImage.textContent = 'No Image';
+    imageDiv.appendChild(noImage);
+  }
+
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'listing-info';
+
+  const priceSpan = document.createElement('span');
+  priceSpan.className = 'listing-price';
+  priceSpan.textContent = price;
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'listing-title';
+  titleSpan.textContent = title;
+
+  infoDiv.appendChild(priceSpan);
+  infoDiv.appendChild(titleSpan);
+  card.appendChild(imageDiv);
+  card.appendChild(infoDiv);
 
   card.addEventListener('click', () => selectListing(listing));
 
@@ -326,7 +352,7 @@ async function loadListingImages(listing) {
 
   try {
     // Fetch images using the dedicated images endpoint
-    const response = await fetch(`${apiUrl}/api/listings/${listing.id}/images`, {
+    const response = await fetch(`${API_URL}/api/listings/${listing.id}/images`, {
       headers: {
         'Authorization': `Bearer ${authToken}`
       }
@@ -586,49 +612,41 @@ function showNewListingButton() {
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     `;
 
-    newListingBanner.innerHTML = `
-      <button id="closeBannerBtn" style="
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: transparent;
-        border: none;
-        color: white;
-        cursor: pointer;
-        font-size: 24px;
-        line-height: 1;
-        padding: 4px 8px;
-        opacity: 0.7;
-        transition: opacity 0.2s;
-      " onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">×</button>
-      <div style="color: white; font-weight: 600; margin-bottom: 12px; font-size: 16px;">
-        ✓ Published Successfully!
-      </div>
-      <button id="newListingBtn" style="
-        background: white;
-        color: #166534;
-        border: none;
-        padding: 12px 32px;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        transition: background 0.2s;
-      " onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='white'">New Listing</button>
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'closeBannerBtn';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.style.cssText = `
+      position: absolute; top: 8px; right: 8px; background: transparent;
+      border: none; color: white; cursor: pointer; font-size: 24px;
+      line-height: 1; padding: 4px 8px; opacity: 0.7; transition: opacity 0.2s;
     `;
+    closeBtn.addEventListener('mouseover', () => { closeBtn.style.opacity = '1'; });
+    closeBtn.addEventListener('mouseout', () => { closeBtn.style.opacity = '0.7'; });
+    closeBtn.addEventListener('click', () => { newListingBanner.remove(); });
 
-    document.body.appendChild(newListingBanner);
+    const successDiv = document.createElement('div');
+    successDiv.style.cssText = 'color: white; font-weight: 600; margin-bottom: 12px; font-size: 16px;';
+    successDiv.textContent = '\u2713 Published Successfully!';
 
-    // Add event listeners
-    document.getElementById('newListingBtn').addEventListener('click', () => {
+    const newListingBtn = document.createElement('button');
+    newListingBtn.id = 'newListingBtn';
+    newListingBtn.textContent = 'New Listing';
+    newListingBtn.style.cssText = `
+      background: white; color: #166534; border: none; padding: 12px 32px;
+      border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: background 0.2s;
+    `;
+    newListingBtn.addEventListener('mouseover', () => { newListingBtn.style.background = '#f0f0f0'; });
+    newListingBtn.addEventListener('mouseout', () => { newListingBtn.style.background = 'white'; });
+    newListingBtn.addEventListener('click', () => {
       chrome.runtime.sendMessage({ type: 'NAVIGATE_TO_CREATE' });
       newListingBanner.remove();
     });
 
-    document.getElementById('closeBannerBtn').addEventListener('click', () => {
-      newListingBanner.remove();
-    });
+    newListingBanner.appendChild(closeBtn);
+    newListingBanner.appendChild(successDiv);
+    newListingBanner.appendChild(newListingBtn);
+    document.body.appendChild(newListingBanner);
   }
 
   newListingBanner.style.display = 'block';
