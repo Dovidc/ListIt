@@ -236,14 +236,19 @@ describe('browser app integration', () => {
         createGridComponents: jest.fn(() => ({ ListingsGrid: jest.fn() }))
       },
       layout: {
-      createLayoutComponents: jest.fn(() => ({
-        Header: jest.fn(),
-        GlobalLoader: jest.fn()
-      }))
-    },
-    listings: {
-      createListingComponents: jest.fn(() => listingComponents)
-    }
+        createLayoutComponents: jest.fn(() => ({
+          Header: jest.fn(),
+          GlobalLoader: jest.fn()
+        }))
+      },
+      listings: {
+        createListingComponents: jest.fn(() => listingComponents)
+      },
+      profilePictureUpload: {
+        createProfilePictureUploadComponents: jest.fn(() => ({
+          ProfilePictureUploadModal: jest.fn()
+        }))
+      }
     };
 
     const locationHelpers = { fetchCoordsAndReverse: jest.fn(() => 'coords') };
@@ -399,6 +404,23 @@ describe('browser app integration', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/test', { method: 'POST' });
     expect(fetchResult).toBe('fetch-result');
 
+    const authArgs = appBundles.features.auth.createAuthFeature.mock.calls[0][0];
+    authArgs.onTokenChange('native-token');
+
+    fetchMock.mockClear();
+    apiOptions.fetchImpl('/api/test', { headers: { 'Content-Type': 'application/json' } });
+    expect(fetchMock).toHaveBeenCalledWith('/api/test', {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer native-token'
+      }
+    });
+
+    authArgs.onTokenChange(null);
+    fetchMock.mockClear();
+    apiOptions.fetchImpl('/api/test', {});
+    expect(fetchMock).toHaveBeenCalledWith('/api/test', {});
+
     delete global.fetch;
 
     expect(appBundles.hooks.useListings()).toBe('listingsHook');
@@ -522,6 +544,7 @@ describe('browser app integration', () => {
     const authArgs = appBundles.features.auth.createAuthFeature.mock.calls[0][0];
     expect(authArgs.api).toBe(core.api);
     expect(authArgs.ReactDOM).toBe(dependencies.ReactDOM);
+    expect(typeof authArgs.onTokenChange).toBe('function');
   });
 
   test('mount renders using ReactDOM.createRoot with the app shell Root component', () => {

@@ -26,7 +26,7 @@
     };
   }
 
-  function createAuthFeature({ api, ReactDOM }) {
+  function createAuthFeature({ api, ReactDOM, onTokenChange }) {
     if (!api) {
       throw new Error('Auth feature requires an API client.');
     }
@@ -41,10 +41,23 @@
       const [loading, setLoading] = useState(true);
       const [pushMeta, setPushMeta] = useState({ available: false, vapidPublicKey: null });
 
+      const tokenHandler = typeof onTokenChange === 'function' ? onTokenChange : null;
+
       const setUser = useCallback((next) => {
         setUserState(next || null);
         setPushMeta(normalizePushMeta(next));
-      }, []);
+
+        if (!tokenHandler) return;
+
+        if (!next) {
+          tokenHandler(null);
+          return;
+        }
+
+        if (next && typeof next === 'object' && typeof next.token === 'string' && next.token.trim()) {
+          tokenHandler(next.token.trim());
+        }
+      }, [tokenHandler]);
 
       useEffect(() => {
         let alive = true;
